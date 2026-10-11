@@ -52,6 +52,20 @@ Overlaps with the game lists: stealth #14 is bought; stealth #1-6, #11, #20 and 
 being downloaded (#5 European Black Alder is deferred for disk; ask the scout). For stealth L3, DownTown Office
 (bought) overlaps with #7 Big Office: check before buying both.
 
+## Purchase 2 (2026-10-11, Personal tier, $144.91 + tax): bought
+
+Stealth #8 Server Room Kit, #9 Stranger Man, #10 Police Character / NPC, #13 Flashlight Set, #15 Niagara Dust,
+#16 Flashlights Pack, #17 Water Fountain, #23 Ultimate Stealth Music Pack; island-survival RamsterZ Survival
+Animations. Stealth #7 Big Office skipped (overlaps the bought DownTown Office). Free #18 Water Materials (CC BY)
+and #21 Small Sound Kit added. All downloaded to `C:\Users\Xiang\Work\asset-library\fab-ue\<pack>\`, UE 5.3 OK.
+
+## Asset scout: open paid suggestions (not bought)
+
+| Game | Listing | Price (Personal) | UE | Why |
+|---|---|---|---|---|
+| island-survival | [Survival Animations (RamsterZ)](https://www.fab.com/listings/69c3b1b6-43e5-4608-9026-e8df6c1f4430) | $29.99 | 4.24-5.7 | 89+ survival anims: canteen drinking x3, eating/crafting idles, build x29, campfire x28, foraging, tree chop, fishing. Covers eating from the hand, drinking from a flask and building, which no free pack has |
+| island-survival | [Building Animation Bundle (Respawn Labs)](https://www.fab.com/listings/f4048903-51b9-4801-a432-8baccd486994) | $7.99 | FBX, Manny rig | hammer standing / kneeling on two knees / kneeling on one knee (cheap alternative if only hammering is needed) |
+
 ## Merged list
 
 Filled in once every game has reported: one row per Fab listing (deduplicated across games), price, licence, which

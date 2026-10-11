@@ -34,10 +34,10 @@ WAV packs), `fab-ue\FabVault53` (Launcher-only Unreal packs), `polyhaven`, `ambi
 
 ## Storage
 
-C: is tight, so from 2026-10-11 ~05:10 every new download goes to `D:\asset-library\` (same layout). The
-169 GB already on C: (`C:\Users\Xiang\Work\asset-library\`) stays where it is. Catalogue, scout log, status
-files and `fab-library.psv` remain on C:; `local_path` in the catalogue and `path` in each status file
-always give the real drive. Tools: `scout.DL` (default `D:\asset-library`, env `ASSET_DL_ROOT`).
+Everything lives in `C:\Users\Xiang\Work\asset-library\` (the user asked for all packs there, overriding a
+brief plan to put new downloads on D:; the few packs that went to D: were moved back). Catalogue, scout log,
+status files and `fab-library.psv` are there too; `local_path` / `path` give exact folders. Tools:
+`scout.DL` (default = the C: library; env `ASSET_DL_ROOT` to redirect).
 
 Game credits: per the user's rule, third-party credits inside a game go in its `Docs/ThirdPartyNotices.md`,
 written as a normal developer would, with no mention of Superposition, game-factory or recording. The credit
