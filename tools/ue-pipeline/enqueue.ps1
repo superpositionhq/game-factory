@@ -12,10 +12,19 @@ param(
     [int]$Runs = 2,
     [Alias('Levels')][string[]]$Scenarios,   # "1,2" from powershell -File arrives as one string
     [string]$Commit = 'HEAD',
-    [string]$RequestedBy = 'unknown'
+    [string]$RequestedBy = 'unknown',
+    [switch]$Force   # queue anyway although the requester is not the coordinator
 )
 
 . (Join-Path $PSScriptRoot 'common.ps1')
+# The coordinator owns the queue (user's decision 2026-10-11: one GPU recording at a time, coordinator orders them).
+if ($RequestedBy -ne 'coordinator' -and -not $Force) {
+    Write-Host ''
+    Write-Host '!!! NOT QUEUED: only the coordinator queues recordings now (-RequestedBy coordinator).' -ForegroundColor Red
+    Write-Host "!!! Ask the coordinating session to queue $Game (commit $Commit, scenarios $($Scenarios -join ','), runs $Runs)." -ForegroundColor Red
+    Write-Host '!!! (-Force queues anyway; it is logged with your -RequestedBy.)' -ForegroundColor Red
+    exit 2
+}
 $info = Get-GameInfo $Game
 $sha = (Invoke-Git $info.Dir @('rev-parse', '--verify', "$Commit^{commit}")).Trim()   # pin the commit now
 $queue = Join-Path $BuildsRoot '_queue'

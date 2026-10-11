@@ -137,6 +137,55 @@ function Invoke-Logged([string]$Exe, [string]$Arguments, [string]$LogPath, [stri
     return $code
 }
 
+# ---- the machine-wide GPU slot (one GPU job at a time: not enough VRAM for two) ----------------------------------------
+# Same semaphore Work\tools\ue-heavy.ps1 takes for every rendering job (editor GUI, -game, packaged games, Unity).
+
+function Enter-GpuSlot([string]$Label) {
+    $sem = New-Object System.Threading.Semaphore(1, 1, 'Global\ue-gpu-jobs')
+    $t0 = Get-Date
+    Write-HeavyLog 'wait' $Label @{ gpu = $true }
+    $said = $false
+    while (-not $sem.WaitOne(60000)) {
+        if (-not $said) { Write-Step "[gpu] waiting for the GPU slot (another recording or GPU job is running) since $($t0.ToString('HH:mm:ss'))"; $said = $true }
+    }
+    Write-HeavyLog 'start' $Label @{ gpu = $true; waited_s = [int]((Get-Date) - $t0).TotalSeconds }
+    return [pscustomobject]@{ Sem = $sem; Label = $Label; Since = Get-Date }
+}
+
+function Exit-GpuSlot($Slot) {
+    if (-not $Slot) { return }
+    try { [void]$Slot.Sem.Release() } catch { }
+    $Slot.Sem.Dispose()
+    Write-HeavyLog 'end' $Slot.Label @{ gpu = $true; duration_s = [int]((Get-Date) - $Slot.Since).TotalSeconds }
+}
+
+function Get-VramUsedMB {
+    $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try { $v = & nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>$null | Select-Object -First 1 } finally { $ErrorActionPreference = $eap }
+    if ("$v".Trim() -match '^\d+$') { return [int]"$v".Trim() } else { return $null }
+}
+
+function Wait-VramFree([string]$Label, [int]$MaxUsedMB = 4096, [int]$MaxMinutes = 120) {
+    # Per-process VRAM is N/A under WDDM, so this uses the total in use before our game starts (desktop ~2-4 GB).
+    # Returns $true when below the limit, $false after MaxMinutes.
+    $t0 = Get-Date; $next = $t0
+    while ($true) {
+        $used = Get-VramUsedMB
+        if ($null -eq $used -or $used -le $MaxUsedMB) {
+            if ((Get-Date) -gt $t0.AddSeconds(5)) { Write-HeavyLog 'vram_ok' $Label @{ gpu = $true; vram_used_mb = $used; waited_s = [int]((Get-Date) - $t0).TotalSeconds } }
+            return $true
+        }
+        if ((Get-Date) -ge $next) {
+            $heavy = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match '(?i)^UnrealEditor|-Shipping$|^Unity$|^ffmpeg$' -or $_.Path -match '(?i)\\Binaries\\Win64\\' } | ForEach-Object { "$($_.ProcessName)($($_.Id))" } | Select-Object -First 8)
+            Write-Step "[gpu] $used MB VRAM in use (limit $MaxUsedMB MB before launch): waiting. GPU-heavy processes: $(if ($heavy.Count) { $heavy -join ', ' } else { 'none recognised' })"
+            Write-HeavyLog 'vram_wait' $Label @{ gpu = $true; vram_used_mb = $used; limit_mb = $MaxUsedMB; processes = ($heavy -join ', ') }
+            $next = (Get-Date).AddMinutes(5)
+        }
+        if ((Get-Date) -gt $t0.AddMinutes($MaxMinutes)) { return $false }
+        Start-Sleep -Seconds 30
+    }
+}
+
 function Invoke-LoggedProcess([string]$Exe, [string]$Arguments, [string]$LogPath, [string]$WorkDir) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = 'cmd.exe'

@@ -48,6 +48,17 @@ Every Build.bat / RunUAT / UnrealEditor-Cmd step also holds a slot of the machin
 the semaphore itself (common.ps1 `Invoke-Logged -HeavyLabel`) instead of calling ue-heavy.ps1, because that script
 re-quotes arguments through PowerShell and would split `-ExecCmds="Automation RunTests ...; Quit"`.
 
+**GPU slot (user's decision: not enough VRAM for parallel GPU work).** Every step that renders holds the single
+machine-wide GPU slot, the named semaphore `Global\ue-gpu-jobs` (count 1) that `Work\tools\ue-heavy.ps1` also takes for
+editor GUI, `-game`, packaged games and Unity jobs (`-nullrhi`/`-nographics` excluded): record.ps1 for the whole run
+(acquired after the idle wait, released in `finally`) and the Firewall pre-flight launch. The smoke test runs with
+`-nullrhi` and cooks/compiles keep using the 3 CPU slots (`Global\ue-heavy-jobs`). Before launching, record.ps1 also
+waits while more than `-MaxVramInUseMB` (default 4096) MB of VRAM is in use (nvidia-smi total; per-process numbers are
+N/A under WDDM), logging the GPU-heavy processes every 5 min; after 120 min the run fails. If the user returns while
+it waits for the slot, it gives the slot back and waits for idle again. Waits/starts/ends go to
+`.recording\_heavy-jobs.jsonl` with `gpu: true`, like ue-heavy.ps1. Caveat: a semaphore is not released when its
+holder is killed, so kill the whole job tree only if every holder dies (the count resets once no process has it open).
+
 Every editor process the pipeline starts has `-unattended` (smoke test; RunUAT passes it to the cook commandlet):
 an `UnrealEditor.exe` without it starts Live Coding, and while Live Coding runs UBT refuses to build any project on
 this engine install. The recorded game itself is the packaged exe, which has no Live Coding.
@@ -226,11 +237,16 @@ rather than raw `key_down`/`mouse_move`; `edge` down/up maps onto key down/up wh
 (unless `-Force`), then `build.ps1 -Package -Smoke` and `record.ps1` per scenario. Each step takes the lock itself, so
 other work can interleave between steps.
 
-**From a game session** (returns at once; a hidden drainer works through the queue):
+**Queueing (the coordinator owns the queue).** Game sessions no longer enqueue; they ask the coordinating session.
+enqueue.ps1 refuses (exit 2, red message, nothing queued) unless `-RequestedBy coordinator`; `-Force` overrides and the
+request still records its `requested_by`. It returns at once; one hidden drainer works through `builds\_queue\*.json`
+in file-name order (the coordinator reorders by renaming; a request being processed must not be renamed):
 
 ```
-powershell -ExecutionPolicy Bypass -File C:\Users\Xiang\Work\game-factory\tools\ue-pipeline\enqueue.ps1 <game> -Runs 2 -RequestedBy <session-name>
+powershell -ExecutionPolicy Bypass -File C:\Users\Xiang\Work\game-factory\tools\ue-pipeline\enqueue.ps1 <game> -Scenarios 1,2 -Runs 1 -RequestedBy coordinator
 ```
+
+Dropping a queued request: move it to `builds\_queue\done\` with a `result` note (status `dropped`).
 
 Results: `.recording\<game>\pipeline.jsonl` (summary), `runs.jsonl`, `builds\_queue\done\<request>.json`.
 

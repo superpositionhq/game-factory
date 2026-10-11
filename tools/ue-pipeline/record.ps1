@@ -22,6 +22,7 @@ param(
     [ValidateSet('auto', 'gfxcapture', 'ddagrab', 'gdigrab-region', 'gdigrab-window')][string]$Capture = 'auto',
     [switch]$NoStablePath,
     [double]$IdleMinutes = 5,   # user's decision: record only after this long without keyboard/mouse input (0 = don't wait)
+    [int]$MaxVramInUseMB = 4096,   # before launch, wait while more VRAM than this is in use by other processes (nvidia-smi total)
     [int]$OutputIndex = 0,
     [int]$CaptureRate = 240,
     [string]$ExtraArgs = ''
@@ -273,9 +274,12 @@ if (-not $NoStablePath) {
 # while the user may still be at the machine, instead of in the middle of an unattended run (where it blocks capture).
 if ($buildConfig -ne 'Shipping' -and @(Get-NetFirewallApplicationFilter -Program $exe -ErrorAction SilentlyContinue).Count -eq 0) {   # Shipping has no trace listener
     Write-Step "no Windows Firewall rule for $exe yet: starting it off-screen for 20 s so the one-time prompt appears now"
-    $pf = Start-Process $exe -ArgumentList '-RenderOffScreen', '-nosound', '-nosplash' -PassThru -WindowStyle Hidden
-    Start-Sleep -Seconds 20
-    & taskkill.exe /T /F /PID $pf.Id 2>&1 | Out-Null
+    $pfSlot = Enter-GpuSlot "firewall pre-flight $Game"   # it renders (off-screen): GPU job
+    try {
+        $pf = Start-Process $exe -ArgumentList '-RenderOffScreen', '-nosound', '-nosplash' -PassThru -WindowStyle Hidden
+        Start-Sleep -Seconds 20
+        & taskkill.exe /T /F /PID $pf.Id 2>&1 | Out-Null
+    } finally { Exit-GpuSlot $pfSlot }
     $t = (Get-Date).AddMinutes(30)
     while (@(Get-NetFirewallApplicationFilter -Program $exe -ErrorAction SilentlyContinue).Count -eq 0 -and (Get-Date) -lt $t) {
         Write-Step 'waiting for the Windows Firewall prompt to be answered (Allow or Cancel both work)'
@@ -312,19 +316,31 @@ for ($i = 0; $i -lt $Runs; $i++) {
     # Keep the display on from now on: waiting for 5 idle minutes otherwise runs into the power plan's dim/off timer,
     # and Windows' dim overlay (Shell_SystemDim) then covers the game. Doesn't affect the idle measurement (input only).
     [UePipeline.Win]::KeepDisplayOn($true)
-    if ($IdleMinutes -gt 0) {
-        $said = $false
-        while ([UePipeline.Win]::IdleMs() -lt $IdleMinutes * 60000 -or (Get-Process LogonUI -ErrorAction SilentlyContinue)) {
-            [UePipeline.Win]::KeepDisplayOn($true)   # refresh while waiting
-            if (-not $said) { Write-Step "waiting until the user has been idle for $IdleMinutes min (and the session is unlocked)"; $said = $true }
-            Start-Sleep -Seconds 15
+    # Then the GPU to ourselves: the machine-wide GPU slot (one GPU job at a time; not enough VRAM for two) and little
+    # VRAM in use by others. If the user came back while we waited for those, give the slot back and wait again.
+    $gpuSlot = $null; $vramOk = $true
+    while ($true) {
+        if ($IdleMinutes -gt 0) {
+            $said = $false
+            while ([UePipeline.Win]::IdleMs() -lt $IdleMinutes * 60000 -or (Get-Process LogonUI -ErrorAction SilentlyContinue)) {
+                [UePipeline.Win]::KeepDisplayOn($true)   # refresh while waiting
+                if (-not $said) { Write-Step "waiting until the user has been idle for $IdleMinutes min (and the session is unlocked)"; $said = $true }
+                Start-Sleep -Seconds 15
+            }
+            if ($said) { Write-Step 'user idle' }
         }
-        if ($said) { Write-Step 'user idle: starting' }
+        $gpuSlot = Enter-GpuSlot "record $Game $runId"
+        $vramOk = Wait-VramFree "record $Game $runId" $MaxVramInUseMB
+        if ($IdleMinutes -le 0 -or [UePipeline.Win]::IdleMs() -ge $IdleMinutes * 60000) { break }
+        Write-Step 'user came back while waiting for the GPU: releasing the GPU slot and waiting again'
+        Exit-GpuSlot $gpuSlot; $gpuSlot = $null
     }
+    Write-Step "GPU slot held; $(Get-VramUsedMB) MB VRAM in use before launch"
     Enter-PipelineLock "record $Game $runId"
     [UePipeline.Win]::KeepDisplayOn($true)
     try {
         Write-Step "run $($i + 1)/$Runs $runId (skill $runSkill, seed $runSeed)"
+        if (-not $vramOk) { throw "more than $MaxVramInUseMB MB VRAM stayed in use by other processes for 120 min; not launching" }
         [void]$clock.Add((Get-ClockSample 'record_start'))
         $gameArgs = "-AutoPlay -$scenarioFlag=$Scenario -Seed=$runSeed -Skill=$runSkill -${outDirFlag}=`"$rawDir`" -MaxSeconds=$MaxSeconds " +
                     "-BuildCommit=$($buildInfo.commit) -RunId=$runId -GoTimeout=300 -windowed -ResX=1920 -ResY=1080 -WinX=200 -WinY=150 " +
@@ -459,6 +475,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
         [void]$clock.Add((Get-ClockSample 'record_end'))
         [UePipeline.Win]::KeepDisplayOn($false)
         Exit-PipelineLock
+        Exit-GpuSlot $gpuSlot
     }
 
     # ---- post-process (light work, outside the lock) ----
