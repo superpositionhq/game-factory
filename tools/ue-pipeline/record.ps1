@@ -45,8 +45,12 @@ $ffmpegVersion = (Invoke-Native $ffmpeg @('-hide_banner', '-version') | Select-O
 $qpcFreq = [UePipeline.Win]::QpcFrequency()
 # NVENC when this ffmpeg + driver pair can open it (ffmpeg 9 needs driver >= 610), else libx264 on the CPU.
 $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-& $ffmpeg -hide_banner -loglevel error -f lavfi -i 'color=c=black:s=256x256:r=60' -t 0.1 -c:v h264_nvenc -f null - 2>&1 | Out-Null
-$Encoder = if ($LASTEXITCODE -eq 0) { 'h264_nvenc' } else { 'libx264' }
+# Encoder preference: NVENC (RTX 4080), then AMF on the Ryzen's integrated Radeon, then libx264 on the CPU.
+$Encoder = 'libx264'
+foreach ($enc in 'h264_nvenc', 'h264_amf') {
+    & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'color=c=black:s=256x256:r=60' -t 0.1 -c:v $enc -f null - 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0) { $Encoder = $enc; break }
+}
 $ErrorActionPreference = $eap
 Write-Step "ffmpeg: $ffmpeg ($ffmpegVersion), encoder $Encoder"
 $skillCycle = @(1.0, 0.75, 0.5, 0.25)
@@ -74,10 +78,14 @@ function Start-Capture([string]$Mode, [int[]]$Rect, [string]$Title, [string]$Vid
         $encode = "-c:v h264_nvenc -preset p5 -tune hq -rc vbr -cq 19 -b:v 0 -maxrate 60M -bufsize 120M -g 120 -bf 0 $tags"
         if ($Mode -ne 'ddagrab') { $encode = "-pix_fmt yuv420p $encode" }   # ddagrab: D3D11 frames go to NVENC as they are
     } else {
-        # CPU fallback: download the D3D11 frames once, convert with an explicit BT.709 matrix.
-        if ($Mode -eq 'ddagrab') { $capIn = $capIn.TrimEnd('"') + ',hwdownload,format=bgra,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p"' }
-        else { $capIn += ',scale=out_color_matrix=bt709:out_range=tv,format=yuv420p' }
-        $encode = "-c:v libx264 -preset ultrafast -crf 17 -g 120 -bf 0 -pix_fmt yuv420p $tags"
+        # AMF / libx264 take system-memory frames: pick the 60 fps grid first (fps filter, no pixel access), so only 60
+        # frames a second are downloaded from the GPU and converted with an explicit BT.709 matrix.
+        $pix = if ($Encoder -eq 'h264_amf') { 'nv12' } else { 'yuv420p' }
+        $conv = "scale=out_color_matrix=bt709:out_range=tv,format=$pix"
+        if ($Mode -eq 'ddagrab') { $capIn = $capIn.TrimEnd('"') + ",fps=60,hwdownload,format=bgra,$conv" + '"' }
+        else { $capIn += ",$conv" }
+        $encode = if ($Encoder -eq 'h264_amf') { "-c:v h264_amf -quality quality -rc cqp -qp_i 18 -qp_p 20 -g 120 -bf 0 $tags" }
+                   else { "-c:v libx264 -preset ultrafast -crf 17 -g 120 -bf 0 -pix_fmt yuv420p $tags" }
     }
     $ffArgs = "-hide_banner -loglevel +datetime+level+info -stats_period 1 -progress `"$ProgressPath`" -y $capIn $encode `"$VideoPath`""
     $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -217,6 +225,11 @@ for ($i = 0; $i -lt $Runs; $i++) {
     $proc = $null; $cap = $null; $hwnd = [IntPtr]::Zero; $rect = $null
     $gameExit = $null; $killed = $false; $windowMoved = $false; $captureMode = $null
     $tStart = Get-Date
+    # Display refresh: at 159 Hz a 60 fps capture repeats/skips game frames; the user switches to 120 Hz (or 60) for recording.
+    $vc = Get-CimInstance Win32_VideoController | Where-Object { $_.CurrentRefreshRate -gt 1 -and $_.CurrentHorizontalResolution -gt 0 } | Select-Object -First 1
+    $refreshHz = if ($vc) { [int]$vc.CurrentRefreshRate } else { $null }
+    $displayMode = if ($vc) { "$($vc.CurrentHorizontalResolution)x$($vc.CurrentVerticalResolution) @ $refreshHz Hz ($($vc.Name))" } else { $null }
+    if ($refreshHz -notin @(60, 120)) { [void]$warnings.Add("display refresh is $refreshHz Hz, expected 60 or 120 (60 fps capture will repeat/skip game frames)") }
 
     Enter-PipelineLock "record $Game $runId"
     try {
@@ -445,7 +458,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
         video_start_offset_definition = 't_ns of video frame 0 on the QPC ns clock of inputs.jsonl / telemetry.jsonl: video_time_s = (t_ns - video_start_offset_ns) / 1e9'
         system_audio = [ordered]@{ file = 'system_audio.mka'; codec = 'flac'; source = 'UE master submix (StartRecordingOutput)'; start_offset_ns = $audioStartNs; start_anchor = 'end: audio_stop clock sample minus WAV duration'; stats = $audio }
         microphone = $null
-        machine = [ordered]@{ cpu = 'AMD Ryzen 7 7700X'; gpu = 'NVIDIA GeForce RTX 4080'; display = '3840x2160'; os = [Environment]::OSVersion.VersionString }
+        machine = [ordered]@{ cpu = 'AMD Ryzen 7 7700X'; gpu = 'NVIDIA GeForce RTX 4080'; display = $displayMode; display_refresh_hz = $refreshHz; os = [Environment]::OSVersion.VersionString }
         created_utc = (Get-Date).ToUniversalTime().ToString('o')
         status = $status
     }

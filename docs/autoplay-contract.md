@@ -1,4 +1,4 @@
-# AutoPlay contract (v1)
+# AutoPlay contract (v1.1)
 
 Every Track B game (tower-defense, siege-catapult, stealth, rally-racer) implements this once its first level is
 playable. The shared pipeline (`tools/ue-pipeline/`, [ue-pipeline.md](ue-pipeline.md)) then packages the game,
@@ -236,14 +236,14 @@ UAudioMixerBlueprintLibrary::StopRecordingOutput(GetGameWorld(), EAudioRecording
 
 ## 7. Testing by hand and declaring readiness
 
-Without packaging (editor binaries, uncooked):
+Without packaging (editor binaries, uncooked). **Always disable Live Coding** with the ini override shown: an `UnrealEditor.exe` that starts Live Coding makes UnrealBuildTool refuse to build *every* project on this UE 5.3 install ("Unable to build while Live Coding is active") until it exits. The override works without `-unattended` (which would also turn off DPI awareness). It is a heavy job, so run it under `Work\tools\ue-heavy.ps1`, which must wait for GUI processes; see the note below.
 
 ```
-"C:\Program Files\Epic Games\UE_5.3\Engine\Binaries\Win64\UnrealEditor.exe" "<project>.uproject" -game -AutoPlay -Level=1 -Seed=1 -Skill=1 -MaxSeconds=120 -GoTimeout=0 -windowed -ResX=1920 -ResY=1080 -log
+"C:\Program Files\Epic Games\UE_5.3\Engine\Binaries\Win64\UnrealEditor.exe" "<project>.uproject" -game -AutoPlay -Level=1 -Seed=1 -Skill=1 -MaxSeconds=120 -GoTimeout=0 -windowed -ResX=1920 -ResY=1080 -ini:EditorPerProjectUserSettings:[/Script/LiveCoding.LiveCodingSettings]:bEnabled=False -log
 powershell -ExecutionPolicy Bypass -File C:\Users\Xiang\Work\game-factory\tools\ue-pipeline\validate-run.ps1 "<project dir>\Saved\AutoPlay\<timestamp>"
 ```
 
-(`-game` runs the editor binaries uncooked; keyboard and mouse are blocked while it runs, so close it from the
+(Verified on games\_pipeline-test: no LiveCodingConsole is started, the run quits by itself, validate-run passes; the uncooked editor runs at ~25 fps, the packaged build at 60. If you prefer `-unattended`, that also disables Live Coding, at the cost of a DPI-stretched 2880x1620 window. `-game` runs the editor binaries uncooked; keyboard and mouse are blocked while it runs, so close it from the
 taskbar if it hangs, or add `-AutoPlayAllowInput`. To see the real pipeline result, `enqueue.ps1 <game> -Levels 1
 -Runs 1` builds, packages and records it; see ue-pipeline.md.)
 
@@ -256,3 +256,8 @@ When level 1 passes, commit and tag it `milestone/autoplay-1` (later levels: `mi
 from) a `milestone/autoplay-*` tag; a game session can queue a run itself, see [ue-pipeline.md](ue-pipeline.md).
 
 Changes to this contract go through the coordinating session; bump `ContractVersion` when the files change shape.
+
+## Changes
+
+- **v1.1** (docs only; `AutoPlaySubsystem.h/.cpp` unchanged, `ContractVersion` stays 1): section 1 lists the pipeline's real flags (`-ini:...bAllowHighDPIInGameMode=True`, no `-unattended`); section 5: `frames` in outcome.json counts level_start..level_end and the WAV is anchored at `audio_stop`; section 7: the hand test disables Live Coding and uses validate-run.ps1.
+- **v1**: first version.

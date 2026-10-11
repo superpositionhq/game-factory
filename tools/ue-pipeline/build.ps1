@@ -50,7 +50,7 @@ function Invoke-Step([string]$Name, [string]$Exe, [string]$Arguments, [string]$W
     $log = Join-Path $logDir "$stamp-$Name.log"
     Write-Step "$Name ..."
     $t0 = Get-Date
-    $code = Invoke-Logged $Exe $Arguments $log $WorkDir
+    $code = Invoke-Logged $Exe $Arguments $log $WorkDir "pipeline $Game $short $Name"
     $t1 = Get-Date
     $row = [ordered]@{
         name = $Name; command = "`"$Exe`" $Arguments"; start = $t0.ToString('o'); end = $t1.ToString('o')
@@ -170,7 +170,7 @@ $row = [ordered]@{
     steps = @($steps)
 }
 Add-JsonLine (Join-Path $info.LogDir 'builds.jsonl') $row
-if ($status -eq 'ok') { Write-JsonFile $buildInfoPath $row }
+if ($status -eq 'ok' -and $Package) { Write-JsonFile $buildInfoPath $row }   # describes the packaged output only
 Write-Step ("{0} {1}: {2} in {3}s" -f $Game, $short, $status, $row.duration_s)
 $row
 if ($status -ne 'ok') { exit 1 }

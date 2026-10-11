@@ -40,8 +40,16 @@ never touches them.
 `build.ps1` and `record.ps1` take an exclusive lock on `builds\_pipeline.lock` (an open file handle: released by
 the OS if the process dies, visible across sessions and Task Scheduler) for the whole build or the whole run, and
 wait for it otherwise (the holder is printed). Builds run at below-normal priority so the game sessions' own
-editors stay responsive; the game and ffmpeg run at above-normal priority during a recording. UnrealBuildTool's
-own mutex also serialises our builds with the game sessions' builds.
+editors stay responsive; the game and ffmpeg run at above-normal priority during a recording.
+
+Every Build.bat / RunUAT / UnrealEditor-Cmd step also holds a slot of the machine-wide limiter all game sessions use
+(`Global\ue-heavy-jobs`, 3 slots, `Work\tools\ue-heavy.ps1`, rows in `.recording\_heavy-jobs.jsonl`). build.ps1 takes
+the semaphore itself (common.ps1 `Invoke-Logged -HeavyLabel`) instead of calling ue-heavy.ps1, because that script
+re-quotes arguments through PowerShell and would split `-ExecCmds="Automation RunTests ...; Quit"`.
+
+Every editor process the pipeline starts has `-unattended` (smoke test; RunUAT passes it to the cook commandlet):
+an `UnrealEditor.exe` without it starts Live Coding, and while Live Coding runs UBT refuses to build any project on
+this engine install. The recorded game itself is the packaged exe, which has no Live Coding.
 
 ## build.ps1
 
@@ -82,8 +90,11 @@ Per run (seed = `-Seed + i`, or random; skill = `-Skill`, or cycling 1.0 / 0.75 
 
 ### Capture command (verified on this machine)
 
-ffmpeg: `Gyan.FFmpeg` 9.0.2 full build (winget). Desktop Duplication (`ddagrab`) of the window's client rectangle,
-**event-driven**, no mouse cursor, converted to 60 fps CFR:
+ffmpeg: pinned to gyan.dev `ffmpeg-8.1.2-full_build.7z` in `C:\Users\Xiang\Work\tools\ffmpeg-8.1.2\ffmpeg-8.1.2-full_build\bin\`,
+SHA-256 `0fff188997a499b5382e0f66e845d4556c48c54f0113ebed4853d556dbdd7059` (matches gyan.dev's published
+`.7z.sha256`; 166,721,853 bytes, downloaded 2026-10-11). `` overrides it; without either,
+the winget `Gyan.FFmpeg` 9.0.2 on PATH is used. Desktop Duplication (`ddagrab`) of the window's client rectangle,
+**event-driven**, no mouse cursor, converted to 60 fps CFR. With NVENC (needs NVIDIA driver ≥ 610, see Encoder below) the D3D11 frames go straight to the encoder:
 
 ```
 ffmpeg -hide_banner -loglevel +datetime+level+info -stats_period 1 -progress <raw>\ffmpeg_progress.txt -y
@@ -100,39 +111,41 @@ inside `AcquireNextFrame` for each new desktop image (≈143–159 per second he
 `-fps_mode cfr -r 60` then keeps the latest image per 1/60 s slot. ffmpeg's `drop=` count is just these surplus
 samples; `dup=` counts slots without a new image (measured: 0).
 
-**NVENC caveat:** ffmpeg 9.x needs NVENC API 13.1 = NVIDIA driver ≥ 610. This machine has 591.86, so `h264_nvenc`
-fails to open ("Required: 13.1 Found: 13.0"). record.ps1 probes NVENC at start and otherwise encodes on the CPU
-(`metadata.video.encoder` says which):
+**Encoder.** record.ps1 probes at start and uses the first that opens: `h264_nvenc` (RTX 4080), `h264_amf` (the
+Ryzen 7700X's integrated Radeon), `libx264` (CPU); `metadata.video.encoder` says which. **NVENC does not open on this
+machine**: the installed NVIDIA driver 591.86 offers NVENC API 13.0, and both gyan.dev builds tried need 13.1
+(driver ≥ 610): 9.0.2 and, contrary to the expectation that led to pinning it, 8.1.2 as well ("Driver does not
+support the required nvenc API version. Required: 13.1 Found: 13.0"). `h264_mf` fails too. So recordings currently
+use **AMF**, verified:
 
 ```
-  ... "ddagrab=...,showinfo,hwdownload,format=bgra,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p"
-  -c:v libx264 -preset ultrafast -crf 17 -g 120 -bf 0 -pix_fmt yuv420p <same tags> -fps_mode cfr -r 60 -an
+ffmpeg -hide_banner -loglevel +datetime+level+info -stats_period 1 -progress <raw>\ffmpeg_progress.txt -y
+  -f lavfi -i "ddagrab=output_idx=0:framerate=240:dup_frames=0:offset_x=<x>:offset_y=<y>:video_size=1920x1080:draw_mouse=0,showinfo,fps=60,hwdownload,format=bgra,scale=out_color_matrix=bt709:out_range=tv,format=nv12"
+  -c:v h264_amf -quality quality -rc cqp -qp_i 18 -qp_p 20 -g 120 -bf 0
+  -color_primaries bt709 -color_trc bt709 -colorspace bt709 -color_range tv -fps_mode cfr -r 60 -an <bundle>\video.mkv
 ```
 
-(`veryfast` ran at 0.977x on the shared CPU; `ultrafast` keeps up.) Fix for NVENC: update the NVIDIA driver to
-≥ 610, or put an ffmpeg 8.x build (NVENC API 13.0) in `C:\Users\Xiang\Work\tools\ffmpeg-<version>\bin\`
-(record.ps1 prefers it; `$env:UE_PIPELINE_FFMPEG` overrides everything). `h264_mf` (Media Foundation) does not work here.
-
+AMF and libx264 take system-memory frames, so `fps=60` picks the 60 fps grid on the GPU frames first and only those
+are downloaded and converted (BT.709 matrix, limited range). The libx264 variant is the same with `format=yuv420p`
+and `-c:v libx264 -preset ultrafast -crf 17 -g 120 -bf 0 -pix_fmt yuv420p` (`veryfast` only reached 0.977x on the
+shared CPU). With `fps=60` in the graph ffmpeg's own `dup=` stays 0; holes show up as capture-input gaps instead.
+NVENC becomes available with an NVIDIA driver ≥ 610 (no other change needed; record.ps1 will pick it up).
 Fallbacks (`-Capture`), measured on the test project: `gdigrab-region` (`-f gdigrab -framerate 60 -offset_x
 -offset_y -video_size 1920x1080 -i desktop`) captures real content but only ~44 fps (24 % duplicates);
 `gdigrab-window` (`-i title="<Project> [AutoPlay]"`) ~56 fps (8 % duplicates, 23 % gap time). Both fail validation,
 so they are for emergencies; `auto` tries ddagrab first and gdigrab-region only if ddagrab can't start.
 
-### Measured quality (pipeline test project, libx264 path, machine busy with four game sessions)
+### Measured quality (pipeline test project, machine busy with six game sessions)
 
 | | Result |
 |---|---|
-| Output | 1920x1080 H.264 yuv420p, 60/1 CFR, 0 duplicated slots, duration within 0.03 s of the capture span |
-| Capture input | ≈143 images/s; gaps > 25 ms during the level ≈ 1.5–3 % of frames (game/compositor hitches) |
-| Video lag | a game event shows on video 47 ms (p5–p95 29–61 ms, ≈3 frames) after its `t_ns`: game thread → render thread → GPU → present → DWM → capture. `video_start_offset_ns` is the capture clock and does **not** subtract this |
-| Audio lag | a sound appears in `system_audio` 26 ms (15–37 ms) after its `t_ns` (next mixer buffer) |
-| Game frame cadence | frame-code strip: per 1195 video frames, 155 game frames shown twice and 154 never shown (13 %) |
+| Output | 1920x1080 H.264 yuv420p (AMF: Main, ≈11 Mbit/s; x264 ultrafast: Constrained Baseline, ≈7 Mbit/s), 60/1 CFR, 0 duplicated slots, duration within 0.1 s of the capture span |
+| Capture input | 90–160 desktop images/s; gaps > 25 ms during the level 0.6–3 % of frames (game/compositor hitches) |
+| Video lag | a game event shows on video 25 ms (p5–p95 15–31 ms) after its `t_ns` with AMF (`fps=60` before download); 47 ms (29–61) with the earlier output-side CFR path: game thread → render thread → GPU → present → DWM → capture. `video_start_offset_ns` is the capture clock and does **not** subtract this |
+| Audio lag | a sound appears in `system_audio` 26–33 ms (15–44 ms) after its `t_ns` (next mixer buffer) |
+| Game frame cadence | frame-code strip: 6 % of game frames shown twice and as many never shown with AMF (76 of 1194); 13 % on the earlier path |
 
-The cadence row is inherent to sampling this display: the desktop composes at 159 Hz, so the game's 60 fps frames
-reach the screen on a 6.3 ms grid (12.6/18.9 ms apart), and any 60 Hz sample-and-hold capture, OBS included,
-repeats some and misses some. It would go away with the display at 60 or 120 Hz during recording (a system setting:
-the user's call), or with in-engine frame capture instead of screen capture.
-### Audio start time
+The cadence row is inherent to sampling the desktop: with vsync off the game's 60 fps frames reach the screen on the display's vblank grid (6.3 ms at 159 Hz, 8.3 ms at 120 Hz) at irregular intervals, and a 60 Hz sample-and-hold capture, OBS included, repeats some and misses some. Measured: 13 % / 6 % at 159 Hz (output-side CFR / AMF path), **7 % at 120 Hz** (AMF, 86 of 1194). The user runs the display at 120 Hz for recording sessions; record.ps1 logs `machine.display` / `machine.display_refresh_hz` (from `Win32_VideoController`) in metadata.json and warns (does not fail) when the rate is not 60 or 120. 120 Hz alone doesn't fix the cadence; locking presents to every second vblank would need `r.VSync 1` at 120 Hz in AutoPlay (a contract change, not made) or in-engine frame capture.
 
 UE's `StartRecordingOutput` is queued to the audio thread and starts late by an unknown amount (≈ 0.1 s, because
 the level load follows immediately). `StopRecordingOutput` is synchronous under the same lock the mixer appends
@@ -211,3 +224,15 @@ turns and jumps via Enhanced Input for 20 s (`-TestRunSeconds=n`), beeps (proced
 - Display 3840x2160 at 150 % scaling, 159 Hz; vsync off + `t.MaxFPS 60` in the game keeps the game at 60 fps.
 - The game window sits topmost at (200,150) for the run; anything else made topmost on top of it would be captured.
   Its audio plays on the speakers during runs.
+
+## Open items
+
+- **Machine-path scrub before bundles leave the machine** (agreed follow-up, not built). Bundles carry machine
+  paths and the user name: `metadata.json` (`build.path`, `build.exe`, `video.ffmpeg_command`), `raw\game.log`,
+  `raw\ffmpeg.log`, `raw\ready.json`, the `RecordDir` in UE log lines. Per AGENTS.md (leak scan for `C:\Users\…`,
+  real names, e-mails), a publish step must rewrite or drop these and re-hash `manifest.json` before any upload.
+- **NVENC**: blocked on the NVIDIA driver (591.86 offers NVENC API 13.0; the pinned ffmpeg 8.1.2 needs 13.1, driver
+  ≥ 610). The user will update the driver; then confirm record.ps1's probe picks `h264_nvenc` and record the numbers here.
+- **Game-frame cadence** (~7 % repeated/skipped at 120 Hz with vsync off): would need `r.VSync 1` at 120 Hz in
+  AutoPlay (contract change) or in-engine capture.
+- **Nightly Task Scheduler entry**: not created (user's decision); runs are queued on demand with enqueue.ps1.
