@@ -406,3 +406,32 @@ function Invoke-Native([string]$Exe, [string[]]$NativeArgs) {
     $ErrorActionPreference = 'Continue'
     try { return (& $Exe @NativeArgs 2>$null) } finally { $ErrorActionPreference = $eap }
 }
+
+# README screenshots: $Count evenly spaced stills from a run's video.mkv (CPU decode, pinned ffmpeg) into
+# <run>\stills\NN.jpg and recordings\<game>\_stills\<run_id>_NN.jpg. Never throws: errors come back in .error.
+function Export-RunStills([string]$RunDir, [string]$RunId, [string]$GameStillsDir, [int]$Count = 8) {
+    $result = [ordered]@{ count = 0; files = @(); copied_to = $GameStillsDir; error = $null }
+    try {
+        $video = Join-Path $RunDir 'video.mkv'
+        if (-not (Test-Path $video)) { throw 'no video.mkv' }
+        $ff = Find-FFmpeg; $fp = Find-FFprobe
+        $inv = [Globalization.CultureInfo]::InvariantCulture
+        $durText = "$(Invoke-Native $fp @('-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $video) | Select-Object -First 1)".Trim()
+        $dur = 0.0
+        if (-not [double]::TryParse($durText, [Globalization.NumberStyles]::Float, $inv, [ref]$dur) -or $dur -le 0) { throw "could not read the video duration ('$durText')" }
+        $dir = Join-Path $RunDir 'stills'
+        New-Item -ItemType Directory -Force $dir | Out-Null
+        New-Item -ItemType Directory -Force $GameStillsDir | Out-Null
+        $files = New-Object System.Collections.ArrayList
+        for ($i = 1; $i -le $Count; $i++) {
+            $t = [math]::Round($dur * $i / ($Count + 1), 3)
+            $out = Join-Path $dir ('{0:D2}.jpg' -f $i)
+            $null = Invoke-Native $ff @('-hide_banner', '-loglevel', 'error', '-y', '-ss', $t.ToString($inv), '-i', $video, '-frames:v', '1', '-q:v', '2', $out)
+            if (-not (Test-Path $out) -or (Get-Item $out).Length -eq 0) { throw "ffmpeg wrote no still at $t s" }
+            Copy-Item $out (Join-Path $GameStillsDir ('{0}_{1:D2}.jpg' -f $RunId, $i)) -Force
+            [void]$files.Add([ordered]@{ file = ('stills/{0:D2}.jpg' -f $i); t_s = $t })
+        }
+        $result.files = @($files); $result.count = $files.Count
+    } catch { $result.error = $_.Exception.Message }
+    return $result
+}

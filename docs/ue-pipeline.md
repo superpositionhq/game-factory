@@ -14,6 +14,7 @@ through Enhanced Input, see [autoplay-contract.md](autoplay-contract.md)) as gam
 | `validate-run.ps1 <OutputDir>` | contract check of one raw run directory (for game sessions testing by hand) |
 | `scrub-history.ps1 <game> [-Apply]` | archive, then remove the names Superposition/game-factory from a finished game's history; dry run by default |
 | `mark-invalid.ps1 <game> -Commit sha \| -RunId id -Reason text` | exclude bundles from the dataset (INVALID file, validation status `invalid`); files kept |
+| `stills.ps1 <game> [-RunId id] [-Force]` | README stills for runs recorded before record.ps1 made them (updates metadata/manifest) |
 | `sync-check.ps1 <bundle>` | measures video/audio lag against telemetry sync markers (pipeline test project) |
 | `autoplay/AutoPlaySubsystem.h/.cpp` | the drop-in C++ every game copies (contract implementation) |
 
@@ -228,7 +229,11 @@ recordings\<game>\<game>_S<scenario>_<yyyyMMdd-HHmmss>_s<seed>\   (runs before v
                       clock samples (game: start/go/audio_start/audio_stop/end; pipeline: record_start,
                       capture_start, go_written, capture_stopped, record_end)
   validation.json     status ok | warn | failed, problems, warnings, per-check details
-  manifest.json       sha256 + bytes of every file in the bundle (incl. raw\)
+  manifest.json       sha256 + bytes of every file in the bundle (incl. raw\ and stills\)
+  stills\NN.jpg       8 evenly spaced frames (t = duration * i / 9) for README screenshots, runs with status ok / warn /
+                      ok_video_only only; CPU decode with the pinned ffmpeg (-ss before -i, -frames:v 1, -q:v 2); also copied to
+                      recordings\<game>\_stills\<run_id>_NN.jpg; metadata.json `stills` lists them. A failed extraction is logged
+                      and recorded in `stills.error`; it never changes the run's status.
   FAILED              only on failed runs (problems listed); failed runs are kept, never deleted
   INVALID             excluded from the dataset after the fact (reason inside), e.g. recorded from a broken build;
                       written by mark-invalid.ps1, which also sets validation.json status "invalid" and adds a runs.jsonl row

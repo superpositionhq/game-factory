@@ -691,6 +691,13 @@ for ($i = 0; $i -lt $Runs; $i++) {
         if ($gpu) { $status = 'gpu_crash'; $problems.Insert(0, "gpu_crash: $gpu") }
     }
 
+    # ---- stills for README screenshots (runs whose video is valid); never changes the run's status ----
+    $stills = $null
+    if ($status -in @('ok', 'warn', 'ok_video_only')) {
+        $stills = Export-RunStills $runDir $runId (Join-Path (Join-Path $RecordingsRoot $Game) '_stills')
+        if ($stills.error) { Write-Step "WARNING: stills not extracted: $($stills.error)" } else { Write-Step "$($stills.count) stills -> $runDir\stills" }
+    }
+
     # ---- metadata, manifest ----
     $videoStartNs = if ($videoStart) { $videoStart.t_ns } else { $null }
     $metadata = [ordered]@{
@@ -719,6 +726,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
         machine = [ordered]@{ cpu = 'AMD Ryzen 7 7700X'; gpu = 'NVIDIA GeForce RTX 4080'; display = $displayMode; display_refresh_hz = $refreshHz; os = [Environment]::OSVersion.VersionString }
         created_utc = (Get-Date).ToUniversalTime().ToString('o')
         status = $status
+        stills = $stills
     }
     Write-JsonFile (Join-Path $runDir 'metadata.json') $metadata
     $validation = [ordered]@{ run_id = $runId; status = $status; problems = @($problems); warnings = @($warnings); checks = $checks; game_exit_code = $gameExit; killed = $killed }
