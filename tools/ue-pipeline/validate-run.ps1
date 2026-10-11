@@ -43,7 +43,7 @@ foreach ($e in 'run_start', 'scenario_start|level_start', 'scenario_end|level_en
 foreach ($e in 'score', 'state') { if (-not $telemetry.kinds.ContainsKey($e)) { [void]$notes.Add("telemetry has no '$e' events (required for all games)") } }
 
 $outcome = Read-JsonFile (Join-Path $Dir 'outcome.json')
-if ($outcome) { $v = if ($outcome.PSObject.Properties.Name -contains 'autoplay_version') { $outcome.autoplay_version } elseif ($outcome.PSObject.Properties.Name -contains 'contract_version') { $outcome.contract_version } else { '?' }; [void]$notes.Add("AutoPlay drop-in version $v (1 = v1, 2 = v1.2, 3 = v1.3)") }
+if ($outcome) { $v = if ($outcome.PSObject.Properties.Name -contains 'autoplay_version') { $outcome.autoplay_version } elseif ($outcome.PSObject.Properties.Name -contains 'contract_version') { $outcome.contract_version } else { '?' }; [void]$notes.Add("AutoPlay drop-in version $v (1 = v1, 2 = v1.2, 3 = v1.3, 4 = v1.4)") }
 if (-not $outcome) { [void]$problems.Add('missing outcome.json') }
 else {
     if ($outcome.result -notin @('win', 'lose', 'timeout', 'abort')) { [void]$problems.Add("outcome.result is '$($outcome.result)'") }

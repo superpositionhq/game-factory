@@ -1,7 +1,8 @@
 // AutoPlay: see AutoPlaySubsystem.h.
 #include "AutoPlaySubsystem.h"
 
-#include "AudioMixerBlueprintLibrary.h"
+#include "AudioDevice.h"
+#include "ISubmixBufferListener.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputAction.h"
 #include "Engine/Engine.h"
@@ -85,6 +86,134 @@ namespace AutoPlay
 		default: return TEXT("[0,0,0]");
 		}
 	}
+
+	/**
+	 * Master-submix capture. OnNewSubmixBuffer runs on the audio render thread: it converts the buffer to int16 and
+	 * timestamps it with QPC. If a buffer arrives later than wall time allows (the renderer stalled, e.g. on a busy
+	 * machine), silence is inserted first, so WAV position == time since the first buffer (within ~2 buffers).
+	 * The game thread writes audio.wav and audio_clock.jsonl (one row per buffer: frame index -> QPC) in Flush().
+	 */
+	class FAudioCapture : public ISubmixBufferListener
+	{
+	public:
+		bool Open(const FString& WavPath, const FString& ClockPath)
+		{
+			Wav.Reset(IFileManager::Get().CreateFileWriter(*WavPath));
+			Clock.Reset(IFileManager::Get().CreateFileWriter(*ClockPath));
+			if (!Wav || !Clock) { return false; }
+			uint8 Placeholder[44] = {};
+			Wav->Serialize(Placeholder, sizeof(Placeholder)); // header written in Close() once the format is known
+			return true;
+		}
+
+		void Start() { FScopeLock L(&Lock); bActive = true; }
+
+		virtual void OnNewSubmixBuffer(const USoundSubmix*, float* AudioData, int32 NumSamples, int32 NumChannels, const int32 SampleRate, double AudioClock) override
+		{
+			const uint64 Now = UAutoPlaySubsystem::Qpc();
+			FScopeLock L(&Lock);
+			if (!bActive || !AudioData || NumChannels <= 0 || SampleRate <= 0 || NumSamples <= 0) { return; }
+			const int32 Frames = NumSamples / NumChannels;
+			const double Freq = (double)UAutoPlaySubsystem::QpcFrequency();
+			if (OutChannels == 0)
+			{
+				OutChannels = NumChannels;
+				OutRate = SampleRate;
+				StartQpc = Now - (uint64)((double)Frames / OutRate * Freq); // frame 0 = start of the first buffer
+			}
+			// Where this buffer should end on the wall clock vs where the WAV would put it.
+			const int64 ExpectedEnd = (int64)((double)(Now - StartQpc) / Freq * OutRate);
+			const int64 Late = ExpectedEnd - (Written + Frames);
+			const int64 Tolerance = FMath::Max<int64>(2048, 2 * Frames);
+			int64 Silence = 0;
+			if (Late > Tolerance)
+			{
+				Silence = Late;
+				Pending.AddZeroed((int32)(Silence * OutChannels));
+				Written += Silence; SilenceFrames += Silence; ++Gaps;
+			}
+			const uint64 BufferStartQpc = Now - (uint64)((double)Frames / OutRate * Freq);
+			Rows.Add(FString::Printf(TEXT("{\"frame\":%lld,\"frames\":%d,\"qpc\":%llu,\"t_ns\":%llu,\"silence_before\":%lld,\"audio_clock\":%s,\"channels\":%d,\"rate\":%d}"),
+				Written, Frames, BufferStartQpc, UAutoPlaySubsystem::QpcToNs(BufferStartQpc), Silence, *UAutoPlaySubsystem::JsonNum(AudioClock), NumChannels, SampleRate));
+			const int32 Base = Pending.AddUninitialized(Frames * OutChannels);
+			for (int32 F = 0; F < Frames; ++F)
+			{
+				for (int32 C = 0; C < OutChannels; ++C)
+				{
+					// Channel count can change on an output-device swap: map to the first layout.
+					const float S = AudioData[F * NumChannels + FMath::Min(C, NumChannels - 1)];
+					Pending[Base + F * OutChannels + C] = (int16)FMath::Clamp(FMath::RoundToInt(S * 32767.f), -32768, 32767);
+				}
+			}
+			Written += Frames;
+		}
+
+		virtual bool IsRenderingAudio() const override { return true; }
+
+		/** Game thread: write what the audio thread produced. */
+		void Flush()
+		{
+			TArray<int16> Samples; TArray<FString> NewRows;
+			{
+				FScopeLock L(&Lock);
+				Swap(Samples, Pending); Swap(NewRows, Rows);
+			}
+			if (Wav && Samples.Num()) { Wav->Serialize(Samples.GetData(), Samples.Num() * sizeof(int16)); DataBytes += Samples.Num() * sizeof(int16); }
+			if (Clock)
+			{
+				for (const FString& Row : NewRows)
+				{
+					FTCHARToUTF8 Utf8(*Row);
+					Clock->Serialize((void*)Utf8.Get(), Utf8.Length());
+					char NewLine = '\n';
+					Clock->Serialize(&NewLine, 1);
+				}
+			}
+		}
+
+		/** Game thread: stop accepting buffers, write the rest, patch the WAV header, close both files. */
+		void Close()
+		{
+			{ FScopeLock L(&Lock); bActive = false; }
+			Flush();
+			if (Wav)
+			{
+				const int32 Channels = OutChannels > 0 ? OutChannels : 2;
+				const int32 Rate = OutRate > 0 ? OutRate : 48000;
+				uint8 H[44];
+				auto Put32 = [&H](int32 At, uint32 V) { H[At] = V & 0xFF; H[At + 1] = (V >> 8) & 0xFF; H[At + 2] = (V >> 16) & 0xFF; H[At + 3] = (V >> 24) & 0xFF; };
+				auto Put16 = [&H](int32 At, uint16 V) { H[At] = V & 0xFF; H[At + 1] = (V >> 8) & 0xFF; };
+				FMemory::Memcpy(H + 0, "RIFF", 4); Put32(4, (uint32)(36 + DataBytes)); FMemory::Memcpy(H + 8, "WAVE", 4);
+				FMemory::Memcpy(H + 12, "fmt ", 4); Put32(16, 16); Put16(20, 1); Put16(22, (uint16)Channels); Put32(24, (uint32)Rate);
+				Put32(28, (uint32)(Rate * Channels * 2)); Put16(32, (uint16)(Channels * 2)); Put16(34, 16);
+				FMemory::Memcpy(H + 36, "data", 4); Put32(40, (uint32)DataBytes);
+				Wav->Seek(0);
+				Wav->Serialize(H, sizeof(H));
+				Wav->Close();
+				Wav.Reset();
+			}
+			if (Clock) { Clock->Close(); Clock.Reset(); }
+		}
+
+		int64 GetWrittenFrames() const { FScopeLock L(&Lock); return Written; }
+		int64 GetSilenceFrames() const { FScopeLock L(&Lock); return SilenceFrames; }
+		int32 GetGaps() const { FScopeLock L(&Lock); return Gaps; }
+
+	private:
+		mutable FCriticalSection Lock;
+		bool bActive = false;
+		int32 OutChannels = 0;
+		int32 OutRate = 0;
+		uint64 StartQpc = 0;
+		int64 Written = 0;
+		int64 SilenceFrames = 0;
+		int32 Gaps = 0;
+		int64 DataBytes = 0;
+		TArray<int16> Pending;
+		TArray<FString> Rows;
+		TUniquePtr<FArchive> Wav;
+		TUniquePtr<FArchive> Clock;
+	};
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -269,6 +398,12 @@ void UAutoPlaySubsystem::Deinitialize()
 		{
 			FSlateApplication::Get().UnregisterInputPreProcessor(InputBlocker);
 		}
+		if (AudioCapture && Phase < EPhase::Exporting)
+		{
+			// Quit mid-run: keep the audio captured so far.
+			if (FAudioDevice* AudioDevice = GetGameWorld() ? GetGameWorld()->GetAudioDeviceRaw() : nullptr) { AudioDevice->UnregisterSubmixBufferListener(AudioCapture, nullptr); }
+			AudioCapture->Close();
+		}
 		if (Phase != EPhase::Done)
 		{
 			// Quit before the run finished (crash path, window closed): keep what we have.
@@ -404,6 +539,7 @@ bool UAutoPlaySubsystem::CoreTick(float DeltaTime)
 		break;
 	}
 
+	if (AudioCapture) { AudioCapture->Flush(); }
 	if (Now - LastFlush >= 1.0)
 	{
 		LastFlush = Now;
@@ -421,7 +557,16 @@ void UAutoPlaySubsystem::BeginRun(bool bTimedOut)
 	ClockSamples.Add(ClockSample(TEXT("go")));
 	FMath::RandInit(Seed);
 	FMath::SRandInit(Seed);
-	UAudioMixerBlueprintLibrary::StartRecordingOutput(GetGameWorld(), (float)MaxSeconds + 30.f, nullptr);
+	// Master-submix capture with a per-buffer clock (replaces StartRecordingOutput, which silently drops render stalls).
+	if (FAudioDevice* AudioDevice = GetGameWorld() ? GetGameWorld()->GetAudioDeviceRaw() : nullptr)
+	{
+		AudioCapture = new AutoPlay::FAudioCapture();
+		if (AudioCapture->Open(OutputDir / TEXT("audio.wav"), OutputDir / TEXT("audio_clock.jsonl")))
+		{
+			AudioCapture->Start();
+			AudioDevice->RegisterSubmixBufferListener(AudioCapture, nullptr);
+		}
+	}
 	ClockSamples.Add(ClockSample(TEXT("audio_start")));
 	Phase = EPhase::Running;
 	Telemetry(TEXT("run_start"), FString::Printf(TEXT("\"scenario\":%d,\"seed\":%d,\"skill\":%s,\"go_timed_out\":%s"),
@@ -475,7 +620,16 @@ void UAutoPlaySubsystem::FinishRun(const FString& InResult, double FinalScore, c
 
 void UAutoPlaySubsystem::StartExport()
 {
-	UAudioMixerBlueprintLibrary::StopRecordingOutput(GetGameWorld(), EAudioRecordingExportType::WavFile, TEXT("audio"), OutputDir, nullptr, nullptr);
+	int64 AudioFrames = 0, AudioSilence = 0; int32 AudioGaps = 0;
+	if (AudioCapture)
+	{
+		if (FAudioDevice* AudioDevice = GetGameWorld() ? GetGameWorld()->GetAudioDeviceRaw() : nullptr)
+		{
+			AudioDevice->UnregisterSubmixBufferListener(AudioCapture, nullptr);
+		}
+		AudioCapture->Close(); // stops accepting buffers first; the object stays alive for late audio-thread calls
+		AudioFrames = AudioCapture->GetWrittenFrames(); AudioSilence = AudioCapture->GetSilenceFrames(); AudioGaps = AudioCapture->GetGaps();
+	}
 	ClockSamples.Add(ClockSample(TEXT("audio_stop")));
 
 	const uint64 EndQpc = ScenarioEndQpc ? ScenarioEndQpc : Qpc();
@@ -485,10 +639,10 @@ void UAutoPlaySubsystem::StartExport()
 	WriteTextFile(TEXT("outcome.json"), FString::Printf(
 		TEXT("{\"schema\":\"autoplay-outcome/2\",%s,\"result\":%s,\"score\":%s,")
 		TEXT("\"duration_s\":%s,\"run_duration_s\":%s,\"go_qpc\":%llu,\"scenario_start_qpc\":%llu,\"scenario_end_qpc\":%llu,")
-		TEXT("\"frames\":%llu,\"inputs_injected\":%lld,\"go_timed_out\":%s,\"build_config\":%s,\"engine_version\":%s,\"extra\":{%s}}\n"),
+		TEXT("\"frames\":%llu,\"inputs_injected\":%lld,\"audio_frames\":%lld,\"audio_silence_frames\":%lld,\"audio_gaps\":%d,\"go_timed_out\":%s,\"build_config\":%s,\"engine_version\":%s,\"extra\":{%s}}\n"),
 		*HeaderFields(), *JsonStr(Result), *JsonNum(Score),
 		*JsonNum(Duration), *JsonNum(RunDuration), GoQpc, ScenarioStartQpc, ScenarioEndQpc,
-		ScenarioEndFrame - (ScenarioStartFrame ? ScenarioStartFrame : GoFrame), InjectCount, bGoTimedOut ? TEXT("true") : TEXT("false"),
+		ScenarioEndFrame - (ScenarioStartFrame ? ScenarioStartFrame : GoFrame), InjectCount, AudioFrames, AudioSilence, AudioGaps, bGoTimedOut ? TEXT("true") : TEXT("false"),
 		*JsonStr(LexToString(FApp::GetBuildConfiguration())), *JsonStr(FEngineVersion::Current().ToString()), *ResultExtra));
 
 	Phase = EPhase::Exporting;

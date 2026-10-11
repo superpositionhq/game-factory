@@ -1,4 +1,9 @@
-# AutoPlay contract (v1.3)
+# AutoPlay contract (v1.4)
+
+> **v1.4 = drop-in `ContractVersion = 4`.** Audio is captured by a master-submix buffer listener that timestamps every
+> audio buffer with QPC and writes `audio_clock.jsonl` next to `audio.wav`; when the audio renderer stalls (busy
+> machine) silence is inserted, so the WAV stays aligned with video and inputs. Only the two drop-in files change; no
+> game code, Build.cs or flags change. See **Migration to v1.4** at the end.
 
 > **v1.3 = drop-in `ContractVersion = 3`.** A run plays a **scenario** instead of a "level" (see the definition below):
 > flag `-Scenario=<n>` (`-Level` still accepted), API `StartScenario` / `ScenarioStarted`, keys `scenario` and
@@ -111,8 +116,8 @@ The pipeline marks such runs `gpu_crash` (not a generic failure) and retries the
    `timeout`, called by the subsystem when `MaxSeconds` passes since go (bind `OnTimeout` if you want to compute a
    final score yourself). Held inputs are released (logged), telemetry `scenario_end`.
    A restart inside a run (stealth "caught → checkpoint") is **not** the end of the run.
-8. The subsystem keeps the result screen up 2 s, stops audio recording (`audio.wav` is written on a background
-   thread; it waits until the file is stable, ≤ 20 s), writes `outcome.json` and `clock.json`, telemetry `run_end`,
+8. The subsystem keeps the result screen up 2 s, stops audio capture (finishes `audio.wav` and `audio_clock.jsonl`),
+   writes `outcome.json` and `clock.json`, telemetry `run_end`,
    then quits (`FPlatformMisc::RequestExit(false)`, exit code 0). The pipeline kills the process at
    `MaxSeconds + 90 s` and marks the run failed.
 
@@ -207,12 +212,30 @@ Each sample pairs QPC (read before and after) with UTC wall time (`FDateTime::Ut
 
 ### `audio.wav` (subsystem)
 
-Master submix via `UAudioMixerBlueprintLibrary::StartRecordingOutput(World, MaxSeconds + 30, nullptr)` at go and
-`StopRecordingOutput(World, EAudioRecordingExportType::WavFile, "audio", OutputDir, nullptr, nullptr)` after the
-result hold. 16-bit PCM at the mixer rate (48 kHz) with the output device's channel count. UE queues the start to
-the audio thread (it begins ~0.1 s after the `audio_start` sample, while the scenario loads) but stops synchronously,
-so the **last** sample corresponds to the `audio_stop` clock sample; the pipeline anchors the WAV there
-(`start = audio_stop − duration`) and turns it into `system_audio.mka`.
+v1.4: an `ISubmixBufferListener` registered on the world's audio device (`RegisterSubmixBufferListener`, master
+submix) from go until the result hold ends. 16-bit PCM at the mixer rate (48 kHz) with the output device's channel
+count. Each buffer is stamped with QPC when it arrives on the audio render thread; if it arrives later than the wall
+clock allows (more than max(2048, 2 buffers) frames behind), the missing time is written as silence first, so WAV
+sample position = time since the first buffer. The pipeline anchors the WAV with `audio_clock.jsonl` and turns it
+into `system_audio.mka` (`aligned` when the clock drift stays ≤ 250 ms).
+
+v1.3 and older (`StartRecordingOutput` / `StopRecordingOutput`): no `audio_clock.jsonl`; the pipeline anchors the
+WAV at the `audio_stop` clock sample (`start = audio_stop − duration`). If the mixer dropped buffers the WAV is short
+and audio is marked unaligned (bundle status `ok_video_only`).
+
+### `audio_clock.jsonl` (subsystem, v1.4)
+
+One row per audio buffer, in WAV order:
+
+```json
+{"frame":2048,"frames":1024,"qpc":13605553354491,"t_ns":1360555335449100,"silence_before":0,"audio_clock":2.70933333,"channels":2,"rate":48000}
+```
+
+`frame` = index of the buffer's first sample frame in `audio.wav`; `frames` = its length; `qpc`/`t_ns` = QPC time of
+that first frame (arrival time minus the buffer's duration); `silence_before` = silent frames inserted before it
+(a renderer stall); `audio_clock` = the mixer's own clock in seconds. Map a WAV position to the shared clock with the
+last row whose `frame` ≤ it: `t_ns = row.t_ns + (pos − row.frame) / rate · 1e9`. `outcome.json` adds `audio_frames`,
+`audio_silence_frames` and `audio_gaps`.
 
 ### `ready.json`, `go`, `game.log`
 
@@ -224,6 +247,7 @@ Wiring in your game (GameInstance or game mode; the bot is yours):
 
 ```cpp
 // Build.cs: PrivateDependencyModuleNames.AddRange(new[] { "EnhancedInput", "AudioMixer", "Slate", "SlateCore", "InputCore" });
+// (v1.4 needs only Engine for audio; "AudioMixer" may stay.)
 
 void UMyGameInstance::Init()
 {
@@ -268,10 +292,10 @@ void UAutoPlaySubsystem::Inject(APlayerController* PC, const UInputAction* Actio
     WriteLine(InputsAr, Printf("{%s,\"type\":\"inject\",\"action\":%s,\"value_type\":..,\"value\":..,\"key\":%s,\"edge\":..}", Stamp(), ...));
 }
 
-// Audio: master submix to OutputDir/audio.wav.
-UAudioMixerBlueprintLibrary::StartRecordingOutput(GetGameWorld(), MaxSeconds + 30.f, nullptr);         // at go
-UAudioMixerBlueprintLibrary::StopRecordingOutput(GetGameWorld(), EAudioRecordingExportType::WavFile,
-                                                 TEXT("audio"), OutputDir, nullptr, nullptr);           // async write
+// Audio (v1.4): master-submix buffer listener -> OutputDir/audio.wav + audio_clock.jsonl.
+World->GetAudioDeviceRaw()->RegisterSubmixBufferListener(AudioCapture, nullptr);                        // at go
+// AudioCapture::OnNewSubmixBuffer (audio thread): stamp with QPC, insert silence after a render stall, queue PCM + row
+// Tick (game thread): AudioCapture->Flush() writes them; at the end UnregisterSubmixBufferListener + Close (WAV header)
 ```
 
 ## 7. Testing by hand and declaring readiness
@@ -309,6 +333,14 @@ dataset, pipeline, workflow row ids in commit messages and `workflow.jsonl` are 
 Hand test without a window on the user's screen: add `-RenderOffScreen` to the §7 command (verified on the test
 project with v1.2: the run completes and validate-run passes).
 
+## Migration to v1.4 (per game)
+
+1. **Re-copy** `tools/ue-pipeline/autoplay/AutoPlaySubsystem.h/.cpp` (`ContractVersion` 4) over your copies. Nothing
+   else changes: same API, flags, files and Build.cs (no new module; `AudioMixer` may stay listed).
+2. **Re-test** by hand (§7 with `-RenderOffScreen`) and run `validate-run.ps1` on the output: it must say "AutoPlay
+   drop-in version 4", PASS, and print an `audio_clock:` line (buffers, render stalls filled, max drift).
+3. **Commit** (re-tag `milestone/autoplay-<n>` on it) and ask the coordinator to queue a recording.
+
 ## Migration to v1.3 (per game)
 
 1. **Re-copy** `tools/ue-pipeline/autoplay/AutoPlaySubsystem.h/.cpp` (ContractVersion 3). v1.2 code still compiles via
@@ -330,6 +362,15 @@ project with v1.2: the run completes and validate-run passes).
    `enqueue.ps1 <game> -Scenarios 1 -Runs 1 -RequestedBy <session>`.
 
 ## Changes
+
+- **v1.4** (`ContractVersion` 4, games re-copy `AutoPlaySubsystem.h/.cpp`): audio capture by an `ISubmixBufferListener`
+  on the master submix instead of `StartRecordingOutput`/`StopRecordingOutput`; new `audio_clock.jsonl` (per-buffer QPC,
+  `silence_before`); renderer stalls are filled with silence so the WAV stays aligned; `outcome.json` adds
+  `audio_frames`, `audio_silence_frames`, `audio_gaps`. API, flags, other files and Build.cs unchanged. Why: under load
+  the v1.3 mixer recording dropped buffers (tower-defense runs lost 8–23 s of audio, so system_audio was unaligned).
+  Verified on games\_pipeline-test (a43a8bb5): Shipping smoke, two queued pipeline runs aligned on the audio clock
+  (max drift 10 / 14 ms, 0 stalls, beep lag −6.8 / 9.3 ms vs 11.2 ms for v1.3), off-screen runs quiet and under CPU
+  stress for v1.3, quiet for v1.4 (beep lag 6.5 ms vs 22.8 ms); validate-run PASS for v1.4 and older outputs.
 
 - **v1.3** (`ContractVersion` 3, games re-copy `AutoPlaySubsystem.h/.cpp`): "level" becomes "scenario". Flag
   `-Scenario=<n>` (`-Level` still accepted) and optional `-ScenarioName=<text>`; API `StartScenario`,

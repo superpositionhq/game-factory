@@ -18,6 +18,7 @@ class UInputAction;
 class IInputProcessor;
 class IConsoleVariable;
 class UWorld;
+namespace AutoPlay { class FAudioCapture; }
 
 UCLASS()
 class UAutoPlaySubsystem : public UGameInstanceSubsystem
@@ -25,7 +26,7 @@ class UAutoPlaySubsystem : public UGameInstanceSubsystem
 	GENERATED_BODY()
 
 public:
-	static constexpr int32 ContractVersion = 3;
+	static constexpr int32 ContractVersion = 4;
 
 	static UAutoPlaySubsystem* Get(const UObject* WorldContextObject);
 
@@ -154,6 +155,8 @@ private:
 	FVector2D VirtualCursor = FVector2D::ZeroVector;
 
 	TMap<FString, IConsoleVariable*> CVarCache;
+	// Master-submix capture (audio render thread). Never deleted: the audio thread may still call it after unregistering.
+	AutoPlay::FAudioCapture* AudioCapture = nullptr;
 	int64 LastAudioSize = -1;
 	double AudioStableSince = 0.0;
 };
