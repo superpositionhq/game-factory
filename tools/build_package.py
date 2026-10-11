@@ -35,7 +35,29 @@ CHAPTER = {'model': '模型', 'texture': '贴图', 'audio': '音频', 'table': '
            '.mat': '材质', '.anim': '动画', '.controller': '动画', '.overrideController': '动画', '.playable': '技能 Timeline',
            '.unity': '场景', '.asset': '配置资产'}
 HEADER = re.compile(r'^--- !u!(\d+) &(-?\d+)(.*)$', re.M)
-LOADER = getattr(yaml, 'CSafeLoader', yaml.SafeLoader)
+class UnityLoader(getattr(yaml, 'CSafeLoader', yaml.SafeLoader)):
+    """
+    Safe loader with Unity-faithful implicit typing instead of YAML 1.1's. Unity writes bools as 0/1, plain
+    decimal ints and floats, and everything else unquoted as a string, so YAML 1.1 rules corrupt values:
+    `10019_1` (a skin id) became the int 100191, `on`/`yes` become bools, `0123` an octal int, an all-digit
+    hash a huge int, and `1e5…`-shaped GUIDs floats. Here only these resolve, everything else stays a string:
+    int    `0` or `-?[1-9][0-9]*` up to 20 digits (file ids are 64-bit; no leading zeros, no `_`, no `-0`)
+    float  `-?(0|[1-9][0-9]*)` with `.digits` and/or a 1–3 digit exponent (Unity's `Infinity`/`NaN` stay strings,
+           which JSON can carry)
+    null   the empty value only
+    """
+
+
+UnityLoader.yaml_implicit_resolvers = {}
+UnityLoader.add_implicit_resolver('tag:yaml.org,2002:int', re.compile(r'^(?:0|-?[1-9][0-9]{0,19})$'),
+                                  list('-0123456789'))
+UnityLoader.add_implicit_resolver(
+    'tag:yaml.org,2002:float',
+    re.compile(r'^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+(?:[eE][-+]?[0-9]{1,3})?|[eE][-+]?[0-9]{1,3})$'),
+    list('-0123456789'))
+UnityLoader.add_implicit_resolver('tag:yaml.org,2002:null', re.compile(r'^$'), [''])
+UnityLoader.add_constructor('tag:yaml.org,2002:float', lambda loader, node: float(loader.construct_scalar(node)))
+LOADER = UnityLoader
 MAX_PATHS = 400        # changed property paths kept per object step
 MAX_CELLS = 400        # changed cells kept per table step
 MAX_DIFF_LINES = 3000  # lines of unified diff kept per file in git.log
@@ -127,6 +149,34 @@ def flatten(v, prefix='', out=None):
             flatten(x, prefix + seg, out)
     else:
         out[prefix] = v
+    return out
+
+
+def list_inserts(a, b, prefix='', out=None):
+    """
+    Items added to identity-keyed lists, with their index in the new list: {list path: [[index, key], …]}.
+    flatten() keys such items by identity and steps list changed paths sorted, so without this the position
+    of an added item is lost, and assets keep it (an Addressables group's entries, a GameObject's components).
+    Paths and keys are spelled as in flatten(). Items that only moved are not recorded.
+    """
+    out = {} if out is None else out
+    if isinstance(b, dict) and not is_ref(b):
+        for k, x in b.items():
+            list_inserts(a.get(k) if isinstance(a, dict) else None, x, f'{prefix}.{k}' if prefix else str(k), out)
+    elif isinstance(b, list) and b and not all(isinstance(x, (int, float)) for x in b):
+        kb = list_keys(b)
+        if '=' in kb[0]:
+            ka = list_keys(a) if isinstance(a, list) and a else []
+            old = dict(zip(ka, a)) if ka and '=' in ka[0] else {}
+            added = [[i, k] for i, k in enumerate(kb) if k not in old]
+            if added:
+                out[prefix] = added[:MAX_PATHS]
+            for k, x in zip(kb, b):
+                if k in old:
+                    list_inserts(old[k], x, prefix + k, out)
+        else:
+            for i, (k, x) in enumerate(zip(kb, b)):
+                list_inserts(a[i] if isinstance(a, list) and i < len(a) else None, x, prefix + k, out)
     return out
 
 
@@ -259,6 +309,8 @@ class Builder:
             if self.a.since:
                 g += ['--since', self.a.since]
             shas |= set(git(self.repo, *g).decode().split())
+        for rev in self.a.include_commit:
+            shas.add(git(self.repo, 'rev-parse', '--verify', rev + '^{commit}').decode().strip())
         if not shas:
             return []
         order = git(self.repo, 'log', '--no-walk=sorted', '--reverse', '--format=%H', *shas).decode().split()
@@ -270,7 +322,7 @@ class Builder:
             with p.open('rb') as f:
                 for line in f.read(400).splitlines():
                     if line.startswith(b'guid: '):
-                        self.guid_path[line[6:].decode().strip()] = str(p.relative_to(root))[:-5]
+                        self.guid_path[line[6:].decode().strip()] = p.relative_to(root).as_posix()[:-5]
                         break
 
     def resolve(self, values):
@@ -367,6 +419,9 @@ class Builder:
             values, refs = self.resolve({k: fb.get(k) for k in keep})
             before, _ = self.resolve({k: fa.get(k) for k in keep})
             params = {'object': nb.describe(fid), 'values': values, 'before': before}
+            inserts = list_inserts(a[fid][2], b[fid][2])
+            if inserts:
+                params['list_inserts'] = inserts
             if len(changed) > len(keep):
                 params |= {'changed_paths_total': len(changed), 'truncated': True}
             self.step(commit, 'object.set', path, params, 'unity_yaml_object_diff', ch, refs)
@@ -554,16 +609,21 @@ def write_manifests(out, end_commit):
     """manifest.json for the package files; UnityProject.manifest.jsonl for every file of the snapshot."""
     project = out / 'UnityProject'
     if project.is_dir():
-        with (out / 'UnityProject.manifest.jsonl').open('w', encoding='utf-8') as f:
+        with (out / 'UnityProject.manifest.jsonl').open('w', encoding='utf-8', newline='\n') as f:
             for p in sorted(x for x in project.rglob('*') if x.is_file()):
-                f.write(json.dumps({'path': str(p.relative_to(project)), 'bytes': p.stat().st_size,
+                f.write(json.dumps({'path': p.relative_to(project).as_posix(), 'bytes': p.stat().st_size,
                                     'sha256': file_sha256(p)}, ensure_ascii=False) + '\n')
     files = [p for p in sorted(out.rglob('*')) if p.is_file() and 'UnityProject' not in p.relative_to(out).parts[:1]
              and p.name not in ('manifest.json', '.DS_Store')]
     manifest = {'schema': 'liaozhai.package-manifest/v1', 'unity_project_commit': end_commit,
-                'files': [{'path': str(p.relative_to(out)), 'bytes': p.stat().st_size, 'sha256': file_sha256(p)}
+                'files': [{'path': p.relative_to(out).as_posix(), 'bytes': p.stat().st_size, 'sha256': file_sha256(p)}
                           for p in files]}
-    (out / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding='utf-8')
+    write_text(out / 'manifest.json', json.dumps(manifest, ensure_ascii=False, indent=1))
+
+
+def write_text(path, text):
+    """UTF-8 with LF line ends on every platform (text mode would write CRLF on Windows)."""
+    path.write_text(text, encoding='utf-8', newline='\n')
 
 
 def main():
@@ -576,6 +636,9 @@ def main():
     p.add_argument('--since')
     p.add_argument('--keyword', action='append', default=[])
     p.add_argument('--exclude', action='append', default=['Assets/LiaoZhaiRL/Combat_战斗相关/Characters_角色/'])
+    p.add_argument('--include-commit', action='append', default=[],
+                   help='also include this commit (e.g. one the feature builds on that the scope rule misses, or the '
+                        '导表 export of a table edit); the start commit is still the parent of the earliest one')
     p.add_argument('--manifest', action='store_true', help='hash every package and UnityProject file (slow)')
     a = p.parse_args()
     b = Builder(a)
@@ -583,14 +646,13 @@ def main():
     out = Path(a.out)
     hist = out / 'History'
     hist.mkdir(parents=True, exist_ok=True)
-    with (out / 'workflow.jsonl').open('w', encoding='utf-8') as f:
-        for s in b.steps:
-            f.write(json.dumps(s, ensure_ascii=False, default=jsonable) + '\n')
+    write_text(out / 'workflow.jsonl',
+               ''.join(json.dumps(s, ensure_ascii=False, default=jsonable) + '\n' for s in b.steps))
     header = (f"LIAOZHAI-FEATURE-LOG 1\nFeature: {a.feature_name}\n"
               f"Real commits from the project's history, in commit-date order. Authors are anonymized; "
               f"only files belonging to this feature are shown.\n\n")
-    (out / 'git.log').write_text(header + '\n'.join(log), encoding='utf-8')
-    (hist / 'commits.json').write_text(json.dumps(records, ensure_ascii=False, indent=1), encoding='utf-8')
+    write_text(out / 'git.log', header + '\n'.join(log))
+    write_text(hist / 'commits.json', json.dumps(records, ensure_ascii=False, indent=1))
     summary = {'feature': a.feature_name, 'commits': len(records), 'steps': len(b.steps),
                'start_commit': records[0]['parent'] if records else None,
                'end_commit': records[-1]['sha'] if records else None,
@@ -598,7 +660,7 @@ def main():
                'authors': len(b.authors), 'guids_indexed': len(b.guid_path),
                'scope': {'folders': a.folder, 'grep': a.grep, 'since': a.since, 'keywords': a.keyword,
                          'excluded_unless_keyword': a.exclude}}
-    (hist / 'summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding='utf-8')
+    write_text(hist / 'summary.json', json.dumps(summary, ensure_ascii=False, indent=1))
     print(json.dumps(summary, ensure_ascii=False))
     if a.manifest:
         write_manifests(out, summary['end_commit'])

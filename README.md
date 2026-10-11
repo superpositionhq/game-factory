@@ -20,7 +20,7 @@ see [docs/vendor-packages.md](docs/vendor-packages.md) for what they contain and
 |---|---|
 | Vendor packages analysed (`parkour`, `island_explore`, `robofootball`) | done, [docs/vendor-packages.md](docs/vendor-packages.md) |
 | LiaoZhaiRL repo surveyed | done, [docs/liaozhai.md](docs/liaozhai.md) |
-| Converter (`tools/build_package.py`) | working; pilot feature 葛巾_旗袍 → 27 commits, 783 steps |
+| Converter (`tools/build_package.py`) | working; pilot feature 葛巾_旗袍 → 27 commits, 811 steps |
 | Pilot package (with the 42 GB project snapshot) | done 2026-10-11 at `~/Downloads/liaozhai_gejin_qipao/`; all 418 end-state files hash-verified |
 | Pilot sample | [samples/liaozhai-gejin-qipao/](samples/liaozhai-gejin-qipao/) (final, GUIDs resolved to paths) |
 | Unreal track | planned, [docs/plan.md](docs/plan.md) |
@@ -34,6 +34,7 @@ see [docs/vendor-packages.md](docs/vendor-packages.md) for what they contain and
 - [docs/creation-vs-gameplay.md](docs/creation-vs-gameplay.md): how this differs from Lab gameplay data.
 - [docs/autoplay-contract.md](docs/autoplay-contract.md): what each Track B game implements so a bot can play and record it.
 - [docs/ue-pipeline.md](docs/ue-pipeline.md): build, package, smoke-test and gameplay recording pipeline (`tools/ue-pipeline/`).
+- [docs/game-deliverable.md](docs/game-deliverable.md): the per-game deliverable (`tools/package-game.ps1`): layout, store-content variants, scrub.
 - [AGENTS.md](AGENTS.md): rules for agents working here (each with the failure behind it).
 
 ## Layout

@@ -11,6 +11,8 @@ hash like the commits (Git for Windows otherwise checks text files out with CRLF
     python replay.py steps   --project <start> --work <dir> --package <pkg> [--record]   # stage 3/4
     python replay.py status  --project <start> --work <dir>         # git status vs. what the replay wrote
     python replay.py reset   --project <start> --work <dir>         # back to the start commit (keeps Library)
+    python replay.py report  --work <dir>                           # summarize step-log.jsonl, classify mismatches
+    python replay.py verify  --work <dir> --package <pkg>           # redo video-verification.json for a recording
 
 Unity 2022.3.10f1 is required; any other editor version is refused.
 """
@@ -92,6 +94,30 @@ def tree_entry(repo, rev, path):
 
 # ---------- plan ----------
 
+DB_PATH = 'Assets/StreamingAssets/bansheegz_database.bytes'   # what the project's 导表 export writes
+
+
+def table_export(repo, sha, staging, blobs):
+    """
+    The real 导表 export of a commit's table edit: a child commit of `sha` that changes the BGDatabase file
+    (outside the feature's scope, e.g. cdf7c5092e "导表" after c026). Its database before and after are staged so
+    the step replay can compare the delta its own export produces with the delta the developers committed.
+    """
+    when = git(repo, 'show', '-s', '--format=%cI', sha).decode().strip()
+    for line in git(repo, 'log', '--format=%H %P', '--since', when, '--all', '--', DB_PATH).decode().splitlines():
+        child, *parents = line.split()
+        if sha in parents:
+            before, after = tree_entry(repo, sha, DB_PATH), tree_entry(repo, child, DB_PATH)
+            if not (before and after):
+                return None
+            for oid in (before, after):
+                if not (staging / oid).exists():
+                    (staging / oid).write_bytes(blobs.get(oid))
+            msg = git(repo, 'show', '-s', '--format=%s', child).decode().strip()
+            return {'sha': child, 'message': msg, 'path': DB_PATH,
+                    'before_blob': str(staging / before), 'after_blob': str(staging / after)}
+    return None
+
 def cmd_plan(a):
     pkg, work = Path(a.package), Path(a.work).resolve()
     commits = json.loads((pkg / 'History' / 'commits.json').read_text(encoding='utf-8'))
@@ -125,7 +151,12 @@ def cmd_plan(a):
                 entry |= {'parent_blob': str(parent), 'parent_sha256': sha256(parent.read_bytes())}
             files.append(entry)
             last[f['path']] = h
-        plan_commits.append({'id': c['id'], 'sha': c['sha'], 'time': c['time'], 'files': files})
+        entry_c = {'id': c['id'], 'sha': c['sha'], 'time': c['time'], 'files': files}
+        if any(f['path'].endswith('.xlsx') and f['status'] == 'M' for f in c['files']):
+            exp = table_export(a.repo, c['sha'], staging, blobs)
+            if exp:
+                entry_c['table_export'] = exp
+        plan_commits.append(entry_c)
 
     end = summary['end_commit']
     final = []
@@ -169,6 +200,58 @@ def cmd_install(a):
     print('embedded (junction):', link, '->', PACKAGE_DIR)
 
 
+# ---------- machine-wide job slots (shared with tools/ue-heavy.ps1) ----------
+
+HEAVY_LOG = Path(os.environ.get('USERPROFILE', '')) / 'Work' / '.recording' / '_heavy-jobs.jsonl'
+
+
+class MachineSlots:
+    """
+    The PC's job limits, as tools/ue-heavy.ps1 takes them: every Unity run holds one of 3 slots of
+    'Global\\ue-heavy-jobs' (CPU/RAM), and a run that renders (visible editor, recording) also holds the single
+    'Global\\ue-gpu-jobs' slot, since 16 GB of VRAM does not fit several GPU jobs. -nographics runs skip the GPU slot.
+    """
+
+    def __init__(self, label, gpu):
+        self.label, self.gpu, self.held = label, gpu, []
+
+    def _log(self, event, **extra):
+        HEAVY_LOG.parent.mkdir(parents=True, exist_ok=True)
+        row = {'time': dt.datetime.now().astimezone().isoformat(timespec='milliseconds'), 'event': event,
+               'label': self.label, 'pid': os.getpid(), 'cwd': os.getcwd(), **extra}
+        with HEAVY_LOG.open('a', encoding='utf-8') as f:
+            f.write(json.dumps(row, ensure_ascii=False) + '\n')
+
+    def __enter__(self):
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        k32.CreateSemaphoreW.restype = ctypes.c_void_p
+        k32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        self.k32, t0 = k32, time.time()
+        self._log('wait', gpu=self.gpu)
+        for name, count, why in [('Global\\ue-heavy-jobs', 3, 'a free heavy-job slot'),
+                                 *([('Global\\ue-gpu-jobs', 1, 'the GPU slot')] if self.gpu else [])]:
+            h = k32.CreateSemaphoreW(None, count, count, name)
+            if not h:
+                raise OSError(f'cannot open semaphore {name}')
+            while k32.WaitForSingleObject(h, 60000) != 0:     # WAIT_OBJECT_0
+                print(now(), f'waiting for {why} ({name})', flush=True)
+            self.held.append(h)
+        self._log('start', waited_s=int(time.time() - t0), gpu=self.gpu)
+        self.t1 = time.time()
+        return self
+
+    def __exit__(self, *exc):
+        import ctypes
+        self.k32.ReleaseSemaphore.argtypes = [ctypes.c_void_p, ctypes.c_long, ctypes.c_void_p]
+        self.k32.CloseHandle.argtypes = [ctypes.c_void_p]
+        for h in reversed(self.held):
+            self.k32.ReleaseSemaphore(h, 1, None)
+            self.k32.CloseHandle(h)
+        self._log('end', duration_s=int(time.time() - self.t1))
+        return False
+
+
 # ---------- Unity ----------
 
 def unity(project, log, *extra, batch=True, timeout=None):
@@ -180,7 +263,8 @@ def unity(project, log, *extra, batch=True, timeout=None):
             '-logFile', str(log), *extra]
     print(now(), ' '.join(args), flush=True)
     t = time.time()
-    rc = subprocess.run(args, timeout=timeout).returncode
+    with MachineSlots(f'liaozhai-replay unity {Path(str(log)).stem}', gpu=not batch):
+        rc = subprocess.run(args, timeout=timeout).returncode
     print(now(), f'Unity exit {rc} after {time.time() - t:.0f}s', flush=True)
     return rc, time.time() - t
 
@@ -218,7 +302,8 @@ def cmd_steps(a):
         rc, secs = unity(a.project, work / 'unity-step-replay.log', *extra)
         report_status(a.project, work, rc, secs, 'steps')
         return
-    rc, secs = record(a, work, extra)
+    with MachineSlots('liaozhai-replay recording (visible editor + ffmpeg)', gpu=True):
+        rc, secs = record(a, work, extra)
     report_status(a.project, work, rc, secs, 'steps')
 
 
@@ -289,7 +374,9 @@ def record(a, work, extra):
     cap = [FFMPEG, '-hide_banner', '-y', '-f', 'lavfi',
            '-i', f'gfxcapture=hwnd={hwnd}:max_framerate={a.fps}:capture_cursor=0:resize_mode=scale_aspect',
            '-vf', f'hwdownload,format=bgra,fps={a.fps},scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p',
-           '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '24', '-movflags', '+faststart', str(video)]
+           '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '24',
+           # Fragmented MP4: playable up to the last fragment even if ffmpeg does not finish cleanly.
+           '-movflags', '+frag_keyframe+empty_moov+default_base_moof', '-g', str(a.fps * 2), str(video)]
     print(now(), ' '.join(cap), flush=True)
     rec_log = open(work / 'ffmpeg-record.log', 'w', encoding='utf-8')
     ff = subprocess.Popen(cap, stdin=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8',
@@ -310,7 +397,8 @@ def record(a, work, extra):
                 t_video0 = time.time() - frames / a.fps
         rec_log.flush()
 
-    threading.Thread(target=pump, daemon=True).start()
+    pump_thread = threading.Thread(target=pump, daemon=True)
+    pump_thread.start()
     while t_video0 is None and ff.poll() is None:
         time.sleep(0.1)
     if ff.poll() is not None:
@@ -318,15 +406,76 @@ def record(a, work, extra):
         sys.exit('ffmpeg failed, see ffmpeg-record.log')
     time.sleep(2)
     (hs / 'go').write_text(f'{time.time():.3f}')
-    rc = editor.wait()
-    time.sleep(1)
+    # Stop capturing while the editor window still exists: the editor writes "done" after the last step and
+    # waits for "stopped" before it exits.
+    while not (hs / 'done').exists() and editor.poll() is None:
+        time.sleep(0.5)
     try:
-        ff.communicate('q', timeout=60)
+        ff.stdin.write('q')
+        ff.stdin.flush()
+        ff.stdin.close()
+    except OSError:
+        pass
+    try:
+        ff.wait(timeout=60)
     except subprocess.TimeoutExpired:
         ff.kill()
+        ff.wait()
+    (hs / 'stopped').write_text(f'{time.time():.3f}')
+    pump_thread.join(timeout=10)
     rec_log.close()
+    rc = editor.wait()
     verify_video(a, work, video, t_video0, rc, ff.returncode, title)
     return rc, time.time() - t_start
+
+
+def measure_offset(video, ends, width):
+    """
+    Seconds to add to (editor wall clock - first-frame wall clock) to get video time, measured from the video:
+    the replay panel's header line ("Commit … Step …") changes when a step ends, so the offset that puts the most
+    header changes within ±0.07 s of a step end wins. The estimate from ffmpeg's progress output runs late by the
+    encoder's lookahead; this corrects it from what is on screen.
+    """
+    import bisect
+    import re
+    k = width / 2858   # crop measured on a 2858-pixel-wide capture of the 1920x1080 (150 %) window
+    crop = f'crop={int(1620 * k)}:{int(40 * k)}:{int(550 * k)}:{int(78 * k)}'
+    run = subprocess.run([FFMPEG, '-hide_banner', '-nostats', '-i', str(video), '-an', '-vf',
+                          f"{crop},select='gt(scene\\,0.002)',showinfo", '-f', 'null', '-'],
+                         capture_output=True, text=True, encoding='utf-8', errors='replace')
+    changes = [float(x) for x in re.findall(r'pts_time:([0-9.]+)', run.stderr)]
+    ends = sorted(ends)
+
+    def hits(o):
+        n = 0
+        for c in changes:
+            i = bisect.bisect_left(ends, c - o - 0.07)
+            n += i < len(ends) and abs(c - o - ends[i]) <= 0.07
+        return n
+
+    best = max(((hits(o / 100), o / 100) for o in range(-100, 500)), default=(0, 0.0))
+    return {'offset_seconds': best[1], 'panel_changes': len(changes), 'changes_matching_a_step_end': best[0],
+            'changes': changes}
+
+
+def residuals(changes, steps):
+    """For steps that take screen time: seconds from the aligned step end to the next panel change."""
+    import bisect
+    d = []
+    for s in steps:
+        if s['mode'] == 'file_fallback':
+            continue
+        j = bisect.bisect_left(changes, s['video_end'] - 0.05)
+        if j < len(changes):
+            d.append(changes[j] - s['video_end'])
+    d.sort()
+    if not d:
+        return {}
+    q = lambda f: round(d[min(len(d) - 1, int(len(d) * f))], 2)
+    return {'steps_measured': len(d), 'p50': q(0.5), 'p90': q(0.9), 'p99': q(0.99), 'max': round(d[-1], 2),
+            'within_1s': round(sum(1 for x in d if abs(x) <= 1) / len(d), 3),
+            'note': 'after commit boundaries and heavy imports the editor repaints late, so a step can show on '
+                    'screen seconds after it ran; fallback steps take no screen time and are not measured'}
 
 
 def verify_video(a, work, video, t_video0, editor_rc, recorder_rc, title):
@@ -341,15 +490,20 @@ def verify_video(a, work, video, t_video0, editor_rc, recorder_rc, title):
     commits = [r for r in rows if r['type'] == 'commit']
     workflow = Path(a.package) / 'workflow.jsonl'
     duration = float(probe.get('format', {}).get('duration', 0))
+    measured = measure_offset(video, [s['t_end'] - t_video0 for s in steps], vs.get('width') or 2858)
+    off = measured['offset_seconds']
     aligned = [{'id': s['id'], 'commit': s['commit'], 'op': s['op'], 'mode': s['mode'], 'ok': s['ok'],
-                'video_start': round(s['t_start'] - t_video0, 3), 'video_end': round(s['t_end'] - t_video0, 3)}
+                'video_start': round(s['t_start'] - t_video0 + off, 3),
+                'video_end': round(s['t_end'] - t_video0 + off, 3)}
                for s in steps]
     executed_order = [s['id'] for s in steps]
+    changes = measured.pop('changes')
+    measured['screen_delay_seconds'] = residuals(changes, aligned)
     out = {
         'schema': 'liaozhai.video-verification/v1',
         'video': video.name, 'sha256': sha256(video.read_bytes()), 'bytes': video.stat().st_size,
         'duration_seconds': duration, 'resolution': [vs.get('width'), vs.get('height')],
-        'fps': a.fps, 'frames': int(vs.get('nb_frames', 0) or 0),
+        'fps': a.fps, 'frames': int(vs.get('nb_frames', 0) or 0) or round(float(probe.get('format', {}).get('duration', 0)) * a.fps),
         'capture': 'ffmpeg gfxcapture (Windows Graphics Capture) of the Unity editor window only',
         'window_title': title,
         'workflow_sha256': sha256(workflow.read_bytes()),
@@ -364,11 +518,14 @@ def verify_video(a, work, video, t_video0, editor_rc, recorder_rc, title):
         'last_step_end_seconds': aligned[-1]['video_end'] if aligned else None,
         'steps_within_video': all(0 <= s['video_start'] <= duration for s in aligned),
         'video_time_zero_unix': round(t_video0, 3),
-        'alignment_note': 'step times are the editor wall clock (step-log.jsonl t_start/t_end) minus the wall clock '
-                          'of the first captured frame; error is about one frame interval plus ffmpeg start latency',
+        'alignment': measured,
+        'alignment_note': 'video time = editor wall clock (step-log.jsonl t_start/t_end) - wall clock of the first '
+                          'encoded frame (from ffmpeg progress) + offset_seconds, measured from the video: the replay '
+                          "panel's header changes when a step ends",
         'full_decode_exit_code': decode.returncode, 'full_decode_errors': decode.stderr[-2000:],
         'editor_exit_code': editor_rc, 'recorder_exit_code': recorder_rc,
-        'commits': [{'id': c['id'], 'video_time': round(c['t'] - t_video0, 3), 'counts': c['counts']} for c in commits],
+        'commits': [{'id': c['id'], 'video_time': round(c['t'] - t_video0 + off, 3), 'counts': c['counts']}
+                    for c in commits],
         'steps': aligned,
     }
     out['passed'] = (decode.returncode == 0 and out['all_workflow_steps_present'] and out['steps_within_video']
@@ -454,6 +611,9 @@ def mismatch_cause(commit_file: Path, replay_file: Path) -> str:
     import re
     if not replay_file.exists():
         return 'missing'
+    if commit_file.name.endswith('.xlsx') or replay_file.suffix == '.xlsx':
+        # Cells are edited in the sheet XML and read back; the zip itself cannot match Excel's bytes.
+        return 'xlsx_container_bytes'
     a = commit_file.read_bytes().decode('utf-8', 'replace').splitlines()
     b = replay_file.read_bytes().decode('utf-8', 'replace').splitlines()
     if sorted(a) == sorted(b):
@@ -469,6 +629,14 @@ def mismatch_cause(commit_file: Path, replay_file: Path) -> str:
            or (x and x[0].strip().startswith('m_RemovedComponents')) for x, y in changed):
         return 'prefab_instance_override_semantics'
     return 'other'
+
+
+def cmd_verify(a):
+    """Re-run the video verification for an existing recording (reads the previous video-verification.json)."""
+    work = Path(a.work).resolve()
+    old = json.loads((work / 'video-verification.json').read_text(encoding='utf-8'))
+    verify_video(a, work, work / old['video'], old['video_time_zero_unix'], old['editor_exit_code'],
+                 old['recorder_exit_code'], old['window_title'])
 
 
 def cmd_report(a):
@@ -525,7 +693,9 @@ def main():
             s.add_argument('--fps', type=int, default=30); s.add_argument('--step-delay', type=float, default=0.5)
             s.add_argument('--width', type=int, default=1920); s.add_argument('--height', type=int, default=1080)
     s = sub.add_parser('status'); s.add_argument('--project', required=True); s.add_argument('--work', required=True)
-    s = sub.add_parser('report'); s.add_argument('--work', required=True); s.add_argument('--log', default='step-log.jsonl')
+    s = sub.add_parser('verify'); s.add_argument('--work', required=True); s.add_argument('--package', required=True)
+    s.add_argument('--fps', type=int, default=30)
+    s = sub.add_parser('report');s.add_argument('--work', required=True); s.add_argument('--log', default='step-log.jsonl')
     s = sub.add_parser('reset');s.add_argument('--project', required=True); s.add_argument('--work', required=True)
     s.add_argument('--all', action='store_true', help='also restore other tracked files Unity rewrote')
     a = p.parse_args()

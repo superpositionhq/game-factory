@@ -162,7 +162,7 @@ namespace Superposition.LiaoZhaiReplay
             }
             var values = NameKeyed((OrderedDict)p.Get("values"));
             if (obj.GetType().FullName == AddressablesGroupType)
-                values = AddressablesEntries(obj, values, res);
+                values = AddressablesEntries(obj, values, Inserts(p, "m_SerializeEntries"), res);
             var so = new SerializedObject(obj);
             var applied = new List<KeyValuePair<string, object>>();
             var removals = new List<string>();
@@ -181,6 +181,10 @@ namespace Superposition.LiaoZhaiReplay
             }
             foreach (var elem in removals.Distinct().OrderByDescending(e => e, StringComparer.Ordinal))
                 RemoveElement(so, elem, res);
+            if (p.Get("list_inserts") is OrderedDict inserts)
+                foreach (var list in inserts.OrderedKeys)
+                    if (!(list == "m_SerializeEntries" && obj.GetType().FullName == AddressablesGroupType))
+                        PlaceInserted(so, list, (List<object>)inserts.Get(list), res);
             so.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(obj);
             res.Actions.Add($"SerializedObject({obj.GetType().Name} {LocalId(obj)}): set {applied.Count} properties" +
@@ -229,7 +233,43 @@ namespace Superposition.LiaoZhaiReplay
         /// reproduce its order. Returns the values that are not entry paths, for the generic setter.
         /// Called by reflection so the package does not depend on com.unity.addressables.
         /// </summary>
-        static OrderedDict AddressablesEntries(UnityEngine.Object group, OrderedDict values, StepResult res)
+        /// <summary>Insertion index by key ("[m_GUID=…]" → n) for one list of the step's list_inserts.</summary>
+        static Dictionary<string, long> Inserts(OrderedDict p, string list)
+        {
+            var d = new Dictionary<string, long>();
+            if (p.Get("list_inserts") is OrderedDict ins && ins.Get(list) is List<object> items)
+                foreach (List<object> pair in items)
+                    d[(string)pair[1]] = Convert.ToInt64(pair[0], CultureInfo.InvariantCulture);
+            return d;
+        }
+
+        /// <summary>
+        /// Moves each element the commit added to an identity-keyed list to the index the converter recorded
+        /// (list_inserts), lowest index first, so the list ends in the commit's order.
+        /// </summary>
+        static void PlaceInserted(SerializedObject so, string listPath, List<object> added, StepResult res)
+        {
+            var list = Walk(so, listPath, false, out var err);
+            if (list == null || !list.isArray) { res.Errors.Add("list_inserts " + listPath + ": " + err); return; }
+            int moved = 0;
+            foreach (List<object> pair in added.OrderBy(x => Convert.ToInt64(((List<object>)x)[0])))
+            {
+                int want = (int)Convert.ToInt64(pair[0], CultureInfo.InvariantCulture);
+                var sel = ((string)pair[1]).Trim('[', ']');
+                int eq = sel.IndexOf('=');
+                if (eq < 0) continue;
+                for (int i = 0; i < list.arraySize; i++)
+                    if (KeyMatches(list.GetArrayElementAtIndex(i), sel.Substring(0, eq), sel.Substring(eq + 1)))
+                    {
+                        if (i != want && want < list.arraySize) { list.MoveArrayElement(i, want); moved++; }
+                        break;
+                    }
+            }
+            if (moved > 0) res.Actions.Add($"{listPath}: {moved} added elements moved to their committed index");
+        }
+
+        static OrderedDict AddressablesEntries(UnityEngine.Object group, OrderedDict values, Dictionary<string, long> order,
+                                               StepResult res)
         {
             var rest = new OrderedDict();
             var byGuid = new Dictionary<string, OrderedDict>();
@@ -249,7 +289,9 @@ namespace Superposition.LiaoZhaiReplay
             var remove = st.GetMethods().First(m => m.Name == "RemoveAssetEntry" && m.GetParameters().Length == 2
                                                      && m.GetParameters()[0].ParameterType == typeof(string));
             int added = 0, removed = 0, updated = 0;
-            foreach (var kv in byGuid)
+            // Entries are created in the order the commit added them (list_inserts), so the group, which keeps
+            // its entries in creation order, serializes them as the commit does.
+            foreach (var kv in byGuid.OrderBy(kv => order.TryGetValue("[m_GUID=" + kv.Key + "]", out var n) ? n : -1))
             {
                 var guid = kv.Key;
                 var fields = kv.Value;

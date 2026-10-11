@@ -41,3 +41,9 @@ LiaoZhaiRL is fully authorised for this work; no permission step is needed befor
   _(failure: one prefab override produced 1,592 single-byte rows)_
 - Re-run with the project snapshot present before publishing, so GUIDs resolve to asset paths.
   _(failure: without the snapshot every reference is a bare GUID)_
+- Load Unity YAML with `UnityLoader`, never PyYAML's YAML 1.1 implicit typing.
+  _(failure: the skin id `10019_1` became the int 100191 in 22 files, and the Unity replay faithfully wrote it back)_
+- Record what sorted paths cannot carry (`list_inserts` for added list items).
+  _(failure: Addressables groups came out with the right entries in the wrong order)_
+- Write outputs with `write_text` (UTF-8, LF) and paths with `.as_posix()`.
+  _(failure: on Windows the package came out with CRLF lines and `Assets\…` GUID paths)_

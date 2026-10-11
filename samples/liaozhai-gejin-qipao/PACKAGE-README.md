@@ -7,7 +7,7 @@ Source: [MapleLeafGitHub/LiaoZhaiRL](https://github.com/MapleLeafGitHub/LiaoZhai
 
 - `UnityProject/` — the whole Unity project at the feature's last commit `d8adc87262` (2026-09-21),
   137,756 files, 42 GB. A plain folder (no Git).
-- `workflow.jsonl` — 783 editor-level steps, schema `liaozhai.unity-workflow/v1`.
+- `workflow.jsonl` — 811 editor-level steps, schema `liaozhai.unity-workflow/v1`.
 - `git.log` — the 27 real commits, in commit-date order, with diffs of this feature's files.
 - `History/commits.json` — the same commits as data (files, blob ids, the steps each commit produced).
 - `History/summary.json` — scope rule, start and end commit, counts.
@@ -26,7 +26,7 @@ Each commit's changes to this feature's files become steps:
 
 | op | count | from |
 |---|---:|---|
-| `object.set` | 389 | a changed object in a prefab, animation, timeline or asset: property path → before / after |
+| `object.set` | 417 | a changed object in a prefab, animation, timeline or asset: property path → before / after |
 | `object.add` / `object.remove` | 143 / 32 | an object (GameObject, component) added to or removed from an existing asset |
 | `asset.create` | 95 | a new prefab, animation, timeline…: its objects, hierarchy and references |
 | `asset.move` | 50 | a file renamed or moved |
@@ -35,7 +35,7 @@ Each commit's changes to this feature's files become steps:
 | `importer.set` | 1 | import settings changed alone |
 | `table.edit` | 1 | cells changed in an Excel config table, with column header and row key |
 
-By chapter: 特效 303, 预制体 230, 技能 Timeline 93, 动画 74, 贴图 30, 场景 21, 配置资产 12, 材质 10, 模型 8,
+By chapter: 特效 323, 预制体 238, 技能 Timeline 93, 动画 74, 贴图 30, 场景 21, 配置资产 12, 材质 10, 模型 8,
 配置表 1, 其他 1.
 
 Every step carries the commit's time, author and message (`reason`, verbatim). `depends_on` names the previous

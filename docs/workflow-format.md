@@ -55,7 +55,7 @@ Within a commit, steps are ordered: binaries and code first (by path), then YAML
 | `asset.import` / `asset.replace` | `binary_change` | `kind` (model, texture, audio, font, binary), `bytes`, `sha256`, `before_sha256`, `importer` (the `.meta` importer settings) |
 | `asset.create` | `unity_yaml_new_file` | `asset_type`, `objects`, `classes{}`, `game_objects[{path, components[]}]` (≤300), `references[]` (≤200), `sha256`, `bytes` |
 | `object.add` / `object.remove` | `unity_yaml_object_diff` | `object{class, class_id, file_id, game_object, script}`, `values` (add) |
-| `object.set` | `unity_yaml_object_diff` | `object`, `values{path: after}`, `before{path: before}`; >400 paths → `truncated`, `changed_paths_total` |
+| `object.set` | `unity_yaml_object_diff` | `object`, `values{path: after}`, `before{path: before}`, `list_inserts{list path: [[index, key], …]}` (when items were added to identity-keyed lists); >400 paths → `truncated`, `changed_paths_total` |
 | `prefab.override` | `unity_prefab_instance_diff` | `source_prefab`, `overrides_set[]`, `overrides_removed[]`, `other`; >20 element overrides of one array collapse to `{property: ….Array.data[*], changed_elements, sample}` |
 | `importer.set` | `unity_meta_diff` | importer settings changed without the asset changing |
 | `table.create` / `table.edit` | `table_cell_diff` | `cells[{sheet,row,col,column_header,row_key,before,after}]` (≤400), `cells_changed_total` |
@@ -67,6 +67,16 @@ one (`m_SerializeEntries[m_GUID=…]`, `m_Component[component=<fileID>]`), else 
 not shift every later item. References `{fileID, guid, type}` stay whole and gain `path` when the GUID resolves;
 `guid_paths` maps GUIDs that appear as plain text. `object.game_object` is the GameObject's hierarchy path
 (`Root/Child/…`), built from Transform parents.
+
+`values` and `before` list paths sorted, which loses the position of items added to identity-keyed lists; assets
+keep that order (an Addressables group's `m_SerializeEntries`, a GameObject's `m_Component`). `list_inserts` records
+it: for each such list, the added items' keys (spelled as in the paths) with their index in the new list, e.g.
+`{"m_SerializeEntries": [[185, "[m_GUID=00bf7c59…]"], [186, "[m_GUID=0116…]"], …]}`. Items that only moved are
+not recorded; index-keyed lists need nothing extra, since their paths carry the index.
+
+Scalars are typed the way Unity writes them, not by YAML 1.1 rules: ints are plain decimals without leading zeros
+(up to 20 digits), floats need a `.` or a 1–3 digit exponent, the empty value is null, and everything else, `true`,
+`on`, `10019_1`, `0123`, `-0`, `Infinity`, all-digit hashes, stays a string. (Unity writes bools as `0`/`1`.)
 
 ## `git.log`
 

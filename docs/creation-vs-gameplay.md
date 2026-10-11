@@ -13,7 +13,7 @@ games being **made**. Both involve 3D games; the difference is the task, not the
 | Speech / reasoning | written reason per step (often reconstructed) | commit message | microphone narration + transcripts |
 | Video | 4K editor screen at 15 fps; 1–2 min playtest without inputs | none yet | game at native resolution, 60 fps, plus system and mic audio |
 | Ground truth | finished project, code diffs, rebuildable | project at the end commit, real history | pixels and inputs only |
-| Length | one small game | one feature (e.g. 27 commits / 783 steps) | ≥ 7-minute sessions |
+| Length | one small game | one feature (e.g. 27 commits / 811 steps) | ≥ 7-minute sessions |
 
 Lab bundle (schema 3): `video.mkv` (H.264, native resolution, 60 fps, no audio), `system_audio.mka`,
 `microphone.mka`, `inputs.jsonl`, `metadata.json` (clock samples, `video_start_offset_ns`), `manifest.json`

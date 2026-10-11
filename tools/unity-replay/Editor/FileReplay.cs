@@ -38,6 +38,13 @@ namespace Superposition.LiaoZhaiReplay
             public string sha;
             public string time;
             public PlanFile[] files;
+            public TableExport table_export;   // the real 导表 export of this commit's table edit, if any
+        }
+
+        [Serializable]
+        public class TableExport
+        {
+            public string sha, message, path, before_blob, after_blob;
         }
 
         [Serializable]

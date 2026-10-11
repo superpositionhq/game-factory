@@ -65,6 +65,10 @@ namespace Superposition.LiaoZhaiReplay
                 EditorApplication.Exit(code);
                 return;
             }
+            // Import in the editor process, as batchmode does. With parallel import workers, a refresh inside the
+            // replay waited forever after two workers dropped their connection (TcpMessagingSession receive error).
+            // This session-only switch does not touch ProjectSettings/EditorSettings.asset.
+            AssetDatabase.ActiveRefreshImportMode = AssetDatabase.RefreshImportMode.InProcess;
             // No project scene stays open: the replay writes scene files, and the editor would stop on a modal
             // "modified externally" dialog for an open one.
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -252,10 +256,17 @@ namespace Superposition.LiaoZhaiReplay
                     Debug.Log("[LiaoZhaiReplay] final " + MiniJson.Write(fin["counts"]));
                 }
             }
-            if (handshake != null)
-                File.WriteAllText(Path.Combine(handshake, "done"), Unix().ToString("F3"));
             exitCode = failures == 0 ? 0 : 2;
-            if (visible) yield return 2f;   // let the recorder catch the last frame
+            if (handshake != null)
+            {
+                // Keep the window alive until the recorder has stopped: ffmpeg's window capture hangs (and leaves
+                // an unfinished file) when its window disappears first.
+                yield return 2f;
+                File.WriteAllText(Path.Combine(handshake, "done"), Unix().ToString("F3"));
+                var t0 = Unix();
+                while (!File.Exists(Path.Combine(handshake, "stopped")) && Unix() - t0 < 120)
+                    yield return 0.25f;
+            }
         }
 
         /// <summary>
@@ -324,7 +335,7 @@ namespace Superposition.LiaoZhaiReplay
         }
 
         static bool IsImport(string op) =>
-            op == "asset.create" || op == "asset.import" || op == "asset.replace" || op.StartsWith("table.")
+            op == "asset.create" || op == "asset.import" || op == "asset.replace" || op == "table.create"
             || op == "code.change" || op == "file.edit";
 
         static bool CreatedHere(List<OrderedDict> steps, string asset) =>
@@ -348,6 +359,7 @@ namespace Superposition.LiaoZhaiReplay
                 case "object.remove": res.Mode = "api"; StepOps.ObjectRemove(step, res); break;
                 case "prefab.override": res.Mode = "api"; StepOps.PrefabOverride(step, res); break;
                 case "importer.set": res.Mode = "api"; StepOps.ImporterSet(step, res); break;
+                case "table.edit": res.Mode = "api"; TableOps.TableEdit(step, commit.table_export, res); break;
                 case "asset.delete": res.Mode = "api"; StepOps.AssetDelete(step, res); break;
                 case "asset.move":
                     res.Mode = "api";
@@ -377,7 +389,7 @@ namespace Superposition.LiaoZhaiReplay
                         metaDone.Add(m.path);
                     }
                     StepOps.ImportFile(target, file.blob, metaBlob, res);
-                    if (op == "table.edit" || op == "table.create")
+                    if (op == "table.create")
                         res.Actions.Add("cells not edited through Excel; the project's 导表 export was not run (see docs)");
                     break;
             }
@@ -388,8 +400,13 @@ namespace Superposition.LiaoZhaiReplay
                                     Dictionary<string, string> fallback, string mismatchDir)
         {
             AssetDatabase.SaveAssets();
-            if (EditorSceneManager.GetActiveScene().isDirty)
-                EditorSceneManager.SaveOpenScenes();
+            // Only scenes that are files: saving the empty untitled scene would open a modal "Save Scene" dialog.
+            for (int i = 0; i < UnityEngine.SceneManagement.SceneManager.sceneCount; i++)
+            {
+                var sc = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i);
+                if (sc.isDirty && !string.IsNullOrEmpty(sc.path))
+                    EditorSceneManager.SaveScene(sc);
+            }
             if (!string.IsNullOrEmpty(EditorSceneManager.GetActiveScene().path))
             {
                 // Close scenes the API steps opened before files are verified and restored on disk.
@@ -402,7 +419,7 @@ namespace Superposition.LiaoZhaiReplay
                 var ops = g.Select(s => (string)s.Get("op")).ToList();
                 modeOf[g.Key] = fallback.ContainsKey(g.Key) ? "file_fallback"
                               : ops.All(o => o.StartsWith("asset.c") || o.StartsWith("asset.i") || o == "asset.replace"
-                                             || o.StartsWith("table.") || o == "code.change" || o == "file.edit")
+                                             || o == "table.create" || o == "code.change" || o == "file.edit")
                                   ? "import" : "api";
             }
             var files = new List<object>();

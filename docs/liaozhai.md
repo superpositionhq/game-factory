@@ -79,7 +79,7 @@ Then `UnityProject/.git` removed and `git worktree prune`d, so it is a plain fol
 
 Final package (2026-10-11), converter run 3 minutes with the snapshot present:
 
-- 783 steps (same as the test run); 72,045 GUIDs indexed from `.meta` files; 393 references resolved to asset
+- 783 steps (same as the test run; 811 after the rebuild below); 72,045 GUIDs indexed from `.meta` files; 393 references resolved to asset
   paths; 14 distinct GUIDs point outside the repository (most likely Unity package scripts in
   `Library/PackageCache`; unverified).
 - `depends_on`: 516 steps with one dependency, 229 with none, 36 with 2–8, 2 with 72.
@@ -88,6 +88,15 @@ Final package (2026-10-11), converter run 3 minutes with the snapshot present:
 - `UnityProject.manifest.jsonl` (30 MB, 137,756 entries) and `manifest.json` written; package README added.
 - 28 of the 51 Excel tables in `墨境导表文件夹/` carry a person's name in `creator` / `lastModifiedBy`
   (including `形态皮肤_PlayerSkins.xlsx`); left as committed, to be cleared in any copy that leaves.
+
+Rebuild (2026-10-11, Windows, after the Unity replay traced mismatches to the converter; `docs/unity-replay.md`):
+
+- Unity-faithful YAML typing (`UnityLoader`): 811 steps instead of 783. The 28 new steps are `object.set` in c022
+  (`m_LocalPosition.x/y: -0 → 0`); YAML 1.1 read both sides as the int 0, so these byte changes were invisible.
+  `10019_1` (a skin id in `skinNames`, `SkinType`, `HongHuang_10_Material_SkinName`) is no longer the int 100191.
+- `list_inserts` on 131 `object.set` steps (`m_Component` 102, `HongHuang_10_Material_Skin` 16, `m_Materials` 7,
+  Addressables `m_SerializeEntries` 6).
+- Runs on Windows without a wrapper: LF output, forward-slash GUID paths. 12 min with the snapshot.
 
 ## Rights
 
