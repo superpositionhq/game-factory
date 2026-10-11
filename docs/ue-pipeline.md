@@ -11,7 +11,8 @@ through Enhanced Input, see [autoplay-contract.md](autoplay-contract.md)) as gam
 | `pipeline.ps1 <game> [-Runs k] [-Levels 1,2] [-Commit rev]` | build → package → smoke → record k runs per level; row in `pipeline.jsonl` |
 | `pipeline.ps1 -Nightly` / `-DrainQueue` | all games with a milestone tag / requests from `enqueue.ps1` |
 | `enqueue.ps1 <game> [-Runs k] [-Levels ..]` | queue a pipeline run and return at once (for game sessions) |
-| `validate-run.ps1 <RecordDir>` | contract check of one raw run directory (for game sessions testing by hand) |
+| `validate-run.ps1 <OutputDir>` | contract check of one raw run directory (for game sessions testing by hand) |
+| `scrub-history.ps1 <game> [-Apply]` | archive, then remove the names Superposition/game-factory from a finished game's history; dry run by default |
 | `sync-check.ps1 <bundle>` | measures video/audio lag against telemetry sync markers (pipeline test project) |
 | `autoplay/AutoPlaySubsystem.h/.cpp` | the drop-in C++ every game copies (contract implementation) |
 
@@ -60,7 +61,7 @@ this engine install. The recorded game itself is the packaged exe, which has no 
    LFS files are checked out as pointers (`GIT_LFS_SKIP_SMUDGE=1`) and copied from the game repo's own
    `.git\lfs\objects` store, so nothing is downloaded and the game repo is only read. Uncommitted work is not built.
 3. `Engine\Build\BatchFiles\Build.bat <Project>Editor Win64 Development -Project=<uproject> -WaitMutex -NoHotReloadFromIDE`
-4. With `-Package`: `RunUAT.bat BuildCookRun -project=<uproject> -target=<Project> -noP4 -platform=Win64
+4. With `-Package`: `RunUAT.bat -WaitForUATMutex BuildCookRun -project=<uproject> -target=<Project> -noP4 -platform=Win64
    -clientconfig=Development -build -cook -stage -pak -archive -archivedirectory=<out> -nocompileeditor -unattended -utf8output`
 5. With `-Smoke`: if the game's Source contains an automation test named `<Project>.Smoke…`,
    `UnrealEditor-Cmd.exe <uproject> -ExecCmds="Automation RunTests <Project>.Smoke; Quit" -TestExit="Automation Test Queue Empty"
@@ -73,19 +74,35 @@ this engine install. The recorded game itself is the packaged exe, which has no 
 
 ## record.ps1
 
+Before the runs, the packaged build is mirrored (robocopy /MIR) into a stable `builds\<game>\_run\` and launched
+from there (`-NoStablePath` turns this off). UE's trace runtime listens on a TCP port (`TraceLog` control, 0.0.0.0,
+port 1985 or random; no runtime switch) in Development builds, and Windows Firewall asks once per program path:
+a fixed path per game means one prompt per game instead of one per build.
+
 Per run (seed = `-Seed + i`, or random; skill = `-Skill`, or cycling 1.0 / 0.75 / 0.5 / 0.25):
 
-1. Launch `Windows\<Project>\Binaries\Win64\<Project>.exe` (the real binary, so our PID owns the window) with the
-   contract flags plus `-windowed -ResX=1920 -ResY=1080 -WinX=200 -WinY=150
+0. **Wait until the user is away** (user's decision): no keyboard/mouse input for `-IdleMinutes` (default 5;
+   `GetLastInputInfo`; the game's injected input doesn't count) and the session unlocked. During the run the display
+   is kept on (`SetThreadExecutionState`, like a video player; no settings change).
+1. Launch `_run\Windows\<Project>\Binaries\Win64\<Project>.exe` (the real binary, so our PID owns the window) with the
+   contract flags plus `-GoTimeout=300 -windowed -ResX=1920 -ResY=1080 -WinX=200 -WinY=150
    -ini:Engine:[/Script/Engine.UserInterfaceSettings]:bAllowHighDPIInGameMode=True -nosplash -abslog=<raw>\game.log`.
    - The display runs at 150 % scaling. Without `bAllowHighDPIInGameMode` a UE game is DPI-unaware and Windows
      stretches its 1920x1080 frame to a 2880x1620 window. The ini override fixes that without touching the games.
    - **Never pass `-unattended`**: UE skips setting DPI awareness when unattended (`FWindowsPlatformApplicationMisc::SetHighDPIMode`).
-2. Wait for `ready.json`, find the window by PID, make it topmost (not activated), check the client area is exactly
-   1920x1080 and fully on screen (physical pixels; the script is per-monitor DPI aware).
-3. Start ffmpeg on that screen rectangle, wait for 30 captured frames, write `go`.
-4. Wait for `outcome.json` (written while the result screen is still up), **stop ffmpeg before the window closes**
-   (so nothing behind it is ever captured), wait for the game to quit. Kill after `MaxSeconds + 90 s`.
+2. Wait for `ready.json`, find the window by PID, move it so the client area is at (40,80) (games re-center their
+   window), make it topmost (not activated), check the client area is exactly 1920x1080 and fully on screen
+   (physical pixels; the script is per-monitor DPI aware). If anything covers it (e.g. a first-run Firewall prompt),
+   wait up to 240 s for it to clear.
+3. Start ffmpeg on that screen rectangle, wait for 30 captured frames, write `go`. Each capture attempt has its own
+   files (`video.<mode>.mkv`, `raw\ffmpeg-<mode>.log`); a failed attempt is kept as `raw\failed-attempt-<mode>.mkv`.
+4. Watch every 100 ms until `outcome.json` appears (written while the result screen is still up).
+   **Privacy guard:** if the window moves, or another window covers its client area for ≥ 0.3 s (5x5 point test with
+   `WindowFromPoint`; shorter blips are tooltips/ghost windows), ffmpeg is stopped at once, the game killed, the run
+   failed, and the video cut to 0.5 s before the first sighting (`-c copy -t`). The problem names the covering window;
+   moves are logged in `raw\window.jsonl` with whether a mouse button was held (user drag). A client-size change or a
+   minimized window also fails the run. **Stop ffmpeg before the window closes** (so nothing behind it is ever
+   captured), wait for the game to quit. Kill after `MaxSeconds + 90 s`.
 5. Validate and write the bundle (below), even for failed runs.
 
 ### Capture command (verified on this machine)
@@ -133,6 +150,10 @@ Fallbacks (`-Capture`), measured on the test project: `gdigrab-region` (`-f gdig
 -offset_y -video_size 1920x1080 -i desktop`) captures real content but only ~44 fps (24 % duplicates);
 `gdigrab-window` (`-i title="<Project> [AutoPlay]"`) ~56 fps (8 % duplicates, 23 % gap time). Both fail validation,
 so they are for emergencies; `auto` tries ddagrab first and gdigrab-region only if ddagrab can't start.
+
+`-Capture gfxcapture` (Windows.Graphics.Capture of the game window by `hwnd`, ffmpeg 8 `gfxcapture` filter) would avoid
+the screen-region problems (other windows never reach the video, no topmost needed), but on this machine it delivered
+2–6 frames/s for an unfocused game window and its timestamps don't fit the start-time estimate, so it is opt-in only.
 
 ### Measured quality (pipeline test project, machine busy with six game sessions)
 
@@ -182,7 +203,7 @@ rather than raw `key_down`/`mouse_move`; `edge` down/up maps onto key down/up wh
 | outcome | missing, bad `result`, `go_timed_out` | result `abort` |
 | inputs | no `inject` rows, unparseable lines, `t_ns` going backwards | |
 | telemetry | missing `run_start`/`level_start`/`level_end`/`run_end`, unparseable lines | |
-| audio | missing, or WAV duration doesn't fit the recorded span (start lag outside −30…1500 ms) | silent (max < −60 dB) |
+| audio | missing, or WAV duration doesn't fit the recorded span (start lag outside −30…10000 ms; the lag is the level load) | silent (max < −60 dB) |
 | video | not 1920x1080, no frames, ffmpeg dup > 5 % of output frames, video longer than the capture span by ≥ 0.5 s or shorter by ≥ 2 s, doesn't cover level_start..level_end, start time not estimable | dup > 1 %, capture gaps > 2 % of level frames, game < 55 fps, video ends 0.5–2 s before the stop, display not 60/120 Hz |
 | process | game exit code ≠ 0, killed at timeout, window moved, ffmpeg died | |
 
@@ -212,6 +233,51 @@ It records every game under `games\` (not `_*`) whose HEAD has a `milestone/auto
 skipping commits already recorded. If the session is locked (`LogonUI` running) recording is skipped and the
 pipeline row says so; the display must not be asleep either.
 
+## Names that must not reach the games
+
+User's rule: the names **Superposition** and **game-factory** must not appear in a game (repo files, code, commit
+messages, builds, logs, in-game files, anything passed to the game process). Recording/workflow traces are fine and
+`workflow.jsonl` stays in the game repos.
+
+- Flags passed to the game: `-AutoPlay -Level -Seed -Skill -OutputDir|-RecordDir -MaxSeconds -BuildCommit -RunId
+  -GoTimeout`, window/ini/log flags; paths under `C:\Users\Xiang\Work\recordings\` and `builds\`. None contain the names.
+  build.ps1 records `autoplay_version` (the drop-in's `ContractVersion`) in `build_info.json`; record.ps1 passes
+  `-OutputDir` to v2 (contract v1.2) games and `-RecordDir` to v1 games (v2 accepts both).
+- `build_info.json` (next to the packaged build) uses the schema `ue-build/1`.
+- The pipeline's own files (`.recording\*.jsonl`, bundle `metadata.json`, docs) may name things freely.
+- Game-side leaks found on 2026-10-11 (for the game sessions): `CompanyName=Superposition` in most
+  `Config/DefaultGame.ini` (it also becomes the packaged exe's "Publisher"), descriptions/copyright notices in
+  `DefaultGame.ini` and `.uproject`, `superposition.ue-workflow/v0` and `superposition.asset-manifest/v0` schema strings
+  in scripts, `workflow.jsonl` and `assets.manifest.json`, `...\game-factory\...` paths, v1 drop-in copies, and the
+  author e-mail `dev_02@game-factory.local` (rally-racer).
+
+## scrub-history.ps1 (finished games only; not run on any game yet)
+
+```
+powershell -ExecutionPolicy Bypass -File scrub-history.ps1 <game>                  # dry run (default)
+powershell -ExecutionPolicy Bypass -File scrub-history.ps1 <game> -Apply
+powershell -ExecutionPolicy Bypass -File scrub-history.ps1 <game> -ReplaceMap names.json -Apply   # own replacements
+```
+
+- Replaces only the two names, everywhere in history: text file contents of every commit (all versions of
+  `workflow.jsonl`, scripts, configs, manifests...), commit messages, author/committer names and e-mails. Nothing is
+  dropped; workflow.jsonl and all record files stay. Default replacements, in order: the schema prefix
+  `superposition.` is removed (`superposition.ue-workflow/v0` → `ue-workflow/v0`), then Superposition → Studio and
+  game-factory → studio-tools, case-preserving (`-ReplaceMap` JSON `[{"match": perl-regex, "replace": text}]` overrides).
+- Binary blobs and Git LFS content (uassets live outside git) are never edited; the dry run lists binary blobs and HEAD's
+  LFS files that contain a name (ASCII or UTF-16) so they can be fixed in the editor.
+- Dry run prints: session activity, how many text blobs/paths/occurrences, before → after samples from HEAD, commit
+  messages and identities affected (with their replacement), ref names, binary/LFS hits.
+- Refuses while the game's session looks active (`.recording\<game>\actions.jsonl` written within `-QuietMinutes`,
+  default 120), while an editor has the project open, or with uncommitted changes.
+- Before rewriting: `git bundle create --all` → `.recording\<game>\original-history\<game>-<stamp>.bundle`, verified
+  (`git bundle verify` + every ref present), refs listed in `<stamp>-refs.txt`, `.git\lfs\objects` copied alongside.
+- Rewrite: new blobs are written once (`git hash-object -w`) and mapped per commit with `git filter-branch
+  --index-filter "git ls-files -s | remap | git update-index --index-info"`, plus `--msg-filter`, `--env-filter` and
+  `--tag-name-filter cat -- --all` (Git's perl; git filter-repo would need Python). Then `refs/original/` is removed
+  and every reachable text blob, message and identity is re-scanned. Never pushes, never runs `git gc`.
+- Tested on a throwaway clone of rally-racer: 23 text blobs in 9 paths (4651 occurrences) and 12 author identities
+  rewritten; afterwards 0 hits in any commit (independent `git grep` over all commits), `workflow.jsonl` still tracked.
 ## Pipeline test project
 
 `games\_pipeline-test` (not data): UE 5.3 Third Person C++ template + the AutoPlay drop-in + a test bot that walks,
@@ -222,7 +288,7 @@ turns and jumps via Enhanced Input for 20 s (`-TestRunSeconds=n`), beeps (proced
 ## Machine notes
 
 - Display 3840x2160 at 150 % scaling, 159 Hz; vsync off + `t.MaxFPS 60` in the game keeps the game at 60 fps.
-- The game window sits topmost at (200,150) for the run; anything else made topmost on top of it would be captured.
+- The game window sits topmost with its client area at (40,80) for the run (top-left of the 4K screen). Runs start only after 5 min without user input; if you come back mid-run, leave the window alone (moving or covering it stops the run safely).
   Its audio plays on the speakers during runs.
 
 ## Open items

@@ -1,4 +1,4 @@
-// AutoPlay recorder: see AutoPlaySubsystem.h and docs/autoplay-contract.md (contract v1).
+// AutoPlay: see AutoPlaySubsystem.h.
 #include "AutoPlaySubsystem.h"
 
 #include "AudioMixerBlueprintLibrary.h"
@@ -158,7 +158,7 @@ FString UAutoPlaySubsystem::ClockSample(const TCHAR* Label) const
 
 FString UAutoPlaySubsystem::HeaderFields() const
 {
-	return FString::Printf(TEXT("\"contract_version\":%d,\"game\":%s,\"run_id\":%s,\"level\":%d,\"seed\":%d,\"skill\":%s,\"max_seconds\":%s,\"qpc_frequency\":%llu,\"build_commit\":%s"),
+	return FString::Printf(TEXT("\"autoplay_version\":%d,\"game\":%s,\"run_id\":%s,\"level\":%d,\"seed\":%d,\"skill\":%s,\"max_seconds\":%s,\"qpc_frequency\":%llu,\"build_commit\":%s"),
 		ContractVersion, *JsonStr(FApp::GetProjectName()), *JsonStr(RunId), Level, Seed, *JsonNum(Skill), *JsonNum(MaxSeconds),
 		QpcFrequency(), *JsonStr(BuildCommit));
 }
@@ -174,7 +174,7 @@ void UAutoPlaySubsystem::WriteLine(FArchive* Ar, const FString& Line)
 
 void UAutoPlaySubsystem::WriteTextFile(const TCHAR* Name, const FString& Text) const
 {
-	FFileHelper::SaveStringToFile(Text, *(RecordDir / Name), FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+	FFileHelper::SaveStringToFile(Text, *(OutputDir / Name), FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 }
 
 void UAutoPlaySubsystem::SetCVar(const TCHAR* Name, const TCHAR* Value)
@@ -224,22 +224,25 @@ void UAutoPlaySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	float Seconds = 0.f;
 	if (FParse::Value(Cmd, TEXT("MaxSeconds="), Seconds)) { MaxSeconds = Seconds; }
 	if (FParse::Value(Cmd, TEXT("GoTimeout="), Seconds)) { GoTimeout = Seconds; }
-	FParse::Value(Cmd, TEXT("RecordDir="), RecordDir);
+	if (!FParse::Value(Cmd, TEXT("OutputDir="), OutputDir))
+	{
+		FParse::Value(Cmd, TEXT("RecordDir="), OutputDir); // v1 name, still accepted
+	}
 	FParse::Value(Cmd, TEXT("BuildCommit="), BuildCommit);
 	FParse::Value(Cmd, TEXT("RunId="), RunId);
 	bAllowHardwareInput = FParse::Param(Cmd, TEXT("AutoPlayAllowInput"));
 
-	if (RecordDir.IsEmpty())
+	if (OutputDir.IsEmpty())
 	{
-		RecordDir = FPaths::ProjectSavedDir() / TEXT("AutoPlay") / FDateTime::Now().ToString(TEXT("%Y%m%d-%H%M%S"));
+		OutputDir = FPaths::ProjectSavedDir() / TEXT("AutoPlay") / FDateTime::Now().ToString(TEXT("%Y%m%d-%H%M%S"));
 	}
-	RecordDir = FPaths::ConvertRelativePathToFull(RecordDir);
-	IFileManager::Get().MakeDirectory(*RecordDir, true);
+	OutputDir = FPaths::ConvertRelativePathToFull(OutputDir);
+	IFileManager::Get().MakeDirectory(*OutputDir, true);
 
-	InputsAr.Reset(IFileManager::Get().CreateFileWriter(*(RecordDir / TEXT("inputs.jsonl"))));
-	TelemetryAr.Reset(IFileManager::Get().CreateFileWriter(*(RecordDir / TEXT("telemetry.jsonl"))));
-	WriteLine(InputsAr.Get(), FString::Printf(TEXT("{%s,\"type\":\"header\",\"schema\":\"superposition.autoplay-inputs/v1\",%s}"), *Stamp(), *HeaderFields()));
-	WriteLine(TelemetryAr.Get(), FString::Printf(TEXT("{%s,\"event\":\"header\",\"schema\":\"superposition.autoplay-telemetry/v1\",%s}"), *Stamp(), *HeaderFields()));
+	InputsAr.Reset(IFileManager::Get().CreateFileWriter(*(OutputDir / TEXT("inputs.jsonl"))));
+	TelemetryAr.Reset(IFileManager::Get().CreateFileWriter(*(OutputDir / TEXT("telemetry.jsonl"))));
+	WriteLine(InputsAr.Get(), FString::Printf(TEXT("{%s,\"type\":\"header\",\"schema\":\"autoplay-inputs/1\",%s}"), *Stamp(), *HeaderFields()));
+	WriteLine(TelemetryAr.Get(), FString::Printf(TEXT("{%s,\"event\":\"header\",\"schema\":\"autoplay-telemetry/1\",%s}"), *Stamp(), *HeaderFields()));
 	ClockSamples.Add(ClockSample(TEXT("start")));
 
 	FMath::RandInit(Seed);
@@ -248,7 +251,7 @@ void UAutoPlaySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	Phase = EPhase::Boot;
 	TickHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &UAutoPlaySubsystem::CoreTick));
 	PostTickHandle = FWorldDelegates::OnWorldPostActorTick.AddUObject(this, &UAutoPlaySubsystem::OnPostActorTick);
-	UE_LOG(LogTemp, Display, TEXT("AutoPlay: level %d seed %d skill %.2f max %.0fs dir %s"), Level, Seed, Skill, MaxSeconds, *RecordDir);
+	UE_LOG(LogTemp, Display, TEXT("AutoPlay: level %d seed %d skill %.2f max %.0fs dir %s"), Level, Seed, Skill, MaxSeconds, *OutputDir);
 }
 
 void UAutoPlaySubsystem::Deinitialize()
@@ -266,7 +269,7 @@ void UAutoPlaySubsystem::Deinitialize()
 			// Quit before the run finished (crash path, window closed): keep what we have.
 			Telemetry(TEXT("run_aborted"), FString::Printf(TEXT("\"phase\":%d"), (int32)Phase));
 			ClockSamples.Add(ClockSample(TEXT("end")));
-			WriteTextFile(TEXT("clock.json"), FString::Printf(TEXT("{\"schema\":\"superposition.autoplay-clock/v1\",\"qpc_frequency\":%llu,\"t_ns_definition\":\"qpc * 1e9 / qpc_frequency\",\"samples\":[%s]}\n"),
+			WriteTextFile(TEXT("clock.json"), FString::Printf(TEXT("{\"schema\":\"autoplay-clock/1\",\"qpc_frequency\":%llu,\"t_ns_definition\":\"qpc * 1e9 / qpc_frequency\",\"samples\":[%s]}\n"),
 				QpcFrequency(), *FString::Join(ClockSamples, TEXT(","))));
 		}
 		InputsAr.Reset();
@@ -298,7 +301,7 @@ void UAutoPlaySubsystem::EnforceWindowAndInput()
 	}
 	if (!bAllowHardwareInput && VC->GetMouseCaptureMode() != EMouseCaptureMode::NoCapture)
 	{
-		// Never trap the desktop cursor: the machine is shared while runs are recorded.
+		// Never trap the desktop cursor while the bot plays.
 		VC->SetMouseCaptureMode(EMouseCaptureMode::NoCapture);
 		VC->SetMouseLockMode(EMouseLockMode::DoNotLock);
 		if (FSlateApplication::IsInitialized())
@@ -346,7 +349,7 @@ bool UAutoPlaySubsystem::CoreTick(float DeltaTime)
 				Settings->ApplyResolutionSettings(false);
 			}
 			GEngine->Exec(World, TEXT("scalability 3"));
-			ReadyAt = Now + 1.0; // let the window settle before the pipeline measures it
+			ReadyAt = Now + 1.0; // let the window settle before ready.json is written
 		}
 		else if (Now >= ReadyAt)
 		{
@@ -364,7 +367,7 @@ bool UAutoPlaySubsystem::CoreTick(float DeltaTime)
 		if (Now >= NextGoPoll)
 		{
 			NextGoPoll = Now + 0.05;
-			const bool bGo = FPaths::FileExists(RecordDir / TEXT("go"));
+			const bool bGo = FPaths::FileExists(OutputDir / TEXT("go"));
 			if (bGo || Now >= PhaseDeadline)
 			{
 				BeginRun(!bGo);
@@ -383,7 +386,7 @@ bool UAutoPlaySubsystem::CoreTick(float DeltaTime)
 		break;
 	case EPhase::Exporting:
 	{
-		const int64 Size = IFileManager::Get().FileSize(*(RecordDir / TEXT("audio.wav")));
+		const int64 Size = IFileManager::Get().FileSize(*(OutputDir / TEXT("audio.wav")));
 		if (Size != LastAudioSize) { LastAudioSize = Size; AudioStableSince = Now; }
 		if (Size > 44 && Now - AudioStableSince >= 0.5) { FinalizeAndQuit(true); }
 		else if (Now >= PhaseDeadline) { FinalizeAndQuit(Size > 44); }
@@ -460,7 +463,7 @@ void UAutoPlaySubsystem::FinishRun(const FString& InResult, double FinalScore, c
 
 void UAutoPlaySubsystem::StartExport()
 {
-	UAudioMixerBlueprintLibrary::StopRecordingOutput(GetGameWorld(), EAudioRecordingExportType::WavFile, TEXT("audio"), RecordDir, nullptr, nullptr);
+	UAudioMixerBlueprintLibrary::StopRecordingOutput(GetGameWorld(), EAudioRecordingExportType::WavFile, TEXT("audio"), OutputDir, nullptr, nullptr);
 	ClockSamples.Add(ClockSample(TEXT("audio_stop")));
 
 	const uint64 EndQpc = LevelEndQpc ? LevelEndQpc : Qpc();
@@ -468,7 +471,7 @@ void UAutoPlaySubsystem::StartExport()
 	const double Duration = (double)(EndQpc - StartQpc) / (double)QpcFrequency();
 	const double RunDuration = (double)(EndQpc - GoQpc) / (double)QpcFrequency();
 	WriteTextFile(TEXT("outcome.json"), FString::Printf(
-		TEXT("{\"schema\":\"superposition.autoplay-outcome/v1\",%s,\"level_name\":%s,\"result\":%s,\"score\":%s,")
+		TEXT("{\"schema\":\"autoplay-outcome/1\",%s,\"level_name\":%s,\"result\":%s,\"score\":%s,")
 		TEXT("\"duration_s\":%s,\"run_duration_s\":%s,\"go_qpc\":%llu,\"level_start_qpc\":%llu,\"level_end_qpc\":%llu,")
 		TEXT("\"frames\":%llu,\"inputs_injected\":%lld,\"go_timed_out\":%s,\"build_config\":%s,\"engine_version\":%s,\"extra\":{%s}}\n"),
 		*HeaderFields(), *JsonStr(LevelName), *JsonStr(Result), *JsonNum(Score),
@@ -485,7 +488,7 @@ void UAutoPlaySubsystem::StartExport()
 void UAutoPlaySubsystem::FinalizeAndQuit(bool bAudioOk)
 {
 	ClockSamples.Add(ClockSample(TEXT("end")));
-	WriteTextFile(TEXT("clock.json"), FString::Printf(TEXT("{\"schema\":\"superposition.autoplay-clock/v1\",\"qpc_frequency\":%llu,\"t_ns_definition\":\"qpc * 1e9 / qpc_frequency\",\"samples\":[%s]}\n"),
+	WriteTextFile(TEXT("clock.json"), FString::Printf(TEXT("{\"schema\":\"autoplay-clock/1\",\"qpc_frequency\":%llu,\"t_ns_definition\":\"qpc * 1e9 / qpc_frequency\",\"samples\":[%s]}\n"),
 		QpcFrequency(), *FString::Join(ClockSamples, TEXT(","))));
 	Telemetry(TEXT("run_end"), FString::Printf(TEXT("\"audio_ok\":%s"), bAudioOk ? TEXT("true") : TEXT("false")));
 	InputsAr.Reset();

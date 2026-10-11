@@ -236,6 +236,50 @@ public static class Win {
         return SetWindowPos(h, new IntPtr(on ? -1 : -2), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010);
     }
     public static int[] PrimaryScreenSize() { return new int[] { GetSystemMetrics(0), GetSystemMetrics(1) }; }
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+    [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(POINT p);
+    [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint flags);
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+    /// <summary>True when a 5x5 grid of points over the client area all hit this window (nothing covers it).</summary>
+    public static bool IsClientUncovered(IntPtr h) {
+        int[] c = ClientRectOnScreen(h); if (c == null) return false;
+        for (int i = 0; i < 5; i++) for (int j = 0; j < 5; j++) {
+            POINT p = new POINT(); p.X = c[0] + 4 + (c[2] - 8) * i / 4; p.Y = c[1] + 4 + (c[3] - 8) * j / 4;
+            if (GetAncestor(WindowFromPoint(p), 2) != h) return false;   // GA_ROOT
+        }
+        return true;
+    }
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder sb, int n);
+    [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vk);
+    [StructLayout(LayoutKind.Sequential)] struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
+    [DllImport("user32.dll")] static extern bool GetLastInputInfo(ref LASTINPUTINFO lii);
+    [DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint flags);
+    /// <summary>Milliseconds since the last real keyboard/mouse input in this session (injected UE input doesn't count).</summary>
+    public static uint IdleMs() { var l = new LASTINPUTINFO(); l.cbSize = 8; GetLastInputInfo(ref l); return (uint)Environment.TickCount - l.dwTime; }
+    /// <summary>Keep the display and system awake while recording (ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED); false = release.</summary>
+    public static void KeepDisplayOn(bool on) { SetThreadExecutionState(on ? 0x80000003u : 0x80000000u); }
+    /// <summary>True while the left or right mouse button is held (a window move then is most likely a user drag).</summary>
+    public static bool MouseButtonDown() { return (GetAsyncKeyState(0x01) & 0x8000) != 0 || (GetAsyncKeyState(0x02) & 0x8000) != 0; }
+    /// <summary>Describes the first window found over the client area ("" when uncovered): title, class, process id.</summary>
+    public static string CoveringWindow(IntPtr h) {
+        int[] c = ClientRectOnScreen(h); if (c == null) return "no client rect";
+        for (int i = 0; i < 5; i++) for (int j = 0; j < 5; j++) {
+            POINT p = new POINT(); p.X = c[0] + 4 + (c[2] - 8) * i / 4; p.Y = c[1] + 4 + (c[3] - 8) * j / 4;
+            IntPtr root = GetAncestor(WindowFromPoint(p), 2);
+            if (root != h) {
+                uint pid; GetWindowThreadProcessId(root, out pid);
+                var cls = new StringBuilder(256); GetClassName(root, cls, 256);
+                return "'" + Title(root) + "' class " + cls.ToString() + " pid " + pid + " at " + p.X + "," + p.Y;
+            }
+        }
+        return "";
+    }
+    /// <summary>Move the window so its client area's top-left lands at (x, y); size and z-order unchanged.</summary>
+    public static bool MoveClientTo(IntPtr h, int x, int y) {
+        RECT w; if (!GetWindowRect(h, out w)) return false;
+        int[] c = ClientRectOnScreen(h); if (c == null) return false;
+        return SetWindowPos(h, IntPtr.Zero, w.Left + (x - c[0]), w.Top + (y - c[1]), 0, 0, 0x0001 | 0x0004 | 0x0010);   // NOSIZE|NOZORDER|NOACTIVATE
+    }
     public static long QpcFrequency() { long f; QueryPerformanceFrequency(out f); return f; }
     public static long Qpc() { long c; QueryPerformanceCounter(out c); return c; }
     /// <summary>QPC before, UTC as FILETIME (100 ns since 1601), QPC after.</summary>

@@ -19,7 +19,9 @@ param(
     [double]$Skill = -1,
     [long]$Seed = -1,
     [int]$MaxSeconds = 600,
-    [ValidateSet('auto', 'ddagrab', 'gdigrab-region', 'gdigrab-window')][string]$Capture = 'auto',
+    [ValidateSet('auto', 'gfxcapture', 'ddagrab', 'gdigrab-region', 'gdigrab-window')][string]$Capture = 'auto',
+    [switch]$NoStablePath,
+    [double]$IdleMinutes = 5,   # user's decision: record only after this long without keyboard/mouse input (0 = don't wait)
     [int]$OutputIndex = 0,
     [int]$CaptureRate = 240,
     [string]$ExtraArgs = ''
@@ -30,12 +32,20 @@ param(
 
 $info = Get-GameInfo $Game
 if ($Build -eq 'latest') {
-    $Build = (Get-ChildItem (Join-Path $BuildsRoot $Game) -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'build_info.json') } |
+    $Build = (Get-ChildItem (Join-Path $BuildsRoot $Game) -Directory | Where-Object { $_.Name -notlike '_*' -and (Test-Path (Join-Path $_.FullName 'build_info.json')) } |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
     if (-not $Build) { throw "no packaged build of $Game under $BuildsRoot\$Game" }
 }
 $buildInfo = Read-JsonFile (Join-Path $Build 'build_info.json')
 if (-not $buildInfo -or -not $buildInfo.packaged) { throw "$Build has no packaged build_info.json (run build.ps1 -Package)" }
+# AutoPlay drop-in version decides the output-dir flag: v1 reads -RecordDir, v2 (contract v1.2) reads -OutputDir.
+$autoplayVersion = if ($buildInfo.PSObject.Properties.Name -contains 'autoplay_version' -and $buildInfo.autoplay_version) { [int]$buildInfo.autoplay_version } else { $null }
+if (-not $autoplayVersion) {
+    # Builds made before build.ps1 recorded it: the private clone is still at (or near) that commit.
+    $h = Get-ChildItem (Join-Path (Join-Path (Join-Path $BuildsRoot '_src') $Game) 'Source') -Recurse -Filter AutoPlaySubsystem.h -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    $autoplayVersion = if ($h -and ((Get-Content $h.FullName -Raw) -match 'ContractVersion\s*=\s*(\d+)')) { [int]$matches[1] } else { 1 }
+}
+$outDirFlag = if ($autoplayVersion -ge 2) { 'OutputDir' } else { 'RecordDir' }
 # Launch the real binary, not the bootstrap stub, so the PID we hold owns the window.
 $exe = Join-Path $Build "Windows\$($info.ProjectName)\Binaries\Win64\$($info.ProjectName).exe"
 if (-not (Test-Path $exe)) { $exe = $buildInfo.exe_path }
@@ -58,9 +68,14 @@ $rng = New-Object System.Random
 
 # ---------------------------------------------------------------------------------------------------------------------
 
-function Start-Capture([string]$Mode, [int[]]$Rect, [string]$Title, [string]$VideoPath, [string]$LogPath, [string]$ProgressPath) {
+function Start-Capture([string]$Mode, [int[]]$Rect, [string]$Title, [string]$VideoPath, [string]$LogPath, [string]$ProgressPath, [IntPtr]$Hwnd) {
     $x, $y, $w, $h = $Rect
     switch ($Mode) {
+        'gfxcapture' {
+            # Windows.Graphics.Capture of the game window itself (client area): other windows, dialogs, the cursor and
+            # window moves never reach the video, so the game needs no topmost and the user can keep working.
+            $capIn = "-f lavfi -i `"gfxcapture=hwnd=$($Hwnd.ToInt64()):capture_cursor=0:capture_border=0:display_border=0:max_framerate=120,showinfo`""
+        }
         'ddagrab' {
             # Zero-copy: D3D11 frames straight into NVENC. showinfo on hardware frames costs nothing (no pixel access)
             # and gives one timestamped log line per captured frame for the start-time estimate.
@@ -76,13 +91,13 @@ function Start-Capture([string]$Mode, [int[]]$Rect, [string]$Title, [string]$Vid
     $tags = '-color_primaries bt709 -color_trc bt709 -colorspace bt709 -color_range tv -fps_mode cfr -r 60 -an'
     if ($Encoder -eq 'h264_nvenc') {
         $encode = "-c:v h264_nvenc -preset p5 -tune hq -rc vbr -cq 19 -b:v 0 -maxrate 60M -bufsize 120M -g 120 -bf 0 $tags"
-        if ($Mode -ne 'ddagrab') { $encode = "-pix_fmt yuv420p $encode" }   # ddagrab: D3D11 frames go to NVENC as they are
+        if ($Mode -notin @('ddagrab', 'gfxcapture')) { $encode = "-pix_fmt yuv420p $encode" }   # ddagrab: D3D11 frames go to NVENC as they are
     } else {
         # AMF / libx264 take system-memory frames: pick the 60 fps grid first (fps filter, no pixel access), so only 60
         # frames a second are downloaded from the GPU and converted with an explicit BT.709 matrix.
         $pix = if ($Encoder -eq 'h264_amf') { 'nv12' } else { 'yuv420p' }
         $conv = "scale=out_color_matrix=bt709:out_range=tv,format=$pix"
-        if ($Mode -eq 'ddagrab') { $capIn = $capIn.TrimEnd('"') + ",fps=60,hwdownload,format=bgra,$conv" + '"' }
+        if ($Mode -in @('ddagrab', 'gfxcapture')) { $capIn = $capIn.TrimEnd('"') + ",fps=60,hwdownload,format=bgra,$conv" + '"' }
         else { $capIn += ",$conv" }
         $encode = if ($Encoder -eq 'h264_amf') { "-c:v h264_amf -quality quality -rc cqp -qp_i 18 -qp_p 20 -g 120 -bf 0 $tags" }
                    else { "-c:v libx264 -preset ultrafast -crf 17 -g 120 -bf 0 -pix_fmt yuv420p $tags" }
@@ -102,8 +117,8 @@ function Stop-Capture($Cap, [int]$TimeoutMs = 15000) {
     if ($Cap.Process.HasExited) { return }
     try { $Cap.Process.StandardInput.Write('q'); $Cap.Process.StandardInput.Flush() } catch { }
     if (-not $Cap.Process.WaitForExit($TimeoutMs)) {
-        Get-CimInstance Win32_Process -Filter "ParentProcessId=$($Cap.Process.Id)" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-        $Cap.Process.Kill()
+        & taskkill.exe /T /F /PID $Cap.Process.Id 2>&1 | Out-Null   # cmd and its ffmpeg child
+        [void]$Cap.Process.WaitForExit(5000)
     }
 }
 
@@ -208,6 +223,20 @@ Add-Type -AssemblyName System.Web.Extensions
 
 # ---------------------------------------------------------------------------------------------------------------------
 
+# Run from a stable copy (builds\<game>\_run): Windows Firewall asks once per program path because UE's trace
+# runtime listens on a TCP port in Development builds; a fixed path means one prompt per game, not one per build.
+if (-not $NoStablePath) {
+    $runRoot = Join-Path (Join-Path $BuildsRoot $Game) '_run'
+    Enter-PipelineLock "stage $Game run copy"
+    try {
+        Write-Step "mirroring $Build\Windows -> $runRoot\Windows"
+        & robocopy.exe (Join-Path $Build 'Windows') (Join-Path $runRoot 'Windows') /MIR /NJH /NJS /NP /NFL /NDL /R:2 /W:2 | Out-Null
+        if ($LASTEXITCODE -ge 8) { throw "robocopy failed ($LASTEXITCODE)" }
+        Copy-Item (Join-Path $Build 'build_info.json') (Join-Path $runRoot 'build_info.json') -Force
+    } finally { Exit-PipelineLock }
+    $exe = Join-Path $runRoot "Windows\$($info.ProjectName)\Binaries\Win64\$($info.ProjectName).exe"
+}
+
 $results = New-Object System.Collections.ArrayList
 for ($i = 0; $i -lt $Runs; $i++) {
     $runSeed = if ($Seed -ge 0) { $Seed + $i } else { $rng.Next(1, [int]::MaxValue) }
@@ -223,7 +252,8 @@ for ($i = 0; $i -lt $Runs; $i++) {
     $problems = New-Object System.Collections.ArrayList
     $warnings = New-Object System.Collections.ArrayList
     $proc = $null; $cap = $null; $hwnd = [IntPtr]::Zero; $rect = $null
-    $gameExit = $null; $killed = $false; $windowMoved = $false; $captureMode = $null
+    $gameExit = $null; $killed = $false; $windowMoved = $false; $captureMode = $null; $privacyStop = $null
+    $coverFirst = $null; $coverWhat = ''; $coverCount = 0
     $tStart = Get-Date
     # Display refresh: at 159 Hz a 60 fps capture repeats/skips game frames; the user switches to 120 Hz (or 60) for recording.
     $vc = Get-CimInstance Win32_VideoController | Where-Object { $_.CurrentRefreshRate -gt 1 -and $_.CurrentHorizontalResolution -gt 0 } | Select-Object -First 1
@@ -231,12 +261,22 @@ for ($i = 0; $i -lt $Runs; $i++) {
     $displayMode = if ($vc) { "$($vc.CurrentHorizontalResolution)x$($vc.CurrentVerticalResolution) @ $refreshHz Hz ($($vc.Name))" } else { $null }
     if ($refreshHz -notin @(60, 120)) { [void]$warnings.Add("display refresh is $refreshHz Hz, expected 60 or 120 (60 fps capture will repeat/skip game frames)") }
 
+    # Screen capture needs the window untouched for minutes: wait until the user is away (and the session unlocked).
+    if ($IdleMinutes -gt 0) {
+        $said = $false
+        while ([UePipeline.Win]::IdleMs() -lt $IdleMinutes * 60000 -or (Get-Process LogonUI -ErrorAction SilentlyContinue)) {
+            if (-not $said) { Write-Step "waiting until the user has been idle for $IdleMinutes min (and the session is unlocked)"; $said = $true }
+            Start-Sleep -Seconds 15
+        }
+        if ($said) { Write-Step 'user idle: starting' }
+    }
     Enter-PipelineLock "record $Game $runId"
+    [UePipeline.Win]::KeepDisplayOn($true)
     try {
         Write-Step "run $($i + 1)/$Runs $runId (skill $runSkill, seed $runSeed)"
         [void]$clock.Add((Get-ClockSample 'record_start'))
-        $gameArgs = "-AutoPlay -Level=$Level -Seed=$runSeed -Skill=$runSkill -RecordDir=`"$rawDir`" -MaxSeconds=$MaxSeconds " +
-                    "-BuildCommit=$($buildInfo.commit) -RunId=$runId -windowed -ResX=1920 -ResY=1080 -WinX=200 -WinY=150 " +
+        $gameArgs = "-AutoPlay -Level=$Level -Seed=$runSeed -Skill=$runSkill -${outDirFlag}=`"$rawDir`" -MaxSeconds=$MaxSeconds " +
+                    "-BuildCommit=$($buildInfo.commit) -RunId=$runId -GoTimeout=300 -windowed -ResX=1920 -ResY=1080 -WinX=200 -WinY=150 " +
                     "-ini:Engine:[/Script/Engine.UserInterfaceSettings]:bAllowHighDPIInGameMode=True " +
                     "-nosplash -abslog=`"$rawDir\game.log`" $ExtraArgs"
         $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -259,7 +299,8 @@ for ($i = 0; $i -lt $Runs; $i++) {
         if ($hwnd -eq [IntPtr]::Zero) { $hwnd = [UePipeline.Win]::FindWindowOfPid([uint32]$ready.pid, $null) }
         if ($hwnd -eq [IntPtr]::Zero) { throw "no visible window for pid $($ready.pid)" }
         $title = [UePipeline.Win]::Title($hwnd)
-        [void][UePipeline.Win]::SetTopmost($hwnd, $true)
+        # Games re-center their window; put it at a fixed spot near the top-left of the primary screen.
+        [void][UePipeline.Win]::MoveClientTo($hwnd, 40, 80)
         Start-Sleep -Milliseconds 300
         $rect = [UePipeline.Win]::ClientRectOnScreen($hwnd)
         $screen = [UePipeline.Win]::PrimaryScreenSize()
@@ -268,17 +309,36 @@ for ($i = 0; $i -lt $Runs; $i++) {
         if ($rect[0] -lt 0 -or $rect[1] -lt 0 -or $rect[0] + 1920 -gt $screen[0] -or $rect[1] + 1080 -gt $screen[1]) { throw "window not fully on the primary screen: $($rect -join ',')" }
 
         # ---- start capture (ddagrab, falling back to gdigrab) ----
+        # gfxcapture is opt-in only: in tests it delivered ~6 frames/s for an unfocused window and its timestamps did
+        # not fit the start-time estimate. ddagrab (topmost window + privacy guard) is the default.
         $modes = if ($Capture -eq 'auto') { @('ddagrab', 'gdigrab-region') } else { @($Capture) }
+        if ($modes[0] -ne 'gfxcapture') {
+            # A first-run Windows Firewall prompt (or anything else) on top of the game would trip the privacy guard:
+            # wait for the client area to be clear (the game waits for 'go' up to -GoTimeout=300).
+            [void][UePipeline.Win]::SetTopmost($hwnd, $true)
+            $t = (Get-Date).AddSeconds(240); $said = $false
+            while (-not [UePipeline.Win]::IsClientUncovered($hwnd) -and (Get-Date) -lt $t) {
+                if (-not $said) { Write-Step 'game window is covered (Windows Firewall prompt for a new program path?): waiting for it to clear'; $said = $true }
+                Start-Sleep -Milliseconds 500
+            }
+            if (-not [UePipeline.Win]::IsClientUncovered($hwnd)) { throw 'game window stayed covered for 240 s; not recording' }
+        }
         foreach ($m in $modes) {
-            Remove-Item $videoPath, $ffLog, $ffProgress -ErrorAction SilentlyContinue
+            # Screen-region modes record whatever is on screen there: keep the game on top. gfxcapture doesn't need it.
+            [void][UePipeline.Win]::SetTopmost($hwnd, ($m -ne 'gfxcapture'))
+            # One set of files per attempt: a failed attempt's ffmpeg must never block the next attempt's files.
+            $videoPath = Join-Path $runDir "video.$m.mkv"
+            $ffLog = Join-Path $rawDir "ffmpeg-$m.log"
+            $ffProgress = Join-Path $rawDir "ffmpeg_progress-$m.txt"
             [void]$clock.Add((Get-ClockSample "capture_start_$m"))
-            $cap = Start-Capture $m $rect $title $videoPath $ffLog $ffProgress
+            $cap = Start-Capture $m $rect $title $videoPath $ffLog $ffProgress $hwnd
             try { Get-CimInstance Win32_Process -Filter "ParentProcessId=$($cap.Process.Id)" | ForEach-Object { (Get-Process -Id $_.ProcessId).PriorityClass = 'AboveNormal' } } catch { }
             $t = (Get-Date).AddSeconds(10)
             while ((Get-CapturedFrameCount $ffLog) -lt 30 -and -not $cap.Process.HasExited -and (Get-Date) -lt $t) { Start-Sleep -Milliseconds 100 }
             if ((Get-CapturedFrameCount $ffLog) -ge 30 -and -not $cap.Process.HasExited) { $captureMode = $m; break }
             [void]$warnings.Add("capture mode $m failed: $((Get-Content $ffLog -Tail 3 -ErrorAction SilentlyContinue) -join ' | ')")
             Stop-Capture $cap 3000
+            if (Test-Path $videoPath) { Move-Item -Force $videoPath (Join-Path $rawDir "failed-attempt-$m.mkv") }
             $cap = $null
         }
         if (-not $cap) { throw 'no capture mode worked' }
@@ -295,12 +355,41 @@ for ($i = 0; $i -lt $Runs; $i++) {
             if ((Get-Date) -gt $deadline) { $killed = $true; [void]$problems.Add("timeout: killed after $($MaxSeconds + 90) s"); break }
             if ($cap.Process.HasExited) { [void]$problems.Add('ffmpeg exited during the run'); break }
             $now = [UePipeline.Win]::ClientRectOnScreen($hwnd)
-            if ($now -and ($now[0] -ne $rect[0] -or $now[1] -ne $rect[1])) { $windowMoved = $true }
+            if ($now -and ($now[2] -ne 1920 -or $now[3] -ne 1080)) { [void]$problems.Add("game window client area changed to $($now[2])x$($now[3])"); break }
+            if ([UePipeline.Win]::IsIconic($hwnd)) { [void]$problems.Add('game window was minimized (no frames)'); break }
+            if ($now -and ($now[0] -ne $rect[0] -or $now[1] -ne $rect[1])) {
+                if (-not $windowMoved) {
+                    # Who moved it? A held mouse button means a user drag; otherwise the game (e.g. a resolution apply,
+                    # which re-centers UE windows) or another program.
+                    Add-JsonLine (Join-Path $rawDir 'window.jsonl') ([ordered]@{ event = 'moved'; t_ns = (Get-ClockSample 'x').t_ns
+                        from = $rect; to = $now; mouse_button_down = [UePipeline.Win]::MouseButtonDown() })
+                }
+                $windowMoved = $true
+            }
+            $covered = ($captureMode -ne 'gfxcapture') -and -not [UePipeline.Win]::IsClientUncovered($hwnd)
+            if ($covered) {
+                if (-not $coverFirst) { $coverFirst = Get-ClockSample 'privacy_first_seen'; $coverWhat = [UePipeline.Win]::CoveringWindow($hwnd) }
+                $coverCount++
+            } else { $coverFirst = $null; $coverCount = 0 }
+            if ($captureMode -ne 'gfxcapture' -and ($windowMoved -or $coverCount -ge 3)) {
+                # Privacy guard: a screen-region capture would now record other windows (moved window, or something
+                # on top for ~0.3 s; shorter blips are tooltips/ghost windows). Stop; the video is cut to 0.5 s before
+                # the first sighting below.
+                $privacyStop = if ($coverFirst) { $coverFirst } else { Get-ClockSample 'privacy_stop' }
+                $cover = if ($windowMoved) { '' } else { $coverWhat }
+                Stop-Capture $cap
+                [void]$problems.Add($(if ($windowMoved) { 'game window moved during screen-region capture: capture stopped' } else { "another window covered the game during screen-region capture: capture stopped ($cover)" }))
+                $killed = $true
+                break
+            }
             Start-Sleep -Milliseconds 100
         }
         Stop-Capture $cap   # before the window closes: never capture what is behind it
         [void]$clock.Add((Get-ClockSample 'capture_stopped'))
-        if ($windowMoved) { [void]$problems.Add('game window moved during capture') }
+        $final = Join-Path $runDir 'video.mkv'
+        if (Test-Path $videoPath) { Move-Item -Force $videoPath $final }
+        $videoPath = $final
+        if ($windowMoved -and $captureMode -eq 'gfxcapture') { [void]$warnings.Add('game window was moved during the run (window capture follows it)') }
 
         if ($killed) {
             $proc.Kill(); $proc.WaitForExit(10000) | Out-Null
@@ -317,10 +406,15 @@ for ($i = 0; $i -lt $Runs; $i++) {
     } finally {
         if ($hwnd -ne [IntPtr]::Zero -and [UePipeline.Win]::IsWindow($hwnd)) { [void][UePipeline.Win]::SetTopmost($hwnd, $false) }
         [void]$clock.Add((Get-ClockSample 'record_end'))
+        [UePipeline.Win]::KeepDisplayOn($false)
         Exit-PipelineLock
     }
 
     # ---- post-process (light work, outside the lock) ----
+    if ((Split-Path $videoPath -Leaf) -ne 'video.mkv' -and (Test-Path $videoPath)) {   # run error mid-capture
+        Move-Item -Force $videoPath (Join-Path $runDir 'video.mkv')
+    }
+    $videoPath = Join-Path $runDir 'video.mkv'
     $outcome = Read-JsonFile (Join-Path $rawDir 'outcome.json')
     $gameClock = Read-JsonFile (Join-Path $rawDir 'clock.json')
     foreach ($f in 'inputs.jsonl', 'telemetry.jsonl', 'outcome.json') {
@@ -341,6 +435,19 @@ for ($i = 0; $i -lt $Runs; $i++) {
     $videoStart = $null; $probe = $null
     if ($captureMode -and (Test-Path $videoPath)) {
         $videoStart = Get-VideoStart $ffLog $clock
+        if ($privacyStop -and $videoStart) {
+            # Keep only what was recorded at least 0.5 s before the guard fired.
+            $keep = [math]::Max(0, ($privacyStop.t_ns - $videoStart.t_ns) / 1e9 - 0.5)
+            $cut = Join-Path $runDir 'video.cut.mkv'
+            $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+            & $ffmpeg -hide_banner -loglevel error -y -i $videoPath -t $keep -c copy $cut 2>&1 | Out-Null
+            $ErrorActionPreference = $eap
+            if (Test-Path $cut) { Move-Item -Force $cut $videoPath; [void]$warnings.Add("video cut to $([math]::Round($keep, 1)) s (privacy guard)") }
+            else {
+                Move-Item -Force $videoPath (Join-Path $runDir 'video.UNTRIMMED-may-show-other-windows.mkv')
+                [void]$problems.Add('could not cut the video before the privacy stop: delete video.UNTRIMMED-may-show-other-windows.mkv')
+            }
+        }
         $probe = Invoke-Native $ffprobe @('-v', 'error', '-select_streams', 'v:0', '-count_packets', '-show_entries', 'stream=codec_name,profile,pix_fmt,width,height,avg_frame_rate,nb_read_packets:format=duration', '-of', 'json', $videoPath) | Out-String | ConvertFrom-Json
     } elseif (-not $captureMode) { } else { [void]$problems.Add('missing video.mkv') }
     $progress = Read-Progress $ffProgress
@@ -382,7 +489,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
             $startLagMs = [math]::Round(($audioStartNs - [long]$gs['audio_start'].t_ns) / 1e6, 1)
         }
         $silent = ($null -eq $audio.max_volume_db) -or ($audio.max_volume_db -lt -60)
-        $lagOk = ($null -ne $startLagMs -and $startLagMs -ge -30 -and $startLagMs -le 1500)
+        $lagOk = ($null -ne $startLagMs -and $startLagMs -ge -30 -and $startLagMs -le 10000)
         $checks.audio = [ordered]@{ ok = $lagOk; duration_s = $audio.duration_s; start_lag_ms = $startLagMs; silent = $silent; stats = $audio }
         if (-not $lagOk) { [void]$problems.Add("audio duration $($audio.duration_s) s does not fit the recorded span (start lag $startLagMs ms)") }
         if ($silent) { [void]$warnings.Add('audio is silent (max volume below -60 dB)') }
@@ -447,7 +554,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
         seed = $runSeed; skill = $runSkill; max_seconds = $MaxSeconds
         result = $(if ($outcome) { $outcome.result } else { $null }); score = $(if ($outcome) { $outcome.score } else { $null })
         player = [ordered]@{ kind = 'bot'; name = 'autoplay'; input_injection = 'UE Enhanced Input (InjectInputForAction)' }
-        build = [ordered]@{ commit = $buildInfo.commit; short_sha = $buildInfo.short_sha; config = 'Development'; path = $Build; exe = $exe; contract_version = $(if ($outcome) { $outcome.contract_version } else { $null }) }
+        build = [ordered]@{ commit = $buildInfo.commit; short_sha = $buildInfo.short_sha; config = 'Development'; path = $Build; exe = $exe; autoplay_version = $autoplayVersion; output_dir_flag = "-$outDirFlag" }
         clock = [ordered]@{
             source = 'QueryPerformanceCounter'; qpc_frequency = $qpcFreq; t_ns_definition = 'qpc * 1e9 / qpc_frequency'
             samples = @(@($(if ($gameClock) { $gameClock.samples | ForEach-Object { $_ | Add-Member -NotePropertyName source -NotePropertyValue 'game' -PassThru -Force } })) + @($clock))

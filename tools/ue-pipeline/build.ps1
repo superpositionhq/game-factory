@@ -42,6 +42,7 @@ Enter-PipelineLock "build $Game $short"
 $start = Get-Date
 $steps = New-Object System.Collections.ArrayList
 $failure = ''
+$autoplayVersion = $null
 $status = 'ok'
 $smokeResult = [ordered]@{ status = 'not_run'; note = '' }
 $stamp = $start.ToString('yyyyMMdd-HHmmss')
@@ -96,6 +97,9 @@ try {
     Remove-Item Env:\GIT_LFS_SKIP_SMUDGE
     if ($missing.Count -gt 0) { throw "LFS objects missing from $lfsStore for: $($missing -join ', ')" }
     Write-Step "source at $short in $src ($($lfsList.Count) LFS files, $copied copied)"
+    # Which AutoPlay drop-in version the game ships (record.ps1 picks the matching flags).
+    $apHeader = Get-ChildItem (Join-Path $src 'Source') -Recurse -Filter AutoPlaySubsystem.h -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($apHeader -and ((Get-Content $apHeader.FullName -Raw) -match 'ContractVersion\s*=\s*(\d+)')) { $autoplayVersion = [int]$matches[1] }
 
     $uproject = Join-Path $src $info.UProjectName
     $editorTarget = Find-Target $src 'Editor'
@@ -110,7 +114,7 @@ try {
     # ---- 2. package ----
     if ($Package) {
         $r = Invoke-Step 'package' (Join-Path $EngineRoot 'Engine\Build\BatchFiles\RunUAT.bat') `
-            ("BuildCookRun -project=`"$uproject`" -target=$gameTarget -noP4 -platform=Win64 -clientconfig=Development " +
+            ("-WaitForUATMutex BuildCookRun -project=`"$uproject`" -target=$gameTarget -noP4 -platform=Win64 -clientconfig=Development " +
              "-build -cook -stage -pak -archive -archivedirectory=`"$outDir`" -nocompileeditor -unattended -utf8output")
         if ($r.exit_code -ne 0) { throw 'package failed' }
         if (-not (Test-Path $exePath)) { throw "package succeeded but $exePath is missing" }
@@ -153,7 +157,7 @@ $lastStep = $steps | Select-Object -Last 1
 $subject = "$(Invoke-Git $info.Dir @('log', '-1', '--format=%s', $sha) -AllowFail)"
 $commitTime = "$(Invoke-Git $info.Dir @('log', '-1', '--format=%cI', $sha) -AllowFail)"
 $row = [ordered]@{
-    schema = 'superposition.ue-build/v1'
+    schema = 'ue-build/1'   # neutral: build_info.json sits next to the game build
     game = $Game; project = $info.ProjectName
     commit = $sha; short_sha = $short; requested = $Commit; commit_subject = $subject; commit_time = $commitTime
     command = $commandLine
@@ -166,6 +170,7 @@ $row = [ordered]@{
     exe_path = $(if ($status -eq 'ok' -and $Package) { $exePath } else { $null })
     packaged = [bool]($status -eq 'ok' -and $Package)
     smoke = $smokeResult
+    autoplay_version = $autoplayVersion
     engine = $EngineRoot
     steps = @($steps)
 }

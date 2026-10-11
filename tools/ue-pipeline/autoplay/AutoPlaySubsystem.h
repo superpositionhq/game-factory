@@ -1,9 +1,8 @@
-// AutoPlay recorder for the Track B games: implements docs/autoplay-contract.md (contract v1).
+// AutoPlay: command-line driven self-play. A bot drives the game through Enhanced Input while this subsystem
+// handles the flags, the clock, per-run log files, audio capture, the start handshake, blocking hardware input and
+// quitting when the run ends. The game supplies StartLevel and the bot.
 //
-// Copy AutoPlaySubsystem.h / AutoPlaySubsystem.cpp unchanged into Source/<Module>/AutoPlay/ and add
-// "EnhancedInput", "AudioMixer", "Slate", "SlateCore", "InputCore" to the module's dependency list.
-// The game supplies StartLevel (and its bot); everything else (flags, clock, files, audio, go handshake,
-// hardware-input blocking, quitting) lives here so the four games behave the same way.
+// Module dependencies: "EnhancedInput", "AudioMixer", "Slate", "SlateCore", "InputCore".
 #pragma once
 
 #include "CoreMinimal.h"
@@ -25,7 +24,7 @@ class UAutoPlaySubsystem : public UGameInstanceSubsystem
 	GENERATED_BODY()
 
 public:
-	static constexpr int32 ContractVersion = 1;
+	static constexpr int32 ContractVersion = 2;
 
 	static UAutoPlaySubsystem* Get(const UObject* WorldContextObject);
 
@@ -34,7 +33,8 @@ public:
 	int32 GetLevel() const { return Level; }
 	int32 GetSeed() const { return Seed; }
 	float GetSkill() const { return Skill; }
-	const FString& GetRecordDir() const { return RecordDir; }
+	const FString& GetOutputDir() const { return OutputDir; }
+	const FString& GetRecordDir() const { return OutputDir; } // v1 name
 	/** True between "go" and FinishRun: the only time the bot may inject. */
 	bool IsRunning() const { return Phase == EPhase::Running; }
 
@@ -110,7 +110,7 @@ private:
 	float Skill = 1.f;
 	double MaxSeconds = 600.0;
 	double GoTimeout = 60.0;
-	FString RecordDir;
+	FString OutputDir;
 	FString BuildCommit;
 	FString RunId;
 

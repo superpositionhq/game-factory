@@ -1,4 +1,9 @@
-# AutoPlay contract (v1.1)
+# AutoPlay contract (v1.2)
+
+> **v1.2 = drop-in `ContractVersion = 2`.** No company or project names in what games ship: file schemas are
+> `autoplay-inputs/1`, `autoplay-telemetry/1`, `autoplay-outcome/1`, `autoplay-clock/1`, the version key is
+> `autoplay_version`. The run directory flag is `-OutputDir`; `-RecordDir` (v1) is still accepted. v1 games keep working:
+> the pipeline reads the version from the build and passes `-OutputDir` (v2) or `-RecordDir` (v1). See **Naming rule** and **Changes**.
 
 Every Track B game (tower-defense, siege-catapult, stealth, rally-racer) implements this once its first level is
 playable. The shared pipeline (`tools/ue-pipeline/`, [ue-pipeline.md](ue-pipeline.md)) then packages the game,
@@ -17,10 +22,10 @@ four games write identical files. Your game supplies two things: `StartLevel` (o
 The pipeline launches the packaged game as:
 
 ```
-<Game>.exe -AutoPlay -Level=<n> -Seed=<s> -Skill=<0..1> -RecordDir=<abs dir> -MaxSeconds=<n>
+<Game>.exe -AutoPlay -Level=<n> -Seed=<s> -Skill=<0..1> -OutputDir=<abs dir> -MaxSeconds=<n>
            -BuildCommit=<sha> -RunId=<id> -windowed -ResX=1920 -ResY=1080 -WinX=<x> -WinY=<y>
            -ini:Engine:[/Script/Engine.UserInterfaceSettings]:bAllowHighDPIInGameMode=True
-           -nosplash -abslog=<RecordDir>\game.log
+           -nosplash -abslog=<OutputDir>\game.log
 ```
 
 The display runs at 150 % scaling: the ini override makes the game DPI-aware so 1920x1080 means physical pixels
@@ -33,7 +38,7 @@ Nothing to do in your game for either; just don't depend on `-unattended` being 
 | `-Level=<n>` | level number, 1-based, as listed in your game's design doc | 1 |
 | `-Seed=<s>` | integer seed for the bot's RNG and for game randomness (seed your `FRandomStream`s from it; `FMath::RandInit`/`SRandInit` are seeded for you). Determinism is not required | 0 |
 | `-Skill=<0..1>` | bot skill: 0 = clumsy novice (slow reactions, noisy aim, poor choices, still trying), 1 = best the bot can do (should usually win level 1). Interpolate reaction time, aim/steering noise, decision quality. Document what it does in your design doc | 1 |
-| `-RecordDir=<dir>` | absolute directory for the run's files (created if missing) | `Saved/AutoPlay/<timestamp>` |
+| `-OutputDir=<dir>` (alias `-RecordDir`, the v1 name) | absolute directory for the run's files (created if missing) | `Saved/AutoPlay/<timestamp>` |
 | `-MaxSeconds=<n>` | hard limit from "go"; the run ends with result `timeout` | 600 |
 | `-BuildCommit=<sha>` | echoed into outcome.json | empty |
 | `-RunId=<id>` | echoed into every header | empty |
@@ -59,8 +64,8 @@ Nothing to do in your game for either; just don't depend on `-unattended` being 
 
 1. Boot into your normal startup map. The subsystem parses the flags, opens the files, writes the `start` clock sample.
 2. When the window exists and the world has begun play, it applies the display settings, waits 1 s, writes
-   `RecordDir/ready.json` (pid, title, viewport size) and emits telemetry `autoplay_ready`.
-3. The pipeline starts video capture, then creates `RecordDir/go`. (No `go` within `-GoTimeout` → start anyway,
+   `OutputDir/ready.json` (pid, title, viewport size) and emits telemetry `autoplay_ready`.
+3. The pipeline starts video capture, then creates `OutputDir/go`. (No `go` within `-GoTimeout` → start anyway,
    `go_timed_out: true`.)
 4. On go: clock sample `go`, `FMath::RandInit(Seed)`, audio recording starts (clock sample `audio_start`),
    telemetry `run_start`, then your **`StartLevel(Level)`** is called. Skip menus, tutorials and popups in AutoPlay.
@@ -99,7 +104,7 @@ Nothing to do in your game for either; just don't depend on `-unattended` being 
 - Inject from a tick that runs before the PlayerController's input tick (bot component on the PC with
   `PrimaryComponentTick.TickGroup = TG_PrePhysics` and `AddTickPrerequisiteComponent`), or accept one frame of delay.
 
-## 5. Files in RecordDir
+## 5. Files in OutputDir
 
 All JSON is UTF-8; `*.jsonl` has one object per line. Every row carries the same stamp:
 
@@ -110,7 +115,7 @@ All JSON is UTF-8; `*.jsonl` has one object per line. Every row carries the same
 ### `inputs.jsonl` (written by the subsystem)
 
 ```json
-{"t_ns":3911283311000,"qpc":39112833110,"frame":512,"type":"header","schema":"superposition.autoplay-inputs/v1","contract_version":1,"game":"Stealth","run_id":"...","level":1,"seed":7,"skill":0.6,"max_seconds":600,"qpc_frequency":10000000,"build_commit":"a1b2c3d"}
+{"t_ns":3911283311000,"qpc":39112833110,"frame":512,"type":"header","schema":"autoplay-inputs/1","autoplay_version":2,"game":"Stealth","run_id":"...","level":1,"seed":7,"skill":0.6,"max_seconds":600,"qpc_frequency":10000000,"build_commit":"a1b2c3d"}
 {"t_ns":...,"qpc":...,"frame":901,"type":"action_info","action":"IA_Move","value_type":"Axis2D","mapped_keys":["W","S","A","D","Gamepad_Left2D"]}
 {"t_ns":...,"qpc":...,"frame":901,"type":"inject","action":"IA_Move","value_type":"Axis2D","value":[0,1],"key":"W","edge":"down"}
 {"t_ns":...,"qpc":...,"frame":902,"type":"inject","action":"IA_Move","value_type":"Axis2D","value":[0.7,0.7],"key":"W+D","edge":"hold"}
@@ -145,7 +150,7 @@ without braces, built with `JsonStr` / `JsonNum` / `JsonVec`):
 ### `outcome.json` (subsystem; your part is the arguments of `FinishRun`)
 
 ```json
-{"schema":"superposition.autoplay-outcome/v1","contract_version":1,"game":"TowerDefense","run_id":"...","level":2,"seed":7,
+{"schema":"autoplay-outcome/1","autoplay_version":2,"game":"TowerDefense","run_id":"...","level":2,"seed":7,
  "skill":0.6,"max_seconds":600,"qpc_frequency":10000000,"build_commit":"a1b2c3d","level_name":"Canyon","result":"win",
  "score":1840,"duration_s":512.3,"run_duration_s":514.9,"go_qpc":...,"level_start_qpc":...,"level_end_qpc":...,
  "frames":30893,"inputs_injected":20411,"go_timed_out":false,"build_config":"Development","engine_version":"5.3.2-...",
@@ -159,7 +164,7 @@ level_end (so `frames / duration_s` is the gameplay fps). Put game-specific resu
 ### `clock.json` (subsystem)
 
 ```json
-{"schema":"superposition.autoplay-clock/v1","qpc_frequency":10000000,"t_ns_definition":"qpc * 1e9 / qpc_frequency",
+{"schema":"autoplay-clock/1","qpc_frequency":10000000,"t_ns_definition":"qpc * 1e9 / qpc_frequency",
  "samples":[{"label":"start","qpc":...,"qpc_after":...,"t_ns":...,"unix_ns":...,"utc":"2026-10-11T07:12:13.123Z","frame":3}, "go", "audio_start", "audio_stop", "end"]}
 ```
 
@@ -168,7 +173,7 @@ Each sample pairs QPC (read before and after) with UTC wall time (`FDateTime::Ut
 ### `audio.wav` (subsystem)
 
 Master submix via `UAudioMixerBlueprintLibrary::StartRecordingOutput(World, MaxSeconds + 30, nullptr)` at go and
-`StopRecordingOutput(World, EAudioRecordingExportType::WavFile, "audio", RecordDir, nullptr, nullptr)` after the
+`StopRecordingOutput(World, EAudioRecordingExportType::WavFile, "audio", OutputDir, nullptr, nullptr)` after the
 result hold. 16-bit PCM at the mixer rate (48 kHz) with the output device's channel count. UE queues the start to
 the audio thread (it begins ~0.1 s after the `audio_start` sample, while the level loads) but stops synchronously,
 so the **last** sample corresponds to the `audio_stop` clock sample; the pipeline anchors the WAV there
@@ -228,10 +233,10 @@ void UAutoPlaySubsystem::Inject(APlayerController* PC, const UInputAction* Actio
     WriteLine(InputsAr, Printf("{%s,\"type\":\"inject\",\"action\":%s,\"value_type\":..,\"value\":..,\"key\":%s,\"edge\":..}", Stamp(), ...));
 }
 
-// Audio: master submix to RecordDir/audio.wav.
+// Audio: master submix to OutputDir/audio.wav.
 UAudioMixerBlueprintLibrary::StartRecordingOutput(GetGameWorld(), MaxSeconds + 30.f, nullptr);         // at go
 UAudioMixerBlueprintLibrary::StopRecordingOutput(GetGameWorld(), EAudioRecordingExportType::WavFile,
-                                                 TEXT("audio"), RecordDir, nullptr, nullptr);           // async write
+                                                 TEXT("audio"), OutputDir, nullptr, nullptr);           // async write
 ```
 
 ## 7. Testing by hand and declaring readiness
@@ -257,7 +262,23 @@ from) a `milestone/autoplay-*` tag; a game session can queue a run itself, see [
 
 Changes to this contract go through the coordinating session; bump `ContractVersion` when the files change shape.
 
+## Naming rule (game side)
+
+The names **Superposition** and **game-factory** must not appear anywhere in a game: repo files, code, comments,
+configs (e.g. `CompanyName` in `DefaultGame.ini`, which also becomes the exe's "Publisher"), scripts, commit messages,
+builds, logs, in-game files, or anything passed to the game process. Everything else stays as it is: recording and
+workflow traces are fine and `workflow.jsonl` stays in the repo. The drop-in v1.2 follows this. Old occurrences in a
+finished game's history are replaced with `tools/ue-pipeline/scrub-history.ps1` (original archived first).
+
+Hand test without a window on the user's screen: add `-RenderOffScreen` to the §7 command (verified on the test
+project with v1.2: the run completes and validate-run passes).
+
 ## Changes
 
 - **v1.1** (docs only; `AutoPlaySubsystem.h/.cpp` unchanged, `ContractVersion` stays 1): section 1 lists the pipeline's real flags (`-ini:...bAllowHighDPIInGameMode=True`, no `-unattended`); section 5: `frames` in outcome.json counts level_start..level_end and the WAV is anchored at `audio_stop`; section 7: the hand test disables Live Coding and uses validate-run.ps1.
+- **v1.2** (`ContractVersion` 2, games re-copy `AutoPlaySubsystem.h/.cpp`): no company/project names. Schemas
+  `superposition.autoplay-*/v1` → `autoplay-*/1`, key `contract_version` → `autoplay_version`, comments no longer name the
+  docs or tooling. Flag `-OutputDir` added (`-RecordDir` still accepted; `GetOutputDir()` added, `GetRecordDir()` kept). File
+  names and behaviour unchanged. Verified on games\_pipeline-test: editor build, off-screen -game runs with each flag,
+  validate-run PASS, no "superposition"/"game-factory" in any output file.
 - **v1**: first version.
