@@ -264,11 +264,12 @@ Changes to this contract go through the coordinating session; bump `ContractVers
 
 ## Naming rule (game side)
 
-The names **Superposition** and **game-factory** must not appear anywhere in a game: repo files, code, comments,
+The names **Superposition** and **game-factory** (case-insensitive, including `game_factory` / `gamefactory`) must not appear anywhere in a game: repo files, code, comments,
 configs (e.g. `CompanyName` in `DefaultGame.ini`, which also becomes the exe's "Publisher"), scripts, commit messages,
 builds, logs, in-game files, or anything passed to the game process. Everything else stays as it is: recording and
 workflow traces are fine and `workflow.jsonl` stays in the repo. The drop-in v1.2 follows this. Old occurrences in a
-finished game's history are replaced with `tools/ue-pipeline/scrub-history.ps1` (original archived first).
+finished game's history are replaced with `tools/ue-pipeline/scrub-history.ps1` (original archived first). Words like recording,
+dataset, pipeline, workflow row ids in commit messages and `workflow.jsonl` are fine.
 
 Hand test without a window on the user's screen: add `-RenderOffScreen` to the §7 command (verified on the test
 project with v1.2: the run completes and validate-run passes).

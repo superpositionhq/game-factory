@@ -235,7 +235,7 @@ pipeline row says so; the display must not be asleep either.
 
 ## Names that must not reach the games
 
-User's rule: the names **Superposition** and **game-factory** must not appear in a game (repo files, code, commit
+User's rule: the names **Superposition** and **game-factory** (case-insensitive, incl. `game_factory`/`gamefactory`) must not appear in a game (repo files, code, commit
 messages, builds, logs, in-game files, anything passed to the game process). Recording/workflow traces are fine and
 `workflow.jsonl` stays in the game repos.
 
@@ -256,28 +256,36 @@ messages, builds, logs, in-game files, anything passed to the game process). Rec
 ```
 powershell -ExecutionPolicy Bypass -File scrub-history.ps1 <game>                  # dry run (default)
 powershell -ExecutionPolicy Bypass -File scrub-history.ps1 <game> -Apply
-powershell -ExecutionPolicy Bypass -File scrub-history.ps1 <game> -ReplaceMap names.json -Apply   # own replacements
+powershell -ExecutionPolicy Bypass -File scrub-history.ps1 <game> -StripAgentTrailers -StripRowIds -DropPaths a,b -Apply   # opt-ins
 ```
 
-- Replaces only the two names, everywhere in history: text file contents of every commit (all versions of
-  `workflow.jsonl`, scripts, configs, manifests...), commit messages, author/committer names and e-mails. Nothing is
-  dropped; workflow.jsonl and all record files stay. Default replacements, in order: the schema prefix
-  `superposition.` is removed (`superposition.ue-workflow/v0` → `ue-workflow/v0`), then Superposition → Studio and
-  game-factory → studio-tools, case-preserving (`-ReplaceMap` JSON `[{"match": perl-regex, "replace": text}]` overrides).
+- **Default job:** replace the names Superposition and game-factory (case-insensitive, incl. `game_factory`,
+  `gamefactory`) everywhere in history: text file contents of every commit (all versions of `workflow.jsonl`, scripts,
+  configs, manifests...), commit messages, author/committer names and e-mails; plus reword "wip: auto-commit of
+  uncommitted changes at end of agent turn" → "WIP" (`-NoWipReword` turns that off). Nothing is dropped:
+  `workflow.jsonl`, record files, agent trailers and row ids stay.
+- Replacements, in order: the schema prefix `superposition.` is removed (`superposition.ue-workflow/v0` →
+  `ue-workflow/v0`); then Superposition → Studio, game-factory → studio-tools (game_factory → studio_tools,
+  GameFactory → StudioTools), case-preserving. `-ReplaceMap` JSON `[{"match": perl-regex, "replace": text}]` overrides.
+- **Opt-in:** `-StripAgentTrailers` (remove "Co-Authored-By: Claude…" and "Generated with Claude Code" lines),
+  `-StripRowIds` (remove parenthesised workflow row ids such as "(td-01922)"), `-DropPaths a,b` (remove those files from
+  every commit; only then are emptied commits pruned).
 - Binary blobs and Git LFS content (uassets live outside git) are never edited; the dry run lists binary blobs and HEAD's
   LFS files that contain a name (ASCII or UTF-16) so they can be fixed in the editor.
-- Dry run prints: session activity, how many text blobs/paths/occurrences, before → after samples from HEAD, commit
-  messages and identities affected (with their replacement), ref names, binary/LFS hits.
+- Dry run prints: session activity, text blobs/paths/occurrences, before → after samples from HEAD, messages and
+  identities affected, how many messages the message rules change (with examples), opt-in drops, ref names, binary/LFS hits.
 - Refuses while the game's session looks active (`.recording\<game>\actions.jsonl` written within `-QuietMinutes`,
   default 120), while an editor has the project open, or with uncommitted changes.
 - Before rewriting: `git bundle create --all` → `.recording\<game>\original-history\<game>-<stamp>.bundle`, verified
   (`git bundle verify` + every ref present), refs listed in `<stamp>-refs.txt`, `.git\lfs\objects` copied alongside.
-- Rewrite: new blobs are written once (`git hash-object -w`) and mapped per commit with `git filter-branch
-  --index-filter "git ls-files -s | remap | git update-index --index-info"`, plus `--msg-filter`, `--env-filter` and
-  `--tag-name-filter cat -- --all` (Git's perl; git filter-repo would need Python). Then `refs/original/` is removed
-  and every reachable text blob, message and identity is re-scanned. Never pushes, never runs `git gc`.
-- Tested on a throwaway clone of rally-racer: 23 text blobs in 9 paths (4651 occurrences) and 12 author identities
-  rewritten; afterwards 0 hits in any commit (independent `git grep` over all commits), `workflow.jsonl` still tracked.
+- Rewrite: new blobs written once (`git hash-object -w`) and mapped per commit with `git filter-branch --index-filter
+  "git ls-files -s | remap | git update-index --index-info"`, `--msg-filter`, `--env-filter`, `--tag-name-filter cat
+  -- --all` (Git's perl; git filter-repo would need Python). Then `refs/original/` is removed and every reachable text
+  blob, message and identity is re-scanned. Never pushes, never runs `git gc`.
+- Tested on throwaway clones: rally-racer (23 text blobs in 9 paths, 12 author identities `dev_02@game-factory.local`)
+  and tower-defense (105 text blobs in 12 paths, ~99k occurrences; 20 auto-commits → "WIP"): afterwards 0 files with a
+  name in any commit (independent `git grep`), 0 messages, 0 identities; workflow.jsonl, trailers and row ids kept by
+  default; with the opt-ins 0 Claude lines, 0 row ids, the dropped file gone.
 ## Pipeline test project
 
 `games\_pipeline-test` (not data): UE 5.3 Third Person C++ template + the AutoPlay drop-in + a test bot that walks,

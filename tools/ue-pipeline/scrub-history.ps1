@@ -12,7 +12,12 @@
   Replacements are applied in order (Perl regex -> literal text). Defaults:
     superposition.(schema)  -> ""             e.g. "superposition.ue-workflow/v0" -> "ue-workflow/v0"
     Superposition / superposition / SUPERPOSITION -> Studio / studio / STUDIO
-    game-factory / Game-Factory / GAME-FACTORY / game_factory -> studio-tools / Studio-Tools / STUDIO-TOOLS / studio_tools
+    game-factory / Game-Factory / GAME-FACTORY / game_factory / GameFactory / gamefactory -> studio-tools / Studio-Tools /
+      STUDIO-TOOLS / studio_tools / StudioTools / studiotools
+  Commit messages additionally (default on): "wip: auto-commit of uncommitted changes at end of agent turn" -> "WIP"
+  (-NoWipReword turns it off). Opt-in: -StripAgentTrailers (remove "Co-Authored-By: Claude..." and "Generated with
+  Claude Code" lines), -StripRowIds (remove parenthesised workflow row ids such as "(td-01922)"), -DropPaths a,b
+  (remove those files from every commit; empty by default, so workflow.jsonl and record files stay).
   -ReplaceMap JSON: [ { "match": "<perl regex>", "replace": "<text>" }, ... ] replaces the defaults.
 
   Only text blobs are rewritten (no NUL byte in the first 8 KB). Binary blobs and Git LFS content (uassets etc. are
@@ -26,6 +31,10 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)][string]$Game,
     [string]$ReplaceMap,
+    [string[]]$DropPaths = @(),
+    [switch]$NoWipReword,
+    [switch]$StripAgentTrailers,
+    [switch]$StripRowIds,
     [int]$QuietMinutes = 120,
     [switch]$Apply,
     [switch]$KeepBackupRefs,
@@ -53,11 +62,23 @@ $rules = @(
     @{ match = '(?i)superposition\.(?=[a-z0-9_-]+/v?\d)'; replace = '' },
     @{ match = 'SUPERPOSITION'; replace = 'STUDIO' }, @{ match = 'Superposition'; replace = 'Studio' }, @{ match = '(?i)superposition'; replace = 'studio' },
     @{ match = 'GAME-FACTORY'; replace = 'STUDIO-TOOLS' }, @{ match = 'Game-Factory'; replace = 'Studio-Tools' },
-    @{ match = '(?i)game_factory'; replace = 'studio_tools' }, @{ match = '(?i)game-factory'; replace = 'studio-tools' }
+    @{ match = '(?i)game_factory'; replace = 'studio_tools' }, @{ match = 'GameFactory'; replace = 'StudioTools' }, @{ match = '(?i)gamefactory'; replace = 'studiotools' },
+    @{ match = '(?i)game-factory'; replace = 'studio-tools' }
 )
 if ($ReplaceMap) { $rules = @((Read-JsonFile $ReplaceMap) | ForEach-Object { @{ match = $_.match; replace = $_.replace } }) }
 $b64 = { param($s) [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($s)) }
 [System.IO.File]::WriteAllText((Join-Path $work 'rules.tsv'), ((@($rules | ForEach-Object { "$(& $b64 $_.match)`t$(& $b64 $_.replace)" }) -join "`n") + "`n"), $Utf8NoBom)
+# Commit messages: message-only rules first (Perl regexes), then the name rules. Identities use the name rules only.
+$msgRules = @()
+if (-not $NoWipReword) { $msgRules += @{ match = '(?s)\A\s*wip: auto-commit of uncommitted changes at end of agent turn\b.*\z'; replace = "WIP`n" } }
+if ($StripAgentTrailers) {
+    $msgRules += @{ match = '(?im)^[ \t]*Co-Authored-By:[ \t]*Claude[^\n]*\n?'; replace = '' }
+    $msgRules += @{ match = '(?im)^[^\n]*Generated with \[?Claude Code\]?[^\n]*\n?'; replace = '' }
+}
+if ($StripRowIds) { $msgRules += @{ match = '[ \t]*\((?:[a-z]{2,4}-\d{3,6})[^)\n]*\)'; replace = '' } }
+$msgRules += $rules
+[System.IO.File]::WriteAllText((Join-Path $work 'msg-rules.tsv'), ((@($msgRules | ForEach-Object { "$(& $b64 $_.match)`t$(& $b64 $_.replace)" }) -join "`n") + "`n"), $Utf8NoBom)
+$DropPaths = @($DropPaths | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })   # -File passes "a,b" as one string
 
 # ---- Perl helpers (binary-safe, run with Git's perl) ----
 $common = @'
@@ -66,7 +87,7 @@ sub load_rules { my ($f) = @_; open(my $h, '<', $f) or die "rules: $!"; my @r;
   while (<$h>) { chomp; next unless length; my ($m, $p) = split /\t/; push @r, [decode_base64($m), decode_base64($p // '')]; }
   close $h; return @r; }
 sub apply_rules { my ($t, @r) = @_; for my $x (@r) { my ($re, $rep) = @$x; $t =~ s/$re/$rep/g; } return $t; }
-our $BANNED = qr/superposition|game[-_]factory/i;
+our $BANNED = qr/superposition|game[-_]?factory/i;
 1;
 '@
 [System.IO.File]::WriteAllText((Join-Path $work 'common.pl'), $common, $Utf8NoBom)
@@ -132,7 +153,7 @@ if ($dirty.Count) { [void]$problems.Add("working tree has uncommitted changes ($
 # ---- 2. what would change ----
 $refs = @(Invoke-Git $repo @('show-ref') | Where-Object { $_ -and $_ -notmatch 'refs/original/' })
 Note "refs: $($refs.Count), commits: $("$(Invoke-Git $repo @('rev-list', '--all', '--count'))".Trim())"
-$badRefs = @($refs | Where-Object { $_ -match '(?i)superposition|game[-_]factory' })
+$badRefs = @($refs | Where-Object { $_ -match '(?i)superposition|game[-_]?factory' })
 if ($badRefs.Count) { Note "ref names containing a name (rename by hand): $($badRefs -join ', ')" }
 
 $report = Join-Path $work 'blobs-dry.tsv'
@@ -146,17 +167,30 @@ if ($leftRows.Count) { Note "text blobs where a name survives the rules (adjust 
 if ($binRows.Count) { Note "binary blobs containing a name (not edited): $(@($binRows | Select-Object -Expand path -Unique) -join ', ')" }
 
 # Samples of the replacement in context (current tree).
-$samples = @(Invoke-Git $repo @('grep', '-I', '-n', '-i', '-E', 'superposition|game[-_]factory', 'HEAD', '--') -AllowFail | Where-Object { $_ } | Select-Object -First 8)
+$samples = @(Invoke-Git $repo @('grep', '-I', '-n', '-i', '-E', 'superposition|game[-_]?factory', 'HEAD', '--') -AllowFail | Where-Object { $_ } | Select-Object -First 8)
 foreach ($s in $samples) {
     $after = $s; foreach ($r in $rules) { $after = [regex]::Replace($after, $r.match, $r.replace) }
     Note "    $($s.Substring(0, [Math]::Min(150, $s.Length)))"
     Note "     -> $($after.Substring(0, [Math]::Min(150, $after.Length)))"
 }
 
-$msgHits = @(Invoke-Git $repo @('log', '--all', '--format=%h %s', '-i', '-E', '--grep=superposition|game[-_]factory') | Where-Object { $_ })
+$msgHits = @(Invoke-Git $repo @('log', '--all', '--format=%h %s', '-i', '-E', '--grep=superposition|game[-_]?factory') | Where-Object { $_ })
 Note "commit messages containing a name: $($msgHits.Count)"
 $msgHits | Select-Object -First 8 | ForEach-Object { Note "    $_" }
-$ids = @(Invoke-Git $repo @('log', '--all', '--format=%an <%ae>%n%cn <%ce>') | Where-Object { $_ -match '(?i)superposition|game[-_]factory' } | Sort-Object -Unique)
+# Preview of all message rules (WIP reword by default; trailers / row ids when switched on). .NET regex ~ Perl here.
+$changed = 0; $examples = New-Object System.Collections.ArrayList
+$all = (@(Invoke-Git $repo @('log', '--all', '--format=%h%x1f%B%x1e')) -join "`n") -split "\x1e"
+foreach ($entry in $all) {
+    $parts = $entry.Trim() -split "\x1f", 2
+    if ($parts.Count -lt 2) { continue }
+    $m = $parts[1]; $n = $m
+    foreach ($r in $msgRules) { $n = [regex]::Replace($n, $r.match, $r.replace) }
+    if ($n.Trim() -ne $m.Trim()) { $changed++; if ($examples.Count -lt 5) { [void]$examples.Add("$($parts[0]) '$((($m.Trim()) -split "`n")[0])' -> '$((($n.Trim()) -split "`n")[0])'") } }
+}
+Note ("commit messages changed by the message rules (WIP reword {0}{1}{2}): {3}" -f $(if ($NoWipReword) { 'off' } else { 'on' }), $(if ($StripAgentTrailers) { ', agent trailers' } else { '' }), $(if ($StripRowIds) { ', row ids' } else { '' }), $changed)
+$examples | ForEach-Object { Note "    $_" }
+foreach ($d in $DropPaths) { Note "drop '$d' (opt-in): in $(@(Invoke-Git $repo @('log', '--all', '--format=%h', '--', $d) | Where-Object { $_ }).Count) commits" }
+$ids = @(Invoke-Git $repo @('log', '--all', '--format=%an <%ae>%n%cn <%ce>') | Where-Object { $_ -match '(?i)superposition|game[-_]?factory' } | Sort-Object -Unique)
 foreach ($i in $ids) { $n = $i; foreach ($r in $rules) { $n = [regex]::Replace($n, $r.match, $r.replace) }; Note "identity: $i  ->  $n" }
 
 # LFS-stored files are outside git: report HEAD's LFS files that contain a name (ASCII or UTF-16) so they can be fixed in the editor.
@@ -166,7 +200,7 @@ foreach ($line in @(Invoke-Git $repo @('lfs', 'ls-files', '-n') -AllowFail | Whe
     if (-not (Test-Path -LiteralPath $f)) { continue }
     $bytes = [System.IO.File]::ReadAllBytes($f)
     $a = [Text.Encoding]::ASCII.GetString($bytes); $w = [Text.Encoding]::Unicode.GetString($bytes)
-    if ($a -match '(?i)superposition|game[-_]factory' -or $w -match '(?i)superposition|game[-_]factory') { [void]$lfsHits.Add($line) }
+    if ($a -match '(?i)superposition|game[-_]?factory' -or $w -match '(?i)superposition|game[-_]?factory') { [void]$lfsHits.Add($line) }
 }
 Note "LFS files in HEAD containing a name (not edited here): $($lfsHits.Count) $(if ($lfsHits.Count) { '-> ' + (($lfsHits | Select-Object -First 10) -join ', ') })"
 
@@ -199,14 +233,18 @@ Write-Host "archived and verified: $bundle ($([math]::Round((Get-Item $bundle).L
 $blobMap = Join-Path $work 'blobmap.txt'
 Invoke-Perl @((Join-Path $work 'blobs.pl'), 'map', (Join-Path $work 'rules.tsv'), (Join-Path $work 'blobs-apply.tsv'), $blobMap) | Out-Null
 $P = { param($n) "'" + (ToSh (Join-Path $work $n)) + "'" }
+# Optional (-DropPaths): remove those paths from every commit's index; only then are emptied commits pruned.
+$dropLine = if ($DropPaths.Count) { 'git rm -r --cached --ignore-unmatch -q -- ' + (($DropPaths | ForEach-Object { "'" + $_.Replace("'", '') + "'" }) -join ' ') } else { ':' }
+[System.IO.File]::WriteAllText((Join-Path $work 'drop.sh'), "$dropLine`n", $Utf8NoBom)
+$prune = if ($DropPaths.Count) { '--prune-empty' } else { '' }
 $run = @"
 set -e
 cd '$(ToSh $repo)'
 export FILTER_BRANCH_SQUELCH_WARNING=1
 PERL='/usr/bin/perl'
 git filter-branch -f \
-  --index-filter "git ls-files -s | `$PERL $(& $P 'remap.pl') $(& $P 'blobmap.txt') | git update-index --index-info" \
-  --msg-filter "`$PERL $(& $P 'text.pl') $(& $P 'rules.tsv')" \
+  --index-filter "git ls-files -s | `$PERL $(& $P 'remap.pl') $(& $P 'blobmap.txt') | git update-index --index-info; sh $(& $P 'drop.sh')" $prune \
+  --msg-filter "`$PERL $(& $P 'text.pl') $(& $P 'msg-rules.tsv')" \
   --env-filter ". $(& $P 'envfix.sh')" \
   --tag-name-filter cat -- --all
 "@
@@ -227,8 +265,8 @@ if (-not $KeepBackupRefs) {
 $verify = Join-Path $work 'blobs-verify.tsv'
 Invoke-Perl @((Join-Path $work 'blobs.pl'), 'scan', (Join-Path $work 'rules.tsv'), $verify) | Out-Null
 $stillText = @(Get-Content $verify | Where-Object { $_ -like "text`t*" })
-$stillMsg = @(Invoke-Git $repo @('log', '--branches', '--tags', '--format=%h', '-i', '-E', '--grep=superposition|game[-_]factory') | Where-Object { $_ })
-$stillId = @(Invoke-Git $repo @('log', '--branches', '--tags', '--format=%an %ae %cn %ce') | Where-Object { $_ -match '(?i)superposition|game[-_]factory' })
+$stillMsg = @(Invoke-Git $repo @('log', '--branches', '--tags', '--format=%h', '-i', '-E', '--grep=superposition|game[-_]?factory') | Where-Object { $_ })
+$stillId = @(Invoke-Git $repo @('log', '--branches', '--tags', '--format=%an %ae %cn %ce') | Where-Object { $_ -match '(?i)superposition|game[-_]?factory' })
 Write-Host "after: text blobs with a name $($stillText.Count) (refs/original $(if ($KeepBackupRefs) { 'kept' } else { 'removed' })), messages $($stillMsg.Count), identities $($stillId.Count)"
 if ($stillText.Count -or $stillMsg.Count -or $stillId.Count) { Write-Host "WARNING: names remain; see $verify. The original is in $bundle." }
 Write-Host "The old objects stay in this repo until 'git reflog expire --expire=now --all; git gc --prune=now' (they are in the bundle)."
