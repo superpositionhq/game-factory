@@ -66,6 +66,19 @@ else {
     $max = $vol | Select-String 'max_volume: (\S+) dB' | Select-Object -First 1
     $dur = $vol | Select-String 'Duration: (\d+):(\d+):([\d\.]+)' | Select-Object -First 1
     if ($dur) { $s = [int]$dur.Matches[0].Groups[1].Value * 3600 + [int]$dur.Matches[0].Groups[2].Value * 60 + [double]$dur.Matches[0].Groups[3].Value; [void]$notes.Add(("audio.wav {0:N1} s, max volume {1} dB" -f $s, $(if ($max) { $max.Matches[0].Groups[1].Value } else { '?' }))) }
+    $clockFile = Join-Path $Dir 'audio_clock.jsonl'
+    if (Test-Path $clockFile) {
+        # v1.4: per-buffer audio clock; the WAV must span first buffer -> last buffer on the wall clock.
+        $rows = @(foreach ($l in [System.IO.File]::ReadLines($clockFile)) { if ($l -match '"frame":(\d+),"frames":(\d+),"qpc":\d+,"t_ns":(\d+),"silence_before":(\d+),.*"rate":(\d+)') { [pscustomobject]@{ f = [long]$matches[1]; n = [long]$matches[2]; t = [long]$matches[3]; s = [long]$matches[4]; r = [double]$matches[5] } } })
+        if ($rows.Count -eq 0) { [void]$problems.Add('audio_clock.jsonl has no rows') }
+        else {
+            $r0 = $rows[0]; $rn = $rows[$rows.Count - 1]
+            $maxDrift = 0.0; foreach ($r in $rows) { $d = [math]::Abs((($r.t - $r0.t) / 1e9 - ($r.f - $r0.f) / $r0.r) * 1000); if ($d -gt $maxDrift) { $maxDrift = $d } }
+            $gapsN = @($rows | Where-Object { $_.s -gt 0 }).Count; $silS = (($rows | ForEach-Object { $_.s }) | Measure-Object -Sum).Sum / $r0.r
+            [void]$notes.Add(("audio_clock: {0} buffers, {1} render stalls filled ({2:N2} s silence), max drift {3:N0} ms" -f $rows.Count, $gapsN, $silS, $maxDrift))
+            if ($maxDrift -gt 250) { [void]$problems.Add("audio_clock drift up to $([math]::Round($maxDrift)) ms: system_audio would be unaligned") }
+        }
+    } elseif ($dur) { [void]$notes.Add('no audio_clock.jsonl (drop-in older than v1.4): audio is end-anchored; render stalls would leave it unaligned') }
     if (-not $max -or $max.Matches[0].Groups[1].Value -eq '-inf' -or [double]$max.Matches[0].Groups[1].Value -lt -60) { [void]$notes.Add('audio.wav is silent: check au.DisableAppVolume / that the game plays sounds') }
 }
 

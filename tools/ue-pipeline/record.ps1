@@ -22,7 +22,7 @@ param(
     [ValidateSet('auto', 'gfxcapture', 'ddagrab', 'gdigrab-region', 'gdigrab-window')][string]$Capture = 'auto',
     [switch]$NoStablePath,
     [double]$IdleMinutes = 5,   # user's decision: record only after this long without keyboard/mouse input (0 = don't wait)
-    [int]$MaxVramInUseMB = 4096,   # before launch, wait while more VRAM than this is in use by other processes (nvidia-smi total)
+    [int]$MaxVramInUseMB = 8192,   # before launch, wait while more VRAM than this is in use by other processes (nvidia-smi total)
     [int]$OutputIndex = 0,
     [int]$CaptureRate = 240,
     [string]$ExtraArgs = ''
@@ -32,6 +32,13 @@ param(
 [void][UePipeline.Win]::MakeDpiAware()   # physical pixels for window rects (the display runs at 150 %)
 
 $info = Get-GameInfo $Game
+# Coordinator override for one drain (e.g. "record now, don't wait for idle"): builds\_queue\_idle-override.txt
+# {"idle_minutes": 0, ...}. Applies when -IdleMinutes isn't given; pipeline.ps1 retires it when the queue is empty.
+$idleOverride = Read-JsonFile (Join-Path $BuildsRoot '_queue\_idle-override.txt')   # .txt: the drainer reads *.json as requests
+if ($idleOverride -and -not $PSBoundParameters.ContainsKey('IdleMinutes')) {
+    $IdleMinutes = [double]$idleOverride.idle_minutes
+    Write-Step "idle wait override in effect: $IdleMinutes min ($($idleOverride.reason))"
+}
 if ($Build -eq 'latest') {
     $Build = (Get-ChildItem (Join-Path $BuildsRoot $Game) -Directory | Where-Object { $_.Name -notlike '_*' -and (Test-Path (Join-Path $_.FullName 'build_info.json')) } |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
@@ -62,6 +69,37 @@ $buildConfig = if ($buildInfo.PSObject.Properties.Name -contains 'config' -and $
 $exeName = if ($buildConfig -eq 'Development') { "$($info.ProjectName).exe" } else { "$($info.ProjectName)-Win64-$buildConfig.exe" }
 $exe = Join-Path $Build "Windows\$($info.ProjectName)\Binaries\Win64\$exeName"
 if (-not (Test-Path $exe)) { $exe = $buildInfo.exe_path }
+
+# Cooked-content sanity check: a pipeline build much smaller than the game's own packaged build usually means store
+# content (git-ignored Fab/Marketplace packs) was missing from the cook. Reference = largest of the game's own outputs.
+# Per Content\Paks folder (one packaged build each); the largest one under $Dir, since a folder may hold several builds.
+function Get-CookedMB([string]$Dir) {
+    if (-not (Test-Path $Dir)) { return 0 }
+    $best = 0
+    foreach ($p in @(Get-ChildItem $Dir -Recurse -Directory -Filter Paks -ErrorAction SilentlyContinue)) {
+        $sum = 0; foreach ($f in @(Get-ChildItem $p.FullName -Recurse -File -Include *.pak, *.ucas, *.utoc -ErrorAction SilentlyContinue)) { $sum += $f.Length }
+        if ($sum -gt $best) { $best = $sum }
+    }
+    [math]::Round($best / 1MB, 1)
+}
+$contentCheck = [ordered]@{ build_mb = (Get-CookedMB (Join-Path $Build 'Windows')); reference_mb = 0; reference = $null; ratio = $null; status = 'no_reference' }
+$refDirs = @(Get-ChildItem $info.Dir -Directory -Filter 'Packaged*' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }) +
+    @((Join-Path $info.Dir 'Saved\StagedBuilds'), (Join-Path (Join-Path $WorkRoot 'deliverables') $Game))
+foreach ($d in $refDirs) { $mb = Get-CookedMB $d; if ($mb -gt $contentCheck.reference_mb) { $contentCheck.reference_mb = $mb; $contentCheck.reference = $d } }
+if ($contentCheck.reference_mb -gt 0) {
+    $contentCheck.ratio = [math]::Round($contentCheck.build_mb / $contentCheck.reference_mb, 2)
+    $contentCheck.status = if ($contentCheck.ratio -lt 0.7) { 'much_smaller' } else { 'ok' }
+    $msg = "cooked content: this build {0:N1} MB vs the game's own build {1:N1} MB ({2}) = {3:P0}" -f $contentCheck.build_mb, $contentCheck.reference_mb, $contentCheck.reference, $contentCheck.ratio
+    if ($contentCheck.status -eq 'much_smaller') {
+        Write-Host ''
+        Write-Host ('!' * 100) -ForegroundColor Red
+        Write-Host "WARNING: $msg" -ForegroundColor Red
+        Write-Host "WARNING: the pipeline build is much smaller than the game's own build: store content (git-ignored Content dirs) may be missing. Check build_info.json hydrated_content." -ForegroundColor Red
+        Write-Host ('!' * 100) -ForegroundColor Red
+        Write-Host ''
+        Write-HeavyLog 'content_warning' "record $Game" @{ message = $msg }
+    } else { Write-Step $msg }
+} else { Write-Step ("cooked content: this build {0:N1} MB (no packaged build of the game itself to compare with)" -f $contentCheck.build_mb) }
 $ffmpeg = Find-FFmpeg
 $ffprobe = Find-FFprobe
 $ffmpegVersion = (Invoke-Native $ffmpeg @('-hide_banner', '-version') | Select-Object -First 1)
@@ -274,7 +312,7 @@ if (-not $NoStablePath) {
 # while the user may still be at the machine, instead of in the middle of an unattended run (where it blocks capture).
 if ($buildConfig -ne 'Shipping' -and @(Get-NetFirewallApplicationFilter -Program $exe -ErrorAction SilentlyContinue).Count -eq 0) {   # Shipping has no trace listener
     Write-Step "no Windows Firewall rule for $exe yet: starting it off-screen for 20 s so the one-time prompt appears now"
-    $pfSlot = Enter-GpuSlot "firewall pre-flight $Game"   # it renders (off-screen): GPU job
+    $pfSlot = Enter-GpuSlot "firewall pre-flight $Game" -Recording   # it renders (off-screen): GPU job
     try {
         $pf = Start-Process $exe -ArgumentList '-RenderOffScreen', '-nosound', '-nosplash' -PassThru -WindowStyle Hidden
         Start-Sleep -Seconds 20
@@ -311,6 +349,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
     $refreshHz = if ($vc) { [int]$vc.CurrentRefreshRate } else { $null }
     $displayMode = if ($vc) { "$($vc.CurrentHorizontalResolution)x$($vc.CurrentVerticalResolution) @ $refreshHz Hz ($($vc.Name))" } else { $null }
     if ($refreshHz -notin @(60, 120)) { [void]$warnings.Add("display refresh is $refreshHz Hz, expected 60 or 120 (60 fps capture will repeat/skip game frames)") }
+    if ($contentCheck.status -eq 'much_smaller') { [void]$warnings.Add("cooked content $($contentCheck.build_mb) MB is only $([math]::Round($contentCheck.ratio * 100)) % of the game's own build ($($contentCheck.reference_mb) MB): store content may be missing") }
 
     # Screen capture needs the window untouched for minutes: wait until the user is away (and the session unlocked).
     # Keep the display on from now on: waiting for 5 idle minutes otherwise runs into the power plan's dim/off timer,
@@ -329,7 +368,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
             }
             if ($said) { Write-Step 'user idle' }
         }
-        $gpuSlot = Enter-GpuSlot "record $Game $runId"
+        $gpuSlot = Enter-GpuSlot "record $Game $runId" -Recording
         $vramOk = Wait-VramFree "record $Game $runId" $MaxVramInUseMB
         if ($IdleMinutes -le 0 -or [UePipeline.Win]::IdleMs() -ge $IdleMinutes * 60000) { break }
         Write-Step 'user came back while waiting for the GPU: releasing the GPU slot and waiting again'
@@ -549,17 +588,50 @@ for ($i = 0; $i -lt $Runs; $i++) {
 
     # Audio clock: UE's StartRecording is queued to the audio thread (starts late by an unknown amount, ~0.1 s while
     # the level loads), StopRecording is synchronous. So the WAV is anchored at its end: start = audio_stop - duration.
-    $audioStartNs = $null
-    if ($audio) {
+    $audioStartNs = $null; $audioAligned = $null; $audioAnchor = $null; $audioClockInfo = $null
+    $audioClockPath = Join-Path $rawDir 'audio_clock.jsonl'
+    if ($audio -and (Test-Path $audioClockPath)) {
+        # v1.4: the drop-in writes the WAV itself and logs every rendered buffer (WAV frame index -> QPC), filling render
+        # stalls with silence, so the WAV is sample-accurate to wall time. Frame 0 is at the first row's t_ns.
+        $rows = @(foreach ($l in [System.IO.File]::ReadLines($audioClockPath)) { if ($l -match '"frame":(\d+),"frames":(\d+),"qpc":\d+,"t_ns":(\d+),"silence_before":(\d+)') { [pscustomobject]@{ f = [long]$matches[1]; n = [long]$matches[2]; t = [long]$matches[3]; s = [long]$matches[4] } } })
+        if ($rows.Count -gt 0) {
+            $sr = [double]$audio.sample_rate
+            $first = $rows[0]; $last = $rows[$rows.Count - 1]
+            $audioStartNs = $first.t - [long]($first.f / $sr * 1e9)
+            $spanS = ($last.t - $first.t) / 1e9 + $last.n / $sr
+            $silenceS = ((@($rows | ForEach-Object { $_.s }) | Measure-Object -Sum).Sum) / $sr
+            $gaps = @($rows | Where-Object { $_.s -gt 0 }).Count
+            # Drift: WAV position of each buffer vs its wall time since frame 0 (should stay within ~2 buffers).
+            $maxDriftMs = 0.0
+            foreach ($r in $rows) { $d = [math]::Abs((($r.t - $audioStartNs) / 1e9 - $r.f / $sr) * 1000); if ($d -gt $maxDriftMs) { $maxDriftMs = $d } }
+            $audioAligned = ($maxDriftMs -le 250 -and [math]::Abs($audio.duration_s - $spanS) -le 0.25)
+            $audioAnchor = 'audio_clock.jsonl (per-buffer QPC; render stalls filled with silence)'
+            $audioClockInfo = [ordered]@{ buffers = $rows.Count; gaps_filled = $gaps; silence_inserted_s = [math]::Round($silenceS, 3); max_drift_ms = [math]::Round($maxDriftMs, 1); span_s = [math]::Round($spanS, 3) }
+            $silent = ($null -eq $audio.max_volume_db) -or ($audio.max_volume_db -lt -60)
+            $checks.audio = [ordered]@{ ok = $audioAligned; aligned = $audioAligned; anchor = 'audio_clock'; duration_s = $audio.duration_s; clock = $audioClockInfo; silent = $silent; stats = $audio }
+            if ($gaps -gt 0) { [void]$warnings.Add("audio render stalled $gaps times; $([math]::Round($silenceS, 2)) s of silence inserted to keep alignment") }
+            if (-not $audioAligned) { [void]$warnings.Add("system_audio unaligned: drift up to $([math]::Round($maxDriftMs)) ms vs audio_clock") }
+            if ($silent) { [void]$warnings.Add('audio is silent (max volume below -60 dB)') }
+        }
+    }
+    if ($audio -and $null -eq $audioAligned) {
         $startLagMs = $null
         if ($gs.ContainsKey('audio_start') -and $gs.ContainsKey('audio_stop')) {
             $audioStartNs = [long]$gs['audio_stop'].t_ns - [long]([double]$audio.duration_s * 1e9)
             $startLagMs = [math]::Round(($audioStartNs - [long]$gs['audio_start'].t_ns) / 1e6, 1)
         }
         $silent = ($null -eq $audio.max_volume_db) -or ($audio.max_volume_db -lt -60)
-        $lagOk = ($null -ne $startLagMs -and $startLagMs -ge -30 -and $startLagMs -le 10000)
-        $checks.audio = [ordered]@{ ok = $lagOk; duration_s = $audio.duration_s; start_lag_ms = $startLagMs; silent = $silent; stats = $audio }
-        if (-not $lagOk) { [void]$problems.Add("audio duration $($audio.duration_s) s does not fit the recorded span (start lag $startLagMs ms)") }
+        # Normal lag is ~0.1-0.2 s (StartRecording queued to the audio thread). Seconds of missing audio mean the mixer
+        # stalled or swapped devices mid-run (e.g. the user changed the audio device), so end-anchoring can't align it.
+        # A start late by up to the scenario's load time (go -> scenario_start; the audio thread is busy) is fine.
+        $loadMs = 0
+        $goQ = Get-OutcomeValue $outcome 'go_qpc' 'go_qpc'; $ssQ = Get-OutcomeValue $outcome 'scenario_start_qpc' 'level_start_qpc'
+        if ($goQ -and $ssQ -and [long]$ssQ -gt [long]$goQ) { $loadMs = ([long]$ssQ - [long]$goQ) * 1000.0 / $qpcFreq }
+        $lagOk = ($null -ne $startLagMs -and $startLagMs -ge -30 -and $startLagMs -le $loadMs + 1500)
+        $audioAligned = $lagOk; $audioAnchor = 'end: audio_stop clock sample minus WAV duration'
+        $checks.audio = [ordered]@{ ok = $lagOk; aligned = $lagOk; anchor = 'end'; duration_s = $audio.duration_s; start_lag_ms = $startLagMs; silent = $silent; stats = $audio }
+        # Not a run failure (coordinator's rule): video, inputs and telemetry stay valid; system_audio is marked unaligned.
+        if (-not $lagOk) { [void]$warnings.Add("audio_gap: $([math]::Round($startLagMs / 1000, 1)) s of audio missing (expected ~0.1-0.2 s + load $([math]::Round($loadMs / 1000, 1)) s): the mixer stalled, system_audio is unaligned; video/inputs/telemetry unaffected") }
         if ($silent) { [void]$warnings.Add('audio is silent (max volume below -60 dB)') }
     }
 
@@ -588,7 +660,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
         } else { Get-InputGaps $ffLog }
         $durDiff = if ($null -ne $capSpan) { [math]::Round($vdur - $capSpan, 3) } else { $null }
         $checks.video = [ordered]@{
-            ok = ($frames -gt 0 -and $dupPct -le 1.0 -and $null -ne $durDiff -and $durDiff -lt 0.5 -and $durDiff -gt -2.0)
+            ok = ($frames -gt 0 -and $dupPct -le 1.0 -and $null -ne $durDiff -and $durDiff -lt 0.5 -and $cover -ne $false)
             codec = $probe.streams[0].codec_name; profile = $probe.streams[0].profile; pix_fmt = $probe.streams[0].pix_fmt
             width = $probe.streams[0].width; height = $probe.streams[0].height; avg_frame_rate = $probe.streams[0].avg_frame_rate
             duration_s = $vdur; frames = $frames; dup_frames = $dup; dup_pct = $dupPct; surplus_input_frames_dropped = $drop; input = $gaps
@@ -601,8 +673,9 @@ for ($i = 0; $i -lt $Runs; $i++) {
         # Longer than the span means the start-time estimate is wrong; shorter means no new desktop images arrived
         # before the stop (event-driven capture cannot extend past its last image); level coverage is checked separately.
         if ($null -ne $durDiff -and $durDiff -ge 0.5) { [void]$problems.Add("video duration $vdur s exceeds capture span $capSpan s (clock mismatch)") }
-        elseif ($null -ne $durDiff -and $durDiff -le -2.0) { [void]$problems.Add("video ends $(-$durDiff) s before the capture stopped") }
-        elseif ($null -ne $durDiff -and $durDiff -le -0.5) { [void]$warnings.Add("video ends $(-$durDiff) s before the capture stopped (no new desktop images at the end)") }
+        # Ending before the capture stopped is normal when the result screen is static: event-driven ddagrab gets no new
+        # desktop images, and ffmpeg only sees the stop request once something on screen changes. What matters is that the
+        # video covers scenario_start..scenario_end (checked above as covers_scenario).
         if ($outcome -and $outcome.run_duration_s -and $outcome.frames) {
             $gameFps = [math]::Round($outcome.frames / $outcome.run_duration_s, 2)
             $checks.video.game_fps = $gameFps
@@ -610,7 +683,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
         }
     }
 
-    $status = if ($problems.Count -gt 0) { 'failed' } elseif ($warnings.Count -gt 0) { 'warn' } else { 'ok' }
+    $status = if ($problems.Count -gt 0) { 'failed' } elseif ($audioAligned -eq $false) { 'ok_video_only' } elseif ($warnings.Count -gt 0) { 'warn' } else { 'ok' }
     # A run that ended without an outcome because the GPU device was lost (UE 5.3 Lumen + VSM on async compute, see
     # Known issues) is classified separately and retried once.
     if ($status -eq 'failed' -and -not $outcome) {
@@ -628,7 +701,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
         seed = $runSeed; skill = $runSkill; max_seconds = $MaxSeconds
         result = $(if ($outcome) { $outcome.result } else { $null }); score = $(if ($outcome) { $outcome.score } else { $null })
         player = [ordered]@{ kind = 'bot'; name = 'autoplay'; input_injection = 'UE Enhanced Input (InjectInputForAction)' }
-        build = [ordered]@{ commit = $buildInfo.commit; short_sha = $buildInfo.short_sha; config = $buildConfig; path = $Build; exe = $exe; autoplay_version = $autoplayVersion; output_dir_flag = "-$outDirFlag" }
+        build = [ordered]@{ commit = $buildInfo.commit; short_sha = $buildInfo.short_sha; config = $buildConfig; path = $Build; exe = $exe; autoplay_version = $autoplayVersion; output_dir_flag = "-$outDirFlag"; hydrated_content = $(if ($buildInfo.PSObject.Properties.Name -contains 'hydrated_content') { @($buildInfo.hydrated_content) } else { $null }); content_check = $contentCheck }
         clock = [ordered]@{
             source = 'QueryPerformanceCounter'; qpc_frequency = $qpcFreq; t_ns_definition = 'qpc * 1e9 / qpc_frequency'
             samples = @(@($(if ($gameClock) { $gameClock.samples | ForEach-Object { $_ | Add-Member -NotePropertyName source -NotePropertyValue 'game' -PassThru -Force } })) + @($clock))
@@ -641,7 +714,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
         }
         video_start_offset_ns = $videoStartNs
         video_start_offset_definition = 't_ns of video frame 0 on the QPC ns clock of inputs.jsonl / telemetry.jsonl: video_time_s = (t_ns - video_start_offset_ns) / 1e9'
-        system_audio = [ordered]@{ file = 'system_audio.mka'; codec = 'flac'; source = 'UE master submix (StartRecordingOutput)'; start_offset_ns = $audioStartNs; start_anchor = 'end: audio_stop clock sample minus WAV duration'; stats = $audio }
+        system_audio = [ordered]@{ file = 'system_audio.mka'; codec = 'flac'; source = $(if ($audioClockInfo) { 'UE master submix (AutoPlay buffer listener, v1.4)' } else { 'UE master submix (StartRecordingOutput)' }); start_offset_ns = $audioStartNs; start_anchor = $audioAnchor; aligned = $audioAligned; clock = $audioClockInfo; stats = $audio }
         microphone = $null
         machine = [ordered]@{ cpu = 'AMD Ryzen 7 7700X'; gpu = 'NVIDIA GeForce RTX 4080'; display = $displayMode; display_refresh_hz = $refreshHz; os = [Environment]::OSVersion.VersionString }
         created_utc = (Get-Date).ToUniversalTime().ToString('o')

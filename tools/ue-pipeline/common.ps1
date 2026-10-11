@@ -1,4 +1,4 @@
-# Shared helpers for build.ps1 / record.ps1 / pipeline.ps1. Dot-source it. Windows PowerShell 5.1 compatible.
+﻿# Shared helpers for build.ps1 / record.ps1 / pipeline.ps1. Dot-source it. Windows PowerShell 5.1 compatible.
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2
@@ -140,14 +140,56 @@ function Invoke-Logged([string]$Exe, [string]$Arguments, [string]$LogPath, [stri
 # ---- the machine-wide GPU slot (one GPU job at a time: not enough VRAM for two) ----------------------------------------
 # Same semaphore Work\tools\ue-heavy.ps1 takes for every rendering job (editor GUI, -game, packaged games, Unity).
 
-function Enter-GpuSlot([string]$Label) {
+# Recordings get priority: while a recording waits, builds\_queue\_recording-wants-gpu exists (refreshed every minute)
+# and ue-heavy.ps1 holds back new session GPU jobs while it is under 20 min old. Removed once the slot is held.
+$script:RecordingWantsGpuFlag = Join-Path $BuildsRoot '_queue\_recording-wants-gpu'
+function Set-RecordingWantsGpu([string]$Label) {
+    try { Set-Content -Path $RecordingWantsGpuFlag -Value "$((Get-Date).ToString('o')) pid $PID $Label" -Encoding ASCII } catch { }
+}
+function Clear-RecordingWantsGpu {
+    if (('UePipeline.FlagKeeper' -as [type]) -and [UePipeline.FlagKeeper]::Active) { return }   # the drainer holds it for the job
+    try { if (Test-Path $RecordingWantsGpuFlag) { Remove-Item -Force $RecordingWantsGpuFlag } } catch { }
+}
+# The queue drainer holds the flag for a whole job (first build step to the end of the last run, and between jobs),
+# so no session GPU job slips in between runs. A thread-pool timer rewrites it every 60 s while PowerShell is busy.
+if (-not ('UePipeline.FlagKeeper' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Threading;
+namespace UePipeline {
+    public static class FlagKeeper {
+        static Timer timer; static string path; static string text;
+        public static bool Active { get { return timer != null; } }
+        static void Write(object _) { try { File.WriteAllText(path, DateTime.Now.ToString("o") + " " + text); } catch { } }
+        public static void Start(string flagPath, string label) {
+            lock (typeof(FlagKeeper)) { path = flagPath; text = label; if (timer == null) timer = new Timer(Write, null, 0, 60000); else Write(null); }
+        }
+        public static void Stop() {
+            lock (typeof(FlagKeeper)) {
+                if (timer != null) { timer.Dispose(); timer = null; }
+                try { if (path != null && File.Exists(path)) File.Delete(path); } catch { }
+            }
+        }
+    }
+}
+'@
+}
+function Start-RecordingWantsGpuHold([string]$Label) { [UePipeline.FlagKeeper]::Start($RecordingWantsGpuFlag, "pid $PID $Label") }
+function Stop-RecordingWantsGpuHold { [UePipeline.FlagKeeper]::Stop() }
+
+function Enter-GpuSlot([string]$Label, [switch]$Recording) {
     $sem = New-Object System.Threading.Semaphore(1, 1, 'Global\ue-gpu-jobs')
     $t0 = Get-Date
     Write-HeavyLog 'wait' $Label @{ gpu = $true }
     $said = $false
-    while (-not $sem.WaitOne(60000)) {
-        if (-not $said) { Write-Step "[gpu] waiting for the GPU slot (another recording or GPU job is running) since $($t0.ToString('HH:mm:ss'))"; $said = $true }
-    }
+    try {
+        if ($Recording) { Set-RecordingWantsGpu $Label }
+        while (-not $sem.WaitOne(60000)) {
+            if ($Recording) { Set-RecordingWantsGpu $Label }
+            if (-not $said) { Write-Step "[gpu] waiting for the GPU slot (another recording or GPU job is running) since $($t0.ToString('HH:mm:ss'))$(if ($Recording) { '; recording priority flag set' })"; $said = $true }
+        }
+    } finally { if ($Recording) { Clear-RecordingWantsGpu } }
     Write-HeavyLog 'start' $Label @{ gpu = $true; waited_s = [int]((Get-Date) - $t0).TotalSeconds }
     return [pscustomobject]@{ Sem = $sem; Label = $Label; Since = Get-Date }
 }

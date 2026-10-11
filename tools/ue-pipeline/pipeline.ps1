@@ -44,10 +44,15 @@ function Get-MilestoneScenarios([string]$Dir, [string]$Rev) {
 function Get-GoodRunCount([string]$GameSlug, [string]$Sha, [int]$Scenario) {
     $path = Join-Path (Join-Path $LogRoot $GameSlug) 'runs.jsonl'
     if (-not (Test-Path $path)) { return 0 }
+    # runs.jsonl also holds event rows (mark-invalid.ps1: event "invalidated", no build_commit); invalidated runs don't count.
+    $rows = @(foreach ($line in [System.IO.File]::ReadLines($path)) { try { $line | ConvertFrom-Json } catch { } })
+    $invalid = @($rows | Where-Object { $_.PSObject.Properties.Name -contains 'event' -and $_.event -eq 'invalidated' } | ForEach-Object { $_.run_id })
     $n = 0
-    foreach ($line in [System.IO.File]::ReadLines($path)) {
-        try { $r = $line | ConvertFrom-Json } catch { continue }
-        if ($r.build_commit -eq $Sha -and $(if ($r.PSObject.Properties.Name -contains 'scenario') { $r.scenario } else { $r.level }) -eq $Scenario -and $r.status -in @('ok', 'warn')) { $n++ }
+    foreach ($r in $rows) {
+        $names = $r.PSObject.Properties.Name
+        if ($names -notcontains 'build_commit' -or $names -notcontains 'status') { continue }
+        if ($names -contains 'run_id' -and $r.run_id -in $invalid) { continue }
+        if ($r.build_commit -eq $Sha -and $(if ($names -contains 'scenario') { $r.scenario } elseif ($names -contains 'level') { $r.level } else { $null }) -eq $Scenario -and $r.status -in @('ok', 'warn')) { $n++ }
     }
     return $n
 }
@@ -111,11 +116,24 @@ if ($DrainQueue) {
     New-Item -ItemType Directory -Force (Join-Path $QueueDir 'done') | Out-Null
     try { $drainLock = [System.IO.File]::Open((Join-Path $QueueDir '_drainer.lock'), 'OpenOrCreate', 'ReadWrite', 'None') }
     catch [System.IO.IOException] { Write-Step 'another queue drainer is running'; return }
+    # This process keeps the pipeline.ps1/common.ps1 it started with (build.ps1/record.ps1 are re-read per call): when
+    # either changes, hand over to a fresh drainer between jobs instead of running stale code.
+    $codeFiles = @((Join-Path $PSScriptRoot 'pipeline.ps1'), (Join-Path $PSScriptRoot 'common.ps1'))
+    $codeStamp = ($codeFiles | ForEach-Object { (Get-Item $_).LastWriteTimeUtc } | Measure-Object -Maximum).Maximum
+    $handOver = $false
     try {
         while ($true) {
-            $next = Get-ChildItem $QueueDir -Filter *.json -File | Sort-Object Name | Select-Object -First 1
-            if (-not $next) { break }
+            if ((($codeFiles | ForEach-Object { (Get-Item $_).LastWriteTimeUtc } | Measure-Object -Maximum).Maximum) -gt $codeStamp) { $handOver = $true; break }
+            $next = Get-ChildItem $QueueDir -Filter *.json -File | Where-Object { $_.Name -notlike '_*' } | Sort-Object Name | Select-Object -First 1
+            if (-not $next) {
+                # Queue empty: a one-drain idle-wait override (_idle-override.txt) is retired, so idle waiting is the default again.
+                $ov = Join-Path $QueueDir '_idle-override.txt'
+                if (Test-Path $ov) { Move-Item -Force $ov (Join-Path (Join-Path $QueueDir 'done') ("_idle-override-retired-{0}.txt" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))); Write-Step 'queue empty: idle-wait override retired' }
+                break
+            }
             $req = Read-JsonFile $next.FullName
+            # Recording priority for the whole job and the gap to the next one (see Start-RecordingWantsGpuHold).
+            Start-RecordingWantsGpuHold "queue job $($next.Name)"
             $names = $req.PSObject.Properties.Name
             $levelsReq = if ($names -contains 'scenarios' -and $req.scenarios) { [int[]]$req.scenarios } elseif ($names -contains 'levels' -and $req.levels) { [int[]]$req.levels } else { $null }
             $res = Invoke-GamePipeline $req.game ([int]$req.runs) $levelsReq $req.commit "queue:$($req.requested_by)"
@@ -123,7 +141,15 @@ if ($DrainQueue) {
             Write-JsonFile (Join-Path (Join-Path $QueueDir 'done') $next.Name) $req
             Remove-Item $next.FullName
         }
-    } finally { $drainLock.Dispose() }
+    } finally {
+        # On hand-over the flag stays (under a minute old); the next drainer takes it over.
+        if (-not $handOver) { Stop-RecordingWantsGpuHold }
+        $drainLock.Dispose()
+    }
+    if ($handOver) {
+        Write-Step 'pipeline code changed: handing the queue over to a fresh drainer'
+        Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-DrainQueue') | Out-Null
+    }
     return
 }
 

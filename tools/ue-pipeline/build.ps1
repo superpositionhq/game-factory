@@ -41,6 +41,12 @@ $exePath = Join-Path $outDir "Windows\$($info.ProjectName).exe"
 $buildInfoPath = Join-Path $outDir 'build_info.json'
 
 $existing = Read-JsonFile $buildInfoPath
+# A build made before store-content hydration existed is stale if the game has git-ignored Content dirs.
+if ($existing -and $existing.PSObject.Properties.Name -notcontains 'hydrated_content' -and
+    @(Invoke-Git $info.Dir @('ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '--', 'Content') -AllowFail | Where-Object { $_ -and $_.Trim() }).Count) {
+    Write-Step "$Game $short was built before store-content hydration: rebuilding"
+    $existing = $null
+}
 if (-not $Force -and $existing -and $existing.status -eq 'ok' -and (-not $Package -or $existing.packaged) -and (-not $Smoke -or $existing.smoke.status -ne 'not_run')) {
     Write-Step "$Game $short already built ($outDir); use -Force to rebuild"
     return $existing
@@ -52,6 +58,11 @@ $start = Get-Date
 $steps = New-Object System.Collections.ArrayList
 $failure = ''
 $autoplayVersion = $null
+$hydration = New-Object System.Collections.ArrayList
+$missingAssets = $null
+$missingByPipeline = New-Object System.Collections.ArrayList
+$missingInGame = New-Object System.Collections.ArrayList
+$cookedBytes = $null
 $status = 'ok'
 $smokeResult = [ordered]@{ status = 'not_run'; note = '' }
 $stamp = $start.ToString('yyyyMMdd-HHmmss')
@@ -106,6 +117,26 @@ try {
     Remove-Item Env:\GIT_LFS_SKIP_SMUDGE
     if ($missing.Count -gt 0) { throw "LFS objects missing from $lfsStore for: $($missing -join ', ')" }
     Write-Step "source at $short in $src ($($lfsList.Count) LFS files, $copied copied)"
+
+    # Store content kept out of git on purpose (Fab/Marketplace packs, generated meshes): copy every git-ignored
+    # directory under the game's working-tree Content/ into the clone. The working tree is what the game session tested;
+    # without this the build has no art. robocopy /MIR is incremental (the clone keeps ignored dirs between builds).
+    $ignored = @(Invoke-Git $info.Dir @('-c', 'core.quotepath=false', 'ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '--', 'Content') -AllowFail | Where-Object { $_ -and $_.Trim() })
+    foreach ($rel in $ignored) {
+        $rel = $rel.Trim().TrimEnd('/')
+        $from = Join-Path $info.Dir $rel; $to = Join-Path $src $rel
+        if (-not (Test-Path $from)) { continue }
+        if (-not (Test-Path $from -PathType Container)) { Copy-Item -Force $from $to; continue }
+        & robocopy.exe $from $to /MIR /NJH /NJS /NP /NFL /NDL /R:2 /W:2 | Out-Null
+        if ($LASTEXITCODE -ge 8) { throw "hydrating $rel failed (robocopy $LASTEXITCODE)" }
+        $files = @(Get-ChildItem $to -Recurse -File -ErrorAction SilentlyContinue)
+        $bytes = 0; foreach ($f in $files) { $bytes += $f.Length }
+        [void]$hydration.Add([ordered]@{ dir = $rel; files = $files.Count; bytes = $bytes })
+    }
+    if ($hydration.Count) {
+        $totalMB = [math]::Round((($hydration | ForEach-Object { $_.bytes }) | Measure-Object -Sum).Sum / 1MB, 1)
+        Write-Step "hydrated $($hydration.Count) git-ignored Content dirs from the working tree ($totalMB MB): $(($hydration | ForEach-Object { $_.dir }) -join ', ')"
+    }
     # Which AutoPlay drop-in version the game ships (record.ps1 picks the matching flags).
     $apHeader = Get-ChildItem (Join-Path $src 'Source') -Recurse -Filter AutoPlaySubsystem.h -File -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($apHeader -and ((Get-Content $apHeader.FullName -Raw) -match 'ContractVersion\s*=\s*(\d+)')) { $autoplayVersion = [int]$matches[1] }
@@ -127,6 +158,26 @@ try {
              "-build -cook -stage -pak -archive -archivedirectory=`"$outDir`" -nocompileeditor -unattended -utf8output")
         if ($r.exit_code -ne 0) { throw 'package failed' }
         if (-not (Test-Path $exePath)) { throw "package succeeded but $exePath is missing" }
+        # Missing game assets in the cook (e.g. store content not present) must fail the build, not ship an empty game.
+        $missingPattern = '(?i)(Failed to load|Unable to load package|Couldn.t find file|ImportFailed|Missing import|Can.t find file).{0,200}/Game/'
+        $missingLines = @(Select-String -Path $r.log_path -Pattern $missingPattern -ErrorAction SilentlyContinue | ForEach-Object { $_.Line.Trim() })
+        $missingAssets = $missingLines.Count
+        # Each missing package: if the game's working tree has it, the pipeline lost it (fail); if the game lacks it too,
+        # it is a broken reference in the game/store pack itself (the game's own build has the same hole): warn, record.
+        $missingPkgs = @($missingLines | ForEach-Object { [regex]::Matches($_, "/Game/[^'`"\s:]+") | ForEach-Object { $_.Value.TrimEnd('.', ',') } } | Sort-Object -Unique)
+        foreach ($pkg in $missingPkgs) {
+            $rel = 'Content\' + $pkg.Substring(6).Split('.')[0].Replace('/', '\')
+            $inGame = (Test-Path -LiteralPath (Join-Path $info.Dir "$rel.uasset")) -or (Test-Path -LiteralPath (Join-Path $info.Dir "$rel.umap"))
+            if ($inGame) { [void]$missingByPipeline.Add($pkg) } else { [void]$missingInGame.Add($pkg) }
+        }
+        $paks = @(Get-ChildItem (Join-Path $outDir 'Windows') -Recurse -File -Include *.pak, *.ucas, *.utoc -ErrorAction SilentlyContinue)
+        $cookedBytes = 0; foreach ($f in $paks) { $cookedBytes += $f.Length }
+        Write-Step ("cooked content {0:N1} MB; missing-asset lines in the cook log: {1} ({2} packages the game has but the build lost, {3} missing in the game itself)" -f ($cookedBytes / 1MB), $missingAssets, $missingByPipeline.Count, $missingInGame.Count)
+        if ($missingInGame.Count) { Write-Step "WARNING: broken references in the game's own content (its own build has them too): $($missingInGame -join ', ')" }
+        if ($missingByPipeline.Count -gt 0) {
+            $failure = "cook is missing $($missingByPipeline.Count) packages that exist in the game's working tree: $(($missingByPipeline | Select-Object -First 5) -join ', ')"
+            throw $failure
+        }
     }
 
     # ---- 3. smoke test (only if the game defines <Project>.Smoke) ----
@@ -180,6 +231,11 @@ $row = [ordered]@{
     packaged = [bool]($status -eq 'ok' -and $Package)
     smoke = $smokeResult
     autoplay_version = $autoplayVersion
+    hydrated_content = @($hydration)
+    missing_asset_lines = $missingAssets
+    missing_assets_lost_by_build = @($missingByPipeline)
+    missing_assets_in_game = @($missingInGame)
+    cooked_content_mb = $(if ($null -ne $cookedBytes) { [math]::Round($cookedBytes / 1MB, 1) } else { $null })
     engine = $EngineRoot
     config = $Config
     steps = @($steps)

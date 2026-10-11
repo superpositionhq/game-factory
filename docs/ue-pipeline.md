@@ -13,6 +13,7 @@ through Enhanced Input, see [autoplay-contract.md](autoplay-contract.md)) as gam
 | `enqueue.ps1 <game> [-Runs k] [-Scenarios ..]` | queue a pipeline run and return at once (for game sessions) |
 | `validate-run.ps1 <OutputDir>` | contract check of one raw run directory (for game sessions testing by hand) |
 | `scrub-history.ps1 <game> [-Apply]` | archive, then remove the names Superposition/game-factory from a finished game's history; dry run by default |
+| `mark-invalid.ps1 <game> -Commit sha \| -RunId id -Reason text` | exclude bundles from the dataset (INVALID file, validation status `invalid`); files kept |
 | `sync-check.ps1 <bundle>` | measures video/audio lag against telemetry sync markers (pipeline test project) |
 | `autoplay/AutoPlaySubsystem.h/.cpp` | the drop-in C++ every game copies (contract implementation) |
 
@@ -56,7 +57,12 @@ editor GUI, `-game`, packaged games and Unity jobs (`-nullrhi`/`-nographics` exc
 waits while more than `-MaxVramInUseMB` (default 4096) MB of VRAM is in use (nvidia-smi total; per-process numbers are
 N/A under WDDM), logging the GPU-heavy processes every 5 min; after 120 min the run fails. If the user returns while
 it waits for the slot, it gives the slot back and waits for idle again. Waits/starts/ends go to
-`.recording\_heavy-jobs.jsonl` with `gpu: true`, like ue-heavy.ps1. Caveat: a semaphore is not released when its
+`.recording\_heavy-jobs.jsonl` with `gpu: true`, like ue-heavy.ps1. **Recordings have priority:** while record.ps1
+(a run or the Firewall pre-flight) waits for the slot it keeps `builds\_queue\_recording-wants-gpu` fresh (rewritten
+every minute, removed once it holds the slot and in `finally`); ue-heavy.ps1 holds back new session GPU jobs while that
+file exists and is under 20 min old. The queue drainer holds the same flag for each whole job (from its first build
+step to the end of its last run, and across the gap to the next job; a timer rewrites it every 60 s) and removes it
+when the queue is empty. Caveat: a semaphore is not released when its
 holder is killed, so kill the whole job tree only if every holder dies (the count resets once no process has it open).
 
 Every editor process the pipeline starts has `-unattended` (smoke test; RunUAT passes it to the cook commandlet):
@@ -71,6 +77,11 @@ this engine install. The recorded game itself is the packaged exe, which has no 
    `checkout --force <sha>` + `clean -ffd` (Binaries/Intermediate/DDC stay, so later builds are incremental).
    LFS files are checked out as pointers (`GIT_LFS_SKIP_SMUDGE=1`) and copied from the game repo's own
    `.git\lfs\objects` store, so nothing is downloaded and the game repo is only read. Uncommitted work is not built.
+   **Store content:** every git-ignored directory under the game's working-tree `Content/` (`git ls-files --others --ignored --exclude-standard --directory -- Content`: Fab/Marketplace packs and other content
+   kept out of git on purpose) is copied into the clone with `robocopy /MIR` (incremental; `clean -ffd` keeps ignored
+   dirs). The list, file counts and bytes go to `hydrated_content` in `builds.jsonl`/`build_info.json`. A build made
+   before hydration existed is rebuilt automatically when the game has such dirs. Without this the cook silently drops
+   every asset that references the packs (tower-defense 52a6f2a1: 107 MB of paks instead of 852 MB, no art).
 3. `Engine\Build\BatchFiles\Build.bat <Project>Editor Win64 Development -Project=<uproject> -WaitMutex -NoHotReloadFromIDE`
 4. With `-Package`: `RunUAT.bat -WaitForUATMutex BuildCookRun -project=<uproject> -target=<Project> -noP4 -platform=Win64
    -clientconfig=<Shipping|Development> -build -cook -stage -pak -archive -archivedirectory=<out> -nocompileeditor -unattended -utf8output`
@@ -78,6 +89,10 @@ this engine install. The recorded game itself is the packaged exe, which has no 
    `UnrealEditor-Cmd.exe <uproject> -ExecCmds="Automation RunTests <Project>.Smoke; Quit" -TestExit="Automation Test Queue Empty"
    -ReportExportPath=<logs> -nullrhi -unattended -nopause -nosplash -nosound`; pass = report has ≥ 1 success and 0
    failures. Without such a test the step is `skipped` with a note.
+6. After packaging, the package log is scanned for missing-asset lines that name `/Game/` (`Failed to load`,
+   `Unable to load package`, `Couldn't find file`, `ImportFailed`, `Missing import`); any hit fails the build
+   (`missing_asset_lines` = count, `error_excerpt` = first lines). `cooked_content_mb` = size of the build's
+   `*.pak`/`*.ucas`/`*.utoc`.
 
 **Recording config (v1.3):** `-Config auto` (default) packages **Shipping** when the game's `Config/DefaultEngine.ini`
 at that commit sets `bAllowHighDPIInGameMode=True`, else Development. Shipping compiles out UE's trace runtime, whose
@@ -88,7 +103,7 @@ records `config`. Shipping runs have no `raw\game.log` (nothing needs it); `bUse
 
 `builds.jsonl` row: `commit`, `short_sha`, `commit_subject`, `command`, `start`/`end`/`duration_s`, `status`,
 `exit_code`, `error_excerpt` (first matching error lines of the failing log), `log_path`, `output_path`,
-`exe_path`, `smoke {status, note}`, and `steps[]` (each with its exact command line, times, exit code, log).
+`exe_path`, `smoke {status, note}`, `config`, `autoplay_version`, `hydrated_content[] {dir, files, bytes}`, `missing_asset_lines`, `cooked_content_mb`, and `steps[]` (each with its exact command line, times, exit code, log).
 
 ## record.ps1
 
@@ -96,6 +111,11 @@ Before the runs, the packaged build is mirrored (robocopy /MIR) into a stable `b
 from there (`-NoStablePath` turns this off). UE's trace runtime listens on a TCP port (`TraceLog` control, 0.0.0.0,
 port 1985 or random; no runtime switch) in Development builds, and Windows Firewall asks once per program path:
 a fixed path per game means one prompt per game instead of one per build.
+
+**Cooked-content check:** before the runs, the build's `*.pak`/`*.ucas`/`*.utoc` total is compared with the largest
+of the game's own packaged outputs (`games\<game>\Packaged*`, `Saved\StagedBuilds`, `deliverables\<game>`). Below 70 %
+prints a red banner, logs a `content_warning` row in `_heavy-jobs.jsonl` and adds a warning to every run; the
+numbers are in `metadata.json` `build.content_check {build_mb, reference_mb, reference, ratio, status}`.
 
 Per run (seed = `-Seed + i`, or random; skill = `-Skill`, or cycling 1.0 / 0.75 / 0.5 / 0.25):
 
@@ -210,6 +230,8 @@ recordings\<game>\<game>_S<scenario>_<yyyyMMdd-HHmmss>_s<seed>\   (runs before v
   validation.json     status ok | warn | failed, problems, warnings, per-check details
   manifest.json       sha256 + bytes of every file in the bundle (incl. raw\)
   FAILED              only on failed runs (problems listed); failed runs are kept, never deleted
+  INVALID             excluded from the dataset after the fact (reason inside), e.g. recorded from a broken build;
+                      written by mark-invalid.ps1, which also sets validation.json status "invalid" and adds a runs.jsonl row
   raw\                the game's RecordDir: audio.wav, clock.json, ready.json, go, game.log, ffmpeg.log, ffmpeg_progress.txt
 ```
 
@@ -226,6 +248,7 @@ rather than raw `key_down`/`mouse_move`; `edge` down/up maps onto key down/up wh
 | inputs | no `inject` rows, unparseable lines, `t_ns` going backwards | |
 | telemetry | missing `run_start`/`scenario_start`/`scenario_end`/`run_end` (v1/v1.2: `level_start`/`level_end`), unparseable lines | |
 | audio | missing, or WAV duration doesn't fit the recorded span (start lag outside −30…10000 ms; the lag is the scenario load) | silent (max < −60 dB) |
+| build | | cooked content < 70 % of the game's own packaged build (store content probably missing) |
 | video | not 1920x1080, no frames, ffmpeg dup > 5 % of output frames, video longer than the capture span by ≥ 0.5 s or shorter by ≥ 2 s, doesn't cover the scenario (start..end), start time not estimable | dup > 1 %, capture gaps > 2 % of scenario frames, game < 55 fps, video ends 0.5–2 s before the stop, display not 60/120 Hz |
 | process | game exit code ≠ 0, killed at timeout, window moved, ffmpeg died | |
 | gpu_crash | run ended without `outcome.json` and the game log or a crash report written since the run started shows a D3D12 device loss / GPU hang (`DXGI_ERROR_DEVICE_REMOVED/HUNG/RESET`, "GPU crash", "device lost/removed", breadcrumbs): status `gpu_crash` instead of `failed`, the run is retried once | |
