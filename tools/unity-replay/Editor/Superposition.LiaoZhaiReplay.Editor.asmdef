@@ -1,0 +1,16 @@
+{
+    "name": "Superposition.LiaoZhaiReplay.Editor",
+    "rootNamespace": "Superposition.LiaoZhaiReplay",
+    "references": [],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
