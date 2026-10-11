@@ -92,7 +92,7 @@ function Invoke-GamePipeline([string]$GameSlug, [int]$RunCount, [int[]]$Scenario
                 $summary.runs += [ordered]@{ run_id = $r.run_id; scenario = $r.scenario; status = $r.status; result = $r.result }
             }
         }
-        if (@($summary.runs | Where-Object { $_.status -eq 'failed' }).Count -gt 0 -and $summary.status -eq 'ok') { $summary.status = 'partial' }
+        if (@($summary.runs | Where-Object { $_.status -in @('failed', 'gpu_crash') }).Count -gt 0 -and $summary.status -eq 'ok') { $summary.status = 'partial' }
     } catch {
         $summary.status = 'failed'; $summary.note = $_.Exception.Message
     } finally {

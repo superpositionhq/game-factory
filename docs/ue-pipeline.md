@@ -217,6 +217,7 @@ rather than raw `key_down`/`mouse_move`; `edge` down/up maps onto key down/up wh
 | audio | missing, or WAV duration doesn't fit the recorded span (start lag outside −30…10000 ms; the lag is the scenario load) | silent (max < −60 dB) |
 | video | not 1920x1080, no frames, ffmpeg dup > 5 % of output frames, video longer than the capture span by ≥ 0.5 s or shorter by ≥ 2 s, doesn't cover the scenario (start..end), start time not estimable | dup > 1 %, capture gaps > 2 % of scenario frames, game < 55 fps, video ends 0.5–2 s before the stop, display not 60/120 Hz |
 | process | game exit code ≠ 0, killed at timeout, window moved, ffmpeg died | |
+| gpu_crash | run ended without `outcome.json` and the game log or a crash report written since the run started shows a D3D12 device loss / GPU hang (`DXGI_ERROR_DEVICE_REMOVED/HUNG/RESET`, "GPU crash", "device lost/removed", breadcrumbs): status `gpu_crash` instead of `failed`, the run is retried once | |
 
 ## pipeline.ps1, nightly, triggering from a game session
 
@@ -311,6 +312,16 @@ turns and jumps via Enhanced Input for 20 s (`-TestRunSeconds=n`), beeps (proced
 - Display 3840x2160 at 150 % scaling, 159 Hz; vsync off + `t.MaxFPS 60` in the game keeps the game at 60 fps.
 - The game window sits topmost with its client area at (40,80) for the run (top-left of the 4K screen). Runs start only after 5 min without user input; if you come back mid-run, leave the window alone (moving or covering it stops the run safely).
   Its audio plays on the speakers during runs.
+
+## Known issues
+
+- **GPU hang/crash on frame 1 (UE 5.3 Lumen + virtual shadow maps).** On this machine the D3D12 device can be lost on
+  the first frame: GPU breadcrumbs end in Lumen `ScreenProbeGather` on async compute while virtual shadow maps
+  initialise (seen in tower-defense and siege-catapult). Fix in the game: `r.RDG.AsyncCompute=0` under
+  `[SystemSettings]` in `Config/DefaultEngine.ini`. record.ps1 classifies such runs as `gpu_crash` (evidence from
+  `raw\game.log` for Development builds, or crash reports in `Windows\<Project>\Saved\Crashes` /
+  `%LOCALAPPDATA%\<Project>\Saved\Crashes` written since the run started) and retries each once.
+- **Shipping writes no game log**; `bUseLoggingInShipping` breaks the Shipping link with the launcher-installed engine.
 
 ## Open items
 

@@ -185,6 +185,26 @@ function Get-InputGaps([string]$LogPath, [long]$FromUs = 0, [long]$ToUs = [long]
         missed_60fps_frames = $missed; missed_pct = [math]::Round(100.0 * $missed / ($span * 60), 2) }
 }
 
+function Find-GpuCrash([string]$RawDir, [datetime]$Since) {
+    # Evidence of a D3D12 device loss / GPU hang or crash from this run: the game log (Development builds) and crash
+    # reports written since the run started (Saved\Crashes next to the exe, or %LOCALAPPDATA%\<Project> for Shipping).
+    $pattern = '(?i)DXGI_ERROR_DEVICE_(REMOVED|HUNG|RESET)|GPU crash|GPU hang|device (lost|removed)|Device Removed|breadcrumb|D3D12.{0,40}(TDR|hung|lost)'
+    $files = New-Object System.Collections.ArrayList
+    if (Test-Path (Join-Path $RawDir 'game.log')) { [void]$files.Add((Join-Path $RawDir 'game.log')) }
+    $windowsDir = Split-Path (Split-Path (Split-Path (Split-Path $exe)))   # ...\Windows\<Project>\Binaries\Win64\x.exe
+    foreach ($d in @((Join-Path $windowsDir "$($info.ProjectName)\Saved\Crashes"), (Join-Path $env:LOCALAPPDATA "$($info.ProjectName)\Saved\Crashes"))) {
+        if (Test-Path $d) {
+            Get-ChildItem $d -Recurse -File -Include *.log, *.xml, *.runtime-xml, *.txt -ErrorAction SilentlyContinue |
+                Where-Object { $_.LastWriteTime -ge $Since } | ForEach-Object { [void]$files.Add($_.FullName) }
+        }
+    }
+    foreach ($f in $files) {
+        $hit = Select-String -LiteralPath $f -Pattern $pattern -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($hit) { return "$(Split-Path $f -Leaf): $($hit.Line.Trim().Substring(0, [Math]::Min(200, $hit.Line.Trim().Length)))" }
+    }
+    return $null
+}
+
 function Read-Progress([string]$Path) {
     $vals = @{}
     if (Test-Path $Path) {
@@ -264,6 +284,7 @@ if ($buildConfig -ne 'Shipping' -and @(Get-NetFirewallApplicationFilter -Program
 }
 
 $results = New-Object System.Collections.ArrayList
+$gpuRetried = @{}
 for ($i = 0; $i -lt $Runs; $i++) {
     $runSeed = if ($Seed -ge 0) { $Seed + $i } else { $rng.Next(1, [int]::MaxValue) }
     $runSkill = if ($Skill -ge 0) { $Skill } else { $skillCycle[$i % $skillCycle.Count] }
@@ -573,6 +594,12 @@ for ($i = 0; $i -lt $Runs; $i++) {
     }
 
     $status = if ($problems.Count -gt 0) { 'failed' } elseif ($warnings.Count -gt 0) { 'warn' } else { 'ok' }
+    # A run that ended without an outcome because the GPU device was lost (UE 5.3 Lumen + VSM on async compute, see
+    # Known issues) is classified separately and retried once.
+    if ($status -eq 'failed' -and -not $outcome) {
+        $gpu = Find-GpuCrash $rawDir $tStart
+        if ($gpu) { $status = 'gpu_crash'; $problems.Insert(0, "gpu_crash: $gpu") }
+    }
 
     # ---- metadata, manifest ----
     $videoStartNs = if ($videoStart) { $videoStart.t_ns } else { $null }
@@ -606,7 +633,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
     Write-JsonFile (Join-Path $runDir 'metadata.json') $metadata
     $validation = [ordered]@{ run_id = $runId; status = $status; problems = @($problems); warnings = @($warnings); checks = $checks; game_exit_code = $gameExit; killed = $killed }
     Write-JsonFile (Join-Path $runDir 'validation.json') $validation
-    if ($status -eq 'failed') { [System.IO.File]::WriteAllText((Join-Path $runDir 'FAILED'), (($problems -join "`n") + "`n"), $Utf8NoBom) }
+    if ($status -in @('failed', 'gpu_crash')) { [System.IO.File]::WriteAllText((Join-Path $runDir 'FAILED'), (($problems -join "`n") + "`n"), $Utf8NoBom) }
 
     $files = [ordered]@{}
     foreach ($f in Get-ChildItem $runDir -Recurse -File | Where-Object { $_.Name -ne 'manifest.json' } | Sort-Object FullName) {
@@ -628,7 +655,12 @@ for ($i = 0; $i -lt $Runs; $i++) {
     Add-JsonLine (Join-Path $info.LogDir 'runs.jsonl') $row
     Write-Step ("{0}: {1} ({2}){3}" -f $runId, $status, $metadata.result, $(if ($problems.Count) { ' - ' + ($problems -join '; ') } else { '' }))
     [void]$results.Add($row)
+    if ($status -eq 'gpu_crash' -and -not $gpuRetried.ContainsKey($i)) {
+        $gpuRetried[$i] = $true
+        Write-Step 'GPU crash (device lost): retrying this run once'
+        $i--
+    }
 }
 $results
-if (@($results | Where-Object { $_.status -eq 'failed' }).Count -gt 0) { exit 1 }
+if (@($results | Where-Object { $_.status -in @('failed', 'gpu_crash') }).Count -gt 0) { exit 1 }
 

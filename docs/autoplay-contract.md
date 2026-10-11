@@ -55,6 +55,18 @@ and that's expected: the pipeline doesn't need one (`raw\game.log` is simply abs
 symbols and the Shipping link fails (found by horror-escape; it only works with a source-built engine). The drop-in
 works the same in Shipping (scalability is set through the Scalability API, not a console command).
 
+**Known issue: GPU hang/crash on frame 1 (Lumen + virtual shadow maps).** On this machine UE 5.3 can lose the D3D12
+device on the first frame: GPU breadcrumbs end in Lumen `ScreenProbeGather` on async compute while virtual shadow
+maps initialise (seen in tower-defense and siege-catapult). Fix in your game, then rebuild:
+
+```
+; Config/DefaultEngine.ini
+[SystemSettings]
+r.RDG.AsyncCompute=0
+```
+
+The pipeline marks such runs `gpu_crash` (not a generic failure) and retries them once.
+
 | Flag | Meaning | Default |
 |---|---|---|
 | `-AutoPlay` | enable AutoPlay (ignored in the editor/PIE; works with `UnrealEditor.exe <uproject> -game`) | off |
