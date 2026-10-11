@@ -1,0 +1,183 @@
+# Game deliverable (Track B)
+
+One Track B game packaged for a buyer: the finished Unreal project plus the observed record of how it was made and
+played. Built by `tools/package-game.ps1` (Windows PowerShell 5.1, no Python) from the game repo, its machine logs
+(`.recording\<game>\`), its gameplay bundles (`recordings\<game>\`) and its packaged build. The tool only reads those;
+it writes to `C:\Users\Xiang\Work\deliverables\<game>\`. Plan context: [plan.md](plan.md) B5; the vendor format this
+follows: [vendor-packages.md](vendor-packages.md).
+
+```
+powershell -ExecutionPolicy Bypass -File tools\package-game.ps1 <game> -Commit milestone                       # with store content
+powershell -ExecutionPolicy Bypass -File tools\package-game.ps1 <game> -Commit milestone -WithoutStoreContent  # source-safe variant
+powershell -ExecutionPolicy Bypass -File tools\package-game.ps1 <game> -Commit milestone -DryRun               # what it would take
+```
+
+`-Commit` takes any rev; `milestone` means the commit of the highest `milestone/autoplay-<n>` tag (HEAD when there is
+none). Other options: `-Build <dir>` (+ `-BuildCommit <rev>` when the dir has no `build_info.json`),
+`-AllowDevelopmentBuild`, `-IncludePdb`, `-StoreFolders a,b` (extra store paths), `-RepoPath` (package another clone),
+`-OutRoot`, `-ZipLevel Fastest|Optimal|NoCompression`, `-NoZip`, `-Force` (replace an existing package), `-KeepRefused`,
+`-NoScrub` (diagnostics only; the scan then refuses).
+
+## Output
+
+`deliverables\<game>\<game>_<sha8>\` (with store content) or `<game>_<sha8>_nostore\`, plus a `.zip` of the same name
+whose single top folder is the package. Next to them, outside the package: `package-log.jsonl` (one row per run:
+sizes per section, warnings, notes), `<name>.leaks.tsv` (report-only findings, see Scrub) and, on refusal,
+`<name>.refused-hits.tsv`.
+
+| Path | Content | Source |
+|---|---|---|
+| `UEProject/` | the repo tree at the commit, without `Binaries/ Intermediate/ Saved/ DerivedDataCache/` | `git ls-tree` + `git cat-file`; Git LFS pointers replaced by the object from the repo's own `.git\lfs\objects` (never downloads; a missing object is an error) |
+| `StoreContent.tsv` | every store-content file: `status` (included/dropped), path, bytes, sha256, source (git, git-lfs, working-tree), why it counts | see Store content |
+| `workflow.jsonl` | the creation log at the commit (also in `UEProject/`) | `git cat-file <sha>:workflow.jsonl` |
+| `git.log` | every commit up to the commit, oldest first (topological): `commit`, `Parents`, `Author`, `AuthorDate`, `Committer`, `CommitDate`, message indented 4, full text diff (first parent, renames detected) | `git log -p --no-textconv --full-index` |
+| `History/` | `commits.jsonl`, `actions.jsonl`, `builds.jsonl`, `runs.jsonl` | `.recording\<game>\`, rows limited to the lineage (below) |
+| `Gameplay/<run>/` | every validated gameplay bundle of the lineage, as recorded (video, audio, inputs, telemetry, outcome, metadata, validation, manifest, `raw/`) | `recordings\<game>\` |
+| `Gameplay/summary.md`, `summary.json` | one row per run: scenario, seed, skill, result, score, durations, game fps, inputs, build, validation; runs left out and why | derived |
+| `Build/` | the packaged Windows build (`.pdb` left out unless `-IncludePdb`) and our own `build_info.json` | see Build |
+| `README.md` | what the game is, how to play and open it, scenarios, observed vs derived, licences, store content, integrity | generated from the project's `README.md`, `Docs/*.md`, `Docs/ThirdPartyNotices.md`, `assets.manifest.json` and the package |
+| `scrub-report.json` | what the scrub changed (below) | derived |
+| `manifest.json` | package metadata and `files[]`: path, bytes, sha256 of every file (after the scrub) | derived |
+
+**git.log details.** Header `GIT-LOG 1` plus three comment lines. Authors and committers are anonymised as `dev_NN`
+(numbered by first appearance, keyed by name). Binary files: `Binary file <path>: sha256 <old> (<n> bytes) -> sha256
+<new> (<m> bytes)` (`(none)` for added/deleted); Git LFS pointer diffs collapse to `Git LFS file <path>: ...` with the LFS
+oid, which is the sha256 of the content. CR bytes in diffs are kept (the log is written byte-for-byte as Latin-1).
+Agent trailer lines in commit messages (`Co-Authored-By: Claude…`, `Generated with Claude Code`) are dropped here; diff
+lines are never dropped.
+
+**Lineage.** Everything is tied to the commit's ancestry (`git rev-list <sha>`): `commits.jsonl` rows by `sha`,
+`builds.jsonl` by `commit`, `runs.jsonl` by `build_commit`, gameplay bundles by `metadata.build.commit`;
+`actions.jsonl` rows by `time` up to the commit's committer time (work after the commit is not part of it).
+
+**Gameplay.** A bundle is included when it has no `FAILED` marker, `validation.json` status is `ok` or `warn`, and its
+build commit is in the lineage. Failed runs are never shipped (they are counted in `summary.md`).
+
+## Build
+
+In order:
+
+1. `-Build <dir>` (a folder holding `Windows\` or the build itself). Commit from its `build_info.json`, else `-BuildCommit`
+   (stated, `commit_verified: false`); either must be in the lineage.
+2. The newest successful packaged **Shipping** pipeline build (`builds\<game>\<sha8>-shipping\`, `build_info.json`
+   status ok, commit in the lineage).
+3. The game session's own Shipping package `games\<game>\Packaged\Windows\` (has `*-Shipping.exe`). Its commit is
+   `source.commit` of the newest successful packaging row in the working tree's `workflow.jsonl` (any `*package*` op for a
+   Shipping target or config, with `result: ok` or `exit_code: 0`; games name it `build.package`, `package.exit`,
+   `package.build`), accepted only if that row was written within 20 minutes of the exe and the commit is in the
+   lineage. `commit_verified: false`; the README says "as stated by the build log". Note the session packages its
+   working copy, so uncommitted edits at that moment may be in the build.
+4. With `-AllowDevelopmentBuild`: the newest Development pipeline build of the lineage (flagged in README and warnings).
+
+**Store art check.** When the game keeps store packs out of git (git-ignored folders under `Content/`), a pipeline
+build is made from a clean clone and has none of that art. Every build is therefore checked: the pack folder names
+(`Content/<Pack>`, or the subfolders of an ignored `Content/Fab`) must appear in the build's `.utoc`/`.pak` directory
+index. Pipeline builds without any are skipped (warning); a chosen build without any stops the tool. The result is in
+`Build/build_info.json` (`store_packs_outside_git.cooked` / `not_in_pak_index`; a pack that no cooked map uses is
+legitimately absent, e.g. tower-defense `GoodSky`). Gameplay runs get the same check on the build they were played on
+(`Store art in build` in `Gameplay/summary.md`): tower-defense's validated run was played on the clean-clone build
+`b697a896`, so its video shows the game without the Fab art.
+
+Otherwise the tool stops before copying anything. A build older than the packaged commit is allowed and reported as a
+warning. `Build/build_info.json`: `project, config, commit, commit_verified, source, built_start, built_end, exe,
+debug_symbols`.
+
+## Store content
+
+Fab Standard licence content may ship inside the packaged game but not as source, so every package exists in two
+variants. Store content is, per file:
+
+- any path with a folder named `Fab` (e.g. `Content/Fab/...`, island-survival, liaozhai-night);
+- paths named by `assets.manifest.json` at the commit: every object whose `licence`/`license` matches *Fab Standard* or
+  *Marketplace*, or whose `origin`/`source` is `fab`, contributes its `folder`, `copied_to`, `file`, `path`, `ue_assets`,
+  `ue_path`, `installed_to` values (`/Game/X` → `Content/X`, `{a,b}` expanded, globs allowed; an entry matches the file,
+  the object path without extension, or a folder prefix). This covers packs kept in their own folders (horror-escape,
+  rally-racer, siege-catapult, stealth) and per-file entries;
+- folders under `Content/` that are git-ignored in the game's working tree and not tracked at the commit (tower-defense
+  keeps its Fab packs in `Content/<Pack>/` out of git; they are restored by `Scripts/fetch_fab_ue.sh`). These are copied
+  from the working tree (source `working-tree` in `StoreContent.tsv`);
+- `-StoreFolders`.
+
+"Store content" means everything that came from the Fab store, including the few Fab items under CC BY 4.0 (their
+licence column says so). With `-WithoutStoreContent` all of it is left out and listed as `dropped` with sha256, so a
+buyer can add their own copies of the packs at the same paths and verify them. `-DryRun` prints the split per folder.
+
+## Scrub (deliverable copies only)
+
+Decision of the user (2026-10-11): what leaves the PC is scrubbed; the game repos, `.recording` and `recordings` are
+never modified. Every text file of the package (no NUL byte in the first 8 KB, or a UTF-16 BOM; under 256 MB) is
+rewritten in place, keeping its encoding, with these rules in order (`scope`: `json` = `.json/.jsonl` only, for
+JSON-escaped forms; `lines` = other text files except `git.log`):
+
+| Rule id | Does |
+|---|---|
+| `agent-trailer` | removes `Co-Authored-By: Claude…` and `…Generated with Claude Code…` lines (`lines`), the same inside JSON strings with their preceding `\n` (`json`); in `git.log` the commit-message trailers are dropped while the log is written |
+| `agent-identity` | `Claude (agent)` → `dev`; `Claude [Opus 5.5] <noreply@anthropic.com>` → `dev <dev@example.invalid>` (also `\u003c…\u003e`) |
+| `banned-name` | the names Superposition / game-factory, with the defaults of `ue-pipeline/scrub-history.ps1`: schema prefix `superposition.` removed, then Superposition → Studio, game-factory → studio-tools (game_factory, GameFactory, gamefactory variants), case-preserving |
+| `git-identity` | the repo's git author/committer names, their words of 4+ letters and e-mail handles → the same `dev_NN` as in `git.log`; a term containing a digit (a handle) also takes letters/digits glued to its end, so account names built on it go too |
+| `username` | the account name (`$env:USERNAME`) as a word, including inside user paths (`C:\Users\<name>`, `C:\\Users\\…`, `c:/users/…`, `/c/Users/…`, `/Users/…`) → `dev` |
+| `email` | e-mail addresses → `<redacted-email>`, except placeholders (`example.com/org/net`, `*.invalid`, `*.test`, `localhost`) and `git@github.com`-style service addresses; file names such as `icon@2x.png` are not addresses |
+| `agent-mention` | `claude code` → `agent-tool`, `claude-<model>…` → `agent-model`, then remaining Claude → Agent/agent, Anthropic → Provider/provider (case kept) |
+
+A word start also counts right after a JSON escape (`\n`, `\t`, …), whose letter would otherwise hide the boundary.
+Gameplay bundle `manifest.json` entries of rewritten files get the new bytes and sha256.
+
+Then every file is scanned again. **The package is refused** (exit 2, staged folder deleted unless `-KeepRefused`, no
+zip, hits in `<name>.refused-hits.tsv`) on any remaining match in a file path or text file of: the two names, `claude`,
+`anthropic`, the account name, an e-mail address (same pattern), a git identity term; or the two names in any binary
+file (ASCII or UTF-16LE). Binary files are never edited: the account name and agent names found in binaries (UE assets
+embed their import source paths, the exe its build paths) are listed by category in `scrub-report.json`
+(`binary_files_with_findings`). Other user-folder paths (`C:\Users\<other>`, `/home/…`) and the account name as a bare
+substring are written to `<name>.leaks.tsv` for review, not enforced.
+
+`scrub-report.json`: `rules[]` (`id`, `description`, `replacements`, `files`), `git_log` (trailer lines removed,
+identities numbered), `files_touched[]` (path and replacements per rule id), `binary_files_with_findings[]` (path,
+categories, encodings, hits, capped at 20 per file), `verification` (remaining text/path hits, binary name hits). It
+never contains the original values.
+
+## Observed vs derived
+
+| Data | Observed (written when it happened) | Derived |
+|---|---|---|
+| `workflow.jsonl` | every row, by the builder at the time of the operation | nothing (scrubbed copy) |
+| `git.log` | commits, messages, dates, file contents | diffs (git), sha256 of binaries, `dev_NN` |
+| `History/` | hook and pipeline rows | the lineage filter |
+| `Gameplay/` | video, audio, inputs, telemetry, outcome, clock samples | `metadata.json` estimates, `validation.json`, `summary.*` |
+| `UEProject/`, `Build/` | the committed project, the packaged build | nothing |
+| `README.md`, `StoreContent.tsv`, `scrub-report.json`, `manifest.json` | | written by the tool |
+
+## Measured (2026-10-11)
+
+| Game @ commit | Full: folder / zip | Without store: folder / zip | Store files dropped | Build/ | Gameplay runs |
+|---|---|---|---|---|---|
+| tower-defense @ `52a6f2a1` (`milestone/autoplay-3`) | 11.02 / 9.88 GB (9,011 files) | 1.55 / 1.40 GB (2,624) | 6,387 (9.46 GB, from the working tree) | pipeline `52a6f2a1-shipping` (verified, art cooked) | 1 (played on clean-clone `b697a896`: no store art) |
+| rally-racer @ `174f1a0e` (`milestone/autoplay-3`) | 16.12 / 15.22 GB (4,871) | 6.48 / 6.17 GB (966) | 3,905 (9.64 GB, tracked) | pipeline `174f1a0e-shipping` (verified) | 3 (S1–S3) |
+| island-survival @ `4207861a` (HEAD; tag `bf92f9d3` in its lineage) | 10.75 / 10.27 GB (3,145) | 5.79 / 5.58 GB (1,170) | 1,975 (4.97 GB, `Content/Fab`, tracked) | session Shipping package of `f05b85f` (`-Build`, stated) | 0 |
+| liaozhai-night @ `328a8654` (HEAD; tag `7239cc20` in its lineage) | 8.84 / 8.00 GB (1,855) | 2.45 / 2.19 GB (1,097) | 758 (6.39 GB, `Content/Fab` from the working tree) | Shipping package of `25c4cb9` (`-Build`, stated; launch from `Build/`) | 0 |
+
+One run takes 1.5–8 minutes (copy, scrub, scan, hash, zip `Fastest`). Not packaged: siege-catapult (refused: its only
+Shipping package, `f9d3aa9`, predates the v1.3 migration and embeds the old drop-in's schema names in the exe; waiting
+for the queue's Shipping build of `2361341c`), horror-escape and stealth (sessions active, no Shipping build of a
+clean commit).
+
+Scrub counts (same in both variants of a game):
+
+| Game | Files touched | banned-name | username | agent-mention | agent-trailer | git-identity | email | agent-identity | Binaries reported |
+|---|---|---|---|---|---|---|---|---|---|
+| tower-defense | 27 | 8,956 | 4,121 | 854 | 189 (90 in `git.log`) | 120 | 14 | 10 | 17 |
+| rally-racer | 23 | 3,992 | 2,589 | 161 | 39 | 33 | 5 | 1 | 5 |
+| island-survival | 30 | 2,505 | 3,215 | 300 | 78 | 29 | 3 | 0 | 423 |
+| liaozhai-night | 27 | 3,862 | 3,243 | 282 | 50 | 32 | 1 | 0 | 83 |
+
+All with 0 text/path hits and 0 binary name hits after the scrub. Binaries reported are UE assets carrying their
+import source path and the Shipping exe (build paths), by category only.
+
+## Known gaps
+
+- Packages are a snapshot: runs the recording queue adds later (tower-defense re-recording, island-survival,
+  liaozhai-night, siege-catapult) need a rerun of the tool with `-Force`. Running it while the pipeline builds that
+  game is refused (pipeline lock).
+- tower-defense's only validated run was played on a clean-clone build without the store art.
+- Binary assets keep their embedded import paths (account name); fixing them needs a re-import in the editor.
+- The scrub is pattern-based: other personal names typed into logs (e.g. names seen on web pages) are not detected
+  beyond the e-mail and git-identity rules; review `<name>.leaks.tsv` and spot-check `History/actions.jsonl`.
