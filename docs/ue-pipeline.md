@@ -112,11 +112,10 @@ inside `AcquireNextFrame` for each new desktop image (≈143–159 per second he
 samples; `dup=` counts slots without a new image (measured: 0).
 
 **Encoder.** record.ps1 probes at start and uses the first that opens: `h264_nvenc` (RTX 4080), `h264_amf` (the
-Ryzen 7700X's integrated Radeon), `libx264` (CPU); `metadata.video.encoder` says which. **NVENC does not open on this
-machine**: the installed NVIDIA driver 591.86 offers NVENC API 13.0, and both gyan.dev builds tried need 13.1
-(driver ≥ 610): 9.0.2 and, contrary to the expectation that led to pinning it, 8.1.2 as well ("Driver does not
-support the required nvenc API version. Required: 13.1 Found: 13.0"). `h264_mf` fails too. So recordings currently
-use **AMF**, verified:
+Ryzen 7700X's integrated Radeon), `libx264` (CPU); `metadata.video.encoder` says which. Since the NVIDIA driver update
+to **617.42** (2026-10-11) NVENC opens and is used: the pinned ffmpeg 8.1.2 (like 9.x) needs NVENC API 13.1, i.e.
+driver ≥ 610; on the earlier 591.86 it failed ("Required: 13.1 Found: 13.0") and recordings used AMF. `h264_mf`
+does not work. The AMF fallback, verified before the driver update:
 
 ```
 ffmpeg -hide_banner -loglevel +datetime+level+info -stats_period 1 -progress <raw>\ffmpeg_progress.txt -y
@@ -129,7 +128,7 @@ AMF and libx264 take system-memory frames, so `fps=60` picks the 60 fps grid on 
 are downloaded and converted (BT.709 matrix, limited range). The libx264 variant is the same with `format=yuv420p`
 and `-c:v libx264 -preset ultrafast -crf 17 -g 120 -bf 0 -pix_fmt yuv420p` (`veryfast` only reached 0.977x on the
 shared CPU). With `fps=60` in the graph ffmpeg's own `dup=` stays 0; holes show up as capture-input gaps instead.
-NVENC becomes available with an NVIDIA driver ≥ 610 (no other change needed; record.ps1 will pick it up).
+With NVENC the D3D11 frames go to the encoder without any download (command above).
 Fallbacks (`-Capture`), measured on the test project: `gdigrab-region` (`-f gdigrab -framerate 60 -offset_x
 -offset_y -video_size 1920x1080 -i desktop`) captures real content but only ~44 fps (24 % duplicates);
 `gdigrab-window` (`-i title="<Project> [AutoPlay]"`) ~56 fps (8 % duplicates, 23 % gap time). Both fail validation,
@@ -139,13 +138,14 @@ so they are for emergencies; `auto` tries ddagrab first and gdigrab-region only 
 
 | | Result |
 |---|---|
-| Output | 1920x1080 H.264 yuv420p (AMF: Main, ≈11 Mbit/s; x264 ultrafast: Constrained Baseline, ≈7 Mbit/s), 60/1 CFR, 0 duplicated slots, duration within 0.1 s of the capture span |
+| Encoder | **NVENC (current)**: H.264 Main yuv420p ≈26 Mbit/s (cq 19, p5 hq); AMF fallback: Main ≈11 Mbit/s; x264 ultrafast: Constrained Baseline ≈7 Mbit/s |
+| Output | 1920x1080 H.264 yuv420p, 60/1 CFR, 0 duplicated slots, duration within 0.1 s of the capture span |
 | Capture input | 90–160 desktop images/s; gaps > 25 ms during the level 0.6–3 % of frames (game/compositor hitches) |
-| Video lag | a game event shows on video 25 ms (p5–p95 15–31 ms) after its `t_ns` with AMF (`fps=60` before download); 47 ms (29–61) with the earlier output-side CFR path: game thread → render thread → GPU → present → DWM → capture. `video_start_offset_ns` is the capture clock and does **not** subtract this |
-| Audio lag | a sound appears in `system_audio` 26–33 ms (15–44 ms) after its `t_ns` (next mixer buffer) |
-| Game frame cadence | frame-code strip: 6 % of game frames shown twice and as many never shown with AMF (76 of 1194); 13 % on the earlier path |
+| Video lag | a game event shows on video 14–29 ms (p5–p95 5–37 ms) after its `t_ns` with NVENC; 25 ms (15–31) with AMF; 47 ms (29–61) with the first output-side CFR libx264 path: game thread → render thread → GPU → present → DWM → capture. `video_start_offset_ns` is the capture clock and does **not** subtract this |
+| Audio lag | a sound appears in `system_audio` 13–33 ms (5–44 ms) after its `t_ns` (next mixer buffer) |
+| Game frame cadence | frame-code strip, repeated+skipped game frames: **0.3–1.1 % with NVENC** at 120 Hz (driver 617.42; desktop images arrive at ≈60/s, one per game frame); ≈7 % with AMF (4–10 % per run), 13 % on the first path |
 
-The cadence row is inherent to sampling the desktop: with vsync off the game's 60 fps frames reach the screen on the display's vblank grid (6.3 ms at 159 Hz, 8.3 ms at 120 Hz) at irregular intervals, and a 60 Hz sample-and-hold capture, OBS included, repeats some and misses some. Measured: 13 % / 6 % at 159 Hz (output-side CFR / AMF path), **7 % at 120 Hz** (AMF, 86 of 1194). The user runs the display at 120 Hz for recording sessions; record.ps1 logs `machine.display` / `machine.display_refresh_hz` (from `Win32_VideoController`) in metadata.json and warns (does not fail) when the rate is not 60 or 120. 120 Hz alone doesn't fix the cadence; locking presents to every second vblank would need `r.VSync 1` at 120 Hz in AutoPlay (a contract change, not made) or in-engine frame capture.
+With NVENC (no download, frames straight from Desktop Duplication to the encoder) the cadence is close to one video frame per game frame. On the AMF/CPU paths it is inherent to sampling the desktop: with vsync off the game's 60 fps frames reach the screen on the display's vblank grid (6.3 ms at 159 Hz, 8.3 ms at 120 Hz) at irregular intervals, and a 60 Hz sample-and-hold capture, OBS included, repeats some and misses some. Measured: 13 % / 6 % at 159 Hz (output-side CFR / AMF path), **7 % at 120 Hz** (AMF, 86 of 1194). The user runs the display at 120 Hz for recording sessions; record.ps1 logs `machine.display` / `machine.display_refresh_hz` (from `Win32_VideoController`) in metadata.json and warns (does not fail) when the rate is not 60 or 120. 120 Hz alone doesn't fix the cadence; locking presents to every second vblank would need `r.VSync 1` at 120 Hz in AutoPlay (a contract change, not made) or in-engine frame capture.
 
 UE's `StartRecordingOutput` is queued to the audio thread and starts late by an unknown amount (≈ 0.1 s, because
 the level load follows immediately). `StopRecordingOutput` is synchronous under the same lock the mixer appends
@@ -183,7 +183,7 @@ rather than raw `key_down`/`mouse_move`; `edge` down/up maps onto key down/up wh
 | inputs | no `inject` rows, unparseable lines, `t_ns` going backwards | |
 | telemetry | missing `run_start`/`level_start`/`level_end`/`run_end`, unparseable lines | |
 | audio | missing, or WAV duration doesn't fit the recorded span (start lag outside −30…1500 ms) | silent (max < −60 dB) |
-| video | not 1920x1080, no frames, ffmpeg dup > 5 % of output frames, duration ≠ capture span ± 0.5 s, doesn't cover level_start..level_end, start time not estimable | dup > 1 %, capture gaps > 2 % of level frames, game < 55 fps |
+| video | not 1920x1080, no frames, ffmpeg dup > 5 % of output frames, video longer than the capture span by ≥ 0.5 s or shorter by ≥ 2 s, doesn't cover level_start..level_end, start time not estimable | dup > 1 %, capture gaps > 2 % of level frames, game < 55 fps, video ends 0.5–2 s before the stop, display not 60/120 Hz |
 | process | game exit code ≠ 0, killed at timeout, window moved, ffmpeg died | |
 
 ## pipeline.ps1, nightly, triggering from a game session
@@ -231,8 +231,10 @@ turns and jumps via Enhanced Input for 20 s (`-TestRunSeconds=n`), beeps (proced
   paths and the user name: `metadata.json` (`build.path`, `build.exe`, `video.ffmpeg_command`), `raw\game.log`,
   `raw\ffmpeg.log`, `raw\ready.json`, the `RecordDir` in UE log lines. Per AGENTS.md (leak scan for `C:\Users\…`,
   real names, e-mails), a publish step must rewrite or drop these and re-hash `manifest.json` before any upload.
-- **NVENC**: blocked on the NVIDIA driver (591.86 offers NVENC API 13.0; the pinned ffmpeg 8.1.2 needs 13.1, driver
-  ≥ 610). The user will update the driver; then confirm record.ps1's probe picks `h264_nvenc` and record the numbers here.
-- **Game-frame cadence** (~7 % repeated/skipped at 120 Hz with vsync off): would need `r.VSync 1` at 120 Hz in
-  AutoPlay (contract change) or in-engine capture.
+- **Game-frame cadence**: with NVENC after the driver update it is 0.3–1.1 % (two runs); the numbers below were measured
+  on the AMF path (~7 % repeated/skipped at 120 Hz with vsync off). Tried `r.VSync 1` + `t.MaxFPS 60` at
+  120 Hz on the test project only (`-AutoPlayVSync` flag in its copy of the subsystem, not in the drop-in): runs of the
+  same mode vary more (vsync off 4.3–10.4 %, on 2.5–14.3 %; means 7.3 % vs 7.6 %) than the modes differ, so no
+  contract change. Input-to-video lag was slightly lower with vsync on (mean 18–19 ms vs 21–22 ms). Remaining
+  option: in-engine frame capture.
 - **Nightly Task Scheduler entry**: not created (user's decision); runs are queued on demand with enqueue.ps1.

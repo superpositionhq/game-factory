@@ -413,7 +413,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
         } else { Get-InputGaps $ffLog }
         $durDiff = if ($null -ne $capSpan) { [math]::Round($vdur - $capSpan, 3) } else { $null }
         $checks.video = [ordered]@{
-            ok = ($frames -gt 0 -and $dupPct -le 1.0 -and $null -ne $durDiff -and [math]::Abs($durDiff) -lt 0.5)
+            ok = ($frames -gt 0 -and $dupPct -le 1.0 -and $null -ne $durDiff -and $durDiff -lt 0.5 -and $durDiff -gt -2.0)
             codec = $probe.streams[0].codec_name; profile = $probe.streams[0].profile; pix_fmt = $probe.streams[0].pix_fmt
             width = $probe.streams[0].width; height = $probe.streams[0].height; avg_frame_rate = $probe.streams[0].avg_frame_rate
             duration_s = $vdur; frames = $frames; dup_frames = $dup; dup_pct = $dupPct; surplus_input_frames_dropped = $drop; input = $gaps
@@ -423,7 +423,11 @@ for ($i = 0; $i -lt $Runs; $i++) {
         if ($dupPct -gt 5.0) { [void]$problems.Add("ffmpeg duplicated $dupPct % of output frames (no new image)") }
         elseif ($dupPct -gt 1.0) { [void]$warnings.Add("ffmpeg duplicated $dupPct % of output frames (no new image)") }
         if ($gaps -and $gaps.missed_pct -gt 2.0) { [void]$warnings.Add("capture input had gaps worth $($gaps.missed_pct) % of frames") }
-        if ($null -ne $durDiff -and [math]::Abs($durDiff) -ge 0.5) { [void]$problems.Add("video duration $vdur s vs capture span $capSpan s") }
+        # Longer than the span means the start-time estimate is wrong; shorter means no new desktop images arrived
+        # before the stop (event-driven capture cannot extend past its last image); level coverage is checked separately.
+        if ($null -ne $durDiff -and $durDiff -ge 0.5) { [void]$problems.Add("video duration $vdur s exceeds capture span $capSpan s (clock mismatch)") }
+        elseif ($null -ne $durDiff -and $durDiff -le -2.0) { [void]$problems.Add("video ends $(-$durDiff) s before the capture stopped") }
+        elseif ($null -ne $durDiff -and $durDiff -le -0.5) { [void]$warnings.Add("video ends $(-$durDiff) s before the capture stopped (no new desktop images at the end)") }
         if ($outcome -and $outcome.run_duration_s -and $outcome.frames) {
             $gameFps = [math]::Round($outcome.frames / $outcome.run_duration_s, 2)
             $checks.video.game_fps = $gameFps
