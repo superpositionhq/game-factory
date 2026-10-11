@@ -1,0 +1,587 @@
+// AutoPlay recorder: see AutoPlaySubsystem.h and docs/autoplay-contract.md (contract v1).
+#include "AutoPlaySubsystem.h"
+
+#include "AudioMixerBlueprintLibrary.h"
+#include "EnhancedInputSubsystems.h"
+#include "InputAction.h"
+#include "Engine/Engine.h"
+#include "Engine/GameInstance.h"
+#include "Engine/GameViewportClient.h"
+#include "Engine/LocalPlayer.h"
+#include "Engine/World.h"
+#include "Framework/Application/IInputProcessor.h"
+#include "Framework/Application/SlateApplication.h"
+#include "GameFramework/GameUserSettings.h"
+#include "GameFramework/PlayerController.h"
+#include "HAL/FileManager.h"
+#include "HAL/IConsoleManager.h"
+#include "HAL/PlatformMisc.h"
+#include "HAL/PlatformProcess.h"
+#include "HAL/PlatformTime.h"
+#include "Misc/App.h"
+#include "Misc/CommandLine.h"
+#include "Misc/EngineVersion.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Parse.h"
+#include "Misc/Paths.h"
+#include "UnrealClient.h"
+#include "Widgets/SWindow.h"
+
+namespace AutoPlay
+{
+	/** Swallows every hardware key, mouse and gamepad event so only injected input reaches the game. */
+	class FInputBlocker : public IInputProcessor
+	{
+	public:
+		virtual void Tick(const float, FSlateApplication&, TSharedRef<ICursor>) override {}
+		virtual bool HandleKeyDownEvent(FSlateApplication&, const FKeyEvent&) override { return true; }
+		virtual bool HandleKeyUpEvent(FSlateApplication&, const FKeyEvent&) override { return true; }
+		virtual bool HandleAnalogInputEvent(FSlateApplication&, const FAnalogInputEvent&) override { return true; }
+		virtual bool HandleMouseMoveEvent(FSlateApplication&, const FPointerEvent&) override { return true; }
+		virtual bool HandleMouseButtonDownEvent(FSlateApplication&, const FPointerEvent&) override { return true; }
+		virtual bool HandleMouseButtonUpEvent(FSlateApplication&, const FPointerEvent&) override { return true; }
+		virtual bool HandleMouseButtonDoubleClickEvent(FSlateApplication&, const FPointerEvent&) override { return true; }
+		virtual bool HandleMouseWheelOrGestureEvent(FSlateApplication&, const FPointerEvent&, const FPointerEvent*) override { return true; }
+		virtual const TCHAR* GetDebugName() const override { return TEXT("AutoPlayInputBlocker"); }
+	};
+
+	static const TCHAR* ValueTypeName(EInputActionValueType Type)
+	{
+		switch (Type)
+		{
+		case EInputActionValueType::Boolean: return TEXT("Boolean");
+		case EInputActionValueType::Axis1D: return TEXT("Axis1D");
+		case EInputActionValueType::Axis2D: return TEXT("Axis2D");
+		default: return TEXT("Axis3D");
+		}
+	}
+
+	static FString ValueJson(const FInputActionValue& Value)
+	{
+		switch (Value.GetValueType())
+		{
+		case EInputActionValueType::Boolean:
+			return Value.Get<bool>() ? TEXT("true") : TEXT("false");
+		case EInputActionValueType::Axis1D:
+			return UAutoPlaySubsystem::JsonNum(Value.Get<float>());
+		case EInputActionValueType::Axis2D:
+		{
+			const FVector2D V = Value.Get<FVector2D>();
+			return FString::Printf(TEXT("[%s,%s]"), *UAutoPlaySubsystem::JsonNum(V.X), *UAutoPlaySubsystem::JsonNum(V.Y));
+		}
+		default:
+			return UAutoPlaySubsystem::JsonVec(Value.Get<FVector>());
+		}
+	}
+
+	static FString ZeroJson(EInputActionValueType Type)
+	{
+		switch (Type)
+		{
+		case EInputActionValueType::Boolean: return TEXT("false");
+		case EInputActionValueType::Axis1D: return TEXT("0");
+		case EInputActionValueType::Axis2D: return TEXT("[0,0]");
+		default: return TEXT("[0,0,0]");
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Clock and JSON helpers
+
+uint64 UAutoPlaySubsystem::Qpc()
+{
+	return FPlatformTime::Cycles64(); // QueryPerformanceCounter on Windows
+}
+
+uint64 UAutoPlaySubsystem::QpcFrequency()
+{
+	static const uint64 Frequency = (uint64)FMath::RoundToDouble(1.0 / FPlatformTime::GetSecondsPerCycle64());
+	return Frequency;
+}
+
+uint64 UAutoPlaySubsystem::QpcToNs(uint64 InQpc)
+{
+	const uint64 F = QpcFrequency();
+	return (InQpc / F) * 1000000000ull + (InQpc % F) * 1000000000ull / F;
+}
+
+FString UAutoPlaySubsystem::JsonStr(const FString& S)
+{
+	FString Out;
+	Out.Reserve(S.Len() + 2);
+	Out.AppendChar(TEXT('"'));
+	for (const TCHAR C : S)
+	{
+		switch (C)
+		{
+		case TEXT('"'): Out += TEXT("\\\""); break;
+		case TEXT('\\'): Out += TEXT("\\\\"); break;
+		case TEXT('\n'): Out += TEXT("\\n"); break;
+		case TEXT('\r'): Out += TEXT("\\r"); break;
+		case TEXT('\t'): Out += TEXT("\\t"); break;
+		default:
+			if (C < 0x20) { Out += FString::Printf(TEXT("\\u%04x"), (int32)C); }
+			else { Out.AppendChar(C); }
+		}
+	}
+	Out.AppendChar(TEXT('"'));
+	return Out;
+}
+
+FString UAutoPlaySubsystem::JsonNum(double V)
+{
+	if (!FMath::IsFinite(V)) { return TEXT("null"); }
+	return FString::Printf(TEXT("%.9g"), V);
+}
+
+FString UAutoPlaySubsystem::JsonVec(const FVector& V)
+{
+	return FString::Printf(TEXT("[%s,%s,%s]"), *JsonNum(V.X), *JsonNum(V.Y), *JsonNum(V.Z));
+}
+
+FString UAutoPlaySubsystem::Stamp() const
+{
+	const uint64 Q = Qpc();
+	return FString::Printf(TEXT("\"t_ns\":%llu,\"qpc\":%llu,\"frame\":%llu"), QpcToNs(Q), Q, (uint64)GFrameCounter);
+}
+
+FString UAutoPlaySubsystem::ClockSample(const TCHAR* Label) const
+{
+	const uint64 Q0 = Qpc();
+	const FDateTime Utc = FDateTime::UtcNow();
+	const uint64 Q1 = Qpc();
+	const int64 UnixNs = (Utc - FDateTime(1970, 1, 1)).GetTicks() * 100;
+	return FString::Printf(TEXT("{\"label\":%s,\"qpc\":%llu,\"qpc_after\":%llu,\"t_ns\":%llu,\"unix_ns\":%lld,\"utc\":%s,\"frame\":%llu}"),
+		*JsonStr(Label), Q0, Q1, QpcToNs(Q0), UnixNs, *JsonStr(Utc.ToIso8601()), (uint64)GFrameCounter);
+}
+
+FString UAutoPlaySubsystem::HeaderFields() const
+{
+	return FString::Printf(TEXT("\"contract_version\":%d,\"game\":%s,\"run_id\":%s,\"level\":%d,\"seed\":%d,\"skill\":%s,\"max_seconds\":%s,\"qpc_frequency\":%llu,\"build_commit\":%s"),
+		ContractVersion, *JsonStr(FApp::GetProjectName()), *JsonStr(RunId), Level, Seed, *JsonNum(Skill), *JsonNum(MaxSeconds),
+		QpcFrequency(), *JsonStr(BuildCommit));
+}
+
+void UAutoPlaySubsystem::WriteLine(FArchive* Ar, const FString& Line)
+{
+	if (!Ar) { return; }
+	FTCHARToUTF8 Utf8(*Line);
+	Ar->Serialize((void*)Utf8.Get(), Utf8.Length());
+	char NewLine = '\n';
+	Ar->Serialize(&NewLine, 1);
+}
+
+void UAutoPlaySubsystem::WriteTextFile(const TCHAR* Name, const FString& Text) const
+{
+	FFileHelper::SaveStringToFile(Text, *(RecordDir / Name), FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+}
+
+void UAutoPlaySubsystem::SetCVar(const TCHAR* Name, const TCHAR* Value)
+{
+	IConsoleVariable*& Cached = CVarCache.FindOrAdd(Name);
+	if (!Cached) { Cached = IConsoleManager::Get().FindConsoleVariable(Name); }
+	if (IConsoleVariable* CVar = Cached)
+	{
+		if (!FMath::IsNearlyEqual(CVar->GetFloat(), FCString::Atof(Value)))
+		{
+			CVar->Set(Value, ECVF_SetByCode);
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Lifecycle
+
+UAutoPlaySubsystem* UAutoPlaySubsystem::Get(const UObject* WorldContextObject)
+{
+	const UWorld* World = GEngine ? GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::ReturnNull) : nullptr;
+	const UGameInstance* GI = World ? World->GetGameInstance() : nullptr;
+	return GI ? GI->GetSubsystem<UAutoPlaySubsystem>() : nullptr;
+}
+
+UWorld* UAutoPlaySubsystem::GetGameWorld() const
+{
+	const UGameInstance* GI = GetGameInstance();
+	return GI ? GI->GetWorld() : nullptr;
+}
+
+void UAutoPlaySubsystem::Initialize(FSubsystemCollectionBase& Collection)
+{
+	Super::Initialize(Collection);
+
+	const TCHAR* Cmd = FCommandLine::Get();
+	bEnabled = !GIsEditor && FParse::Param(Cmd, TEXT("AutoPlay"));
+	if (!bEnabled)
+	{
+		return;
+	}
+
+	FParse::Value(Cmd, TEXT("Level="), Level);
+	FParse::Value(Cmd, TEXT("Seed="), Seed);
+	FParse::Value(Cmd, TEXT("Skill="), Skill);
+	Skill = FMath::Clamp(Skill, 0.f, 1.f);
+	float Seconds = 0.f;
+	if (FParse::Value(Cmd, TEXT("MaxSeconds="), Seconds)) { MaxSeconds = Seconds; }
+	if (FParse::Value(Cmd, TEXT("GoTimeout="), Seconds)) { GoTimeout = Seconds; }
+	FParse::Value(Cmd, TEXT("RecordDir="), RecordDir);
+	FParse::Value(Cmd, TEXT("BuildCommit="), BuildCommit);
+	FParse::Value(Cmd, TEXT("RunId="), RunId);
+	bAllowHardwareInput = FParse::Param(Cmd, TEXT("AutoPlayAllowInput"));
+
+	if (RecordDir.IsEmpty())
+	{
+		RecordDir = FPaths::ProjectSavedDir() / TEXT("AutoPlay") / FDateTime::Now().ToString(TEXT("%Y%m%d-%H%M%S"));
+	}
+	RecordDir = FPaths::ConvertRelativePathToFull(RecordDir);
+	IFileManager::Get().MakeDirectory(*RecordDir, true);
+
+	InputsAr.Reset(IFileManager::Get().CreateFileWriter(*(RecordDir / TEXT("inputs.jsonl"))));
+	TelemetryAr.Reset(IFileManager::Get().CreateFileWriter(*(RecordDir / TEXT("telemetry.jsonl"))));
+	WriteLine(InputsAr.Get(), FString::Printf(TEXT("{%s,\"type\":\"header\",\"schema\":\"superposition.autoplay-inputs/v1\",%s}"), *Stamp(), *HeaderFields()));
+	WriteLine(TelemetryAr.Get(), FString::Printf(TEXT("{%s,\"event\":\"header\",\"schema\":\"superposition.autoplay-telemetry/v1\",%s}"), *Stamp(), *HeaderFields()));
+	ClockSamples.Add(ClockSample(TEXT("start")));
+
+	FMath::RandInit(Seed);
+	FMath::SRandInit(Seed);
+
+	Phase = EPhase::Boot;
+	TickHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &UAutoPlaySubsystem::CoreTick));
+	PostTickHandle = FWorldDelegates::OnWorldPostActorTick.AddUObject(this, &UAutoPlaySubsystem::OnPostActorTick);
+	UE_LOG(LogTemp, Display, TEXT("AutoPlay: level %d seed %d skill %.2f max %.0fs dir %s"), Level, Seed, Skill, MaxSeconds, *RecordDir);
+}
+
+void UAutoPlaySubsystem::Deinitialize()
+{
+	if (bEnabled)
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
+		FWorldDelegates::OnWorldPostActorTick.Remove(PostTickHandle);
+		if (InputBlocker.IsValid() && FSlateApplication::IsInitialized())
+		{
+			FSlateApplication::Get().UnregisterInputPreProcessor(InputBlocker);
+		}
+		if (Phase != EPhase::Done)
+		{
+			// Quit before the run finished (crash path, window closed): keep what we have.
+			Telemetry(TEXT("run_aborted"), FString::Printf(TEXT("\"phase\":%d"), (int32)Phase));
+			ClockSamples.Add(ClockSample(TEXT("end")));
+			WriteTextFile(TEXT("clock.json"), FString::Printf(TEXT("{\"schema\":\"superposition.autoplay-clock/v1\",\"qpc_frequency\":%llu,\"t_ns_definition\":\"qpc * 1e9 / qpc_frequency\",\"samples\":[%s]}\n"),
+				QpcFrequency(), *FString::Join(ClockSamples, TEXT(","))));
+		}
+		InputsAr.Reset();
+		TelemetryAr.Reset();
+	}
+	Super::Deinitialize();
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Per-frame state machine
+
+void UAutoPlaySubsystem::EnforceWindowAndInput()
+{
+	SetCVar(TEXT("t.MaxFPS"), TEXT("60"));
+	SetCVar(TEXT("r.VSync"), TEXT("0"));
+	SetCVar(TEXT("au.DisableAppVolume"), TEXT("1")); // otherwise audio (and audio.wav) goes silent when the window loses focus
+	SetCVar(TEXT("t.IdleWhenNotForeground"), TEXT("0"));
+
+	if (!bAllowHardwareInput && !InputBlocker.IsValid() && FSlateApplication::IsInitialized())
+	{
+		InputBlocker = MakeShared<AutoPlay::FInputBlocker>();
+		FSlateApplication::Get().RegisterInputPreProcessor(InputBlocker);
+	}
+
+	UGameViewportClient* VC = GEngine ? GEngine->GameViewport : nullptr;
+	if (!VC)
+	{
+		return;
+	}
+	if (!bAllowHardwareInput && VC->GetMouseCaptureMode() != EMouseCaptureMode::NoCapture)
+	{
+		// Never trap the desktop cursor: the machine is shared while runs are recorded.
+		VC->SetMouseCaptureMode(EMouseCaptureMode::NoCapture);
+		VC->SetMouseLockMode(EMouseLockMode::DoNotLock);
+		if (FSlateApplication::IsInitialized())
+		{
+			FSlateApplication::Get().ReleaseAllPointerCapture();
+			if (TSharedPtr<ICursor> Cursor = FSlateApplication::Get().GetPlatformCursor())
+			{
+				Cursor->Lock(nullptr);
+			}
+		}
+	}
+	if (TSharedPtr<SWindow> Window = VC->GetWindow())
+	{
+		const FString Title = FString::Printf(TEXT("%s [AutoPlay]"), FApp::GetProjectName());
+		if (Window->GetTitle().ToString() != Title)
+		{
+			Window->SetTitle(FText::FromString(Title));
+		}
+	}
+}
+
+bool UAutoPlaySubsystem::CoreTick(float DeltaTime)
+{
+	const double Now = FPlatformTime::Seconds();
+	EnforceWindowAndInput();
+
+	switch (Phase)
+	{
+	case EPhase::Boot:
+	{
+		UWorld* World = GetGameWorld();
+		UGameViewportClient* VC = GEngine ? GEngine->GameViewport : nullptr;
+		if (!World || !World->HasBegunPlay() || !VC || !VC->GetWindow().IsValid())
+		{
+			break;
+		}
+		if (!bSettingsApplied)
+		{
+			bSettingsApplied = true;
+			if (UGameUserSettings* Settings = GEngine->GetGameUserSettings())
+			{
+				// Applied, never saved: the player's own settings stay untouched.
+				Settings->SetFullscreenMode(EWindowMode::Windowed);
+				Settings->SetScreenResolution(FIntPoint(1920, 1080));
+				Settings->ApplyResolutionSettings(false);
+			}
+			GEngine->Exec(World, TEXT("scalability 3"));
+			ReadyAt = Now + 1.0; // let the window settle before the pipeline measures it
+		}
+		else if (Now >= ReadyAt)
+		{
+			FIntPoint Size(0, 0);
+			if (VC->Viewport) { Size = VC->Viewport->GetSizeXY(); }
+			WriteTextFile(TEXT("ready.json"), FString::Printf(TEXT("{\"pid\":%u,\"title\":%s,\"viewport\":[%d,%d],%s}\n"),
+				FPlatformProcess::GetCurrentProcessId(), *JsonStr(VC->GetWindow()->GetTitle().ToString()), Size.X, Size.Y, *Stamp()));
+			Telemetry(TEXT("autoplay_ready"), FString::Printf(TEXT("\"viewport\":[%d,%d]"), Size.X, Size.Y));
+			Phase = EPhase::WaitingForGo;
+			PhaseDeadline = Now + GoTimeout;
+		}
+		break;
+	}
+	case EPhase::WaitingForGo:
+		if (Now >= NextGoPoll)
+		{
+			NextGoPoll = Now + 0.05;
+			const bool bGo = FPaths::FileExists(RecordDir / TEXT("go"));
+			if (bGo || Now >= PhaseDeadline)
+			{
+				BeginRun(!bGo);
+			}
+		}
+		break;
+	case EPhase::Running:
+		if (MaxSeconds > 0.0 && (double)(Qpc() - GoQpc) / (double)QpcFrequency() >= MaxSeconds)
+		{
+			if (OnTimeout) { OnTimeout(); }
+			if (Phase == EPhase::Running) { FinishRun(TEXT("timeout"), Score); }
+		}
+		break;
+	case EPhase::Holding:
+		if (Now >= PhaseDeadline) { StartExport(); }
+		break;
+	case EPhase::Exporting:
+	{
+		const int64 Size = IFileManager::Get().FileSize(*(RecordDir / TEXT("audio.wav")));
+		if (Size != LastAudioSize) { LastAudioSize = Size; AudioStableSince = Now; }
+		if (Size > 44 && Now - AudioStableSince >= 0.5) { FinalizeAndQuit(true); }
+		else if (Now >= PhaseDeadline) { FinalizeAndQuit(Size > 44); }
+		break;
+	}
+	default:
+		break;
+	}
+
+	if (Now - LastFlush >= 1.0)
+	{
+		LastFlush = Now;
+		if (InputsAr) { InputsAr->Flush(); }
+		if (TelemetryAr) { TelemetryAr->Flush(); }
+	}
+	return true;
+}
+
+void UAutoPlaySubsystem::BeginRun(bool bTimedOut)
+{
+	bGoTimedOut = bTimedOut;
+	GoQpc = Qpc();
+	GoFrame = GFrameCounter;
+	ClockSamples.Add(ClockSample(TEXT("go")));
+	FMath::RandInit(Seed);
+	FMath::SRandInit(Seed);
+	UAudioMixerBlueprintLibrary::StartRecordingOutput(GetGameWorld(), (float)MaxSeconds + 30.f, nullptr);
+	ClockSamples.Add(ClockSample(TEXT("audio_start")));
+	Phase = EPhase::Running;
+	Telemetry(TEXT("run_start"), FString::Printf(TEXT("\"level\":%d,\"seed\":%d,\"skill\":%s,\"go_timed_out\":%s"),
+		Level, Seed, *JsonNum(Skill), bTimedOut ? TEXT("true") : TEXT("false")));
+	if (StartLevel)
+	{
+		StartLevel(Level);
+	}
+	else
+	{
+		Telemetry(TEXT("error"), TEXT("\"message\":\"game did not set UAutoPlaySubsystem::StartLevel\""));
+		FinishRun(TEXT("abort"), 0.0);
+	}
+}
+
+void UAutoPlaySubsystem::LevelStarted(const FString& InLevelName)
+{
+	if (!bEnabled) { return; }
+	LevelStartQpc = Qpc();
+	LevelStartFrame = GFrameCounter;
+	LevelName = InLevelName;
+	const UWorld* World = GetGameWorld();
+	Telemetry(TEXT("level_start"), FString::Printf(TEXT("\"level\":%d,\"level_name\":%s,\"map\":%s"),
+		Level, *JsonStr(LevelName), *JsonStr(World ? World->GetMapName() : FString())));
+}
+
+void UAutoPlaySubsystem::FinishRun(const FString& InResult, double FinalScore, const FString& ExtraJson)
+{
+	if (!bEnabled || Phase != EPhase::Running) { return; }
+	LevelEndQpc = Qpc();
+	LevelEndFrame = GFrameCounter;
+	Result = InResult;
+	Score = FinalScore;
+	ResultExtra = ExtraJson;
+	// Release everything the bot was holding.
+	for (const TPair<const UInputAction*, FActiveInput>& Pair : ActiveInputs)
+	{
+		WriteLine(InputsAr.Get(), FString::Printf(TEXT("{%s,\"type\":\"release\",\"action\":%s,\"value_type\":\"%s\",\"value\":%s,\"key\":%s,\"edge\":\"up\"}"),
+			*Stamp(), *JsonStr(Pair.Value.Name), AutoPlay::ValueTypeName(Pair.Value.Type), *AutoPlay::ZeroJson(Pair.Value.Type), *JsonStr(Pair.Value.Key)));
+	}
+	ActiveInputs.Reset();
+	Telemetry(TEXT("level_end"), FString::Printf(TEXT("\"result\":%s,\"score\":%s%s%s"),
+		*JsonStr(Result), *JsonNum(Score), ExtraJson.IsEmpty() ? TEXT("") : TEXT(","), *ExtraJson));
+	Phase = EPhase::Holding;
+	PhaseDeadline = FPlatformTime::Seconds() + 2.0; // keep the result screen on video
+}
+
+void UAutoPlaySubsystem::StartExport()
+{
+	UAudioMixerBlueprintLibrary::StopRecordingOutput(GetGameWorld(), EAudioRecordingExportType::WavFile, TEXT("audio"), RecordDir, nullptr, nullptr);
+	ClockSamples.Add(ClockSample(TEXT("audio_stop")));
+
+	const uint64 EndQpc = LevelEndQpc ? LevelEndQpc : Qpc();
+	const uint64 StartQpc = LevelStartQpc ? LevelStartQpc : GoQpc;
+	const double Duration = (double)(EndQpc - StartQpc) / (double)QpcFrequency();
+	const double RunDuration = (double)(EndQpc - GoQpc) / (double)QpcFrequency();
+	WriteTextFile(TEXT("outcome.json"), FString::Printf(
+		TEXT("{\"schema\":\"superposition.autoplay-outcome/v1\",%s,\"level_name\":%s,\"result\":%s,\"score\":%s,")
+		TEXT("\"duration_s\":%s,\"run_duration_s\":%s,\"go_qpc\":%llu,\"level_start_qpc\":%llu,\"level_end_qpc\":%llu,")
+		TEXT("\"frames\":%llu,\"inputs_injected\":%lld,\"go_timed_out\":%s,\"build_config\":%s,\"engine_version\":%s,\"extra\":{%s}}\n"),
+		*HeaderFields(), *JsonStr(LevelName), *JsonStr(Result), *JsonNum(Score),
+		*JsonNum(Duration), *JsonNum(RunDuration), GoQpc, LevelStartQpc, LevelEndQpc,
+		LevelEndFrame - (LevelStartFrame ? LevelStartFrame : GoFrame), InjectCount, bGoTimedOut ? TEXT("true") : TEXT("false"),
+		*JsonStr(LexToString(FApp::GetBuildConfiguration())), *JsonStr(FEngineVersion::Current().ToString()), *ResultExtra));
+
+	Phase = EPhase::Exporting;
+	LastAudioSize = -1;
+	AudioStableSince = FPlatformTime::Seconds();
+	PhaseDeadline = FPlatformTime::Seconds() + 20.0; // the WAV is written on a background thread
+}
+
+void UAutoPlaySubsystem::FinalizeAndQuit(bool bAudioOk)
+{
+	ClockSamples.Add(ClockSample(TEXT("end")));
+	WriteTextFile(TEXT("clock.json"), FString::Printf(TEXT("{\"schema\":\"superposition.autoplay-clock/v1\",\"qpc_frequency\":%llu,\"t_ns_definition\":\"qpc * 1e9 / qpc_frequency\",\"samples\":[%s]}\n"),
+		QpcFrequency(), *FString::Join(ClockSamples, TEXT(","))));
+	Telemetry(TEXT("run_end"), FString::Printf(TEXT("\"audio_ok\":%s"), bAudioOk ? TEXT("true") : TEXT("false")));
+	InputsAr.Reset();
+	TelemetryAr.Reset();
+	Phase = EPhase::Done;
+	FPlatformMisc::RequestExit(false);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Input
+
+void UAutoPlaySubsystem::Inject(APlayerController* PC, const UInputAction* Action, FInputActionValue Value, const FString& Key)
+{
+	if (!bEnabled || Phase != EPhase::Running || !PC || !Action) { return; }
+	UEnhancedInputLocalPlayerSubsystem* EIS = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer());
+	if (!EIS) { return; }
+
+	EIS->InjectInputForAction(Action, Value, TArray<UInputModifier*>(), TArray<UInputTrigger*>());
+	++InjectCount;
+
+	if (!DescribedActions.Contains(Action))
+	{
+		DescribedActions.Add(Action);
+		TArray<FString> Keys;
+		for (const FKey& Mapped : EIS->QueryKeysMappedToAction(Action)) { Keys.Add(JsonStr(Mapped.ToString())); }
+		WriteLine(InputsAr.Get(), FString::Printf(TEXT("{%s,\"type\":\"action_info\",\"action\":%s,\"value_type\":\"%s\",\"mapped_keys\":[%s]}"),
+			*Stamp(), *JsonStr(Action->GetName()), AutoPlay::ValueTypeName(Action->ValueType), *FString::Join(Keys, TEXT(","))));
+	}
+
+	const TCHAR* Edge;
+	FActiveInput* Active = ActiveInputs.Find(Action);
+	if (Value.IsNonZero())
+	{
+		Edge = Active ? TEXT("hold") : TEXT("down");
+		if (!Active) { Active = &ActiveInputs.Add(Action); }
+		Active->LastFrame = GFrameCounter;
+		Active->Key = Key;
+		Active->Type = Value.GetValueType();
+		Active->Name = Action->GetName();
+	}
+	else
+	{
+		Edge = Active ? TEXT("up") : TEXT("zero");
+		ActiveInputs.Remove(Action);
+	}
+	WriteLine(InputsAr.Get(), FString::Printf(TEXT("{%s,\"type\":\"inject\",\"action\":%s,\"value_type\":\"%s\",\"value\":%s,\"key\":%s,\"edge\":\"%s\"}"),
+		*Stamp(), *JsonStr(Action->GetName()), AutoPlay::ValueTypeName(Value.GetValueType()), *AutoPlay::ValueJson(Value), *JsonStr(Key), Edge));
+}
+
+void UAutoPlaySubsystem::OnPostActorTick(UWorld* World, ELevelTick TickType, float DeltaSeconds)
+{
+	if (!bEnabled || World != GetGameWorld() || ActiveInputs.Num() == 0) { return; }
+	// An input not injected this frame was released this frame.
+	for (auto It = ActiveInputs.CreateIterator(); It; ++It)
+	{
+		if (It.Value().LastFrame != (uint64)GFrameCounter)
+		{
+			WriteLine(InputsAr.Get(), FString::Printf(TEXT("{%s,\"type\":\"release\",\"action\":%s,\"value_type\":\"%s\",\"value\":%s,\"key\":%s,\"edge\":\"up\"}"),
+				*Stamp(), *JsonStr(It.Value().Name), AutoPlay::ValueTypeName(It.Value().Type), *AutoPlay::ZeroJson(It.Value().Type), *JsonStr(It.Value().Key)));
+			It.RemoveCurrent();
+		}
+	}
+}
+
+void UAutoPlaySubsystem::SetVirtualCursor(const FVector2D& ViewportPos)
+{
+	if (!bEnabled || Phase != EPhase::Running) { return; }
+	if (bHasVirtualCursor && ViewportPos.Equals(VirtualCursor, 0.01)) { return; }
+	bHasVirtualCursor = true;
+	VirtualCursor = ViewportPos;
+	WriteLine(InputsAr.Get(), FString::Printf(TEXT("{%s,\"type\":\"cursor\",\"key\":\"MousePosition\",\"value\":[%s,%s]}"),
+		*Stamp(), *JsonNum(ViewportPos.X), *JsonNum(ViewportPos.Y)));
+}
+
+bool UAutoPlaySubsystem::GetCursorPosition(const APlayerController* PC, FVector2D& OutViewportPos) const
+{
+	if (bEnabled && bHasVirtualCursor)
+	{
+		OutViewportPos = VirtualCursor;
+		return true;
+	}
+	float X = 0.f, Y = 0.f;
+	if (PC && PC->GetMousePosition(X, Y))
+	{
+		OutViewportPos = FVector2D(X, Y);
+		return true;
+	}
+	return false;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Telemetry
+
+void UAutoPlaySubsystem::Telemetry(const FString& Event, const FString& FieldsJson)
+{
+	if (!bEnabled || !TelemetryAr) { return; }
+	WriteLine(TelemetryAr.Get(), FString::Printf(TEXT("{%s,\"event\":%s%s%s}"),
+		*Stamp(), *JsonStr(Event), FieldsJson.IsEmpty() ? TEXT("") : TEXT(","), *FieldsJson));
+}

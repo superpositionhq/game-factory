@@ -32,6 +32,8 @@ see [docs/vendor-packages.md](docs/vendor-packages.md) for what they contain and
 - [docs/liaozhai.md](docs/liaozhai.md): the LiaoZhaiRL repository, its features, and the pilot.
 - [docs/workflow-format.md](docs/workflow-format.md): our package layout and `liaozhai.unity-workflow/v1` step schema.
 - [docs/creation-vs-gameplay.md](docs/creation-vs-gameplay.md): how this differs from Lab gameplay data.
+- [docs/autoplay-contract.md](docs/autoplay-contract.md): what each Track B game implements so a bot can play and record it.
+- [docs/ue-pipeline.md](docs/ue-pipeline.md): build, package, smoke-test and gameplay recording pipeline (`tools/ue-pipeline/`).
 - [AGENTS.md](AGENTS.md): rules for agents working here (each with the failure behind it).
 
 ## Layout

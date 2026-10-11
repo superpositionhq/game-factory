@@ -1,0 +1,480 @@
+﻿<#
+.SYNOPSIS
+  Record AutoPlay runs of a packaged game: launch with the contract flags, capture the window with ffmpeg,
+  validate, and write one gameplay bundle per run. See docs/ue-pipeline.md and docs/autoplay-contract.md.
+
+.EXAMPLE
+  powershell -ExecutionPolicy Bypass -File record.ps1 stealth -Build C:\Users\Xiang\Work\builds\stealth\a1b2c3d4 -Level 1 -Runs 3
+  powershell -ExecutionPolicy Bypass -File record.ps1 stealth -Build latest -Level 2 -Runs 1 -Skill 0.5 -Seed 42
+
+  Bundle: recordings\<game>\<run-id>\ video.mkv, system_audio.mka, inputs.jsonl, telemetry.jsonl, outcome.json,
+  metadata.json, validation.json, manifest.json, raw\ (the game's RecordDir, ffmpeg log). Failed runs are kept and
+  marked (validation.json status "failed", FAILED file). One row per run in .recording\<game>\runs.jsonl.
+#>
+param(
+    [Parameter(Mandatory = $true, Position = 0)][string]$Game,
+    [Parameter(Mandatory = $true)][string]$Build,
+    [int]$Level = 1,
+    [int]$Runs = 1,
+    [double]$Skill = -1,
+    [long]$Seed = -1,
+    [int]$MaxSeconds = 600,
+    [ValidateSet('auto', 'ddagrab', 'gdigrab-region', 'gdigrab-window')][string]$Capture = 'auto',
+    [int]$OutputIndex = 0,
+    [int]$CaptureRate = 240,
+    [string]$ExtraArgs = ''
+)
+
+. (Join-Path $PSScriptRoot 'common.ps1')
+[void][UePipeline.Win]::MakeDpiAware()   # physical pixels for window rects (the display runs at 150 %)
+
+$info = Get-GameInfo $Game
+if ($Build -eq 'latest') {
+    $Build = (Get-ChildItem (Join-Path $BuildsRoot $Game) -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'build_info.json') } |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+    if (-not $Build) { throw "no packaged build of $Game under $BuildsRoot\$Game" }
+}
+$buildInfo = Read-JsonFile (Join-Path $Build 'build_info.json')
+if (-not $buildInfo -or -not $buildInfo.packaged) { throw "$Build has no packaged build_info.json (run build.ps1 -Package)" }
+# Launch the real binary, not the bootstrap stub, so the PID we hold owns the window.
+$exe = Join-Path $Build "Windows\$($info.ProjectName)\Binaries\Win64\$($info.ProjectName).exe"
+if (-not (Test-Path $exe)) { $exe = $buildInfo.exe_path }
+$ffmpeg = Find-FFmpeg
+$ffprobe = Find-FFprobe
+$ffmpegVersion = (Invoke-Native $ffmpeg @('-hide_banner', '-version') | Select-Object -First 1)
+$qpcFreq = [UePipeline.Win]::QpcFrequency()
+# NVENC when this ffmpeg + driver pair can open it (ffmpeg 9 needs driver >= 610), else libx264 on the CPU.
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+& $ffmpeg -hide_banner -loglevel error -f lavfi -i 'color=c=black:s=256x256:r=60' -t 0.1 -c:v h264_nvenc -f null - 2>&1 | Out-Null
+$Encoder = if ($LASTEXITCODE -eq 0) { 'h264_nvenc' } else { 'libx264' }
+$ErrorActionPreference = $eap
+Write-Step "ffmpeg: $ffmpeg ($ffmpegVersion), encoder $Encoder"
+$skillCycle = @(1.0, 0.75, 0.5, 0.25)
+$rng = New-Object System.Random
+
+# ---------------------------------------------------------------------------------------------------------------------
+
+function Start-Capture([string]$Mode, [int[]]$Rect, [string]$Title, [string]$VideoPath, [string]$LogPath, [string]$ProgressPath) {
+    $x, $y, $w, $h = $Rect
+    switch ($Mode) {
+        'ddagrab' {
+            # Zero-copy: D3D11 frames straight into NVENC. showinfo on hardware frames costs nothing (no pixel access)
+            # and gives one timestamped log line per captured frame for the start-time estimate.
+            $capIn = "-f lavfi -i `"ddagrab=output_idx=${OutputIndex}:framerate=${CaptureRate}:dup_frames=0:offset_x=${x}:offset_y=${y}:video_size=${w}x${h}:draw_mouse=0,showinfo`""
+        }
+        'gdigrab-region' {
+            $capIn = "-f gdigrab -framerate 60 -draw_mouse 0 -offset_x $x -offset_y $y -video_size ${w}x${h} -i desktop -vf showinfo"
+        }
+        'gdigrab-window' {
+            $capIn = "-f gdigrab -framerate 60 -draw_mouse 0 -i `"title=$Title`" -vf showinfo"
+        }
+    }
+    $tags = '-color_primaries bt709 -color_trc bt709 -colorspace bt709 -color_range tv -fps_mode cfr -r 60 -an'
+    if ($Encoder -eq 'h264_nvenc') {
+        $encode = "-c:v h264_nvenc -preset p5 -tune hq -rc vbr -cq 19 -b:v 0 -maxrate 60M -bufsize 120M -g 120 -bf 0 $tags"
+        if ($Mode -ne 'ddagrab') { $encode = "-pix_fmt yuv420p $encode" }   # ddagrab: D3D11 frames go to NVENC as they are
+    } else {
+        # CPU fallback: download the D3D11 frames once, convert with an explicit BT.709 matrix.
+        if ($Mode -eq 'ddagrab') { $capIn = $capIn.TrimEnd('"') + ',hwdownload,format=bgra,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p"' }
+        else { $capIn += ',scale=out_color_matrix=bt709:out_range=tv,format=yuv420p' }
+        $encode = "-c:v libx264 -preset ultrafast -crf 17 -g 120 -bf 0 -pix_fmt yuv420p $tags"
+    }
+    $ffArgs = "-hide_banner -loglevel +datetime+level+info -stats_period 1 -progress `"$ProgressPath`" -y $capIn $encode `"$VideoPath`""
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = 'cmd.exe'
+    $psi.Arguments = "/d /s /c `"`"$ffmpeg`" $ffArgs 2> `"$LogPath`"`""
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardInput = $true
+    $p = [System.Diagnostics.Process]::Start($psi)
+    return [pscustomobject]@{ Process = $p; Command = "ffmpeg $ffArgs"; Mode = $Mode }
+}
+
+function Stop-Capture($Cap, [int]$TimeoutMs = 15000) {
+    if ($Cap.Process.HasExited) { return }
+    try { $Cap.Process.StandardInput.Write('q'); $Cap.Process.StandardInput.Flush() } catch { }
+    if (-not $Cap.Process.WaitForExit($TimeoutMs)) {
+        Get-CimInstance Win32_Process -Filter "ParentProcessId=$($Cap.Process.Id)" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        $Cap.Process.Kill()
+    }
+}
+
+function Get-CapturedFrameCount([string]$LogPath) {
+    if (-not (Test-Path $LogPath)) { return 0 }
+    try {
+        $fs = [System.IO.File]::Open($LogPath, 'Open', 'Read', 'ReadWrite')
+        $text = (New-Object System.IO.StreamReader($fs)).ReadToEnd(); $fs.Dispose()
+        return ([regex]::Matches($text, 'Parsed_showinfo.*?\] \[info\] n:')).Count
+    } catch { return 0 }
+}
+
+function Get-VideoStart([string]$LogPath, $ClockSamples) {
+    # First captured frame's wall time = min over frames of (log time - pts), plus half a millisecond for the log's
+    # truncation to ms. ffmpeg logs local time from av_gettime (GetSystemTimePreciseAsFileTime); map it to QPC with
+    # the pipeline's QPC/UTC pairs.
+    $best = [long]::MaxValue; $n = 0
+    foreach ($line in [System.IO.File]::ReadLines($LogPath)) {
+        if ($line -match '^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}) \[Parsed_showinfo[^\]]*\] \[info\] n:\s*(\d+) pts:\s*(-?\d+)') {
+            $local = [datetime]::ParseExact($matches[1], 'yyyy-MM-dd HH:mm:ss.fff', [Globalization.CultureInfo]::InvariantCulture, 'AssumeLocal')
+            $unixNs = ($local.ToUniversalTime().Ticks - 621355968000000000) * 100
+            $d = $unixNs - [long]$matches[3] * 1000   # wall time of frame 0 implied by this frame (pts is in us)
+            if ($d -lt $best) { $best = $d }
+            $n++
+            if ($n -ge 1800) { break }   # first 30 s are plenty
+        }
+    }
+    if ($n -eq 0) { return $null }
+    $firstUnixNs = $best + 500000
+    # Map unix ns -> QPC ns through the pipeline clock pair nearest in time.
+    $pair = $ClockSamples | Sort-Object { [math]::Abs($_.unix_ns - $firstUnixNs) } | Select-Object -First 1
+    $tNs = $pair.t_ns + ($firstUnixNs - $pair.unix_ns)
+    return [pscustomobject]@{ t_ns = $tNs; unix_ns = $firstUnixNs; frames_used = $n; clock_pair = $pair.label; uncertainty_ms = 1.5 }
+}
+
+function Get-InputGaps([string]$LogPath, [long]$FromUs = 0, [long]$ToUs = [long]::MaxValue) {
+    # Capture input timing from showinfo: count, rate, and frames missing in gaps longer than 25 ms.
+    $prev = $null; $n = 0; $missed = 0; $gaps = 0; $first = $null
+    foreach ($line in [System.IO.File]::ReadLines($LogPath)) {
+        if ($line -match 'Parsed_showinfo[^\]]*\] \[info\] n:\s*\d+ pts:\s*(\d+)') {
+            $pts = [long]$matches[1]
+            if ($pts -lt $FromUs -or $pts -gt $ToUs) { continue }
+            $n++
+            if ($null -eq $first) { $first = $pts }
+            if ($null -ne $prev -and ($pts - $prev) -gt 25000) { $gaps++; $missed += [math]::Round(($pts - $prev) / 16666.7) - 1 }
+            $prev = $pts
+        }
+    }
+    if ($n -lt 2) { return $null }
+    $span = ($prev - $first) / 1e6
+    return [ordered]@{ frames = $n; span_s = [math]::Round($span, 3); rate_fps = [math]::Round($n / $span, 1); gaps_over_25ms = $gaps
+        missed_60fps_frames = $missed; missed_pct = [math]::Round(100.0 * $missed / ($span * 60), 2) }
+}
+
+function Read-Progress([string]$Path) {
+    $vals = @{}
+    if (Test-Path $Path) {
+        foreach ($l in Get-Content $Path) { if ($l -match '^(\w+)=(.*)$') { $vals[$matches[1]] = $matches[2].Trim() } }
+    }
+    return $vals
+}
+
+function Test-Jsonl([string]$Path) {
+    # Parses every line; returns counts per type/event, first/last t_ns, monotonicity.
+    $ser = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+    $ser.MaxJsonLength = 64MB
+    $r = [ordered]@{ lines = 0; bad_lines = 0; non_monotonic = 0; first_t_ns = $null; last_t_ns = $null; counts = @{} }
+    if (-not (Test-Path $Path)) { return $null }
+    $prev = 0
+    foreach ($line in [System.IO.File]::ReadLines($Path)) {
+        if ($line.Trim() -eq '') { continue }
+        $r.lines++
+        try { $o = $ser.DeserializeObject($line) } catch { $r.bad_lines++; continue }
+        $t = [long]$o['t_ns']
+        if ($t -lt $prev) { $r.non_monotonic++ }
+        $prev = $t
+        if ($null -eq $r.first_t_ns) { $r.first_t_ns = $t }
+        $r.last_t_ns = $t
+        $k = if ($o.ContainsKey('type')) { $o['type'] } else { $o['event'] }
+        if ($r.counts.ContainsKey($k)) { $r.counts[$k]++ } else { $r.counts[$k] = 1 }
+    }
+    return $r
+}
+
+function Get-AudioStats([string]$WavPath) {
+    if (-not (Test-Path $WavPath)) { return $null }
+    $probe = Invoke-Native $ffprobe @('-v', 'error', '-show_entries', 'stream=sample_rate,channels,duration', '-of', 'json', $WavPath) | Out-String | ConvertFrom-Json
+    $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $vol = & $ffmpeg -hide_banner -nostats -i $WavPath -af volumedetect -f null - 2>&1 | ForEach-Object { "$_" }
+    $ErrorActionPreference = $eap
+    $mean = ($vol | Select-String 'mean_volume: (-?[\d\.]+|-inf) dB' | Select-Object -First 1)
+    $max = ($vol | Select-String 'max_volume: (-?[\d\.]+|-inf) dB' | Select-Object -First 1)
+    $s = $probe.streams[0]
+    return [ordered]@{
+        sample_rate = [int]$s.sample_rate; channels = [int]$s.channels; duration_s = [double]$s.duration
+        mean_volume_db = $(if ($mean -and $mean.Matches[0].Groups[1].Value -ne '-inf') { [double]$mean.Matches[0].Groups[1].Value } else { $null })
+        max_volume_db = $(if ($max -and $max.Matches[0].Groups[1].Value -ne '-inf') { [double]$max.Matches[0].Groups[1].Value } else { $null })
+    }
+}
+
+Add-Type -AssemblyName System.Web.Extensions
+
+# ---------------------------------------------------------------------------------------------------------------------
+
+$results = New-Object System.Collections.ArrayList
+for ($i = 0; $i -lt $Runs; $i++) {
+    $runSeed = if ($Seed -ge 0) { $Seed + $i } else { $rng.Next(1, [int]::MaxValue) }
+    $runSkill = if ($Skill -ge 0) { $Skill } else { $skillCycle[$i % $skillCycle.Count] }
+    $runId = '{0}_L{1}_{2}_s{3}' -f $Game, $Level, (Get-Date -Format 'yyyyMMdd-HHmmss'), $runSeed
+    $runDir = Join-Path (Join-Path $RecordingsRoot $Game) $runId
+    $rawDir = Join-Path $runDir 'raw'
+    New-Item -ItemType Directory -Force $rawDir | Out-Null
+    $videoPath = Join-Path $runDir 'video.mkv'
+    $ffLog = Join-Path $rawDir 'ffmpeg.log'
+    $ffProgress = Join-Path $rawDir 'ffmpeg_progress.txt'
+    $clock = New-Object System.Collections.ArrayList
+    $problems = New-Object System.Collections.ArrayList
+    $warnings = New-Object System.Collections.ArrayList
+    $proc = $null; $cap = $null; $hwnd = [IntPtr]::Zero; $rect = $null
+    $gameExit = $null; $killed = $false; $windowMoved = $false; $captureMode = $null
+    $tStart = Get-Date
+
+    Enter-PipelineLock "record $Game $runId"
+    try {
+        Write-Step "run $($i + 1)/$Runs $runId (skill $runSkill, seed $runSeed)"
+        [void]$clock.Add((Get-ClockSample 'record_start'))
+        $gameArgs = "-AutoPlay -Level=$Level -Seed=$runSeed -Skill=$runSkill -RecordDir=`"$rawDir`" -MaxSeconds=$MaxSeconds " +
+                    "-BuildCommit=$($buildInfo.commit) -RunId=$runId -windowed -ResX=1920 -ResY=1080 -WinX=200 -WinY=150 " +
+                    "-ini:Engine:[/Script/Engine.UserInterfaceSettings]:bAllowHighDPIInGameMode=True " +
+                    "-nosplash -abslog=`"$rawDir\game.log`" $ExtraArgs"
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $exe; $psi.Arguments = $gameArgs; $psi.UseShellExecute = $false
+        $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true   # the log goes to raw\game.log
+        $psi.WorkingDirectory = Split-Path $exe
+        $proc = [System.Diagnostics.Process]::Start($psi)
+        $proc.BeginOutputReadLine(); $proc.BeginErrorReadLine()   # drain and discard
+        try { $proc.PriorityClass = 'AboveNormal' } catch { }
+
+        # ---- wait for ready.json, find the window ----
+        $deadline = (Get-Date).AddSeconds(180)
+        while (-not (Test-Path (Join-Path $rawDir 'ready.json'))) {
+            if ($proc.HasExited) { throw "game exited (code $($proc.ExitCode)) before ready" }
+            if ((Get-Date) -gt $deadline) { throw 'no ready.json within 180 s' }
+            Start-Sleep -Milliseconds 200
+        }
+        $ready = Read-JsonFile (Join-Path $rawDir 'ready.json')
+        $hwnd = [UePipeline.Win]::FindWindowOfPid([uint32]$ready.pid, '[AutoPlay]')
+        if ($hwnd -eq [IntPtr]::Zero) { $hwnd = [UePipeline.Win]::FindWindowOfPid([uint32]$ready.pid, $null) }
+        if ($hwnd -eq [IntPtr]::Zero) { throw "no visible window for pid $($ready.pid)" }
+        $title = [UePipeline.Win]::Title($hwnd)
+        [void][UePipeline.Win]::SetTopmost($hwnd, $true)
+        Start-Sleep -Milliseconds 300
+        $rect = [UePipeline.Win]::ClientRectOnScreen($hwnd)
+        $screen = [UePipeline.Win]::PrimaryScreenSize()
+        Write-Step "window '$title' client $($rect -join ',') on screen $($screen -join 'x')"
+        if ($rect[2] -ne 1920 -or $rect[3] -ne 1080) { throw "client area is $($rect[2])x$($rect[3]), expected 1920x1080" }
+        if ($rect[0] -lt 0 -or $rect[1] -lt 0 -or $rect[0] + 1920 -gt $screen[0] -or $rect[1] + 1080 -gt $screen[1]) { throw "window not fully on the primary screen: $($rect -join ',')" }
+
+        # ---- start capture (ddagrab, falling back to gdigrab) ----
+        $modes = if ($Capture -eq 'auto') { @('ddagrab', 'gdigrab-region') } else { @($Capture) }
+        foreach ($m in $modes) {
+            Remove-Item $videoPath, $ffLog, $ffProgress -ErrorAction SilentlyContinue
+            [void]$clock.Add((Get-ClockSample "capture_start_$m"))
+            $cap = Start-Capture $m $rect $title $videoPath $ffLog $ffProgress
+            try { Get-CimInstance Win32_Process -Filter "ParentProcessId=$($cap.Process.Id)" | ForEach-Object { (Get-Process -Id $_.ProcessId).PriorityClass = 'AboveNormal' } } catch { }
+            $t = (Get-Date).AddSeconds(10)
+            while ((Get-CapturedFrameCount $ffLog) -lt 30 -and -not $cap.Process.HasExited -and (Get-Date) -lt $t) { Start-Sleep -Milliseconds 100 }
+            if ((Get-CapturedFrameCount $ffLog) -ge 30 -and -not $cap.Process.HasExited) { $captureMode = $m; break }
+            [void]$warnings.Add("capture mode $m failed: $((Get-Content $ffLog -Tail 3 -ErrorAction SilentlyContinue) -join ' | ')")
+            Stop-Capture $cap 3000
+            $cap = $null
+        }
+        if (-not $cap) { throw 'no capture mode worked' }
+        Write-Step "capturing with $captureMode"
+
+        # ---- go ----
+        [void]$clock.Add((Get-ClockSample 'go_written'))
+        [System.IO.File]::WriteAllText((Join-Path $rawDir 'go'), (Get-IsoNow), $Utf8NoBom)
+
+        # ---- wait for the run to end: outcome.json appears while the window is still up ----
+        $deadline = (Get-Date).AddSeconds($MaxSeconds + 90)
+        $outcomePath = Join-Path $rawDir 'outcome.json'
+        while (-not (Test-Path $outcomePath) -and -not $proc.HasExited) {
+            if ((Get-Date) -gt $deadline) { $killed = $true; [void]$problems.Add("timeout: killed after $($MaxSeconds + 90) s"); break }
+            if ($cap.Process.HasExited) { [void]$problems.Add('ffmpeg exited during the run'); break }
+            $now = [UePipeline.Win]::ClientRectOnScreen($hwnd)
+            if ($now -and ($now[0] -ne $rect[0] -or $now[1] -ne $rect[1])) { $windowMoved = $true }
+            Start-Sleep -Milliseconds 100
+        }
+        Stop-Capture $cap   # before the window closes: never capture what is behind it
+        [void]$clock.Add((Get-ClockSample 'capture_stopped'))
+        if ($windowMoved) { [void]$problems.Add('game window moved during capture') }
+
+        if ($killed) {
+            $proc.Kill(); $proc.WaitForExit(10000) | Out-Null
+        } elseif (-not $proc.WaitForExit(60000)) {
+            [void]$problems.Add('game did not quit within 60 s after outcome.json'); $proc.Kill(); $killed = $true
+        }
+        $gameExit = $proc.ExitCode
+        if (-not $killed -and $gameExit -ne 0) { [void]$problems.Add("game exit code $gameExit") }
+    } catch {
+        [void]$problems.Add("run error: $($_.Exception.Message)")
+        Write-Step "ERROR: $($_.Exception.Message)"
+        if ($cap) { Stop-Capture $cap }
+        if ($proc -and -not $proc.HasExited) { $proc.Kill(); $killed = $true; [void]$proc.WaitForExit(15000) }
+    } finally {
+        if ($hwnd -ne [IntPtr]::Zero -and [UePipeline.Win]::IsWindow($hwnd)) { [void][UePipeline.Win]::SetTopmost($hwnd, $false) }
+        [void]$clock.Add((Get-ClockSample 'record_end'))
+        Exit-PipelineLock
+    }
+
+    # ---- post-process (light work, outside the lock) ----
+    $outcome = Read-JsonFile (Join-Path $rawDir 'outcome.json')
+    $gameClock = Read-JsonFile (Join-Path $rawDir 'clock.json')
+    foreach ($f in 'inputs.jsonl', 'telemetry.jsonl', 'outcome.json') {
+        $src = Join-Path $rawDir $f
+        if (Test-Path $src) {
+            try { Copy-Item $src (Join-Path $runDir $f) -Force } catch { [void]$problems.Add("could not copy ${f}: $($_.Exception.Message)") }
+        } else { [void]$problems.Add("missing $f") }
+    }
+    if (-not $gameClock) { [void]$problems.Add('missing clock.json') }
+
+    $audio = Get-AudioStats (Join-Path $rawDir 'audio.wav')
+    if ($audio) {
+        $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        & $ffmpeg -hide_banner -loglevel error -y -i (Join-Path $rawDir 'audio.wav') -c:a flac (Join-Path $runDir 'system_audio.mka') 2>&1 | Out-Null
+        $ErrorActionPreference = $eap
+    } else { [void]$problems.Add('missing audio.wav') }
+
+    $videoStart = $null; $probe = $null
+    if ($captureMode -and (Test-Path $videoPath)) {
+        $videoStart = Get-VideoStart $ffLog $clock
+        $probe = Invoke-Native $ffprobe @('-v', 'error', '-select_streams', 'v:0', '-count_packets', '-show_entries', 'stream=codec_name,profile,pix_fmt,width,height,avg_frame_rate,nb_read_packets:format=duration', '-of', 'json', $videoPath) | Out-String | ConvertFrom-Json
+    } elseif (-not $captureMode) { } else { [void]$problems.Add('missing video.mkv') }
+    $progress = Read-Progress $ffProgress
+
+    # ---- validation ----
+    $inputs = Test-Jsonl (Join-Path $runDir 'inputs.jsonl')
+    $telemetry = Test-Jsonl (Join-Path $runDir 'telemetry.jsonl')
+    $checks = [ordered]@{}
+    $gs = @{}; if ($gameClock) { foreach ($s in $gameClock.samples) { $gs[$s.label] = $s } }
+
+    if ($outcome) {
+        $checks.outcome = [ordered]@{ ok = ($outcome.result -in @('win', 'lose', 'timeout', 'abort')); result = $outcome.result; score = $outcome.score; duration_s = $outcome.duration_s }
+        if (-not $checks.outcome.ok) { [void]$problems.Add("bad outcome.result '$($outcome.result)'") }
+        if ($outcome.result -eq 'abort') { [void]$warnings.Add('run ended with abort') }
+        if ($outcome.go_timed_out) { [void]$problems.Add('game never saw the go file') }
+    } else { [void]$problems.Add('no outcome.json') }
+
+    if ($inputs) {
+        $injects = 0; if ($inputs.counts.ContainsKey('inject')) { $injects = $inputs.counts['inject'] }
+        $checks.inputs = [ordered]@{ ok = ($injects -gt 0 -and $inputs.bad_lines -eq 0 -and $inputs.non_monotonic -eq 0); lines = $inputs.lines; injects = $injects; bad_lines = $inputs.bad_lines; non_monotonic = $inputs.non_monotonic; counts = $inputs.counts }
+        if ($injects -eq 0) { [void]$problems.Add('no injected inputs') }
+        if ($inputs.bad_lines -gt 0) { [void]$problems.Add("inputs.jsonl has $($inputs.bad_lines) unparseable lines") }
+        if ($inputs.non_monotonic -gt 0) { [void]$problems.Add("inputs.jsonl t_ns goes backwards $($inputs.non_monotonic) times") }
+    }
+    if ($telemetry) {
+        $missingEvents = @(@('run_start', 'level_start', 'level_end', 'run_end') | Where-Object { -not $telemetry.counts.ContainsKey($_) })
+        $checks.telemetry = [ordered]@{ ok = ($missingEvents.Count -eq 0 -and $telemetry.bad_lines -eq 0); lines = $telemetry.lines; missing = @($missingEvents); counts = $telemetry.counts }
+        foreach ($e in $missingEvents) { [void]$problems.Add("telemetry has no $e") }
+        if ($telemetry.bad_lines -gt 0) { [void]$problems.Add("telemetry.jsonl has $($telemetry.bad_lines) unparseable lines") }
+    }
+
+    # Audio clock: UE's StartRecording is queued to the audio thread (starts late by an unknown amount, ~0.1 s while
+    # the level loads), StopRecording is synchronous. So the WAV is anchored at its end: start = audio_stop - duration.
+    $audioStartNs = $null
+    if ($audio) {
+        $startLagMs = $null
+        if ($gs.ContainsKey('audio_start') -and $gs.ContainsKey('audio_stop')) {
+            $audioStartNs = [long]$gs['audio_stop'].t_ns - [long]([double]$audio.duration_s * 1e9)
+            $startLagMs = [math]::Round(($audioStartNs - [long]$gs['audio_start'].t_ns) / 1e6, 1)
+        }
+        $silent = ($null -eq $audio.max_volume_db) -or ($audio.max_volume_db -lt -60)
+        $lagOk = ($null -ne $startLagMs -and $startLagMs -ge -30 -and $startLagMs -le 1500)
+        $checks.audio = [ordered]@{ ok = $lagOk; duration_s = $audio.duration_s; start_lag_ms = $startLagMs; silent = $silent; stats = $audio }
+        if (-not $lagOk) { [void]$problems.Add("audio duration $($audio.duration_s) s does not fit the recorded span (start lag $startLagMs ms)") }
+        if ($silent) { [void]$warnings.Add('audio is silent (max volume below -60 dB)') }
+    }
+
+    if ($probe) {
+        $vdur = [double]$probe.format.duration
+        $frames = [int]$probe.streams[0].nb_read_packets
+        $dup = [int]$progress['dup_frames']; $drop = [int]$progress['drop_frames']
+        $capSpan = $null; $cover = $null
+        if ($videoStart) {
+            $stopNs = ($clock | Where-Object { $_.label -eq 'capture_stopped' } | Select-Object -First 1).t_ns
+            $capSpan = ($stopNs - $videoStart.t_ns) / 1e9
+            $videoEndNs = $videoStart.t_ns + [long]($vdur * 1e9)
+            if ($outcome) {
+                $levelStartNs = Convert-QpcToNs ([long]$outcome.level_start_qpc) $qpcFreq
+                $levelEndNs = Convert-QpcToNs ([long]$outcome.level_end_qpc) $qpcFreq
+                $cover = ($videoStart.t_ns -lt $levelStartNs -and $videoEndNs -gt $levelEndNs)
+                if (-not $cover) { [void]$problems.Add('video does not cover level_start..level_end') }
+            }
+        } else { [void]$problems.Add('could not estimate video start time from ffmpeg log') }
+        # ddagrab runs event-driven (dup_frames=0): every desktop update is an input frame (up to the display rate),
+        # so drops are surplus samples; dups are 60 fps slots with no new desktop image (holes). Input gaps > 25 ms are
+        # stretches where the desktop (the game) did not update for more than 1.5 frames.
+        $dupPct = if ($frames -gt 0) { [math]::Round(100.0 * $dup / $frames, 2) } else { 100 }
+        $gaps = if ($videoStart -and $outcome) {
+            Get-InputGaps $ffLog ([long]((Convert-QpcToNs ([long]$outcome.level_start_qpc) $qpcFreq) - $videoStart.t_ns) / 1000) ([long]((Convert-QpcToNs ([long]$outcome.level_end_qpc) $qpcFreq) - $videoStart.t_ns) / 1000)
+        } else { Get-InputGaps $ffLog }
+        $durDiff = if ($null -ne $capSpan) { [math]::Round($vdur - $capSpan, 3) } else { $null }
+        $checks.video = [ordered]@{
+            ok = ($frames -gt 0 -and $dupPct -le 1.0 -and $null -ne $durDiff -and [math]::Abs($durDiff) -lt 0.5)
+            codec = $probe.streams[0].codec_name; profile = $probe.streams[0].profile; pix_fmt = $probe.streams[0].pix_fmt
+            width = $probe.streams[0].width; height = $probe.streams[0].height; avg_frame_rate = $probe.streams[0].avg_frame_rate
+            duration_s = $vdur; frames = $frames; dup_frames = $dup; dup_pct = $dupPct; surplus_input_frames_dropped = $drop; input = $gaps
+            capture_span_s = $capSpan; duration_diff_s = $durDiff; covers_level = $cover
+        }
+        if ($probe.streams[0].width -ne 1920 -or $probe.streams[0].height -ne 1080) { [void]$problems.Add("video is $($probe.streams[0].width)x$($probe.streams[0].height)") }
+        if ($dupPct -gt 5.0) { [void]$problems.Add("ffmpeg duplicated $dupPct % of output frames (no new image)") }
+        elseif ($dupPct -gt 1.0) { [void]$warnings.Add("ffmpeg duplicated $dupPct % of output frames (no new image)") }
+        if ($gaps -and $gaps.missed_pct -gt 2.0) { [void]$warnings.Add("capture input had gaps worth $($gaps.missed_pct) % of frames") }
+        if ($null -ne $durDiff -and [math]::Abs($durDiff) -ge 0.5) { [void]$problems.Add("video duration $vdur s vs capture span $capSpan s") }
+        if ($outcome -and $outcome.run_duration_s -and $outcome.frames) {
+            $gameFps = [math]::Round($outcome.frames / $outcome.run_duration_s, 2)
+            $checks.video.game_fps = $gameFps
+            if ($gameFps -lt 55) { [void]$warnings.Add("game averaged $gameFps fps (cap 60)") }
+        }
+    }
+
+    $status = if ($problems.Count -gt 0) { 'failed' } elseif ($warnings.Count -gt 0) { 'warn' } else { 'ok' }
+
+    # ---- metadata, manifest ----
+    $videoStartNs = if ($videoStart) { $videoStart.t_ns } else { $null }
+    $metadata = [ordered]@{
+        schema = 'superposition.ue-autoplay-bundle/v1'
+        lab_bundle_schema = 3
+        run_id = $runId; game = $Game; project = $info.ProjectName
+        level = $Level; level_name = $(if ($outcome) { $outcome.level_name } else { $null })
+        seed = $runSeed; skill = $runSkill; max_seconds = $MaxSeconds
+        result = $(if ($outcome) { $outcome.result } else { $null }); score = $(if ($outcome) { $outcome.score } else { $null })
+        player = [ordered]@{ kind = 'bot'; name = 'autoplay'; input_injection = 'UE Enhanced Input (InjectInputForAction)' }
+        build = [ordered]@{ commit = $buildInfo.commit; short_sha = $buildInfo.short_sha; config = 'Development'; path = $Build; exe = $exe; contract_version = $(if ($outcome) { $outcome.contract_version } else { $null }) }
+        clock = [ordered]@{
+            source = 'QueryPerformanceCounter'; qpc_frequency = $qpcFreq; t_ns_definition = 'qpc * 1e9 / qpc_frequency'
+            samples = @(@($(if ($gameClock) { $gameClock.samples | ForEach-Object { $_ | Add-Member -NotePropertyName source -NotePropertyValue 'game' -PassThru -Force } })) + @($clock))
+        }
+        video = [ordered]@{
+            file = 'video.mkv'; codec = 'h264'; encoder = $Encoder; width = 1920; height = 1080; fps = 60; cfr = $true; audio = $false
+            capture = $captureMode; capture_rect = $rect; window_title = $(if ($hwnd -ne [IntPtr]::Zero) { [UePipeline.Win]::Title($hwnd) } else { $null })
+            ffmpeg_command = $(if ($cap) { $cap.Command } else { $null }); ffmpeg_version = $ffmpegVersion
+            start_estimate = $videoStart
+        }
+        video_start_offset_ns = $videoStartNs
+        video_start_offset_definition = 't_ns of video frame 0 on the QPC ns clock of inputs.jsonl / telemetry.jsonl: video_time_s = (t_ns - video_start_offset_ns) / 1e9'
+        system_audio = [ordered]@{ file = 'system_audio.mka'; codec = 'flac'; source = 'UE master submix (StartRecordingOutput)'; start_offset_ns = $audioStartNs; start_anchor = 'end: audio_stop clock sample minus WAV duration'; stats = $audio }
+        microphone = $null
+        machine = [ordered]@{ cpu = 'AMD Ryzen 7 7700X'; gpu = 'NVIDIA GeForce RTX 4080'; display = '3840x2160'; os = [Environment]::OSVersion.VersionString }
+        created_utc = (Get-Date).ToUniversalTime().ToString('o')
+        status = $status
+    }
+    Write-JsonFile (Join-Path $runDir 'metadata.json') $metadata
+    $validation = [ordered]@{ run_id = $runId; status = $status; problems = @($problems); warnings = @($warnings); checks = $checks; game_exit_code = $gameExit; killed = $killed }
+    Write-JsonFile (Join-Path $runDir 'validation.json') $validation
+    if ($status -eq 'failed') { [System.IO.File]::WriteAllText((Join-Path $runDir 'FAILED'), (($problems -join "`n") + "`n"), $Utf8NoBom) }
+
+    $files = [ordered]@{}
+    foreach ($f in Get-ChildItem $runDir -Recurse -File | Where-Object { $_.Name -ne 'manifest.json' } | Sort-Object FullName) {
+        $rel = $f.FullName.Substring($runDir.Length + 1).Replace('\', '/')
+        $files[$rel] = [ordered]@{ sha256 = (Get-FileSha256 $f.FullName); bytes = $f.Length }
+    }
+    Write-JsonFile (Join-Path $runDir 'manifest.json') ([ordered]@{ schema = 'superposition.manifest/v1'; run_id = $runId; files = $files })
+
+    $tEnd = Get-Date
+    $row = [ordered]@{
+        schema = 'superposition.ue-run/v1'; run_id = $runId; game = $Game; level = $Level; seed = $runSeed; skill = $runSkill
+        build_commit = $buildInfo.commit; build_path = $Build; status = $status
+        result = $metadata.result; score = $metadata.score; duration_s = $(if ($outcome) { $outcome.duration_s } else { $null })
+        start = $tStart.ToString('o'); end = $tEnd.ToString('o'); wall_s = [math]::Round(($tEnd - $tStart).TotalSeconds, 1)
+        capture = $captureMode; video_start_offset_ns = $videoStartNs
+        dup_pct = $(if ($checks.Contains('video')) { $checks.video.dup_pct } else { $null })
+        problems = @($problems); warnings = @($warnings); bundle = $runDir
+    }
+    Add-JsonLine (Join-Path $info.LogDir 'runs.jsonl') $row
+    Write-Step ("{0}: {1} ({2}){3}" -f $runId, $status, $metadata.result, $(if ($problems.Count) { ' - ' + ($problems -join '; ') } else { '' }))
+    [void]$results.Add($row)
+}
+$results
+if (@($results | Where-Object { $_.status -eq 'failed' }).Count -gt 0) { exit 1 }
+
