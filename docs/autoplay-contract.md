@@ -1,11 +1,18 @@
-# AutoPlay contract (v1.2)
+# AutoPlay contract (v1.3)
 
-> **v1.2 = drop-in `ContractVersion = 2`.** No company or project names in what games ship: file schemas are
-> `autoplay-inputs/1`, `autoplay-telemetry/1`, `autoplay-outcome/1`, `autoplay-clock/1`, the version key is
-> `autoplay_version`. The run directory flag is `-OutputDir`; `-RecordDir` (v1) is still accepted. v1 games keep working:
-> the pipeline reads the version from the build and passes `-OutputDir` (v2) or `-RecordDir` (v1). See **Naming rule** and **Changes**.
+> **v1.3 = drop-in `ContractVersion = 3`.** A run plays a **scenario** instead of a "level" (see the definition below):
+> flag `-Scenario=<n>` (`-Level` still accepted), API `StartScenario` / `ScenarioStarted`, keys `scenario` and
+> `scenario_name` in every file, telemetry `scenario_start` / `scenario_end`, schemas `autoplay-*/2`. v1.2 games still
+> compile (thin `StartLevel` / `LevelStarted` / `GetLevel` wrappers) and the pipeline still drives v1 and v1.2 builds.
+> Recording builds are packaged as **Shipping** once the game sets `bAllowHighDPIInGameMode=True` in
+> `Config/DefaultEngine.ini` (no Windows Firewall prompts; see section 1). See **Migration** and **Changes** at the end.
 
-Every Track B game (tower-defense, siege-catapult, stealth, rally-racer) implements this once its first level is
+**Scenario** = a defined start state plus a win/lose condition, numbered 1..n in the game's design doc and named by the
+game. It may be a level (tower-defense "Meadow"), a chapter (stealth "Warehouse"), a race stage (rally-racer "Forest
+dirt"), a castle (siege-catapult "Twin Towers") or an open-world start setup (island-survival "First Night",
+"Toolmaker"). A run plays exactly one scenario from its start state until it is won, lost or times out.
+
+Every Track B game (tower-defense, siege-catapult, stealth, rally-racer) implements this once its first scenario is
 playable. The shared pipeline (`tools/ue-pipeline/`, [ue-pipeline.md](ue-pipeline.md)) then packages the game,
 launches it with the flags below, captures the window with ffmpeg and turns each run into a gameplay bundle shaped
 like the Lab's `game_recording` bundle (schema 3, see [creation-vs-gameplay.md](creation-vs-gameplay.md)).
@@ -15,14 +22,14 @@ Input**, and the game logs every injected input. Nothing uses OS-level input (`S
 ignored during a run.
 
 Use the drop-in implementation in `tools/ue-pipeline/autoplay/` (`AutoPlaySubsystem.h/.cpp`) unchanged, so the
-four games write identical files. Your game supplies two things: `StartLevel` (open level N) and the bot.
+four games write identical files. Your game supplies two things: `StartScenario` (set up scenario N) plus `ScenarioStarted`, and the bot.
 
 ## 1. Command line
 
 The pipeline launches the packaged game as:
 
 ```
-<Game>.exe -AutoPlay -Level=<n> -Seed=<s> -Skill=<0..1> -OutputDir=<abs dir> -MaxSeconds=<n>
+<Game>.exe -AutoPlay -Scenario=<n> -Seed=<s> -Skill=<0..1> -OutputDir=<abs dir> -MaxSeconds=<n>
            -BuildCommit=<sha> -RunId=<id> -windowed -ResX=1920 -ResY=1080 -WinX=<x> -WinY=<y>
            -ini:Engine:[/Script/Engine.UserInterfaceSettings]:bAllowHighDPIInGameMode=True
            -nosplash -abslog=<OutputDir>\game.log
@@ -30,14 +37,28 @@ The pipeline launches the packaged game as:
 
 The display runs at 150 % scaling: the ini override makes the game DPI-aware so 1920x1080 means physical pixels
 (otherwise Windows stretches the window to 2880x1620). No `-unattended`: UE skips DPI awareness when unattended.
-Nothing to do in your game for either; just don't depend on `-unattended` being set.
+
+**Recording builds are Shipping (v1.3).** Development and Test builds contain UE's trace runtime, which listens on a TCP
+port (0.0.0.0, no runtime switch in 5.3), so Windows Firewall shows a "Windows Security" prompt for every new exe path;
+unanswered prompts dim the screen and block recordings. Shipping compiles the trace runtime out. Shipping ignores
+command-line `-ini:` overrides, so put the DPI setting in your game's config:
+
+```
+; Config/DefaultEngine.ini
+[/Script/Engine.UserInterfaceSettings]
+bAllowHighDPIInGameMode=True
+```
+
+build.ps1 packages Shipping automatically once that line is committed (Development otherwise). Shipping has no log
+file unless your game target sets `bUseLoggingInShipping = true;` (optional, useful for diagnosing runs). The drop-in
+works the same in Shipping (scalability is set through the Scalability API, not a console command).
 
 | Flag | Meaning | Default |
 |---|---|---|
 | `-AutoPlay` | enable AutoPlay (ignored in the editor/PIE; works with `UnrealEditor.exe <uproject> -game`) | off |
-| `-Level=<n>` | level number, 1-based, as listed in your game's design doc | 1 |
+| `-Scenario=<n>` (alias `-Level`) | scenario number, 1-based, as listed in your game's design doc | 1 |
 | `-Seed=<s>` | integer seed for the bot's RNG and for game randomness (seed your `FRandomStream`s from it; `FMath::RandInit`/`SRandInit` are seeded for you). Determinism is not required | 0 |
-| `-Skill=<0..1>` | bot skill: 0 = clumsy novice (slow reactions, noisy aim, poor choices, still trying), 1 = best the bot can do (should usually win level 1). Interpolate reaction time, aim/steering noise, decision quality. Document what it does in your design doc | 1 |
+| `-Skill=<0..1>` | bot skill: 0 = clumsy novice (slow reactions, noisy aim, poor choices, still trying), 1 = best the bot can do (should usually win scenario 1). Interpolate reaction time, aim/steering noise, decision quality. Document what it does in your design doc | 1 |
 | `-OutputDir=<dir>` (alias `-RecordDir`, the v1 name) | absolute directory for the run's files (created if missing) | `Saved/AutoPlay/<timestamp>` |
 | `-MaxSeconds=<n>` | hard limit from "go"; the run ends with result `timeout` | 600 |
 | `-BuildCommit=<sha>` | echoed into outcome.json | empty |
@@ -68,14 +89,14 @@ Nothing to do in your game for either; just don't depend on `-unattended` being 
 3. The pipeline starts video capture, then creates `OutputDir/go`. (No `go` within `-GoTimeout` → start anyway,
    `go_timed_out: true`.)
 4. On go: clock sample `go`, `FMath::RandInit(Seed)`, audio recording starts (clock sample `audio_start`),
-   telemetry `run_start`, then your **`StartLevel(Level)`** is called. Skip menus, tutorials and popups in AutoPlay.
-5. When gameplay begins, the game calls **`LevelStarted(LevelName)`** (telemetry `level_start`) and the bot starts.
+   telemetry `run_start`, then your **`StartScenario(Scenario)`** is called: open its map and apply its start state. Skip menus, tutorials and popups in AutoPlay.
+5. When gameplay begins, the game calls **`ScenarioStarted(ScenarioName)`** (telemetry `scenario_start`, with the scenario's name, e.g. "First Night") and the bot starts.
    The bot acts only while `IsRunning()` is true.
 6. The game emits telemetry as things happen (section 5) and calls `SetScore` when the score changes.
 7. The run ends with **`FinishRun(Result, Score, ExtraJson)`**: `win`, `lose`, `abort` (bot stuck, your call) — or
    `timeout`, called by the subsystem when `MaxSeconds` passes since go (bind `OnTimeout` if you want to compute a
-   final score yourself). Held inputs are released (logged), telemetry `level_end`.
-   A level restart inside a run (stealth "caught → checkpoint") is **not** the end of the run.
+   final score yourself). Held inputs are released (logged), telemetry `scenario_end`.
+   A restart inside a run (stealth "caught → checkpoint") is **not** the end of the run.
 8. The subsystem keeps the result screen up 2 s, stops audio recording (`audio.wav` is written on a background
    thread; it waits until the file is stable, ≤ 20 s), writes `outcome.json` and `clock.json`, telemetry `run_end`,
    then quits (`FPlatformMisc::RequestExit(false)`, exit code 0). The pipeline kills the process at
@@ -115,7 +136,7 @@ All JSON is UTF-8; `*.jsonl` has one object per line. Every row carries the same
 ### `inputs.jsonl` (written by the subsystem)
 
 ```json
-{"t_ns":3911283311000,"qpc":39112833110,"frame":512,"type":"header","schema":"autoplay-inputs/1","autoplay_version":2,"game":"Stealth","run_id":"...","level":1,"seed":7,"skill":0.6,"max_seconds":600,"qpc_frequency":10000000,"build_commit":"a1b2c3d"}
+{"t_ns":3911283311000,"qpc":39112833110,"frame":512,"type":"header","schema":"autoplay-inputs/2","autoplay_version":3,"game":"Stealth","run_id":"...","scenario":1,"scenario_name":"","seed":7,"skill":0.6,"max_seconds":600,"qpc_frequency":10000000,"build_commit":"a1b2c3d"}
 {"t_ns":...,"qpc":...,"frame":901,"type":"action_info","action":"IA_Move","value_type":"Axis2D","mapped_keys":["W","S","A","D","Gamepad_Left2D"]}
 {"t_ns":...,"qpc":...,"frame":901,"type":"inject","action":"IA_Move","value_type":"Axis2D","value":[0,1],"key":"W","edge":"down"}
 {"t_ns":...,"qpc":...,"frame":902,"type":"inject","action":"IA_Move","value_type":"Axis2D","value":[0.7,0.7],"key":"W+D","edge":"hold"}
@@ -131,11 +152,11 @@ held) | `release` (synthesized `up` in the first frame the action was not inject
 ### `telemetry.jsonl` (subsystem rows + your game's rows)
 
 ```json
-{"t_ns":...,"qpc":...,"frame":1200,"event":"level_start","level":1,"level_name":"Warehouse","map":"L_Warehouse"}
+{"t_ns":...,"qpc":...,"frame":1200,"event":"scenario_start","scenario":1,"scenario_name":"Warehouse","map":"L_Warehouse"}
 {"t_ns":...,"qpc":...,"frame":1874,"event":"guard_state","guard":"Guard_2","from":"patrol","to":"suspicious"}
 ```
 
-Written by the subsystem: `header`, `autoplay_ready`, `run_start`, `level_start`, `level_end`, `run_end`,
+Written by the subsystem: `header`, `autoplay_ready`, `run_start`, `scenario_start`, `scenario_end`, `run_end`,
 `run_aborted`, `error`. Written by the game with `Telemetry(Event, FieldsJson)` (FieldsJson = JSON members
 without braces, built with `JsonStr` / `JsonNum` / `JsonVec`):
 
@@ -150,21 +171,21 @@ without braces, built with `JsonStr` / `JsonNum` / `JsonVec`):
 ### `outcome.json` (subsystem; your part is the arguments of `FinishRun`)
 
 ```json
-{"schema":"autoplay-outcome/1","autoplay_version":2,"game":"TowerDefense","run_id":"...","level":2,"seed":7,
- "skill":0.6,"max_seconds":600,"qpc_frequency":10000000,"build_commit":"a1b2c3d","level_name":"Canyon","result":"win",
- "score":1840,"duration_s":512.3,"run_duration_s":514.9,"go_qpc":...,"level_start_qpc":...,"level_end_qpc":...,
+{"schema":"autoplay-outcome/2","autoplay_version":3,"game":"TowerDefense","run_id":"...","scenario":2,"scenario_name":"Canyon","seed":7,
+ "skill":0.6,"max_seconds":600,"qpc_frequency":10000000,"build_commit":"a1b2c3d","result":"win",
+ "score":1840,"duration_s":512.3,"run_duration_s":514.9,"go_qpc":...,"scenario_start_qpc":...,"scenario_end_qpc":...,
  "frames":30893,"inputs_injected":20411,"go_timed_out":false,"build_config":"Development","engine_version":"5.3.2-...",
  "extra":{"stars":2,"lives":14}}
 ```
 
-`duration_s` = level_start → level_end; `run_duration_s` = go → level_end; `frames` = frames from level_start to
-level_end (so `frames / duration_s` is the gameplay fps). Put game-specific results in
+`duration_s` = scenario_start → scenario_end; `run_duration_s` = go → scenario_end; `frames` = frames from
+scenario_start to scenario_end (so `frames / duration_s` is the gameplay fps). Put game-specific results in
 `ExtraJson` (stars, lap times, times spotted, shots used).
 
 ### `clock.json` (subsystem)
 
 ```json
-{"schema":"autoplay-clock/1","qpc_frequency":10000000,"t_ns_definition":"qpc * 1e9 / qpc_frequency",
+{"schema":"autoplay-clock/2","scenario":2,"scenario_name":"Canyon","qpc_frequency":10000000,"t_ns_definition":"qpc * 1e9 / qpc_frequency",
  "samples":[{"label":"start","qpc":...,"qpc_after":...,"t_ns":...,"unix_ns":...,"utc":"2026-10-11T07:12:13.123Z","frame":3}, "go", "audio_start", "audio_stop", "end"]}
 ```
 
@@ -175,7 +196,7 @@ Each sample pairs QPC (read before and after) with UTC wall time (`FDateTime::Ut
 Master submix via `UAudioMixerBlueprintLibrary::StartRecordingOutput(World, MaxSeconds + 30, nullptr)` at go and
 `StopRecordingOutput(World, EAudioRecordingExportType::WavFile, "audio", OutputDir, nullptr, nullptr)` after the
 result hold. 16-bit PCM at the mixer rate (48 kHz) with the output device's channel count. UE queues the start to
-the audio thread (it begins ~0.1 s after the `audio_start` sample, while the level loads) but stops synchronously,
+the audio thread (it begins ~0.1 s after the `audio_start` sample, while the scenario loads) but stops synchronously,
 so the **last** sample corresponds to the `audio_stop` clock sample; the pipeline anchors the WAV there
 (`start = audio_stop − duration`) and turns it into `system_audio.mka`.
 
@@ -195,11 +216,11 @@ void UMyGameInstance::Init()
     Super::Init();
     if (UAutoPlaySubsystem* AP = GetSubsystem<UAutoPlaySubsystem>(); AP && AP->IsAutoPlay())
     {
-        AP->StartLevel = [this](int32 Level) { UGameplayStatics::OpenLevel(this, LevelMapName(Level)); };
+        AP->StartScenario = [this](int32 Scenario) { UGameplayStatics::OpenLevel(this, ScenarioMapName(Scenario)); /* + start state */ };
     }
 }
 
-// Game mode, when the player gets control:   if (AP && AP->IsAutoPlay()) { AP->LevelStarted(TEXT("Warehouse")); SpawnBot(); }
+// Game mode, when the player gets control:   if (AP && AP->IsAutoPlay()) { AP->ScenarioStarted(TEXT("Warehouse")); SpawnBot(); }
 // On win/lose:  AP->FinishRun(TEXT("win"), Score, FString::Printf(TEXT("\"stars\":%d"), Stars));
 // Events:       AP->Telemetry(TEXT("wave_start"), FString::Printf(TEXT("\"wave\":%d"), Wave));
 
@@ -244,19 +265,19 @@ UAudioMixerBlueprintLibrary::StopRecordingOutput(GetGameWorld(), EAudioRecording
 Without packaging (editor binaries, uncooked). **Always disable Live Coding** with the ini override shown: an `UnrealEditor.exe` that starts Live Coding makes UnrealBuildTool refuse to build *every* project on this UE 5.3 install ("Unable to build while Live Coding is active") until it exits. The override works without `-unattended` (which would also turn off DPI awareness). It is a heavy job, so run it under `Work\tools\ue-heavy.ps1`, which must wait for GUI processes; see the note below.
 
 ```
-"C:\Program Files\Epic Games\UE_5.3\Engine\Binaries\Win64\UnrealEditor.exe" "<project>.uproject" -game -AutoPlay -Level=1 -Seed=1 -Skill=1 -MaxSeconds=120 -GoTimeout=0 -windowed -ResX=1920 -ResY=1080 -ini:EditorPerProjectUserSettings:[/Script/LiveCoding.LiveCodingSettings]:bEnabled=False -log
+"C:\Program Files\Epic Games\UE_5.3\Engine\Binaries\Win64\UnrealEditor.exe" "<project>.uproject" -game -AutoPlay -Scenario=1 -Seed=1 -Skill=1 -MaxSeconds=120 -GoTimeout=0 -windowed -ResX=1920 -ResY=1080 -ini:EditorPerProjectUserSettings:[/Script/LiveCoding.LiveCodingSettings]:bEnabled=False -log
 powershell -ExecutionPolicy Bypass -File C:\Users\Xiang\Work\game-factory\tools\ue-pipeline\validate-run.ps1 "<project dir>\Saved\AutoPlay\<timestamp>"
 ```
 
 (Verified on games\_pipeline-test: no LiveCodingConsole is started, the run quits by itself, validate-run passes; the uncooked editor runs at ~25 fps, the packaged build at 60. If you prefer `-unattended`, that also disables Live Coding, at the cost of a DPI-stretched 2880x1620 window. `-game` runs the editor binaries uncooked; keyboard and mouse are blocked while it runs, so close it from the
-taskbar if it hangs, or add `-AutoPlayAllowInput`. To see the real pipeline result, `enqueue.ps1 <game> -Levels 1
+taskbar if it hangs, or add `-AutoPlayAllowInput`. To see the real pipeline result, `enqueue.ps1 <game> -Scenarios 1
 -Runs 1` builds, packages and records it; see ue-pipeline.md.)
 
 Files land in `Saved/AutoPlay/<timestamp>/`. Check: the game quits by itself; `outcome.json` has your result;
-`inputs.jsonl` has inject rows; `telemetry.jsonl` has `level_start`/`level_end`; `audio.wav` is not silent.
+`inputs.jsonl` has inject rows; `telemetry.jsonl` has `scenario_start`/`scenario_end`; `audio.wav` is not silent.
 `validate-run.ps1` (above) checks a run directory against this contract.
 
-When level 1 passes, commit and tag it `milestone/autoplay-1` (later levels: `milestone/autoplay-<n>` = levels
+When scenario 1 passes, commit and tag it `milestone/autoplay-1` (later: `milestone/autoplay-<n>` = scenarios
 1..n work). The nightly pipeline records every game whose latest commit on its default branch has (or descends
 from) a `milestone/autoplay-*` tag; a game session can queue a run itself, see [ue-pipeline.md](ue-pipeline.md).
 
@@ -274,7 +295,36 @@ dataset, pipeline, workflow row ids in commit messages and `workflow.jsonl` are 
 Hand test without a window on the user's screen: add `-RenderOffScreen` to the §7 command (verified on the test
 project with v1.2: the run completes and validate-run passes).
 
+## Migration to v1.3 (per game)
+
+1. **Re-copy** `tools/ue-pipeline/autoplay/AutoPlaySubsystem.h/.cpp` (ContractVersion 3). v1.2 code still compiles via
+   the deprecated `StartLevel` / `LevelStarted` / `GetLevel` wrappers, but migrate now:
+2. **Rename** in your code: `AP->StartLevel = ...` → `AP->StartScenario = ...`; `AP->LevelStarted(Name)` →
+   `AP->ScenarioStarted(Name)` with the scenario's display name ("Meadow", "First Night"); `GetLevel()` →
+   `GetScenario()`. If your game isn't level-based, `StartScenario(N)` applies scenario N's start state (spawn point,
+   inventory, time of day, objectives) on your one map. Your own telemetry may keep its names; only the subsystem's
+   events changed (`scenario_start`/`scenario_end`).
+3. **List your scenarios** (1..n, name, start state, win/lose condition) in your design doc; that numbering is what
+   `-Scenario=<n>` and `milestone/autoplay-<n>` mean.
+4. **Config:** add `bAllowHighDPIInGameMode=True` under `[/Script/Engine.UserInterfaceSettings]` in
+   `Config/DefaultEngine.ini` (Shipping recording builds); optionally `bUseLoggingInShipping = true;` in your game
+   `Target.cs`. Check your game still runs in Shipping (no editor-only or Development-only code paths in AutoPlay).
+5. **Re-test** by hand (§7, now `-Scenario=1`, `-RenderOffScreen`) and run `validate-run.ps1` on the output: it must say
+   "AutoPlay drop-in version 3" and PASS.
+6. **Commit and re-tag** `milestone/autoplay-<n>` on the migrated commit (n = scenarios ready), then queue a recording:
+   `enqueue.ps1 <game> -Scenarios 1 -Runs 1 -RequestedBy <session>`.
+
 ## Changes
+
+- **v1.3** (`ContractVersion` 3, games re-copy `AutoPlaySubsystem.h/.cpp`): "level" becomes "scenario". Flag
+  `-Scenario=<n>` (`-Level` still accepted) and optional `-ScenarioName=<text>`; API `StartScenario`,
+  `ScenarioStarted`, `GetScenario`, `GetScenarioName` (`StartLevel`, `LevelStarted`, `GetLevel` kept as deprecated
+  wrappers); keys `scenario` + `scenario_name` in every header, `outcome.json`, `ready.json` and `clock.json`
+  (`level_name` gone); `outcome.json` `scenario_start_qpc`/`scenario_end_qpc`; telemetry `scenario_start`/`scenario_end`;
+  schemas `autoplay-{inputs,telemetry,outcome,clock}/2`; scalability via the Scalability API (works in Shipping).
+  Recording builds are Shipping once `bAllowHighDPIInGameMode=True` is in `DefaultEngine.ini`. Verified on
+  games\_pipeline-test: editor build with the old and the new API, off-screen runs with `-Scenario` and `-Level`,
+  validate-run PASS for v1.3, v1.2 and v1 outputs.
 
 - **v1.1** (docs only; `AutoPlaySubsystem.h/.cpp` unchanged, `ContractVersion` stays 1): section 1 lists the pipeline's real flags (`-ini:...bAllowHighDPIInGameMode=True`, no `-unattended`); section 5: `frames` in outcome.json counts level_start..level_end and the WAV is anchored at `audio_stop`; section 7: the hand test disables Live Coding and uses validate-run.ps1.
 - **v1.2** (`ContractVersion` 2, games re-copy `AutoPlaySubsystem.h/.cpp`): no company/project names. Schemas

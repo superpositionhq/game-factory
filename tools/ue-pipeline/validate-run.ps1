@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Check one AutoPlay RecordDir against docs/autoplay-contract.md (no video needed). For game sessions testing by hand.
 
@@ -38,15 +38,17 @@ function Read-Rows([string]$Name, [string]$KindField) {
 $inputs = Read-Rows 'inputs.jsonl' 'type'
 $telemetry = Read-Rows 'telemetry.jsonl' 'event'
 if (-not $inputs.kinds.ContainsKey('inject')) { [void]$problems.Add('inputs.jsonl has no inject rows') }
-foreach ($e in 'run_start', 'level_start', 'level_end', 'run_end') { if (-not $telemetry.kinds.ContainsKey($e)) { [void]$problems.Add("telemetry.jsonl has no $e") } }
+# v1.3 writes scenario_start/scenario_end, v1/v1.2 level_start/level_end; either is accepted.
+foreach ($e in 'run_start', 'scenario_start|level_start', 'scenario_end|level_end', 'run_end') { if (-not @($e -split '\|' | Where-Object { $telemetry.kinds.ContainsKey($_) }).Count) { [void]$problems.Add("telemetry.jsonl has no $e") } }
 foreach ($e in 'score', 'state') { if (-not $telemetry.kinds.ContainsKey($e)) { [void]$notes.Add("telemetry has no '$e' events (required for all games)") } }
 
 $outcome = Read-JsonFile (Join-Path $Dir 'outcome.json')
+if ($outcome) { $v = if ($outcome.PSObject.Properties.Name -contains 'autoplay_version') { $outcome.autoplay_version } elseif ($outcome.PSObject.Properties.Name -contains 'contract_version') { $outcome.contract_version } else { '?' }; [void]$notes.Add("AutoPlay drop-in version $v (1 = v1, 2 = v1.2, 3 = v1.3)") }
 if (-not $outcome) { [void]$problems.Add('missing outcome.json') }
 else {
     if ($outcome.result -notin @('win', 'lose', 'timeout', 'abort')) { [void]$problems.Add("outcome.result is '$($outcome.result)'") }
     if ($outcome.go_timed_out) { [void]$notes.Add('go_timed_out is true (expected when testing by hand with -GoTimeout)') }
-    if ($outcome.duration_s -gt 0) { [void]$notes.Add(("level ran {0:N1} s at {1:N1} fps, {2} injected inputs, result {3}, score {4}" -f $outcome.duration_s, ($outcome.frames / $outcome.duration_s), $outcome.inputs_injected, $outcome.result, $outcome.score)) }
+    if ($outcome.duration_s -gt 0) { [void]$notes.Add(("scenario {5} ({6}) ran {0:N1} s at {1:N1} fps, {2} injected inputs, result {3}, score {4}" -f $outcome.duration_s, ($outcome.frames / $outcome.duration_s), $outcome.inputs_injected, $outcome.result, $outcome.score, $(if ($outcome.PSObject.Properties.Name -contains 'scenario') { $outcome.scenario } else { $outcome.level }), $(if ($outcome.PSObject.Properties.Name -contains 'scenario_name') { $outcome.scenario_name } else { $outcome.level_name }))) }
 }
 $clock = Read-JsonFile (Join-Path $Dir 'clock.json')
 if (-not $clock) { [void]$problems.Add('missing clock.json') }

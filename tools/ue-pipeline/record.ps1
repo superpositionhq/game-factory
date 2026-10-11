@@ -14,7 +14,7 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)][string]$Game,
     [Parameter(Mandatory = $true)][string]$Build,
-    [int]$Level = 1,
+    [Alias('Level')][int]$Scenario = 1,   # a scenario: start state + win/lose condition (a level, chapter, race stage, start setup)
     [int]$Runs = 1,
     [double]$Skill = -1,
     [long]$Seed = -1,
@@ -46,8 +46,20 @@ if (-not $autoplayVersion) {
     $autoplayVersion = if ($h -and ((Get-Content $h.FullName -Raw) -match 'ContractVersion\s*=\s*(\d+)')) { [int]$matches[1] } else { 1 }
 }
 $outDirFlag = if ($autoplayVersion -ge 2) { 'OutputDir' } else { 'RecordDir' }
+$scenarioFlag = if ($autoplayVersion -ge 3) { 'Scenario' } else { 'Level' }   # v1.3 renamed level -> scenario
+
+# Outcome/telemetry keys changed in v1.3 (scenario_*); older games write level_*.
+function Get-OutcomeValue($Outcome, [string]$NewKey, [string]$OldKey) {
+    if (-not $Outcome) { return $null }
+    $names = $Outcome.PSObject.Properties.Name
+    if ($names -contains $NewKey) { return $Outcome.$NewKey }
+    if ($names -contains $OldKey) { return $Outcome.$OldKey }
+    return $null
+}
 # Launch the real binary, not the bootstrap stub, so the PID we hold owns the window.
-$exe = Join-Path $Build "Windows\$($info.ProjectName)\Binaries\Win64\$($info.ProjectName).exe"
+$buildConfig = if ($buildInfo.PSObject.Properties.Name -contains 'config' -and $buildInfo.config) { $buildInfo.config } else { 'Development' }
+$exeName = if ($buildConfig -eq 'Development') { "$($info.ProjectName).exe" } else { "$($info.ProjectName)-Win64-$buildConfig.exe" }
+$exe = Join-Path $Build "Windows\$($info.ProjectName)\Binaries\Win64\$exeName"
 if (-not (Test-Path $exe)) { $exe = $buildInfo.exe_path }
 $ffmpeg = Find-FFmpeg
 $ffprobe = Find-FFprobe
@@ -234,14 +246,28 @@ if (-not $NoStablePath) {
         if ($LASTEXITCODE -ge 8) { throw "robocopy failed ($LASTEXITCODE)" }
         Copy-Item (Join-Path $Build 'build_info.json') (Join-Path $runRoot 'build_info.json') -Force
     } finally { Exit-PipelineLock }
-    $exe = Join-Path $runRoot "Windows\$($info.ProjectName)\Binaries\Win64\$($info.ProjectName).exe"
+    $exe = Join-Path $runRoot "Windows\$($info.ProjectName)\Binaries\Win64\$exeName"
+}
+
+# First run of this exe path: Windows Firewall will ask about UE's trace listener. Trigger that prompt now, off-screen,
+# while the user may still be at the machine, instead of in the middle of an unattended run (where it blocks capture).
+if ($buildConfig -ne 'Shipping' -and @(Get-NetFirewallApplicationFilter -Program $exe -ErrorAction SilentlyContinue).Count -eq 0) {   # Shipping has no trace listener
+    Write-Step "no Windows Firewall rule for $exe yet: starting it off-screen for 20 s so the one-time prompt appears now"
+    $pf = Start-Process $exe -ArgumentList '-RenderOffScreen', '-nosound', '-nosplash' -PassThru -WindowStyle Hidden
+    Start-Sleep -Seconds 20
+    & taskkill.exe /T /F /PID $pf.Id 2>&1 | Out-Null
+    $t = (Get-Date).AddMinutes(30)
+    while (@(Get-NetFirewallApplicationFilter -Program $exe -ErrorAction SilentlyContinue).Count -eq 0 -and (Get-Date) -lt $t) {
+        Write-Step 'waiting for the Windows Firewall prompt to be answered (Allow or Cancel both work)'
+        Start-Sleep -Seconds 60
+    }
 }
 
 $results = New-Object System.Collections.ArrayList
 for ($i = 0; $i -lt $Runs; $i++) {
     $runSeed = if ($Seed -ge 0) { $Seed + $i } else { $rng.Next(1, [int]::MaxValue) }
     $runSkill = if ($Skill -ge 0) { $Skill } else { $skillCycle[$i % $skillCycle.Count] }
-    $runId = '{0}_L{1}_{2}_s{3}' -f $Game, $Level, (Get-Date -Format 'yyyyMMdd-HHmmss'), $runSeed
+    $runId = '{0}_S{1}_{2}_s{3}' -f $Game, $Scenario, (Get-Date -Format 'yyyyMMdd-HHmmss'), $runSeed
     $runDir = Join-Path (Join-Path $RecordingsRoot $Game) $runId
     $rawDir = Join-Path $runDir 'raw'
     New-Item -ItemType Directory -Force $rawDir | Out-Null
@@ -262,9 +288,13 @@ for ($i = 0; $i -lt $Runs; $i++) {
     if ($refreshHz -notin @(60, 120)) { [void]$warnings.Add("display refresh is $refreshHz Hz, expected 60 or 120 (60 fps capture will repeat/skip game frames)") }
 
     # Screen capture needs the window untouched for minutes: wait until the user is away (and the session unlocked).
+    # Keep the display on from now on: waiting for 5 idle minutes otherwise runs into the power plan's dim/off timer,
+    # and Windows' dim overlay (Shell_SystemDim) then covers the game. Doesn't affect the idle measurement (input only).
+    [UePipeline.Win]::KeepDisplayOn($true)
     if ($IdleMinutes -gt 0) {
         $said = $false
         while ([UePipeline.Win]::IdleMs() -lt $IdleMinutes * 60000 -or (Get-Process LogonUI -ErrorAction SilentlyContinue)) {
+            [UePipeline.Win]::KeepDisplayOn($true)   # refresh while waiting
             if (-not $said) { Write-Step "waiting until the user has been idle for $IdleMinutes min (and the session is unlocked)"; $said = $true }
             Start-Sleep -Seconds 15
         }
@@ -275,7 +305,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
     try {
         Write-Step "run $($i + 1)/$Runs $runId (skill $runSkill, seed $runSeed)"
         [void]$clock.Add((Get-ClockSample 'record_start'))
-        $gameArgs = "-AutoPlay -Level=$Level -Seed=$runSeed -Skill=$runSkill -${outDirFlag}=`"$rawDir`" -MaxSeconds=$MaxSeconds " +
+        $gameArgs = "-AutoPlay -$scenarioFlag=$Scenario -Seed=$runSeed -Skill=$runSkill -${outDirFlag}=`"$rawDir`" -MaxSeconds=$MaxSeconds " +
                     "-BuildCommit=$($buildInfo.commit) -RunId=$runId -GoTimeout=300 -windowed -ResX=1920 -ResY=1080 -WinX=200 -WinY=150 " +
                     "-ini:Engine:[/Script/Engine.UserInterfaceSettings]:bAllowHighDPIInGameMode=True " +
                     "-nosplash -abslog=`"$rawDir\game.log`" $ExtraArgs"
@@ -321,7 +351,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
                 if (-not $said) { Write-Step 'game window is covered (Windows Firewall prompt for a new program path?): waiting for it to clear'; $said = $true }
                 Start-Sleep -Milliseconds 500
             }
-            if (-not [UePipeline.Win]::IsClientUncovered($hwnd)) { throw 'game window stayed covered for 240 s; not recording' }
+            if (-not [UePipeline.Win]::IsClientUncovered($hwnd)) { throw "game window stayed covered for 240 s by $([UePipeline.Win]::CoveringWindow($hwnd)); not recording" }
         }
         foreach ($m in $modes) {
             # Screen-region modes record whatever is on screen there: keep the game on top. gfxcapture doesn't need it.
@@ -473,7 +503,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
         if ($inputs.non_monotonic -gt 0) { [void]$problems.Add("inputs.jsonl t_ns goes backwards $($inputs.non_monotonic) times") }
     }
     if ($telemetry) {
-        $missingEvents = @(@('run_start', 'level_start', 'level_end', 'run_end') | Where-Object { -not $telemetry.counts.ContainsKey($_) })
+        $missingEvents = @(@('run_start', 'scenario_start|level_start', 'scenario_end|level_end', 'run_end') | Where-Object { $alts = $_ -split '\|'; -not @($alts | Where-Object { $telemetry.counts.ContainsKey($_) }).Count })
         $checks.telemetry = [ordered]@{ ok = ($missingEvents.Count -eq 0 -and $telemetry.bad_lines -eq 0); lines = $telemetry.lines; missing = @($missingEvents); counts = $telemetry.counts }
         foreach ($e in $missingEvents) { [void]$problems.Add("telemetry has no $e") }
         if ($telemetry.bad_lines -gt 0) { [void]$problems.Add("telemetry.jsonl has $($telemetry.bad_lines) unparseable lines") }
@@ -505,10 +535,10 @@ for ($i = 0; $i -lt $Runs; $i++) {
             $capSpan = ($stopNs - $videoStart.t_ns) / 1e9
             $videoEndNs = $videoStart.t_ns + [long]($vdur * 1e9)
             if ($outcome) {
-                $levelStartNs = Convert-QpcToNs ([long]$outcome.level_start_qpc) $qpcFreq
-                $levelEndNs = Convert-QpcToNs ([long]$outcome.level_end_qpc) $qpcFreq
+                $levelStartNs = Convert-QpcToNs ([long](Get-OutcomeValue $outcome 'scenario_start_qpc' 'level_start_qpc')) $qpcFreq
+                $levelEndNs = Convert-QpcToNs ([long](Get-OutcomeValue $outcome 'scenario_end_qpc' 'level_end_qpc')) $qpcFreq
                 $cover = ($videoStart.t_ns -lt $levelStartNs -and $videoEndNs -gt $levelEndNs)
-                if (-not $cover) { [void]$problems.Add('video does not cover level_start..level_end') }
+                if (-not $cover) { [void]$problems.Add('video does not cover the scenario (start..end)') }
             }
         } else { [void]$problems.Add('could not estimate video start time from ffmpeg log') }
         # ddagrab runs event-driven (dup_frames=0): every desktop update is an input frame (up to the display rate),
@@ -516,7 +546,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
         # stretches where the desktop (the game) did not update for more than 1.5 frames.
         $dupPct = if ($frames -gt 0) { [math]::Round(100.0 * $dup / $frames, 2) } else { 100 }
         $gaps = if ($videoStart -and $outcome) {
-            Get-InputGaps $ffLog ([long]((Convert-QpcToNs ([long]$outcome.level_start_qpc) $qpcFreq) - $videoStart.t_ns) / 1000) ([long]((Convert-QpcToNs ([long]$outcome.level_end_qpc) $qpcFreq) - $videoStart.t_ns) / 1000)
+            Get-InputGaps $ffLog ([long]((Convert-QpcToNs ([long](Get-OutcomeValue $outcome 'scenario_start_qpc' 'level_start_qpc')) $qpcFreq) - $videoStart.t_ns) / 1000) ([long]((Convert-QpcToNs ([long](Get-OutcomeValue $outcome 'scenario_end_qpc' 'level_end_qpc')) $qpcFreq) - $videoStart.t_ns) / 1000)
         } else { Get-InputGaps $ffLog }
         $durDiff = if ($null -ne $capSpan) { [math]::Round($vdur - $capSpan, 3) } else { $null }
         $checks.video = [ordered]@{
@@ -524,7 +554,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
             codec = $probe.streams[0].codec_name; profile = $probe.streams[0].profile; pix_fmt = $probe.streams[0].pix_fmt
             width = $probe.streams[0].width; height = $probe.streams[0].height; avg_frame_rate = $probe.streams[0].avg_frame_rate
             duration_s = $vdur; frames = $frames; dup_frames = $dup; dup_pct = $dupPct; surplus_input_frames_dropped = $drop; input = $gaps
-            capture_span_s = $capSpan; duration_diff_s = $durDiff; covers_level = $cover
+            capture_span_s = $capSpan; duration_diff_s = $durDiff; covers_scenario = $cover
         }
         if ($probe.streams[0].width -ne 1920 -or $probe.streams[0].height -ne 1080) { [void]$problems.Add("video is $($probe.streams[0].width)x$($probe.streams[0].height)") }
         if ($dupPct -gt 5.0) { [void]$problems.Add("ffmpeg duplicated $dupPct % of output frames (no new image)") }
@@ -550,11 +580,11 @@ for ($i = 0; $i -lt $Runs; $i++) {
         schema = 'superposition.ue-autoplay-bundle/v1'
         lab_bundle_schema = 3
         run_id = $runId; game = $Game; project = $info.ProjectName
-        level = $Level; level_name = $(if ($outcome) { $outcome.level_name } else { $null })
+        scenario = $Scenario; scenario_name = (Get-OutcomeValue $outcome 'scenario_name' 'level_name')
         seed = $runSeed; skill = $runSkill; max_seconds = $MaxSeconds
         result = $(if ($outcome) { $outcome.result } else { $null }); score = $(if ($outcome) { $outcome.score } else { $null })
         player = [ordered]@{ kind = 'bot'; name = 'autoplay'; input_injection = 'UE Enhanced Input (InjectInputForAction)' }
-        build = [ordered]@{ commit = $buildInfo.commit; short_sha = $buildInfo.short_sha; config = 'Development'; path = $Build; exe = $exe; autoplay_version = $autoplayVersion; output_dir_flag = "-$outDirFlag" }
+        build = [ordered]@{ commit = $buildInfo.commit; short_sha = $buildInfo.short_sha; config = $buildConfig; path = $Build; exe = $exe; autoplay_version = $autoplayVersion; output_dir_flag = "-$outDirFlag" }
         clock = [ordered]@{
             source = 'QueryPerformanceCounter'; qpc_frequency = $qpcFreq; t_ns_definition = 'qpc * 1e9 / qpc_frequency'
             samples = @(@($(if ($gameClock) { $gameClock.samples | ForEach-Object { $_ | Add-Member -NotePropertyName source -NotePropertyValue 'game' -PassThru -Force } })) + @($clock))
@@ -587,7 +617,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
 
     $tEnd = Get-Date
     $row = [ordered]@{
-        schema = 'superposition.ue-run/v1'; run_id = $runId; game = $Game; level = $Level; seed = $runSeed; skill = $runSkill
+        schema = 'superposition.ue-run/v1'; run_id = $runId; game = $Game; scenario = $Scenario; scenario_name = (Get-OutcomeValue $outcome 'scenario_name' 'level_name'); seed = $runSeed; skill = $runSkill
         build_commit = $buildInfo.commit; build_path = $Build; status = $status
         result = $metadata.result; score = $metadata.score; duration_s = $(if ($outcome) { $outcome.duration_s } else { $null })
         start = $tStart.ToString('o'); end = $tEnd.ToString('o'); wall_s = [math]::Round(($tEnd - $tStart).TotalSeconds, 1)

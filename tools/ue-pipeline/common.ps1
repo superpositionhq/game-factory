@@ -269,7 +269,8 @@ public static class Win {
             if (root != h) {
                 uint pid; GetWindowThreadProcessId(root, out pid);
                 var cls = new StringBuilder(256); GetClassName(root, cls, 256);
-                return "'" + Title(root) + "' class " + cls.ToString() + " pid " + pid + " at " + p.X + "," + p.Y;
+                string exe = "?"; try { exe = System.Diagnostics.Process.GetProcessById((int)pid).ProcessName; } catch { }
+                return "'" + Title(root) + "' class " + cls.ToString() + " process " + exe + " (pid " + pid + ") at " + p.X + "," + p.Y;
             }
         }
         return "";

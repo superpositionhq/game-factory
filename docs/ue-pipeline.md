@@ -7,10 +7,10 @@ through Enhanced Input, see [autoplay-contract.md](autoplay-contract.md)) as gam
 | Script | Does |
 |---|---|
 | `build.ps1 <game> [-Commit rev] [-Package] [-Smoke] [-Force]` | editor build, BuildCookRun package, smoke test; row in `builds.jsonl` |
-| `record.ps1 <game> -Build <dir\|latest> -Level n -Runs k [-Skill s] [-Seed s]` | launch, capture, validate, bundle; row per run in `runs.jsonl` |
-| `pipeline.ps1 <game> [-Runs k] [-Levels 1,2] [-Commit rev]` | build → package → smoke → record k runs per level; row in `pipeline.jsonl` |
+| `record.ps1 <game> -Build <dir\|latest> -Scenario n -Runs k [-Skill s] [-Seed s]` | launch, capture, validate, bundle; row per run in `runs.jsonl` |
+| `pipeline.ps1 <game> [-Runs k] [-Scenarios 1,2] [-Commit rev]` | build → package → smoke → record k runs per scenario; row in `pipeline.jsonl` |
 | `pipeline.ps1 -Nightly` / `-DrainQueue` | all games with a milestone tag / requests from `enqueue.ps1` |
-| `enqueue.ps1 <game> [-Runs k] [-Levels ..]` | queue a pipeline run and return at once (for game sessions) |
+| `enqueue.ps1 <game> [-Runs k] [-Scenarios ..]` | queue a pipeline run and return at once (for game sessions) |
 | `validate-run.ps1 <OutputDir>` | contract check of one raw run directory (for game sessions testing by hand) |
 | `scrub-history.ps1 <game> [-Apply]` | archive, then remove the names Superposition/game-factory from a finished game's history; dry run by default |
 | `sync-check.ps1 <bundle>` | measures video/audio lag against telemetry sync markers (pipeline test project) |
@@ -62,11 +62,18 @@ this engine install. The recorded game itself is the packaged exe, which has no 
    `.git\lfs\objects` store, so nothing is downloaded and the game repo is only read. Uncommitted work is not built.
 3. `Engine\Build\BatchFiles\Build.bat <Project>Editor Win64 Development -Project=<uproject> -WaitMutex -NoHotReloadFromIDE`
 4. With `-Package`: `RunUAT.bat -WaitForUATMutex BuildCookRun -project=<uproject> -target=<Project> -noP4 -platform=Win64
-   -clientconfig=Development -build -cook -stage -pak -archive -archivedirectory=<out> -nocompileeditor -unattended -utf8output`
+   -clientconfig=<Shipping|Development> -build -cook -stage -pak -archive -archivedirectory=<out> -nocompileeditor -unattended -utf8output`
 5. With `-Smoke`: if the game's Source contains an automation test named `<Project>.Smoke…`,
    `UnrealEditor-Cmd.exe <uproject> -ExecCmds="Automation RunTests <Project>.Smoke; Quit" -TestExit="Automation Test Queue Empty"
    -ReportExportPath=<logs> -nullrhi -unattended -nopause -nosplash -nosound`; pass = report has ≥ 1 success and 0
    failures. Without such a test the step is `skipped` with a note.
+
+**Recording config (v1.3):** `-Config auto` (default) packages **Shipping** when the game's `Config/DefaultEngine.ini`
+at that commit sets `bAllowHighDPIInGameMode=True`, else Development. Shipping compiles out UE's trace runtime, whose
+TCP listener (`TraceLog` control, bound to 0.0.0.0 in Development/Test, no runtime switch in 5.3) makes Windows
+Firewall prompt for every new exe path; Shipping ignores command-line `-ini:` overrides, hence the config requirement.
+Shipping builds go to `builds\<game>\<short-sha>-shipping\` (exe `<Project>-Win64-Shipping.exe`), `build_info.json`
+records `config`. Shipping has no game log unless the game target sets `bUseLoggingInShipping`.
 
 `builds.jsonl` row: `commit`, `short_sha`, `commit_subject`, `command`, `start`/`end`/`duration_s`, `status`,
 `exit_code`, `error_excerpt` (first matching error lines of the failing log), `log_path`, `output_path`,
@@ -82,8 +89,12 @@ a fixed path per game means one prompt per game instead of one per build.
 Per run (seed = `-Seed + i`, or random; skill = `-Skill`, or cycling 1.0 / 0.75 / 0.5 / 0.25):
 
 0. **Wait until the user is away** (user's decision): no keyboard/mouse input for `-IdleMinutes` (default 5;
-   `GetLastInputInfo`; the game's injected input doesn't count) and the session unlocked. During the run the display
-   is kept on (`SetThreadExecutionState`, like a video player; no settings change).
+   `GetLastInputInfo`; the game's injected input doesn't count) and the session unlocked. From the start of that wait
+   until the run ends the display is kept on (`SetThreadExecutionState`, like a video player; no settings change):
+   so the screen doesn't dim or sleep during a run. (Note: a `Shell_SystemDim` window owned by `PickerHost.exe FirewallNotificationDialogServer` is the
+   full-screen dim behind an unanswered Windows Firewall prompt; any such prompt blocks capture until it is answered.
+   Turning off "Notify me when Microsoft Defender Firewall blocks a new app" removes the prompts; the user's call.) A first run of a new `_run` exe without a Windows Firewall rule starts
+   it off-screen for 20 s first, so the one-time prompt appears while the user may be present.
 1. Launch `_run\Windows\<Project>\Binaries\Win64\<Project>.exe` (the real binary, so our PID owns the window) with the
    contract flags plus `-GoTimeout=300 -windowed -ResX=1920 -ResY=1080 -WinX=200 -WinY=150
    -ini:Engine:[/Script/Engine.UserInterfaceSettings]:bAllowHighDPIInGameMode=True -nosplash -abslog=<raw>\game.log`.
@@ -161,7 +172,7 @@ the screen-region problems (other windows never reach the video, no topmost need
 |---|---|
 | Encoder | **NVENC (current)**: H.264 Main yuv420p ≈26 Mbit/s (cq 19, p5 hq); AMF fallback: Main ≈11 Mbit/s; x264 ultrafast: Constrained Baseline ≈7 Mbit/s |
 | Output | 1920x1080 H.264 yuv420p, 60/1 CFR, 0 duplicated slots, duration within 0.1 s of the capture span |
-| Capture input | 90–160 desktop images/s; gaps > 25 ms during the level 0.6–3 % of frames (game/compositor hitches) |
+| Capture input | 90–160 desktop images/s; gaps > 25 ms during the scenario 0.6–3 % of frames (game/compositor hitches) |
 | Video lag | a game event shows on video 14–29 ms (p5–p95 5–37 ms) after its `t_ns` with NVENC; 25 ms (15–31) with AMF; 47 ms (29–61) with the first output-side CFR libx264 path: game thread → render thread → GPU → present → DWM → capture. `video_start_offset_ns` is the capture clock and does **not** subtract this |
 | Audio lag | a sound appears in `system_audio` 13–33 ms (5–44 ms) after its `t_ns` (next mixer buffer) |
 | Game frame cadence | frame-code strip, repeated+skipped game frames: **0.3–1.1 % with NVENC** at 120 Hz (driver 617.42; desktop images arrive at ≈60/s, one per game frame); ≈7 % with AMF (4–10 % per run), 13 % on the first path |
@@ -169,19 +180,19 @@ the screen-region problems (other windows never reach the video, no topmost need
 With NVENC (no download, frames straight from Desktop Duplication to the encoder) the cadence is close to one video frame per game frame. On the AMF/CPU paths it is inherent to sampling the desktop: with vsync off the game's 60 fps frames reach the screen on the display's vblank grid (6.3 ms at 159 Hz, 8.3 ms at 120 Hz) at irregular intervals, and a 60 Hz sample-and-hold capture, OBS included, repeats some and misses some. Measured: 13 % / 6 % at 159 Hz (output-side CFR / AMF path), **7 % at 120 Hz** (AMF, 86 of 1194). The user runs the display at 120 Hz for recording sessions; record.ps1 logs `machine.display` / `machine.display_refresh_hz` (from `Win32_VideoController`) in metadata.json and warns (does not fail) when the rate is not 60 or 120. 120 Hz alone doesn't fix the cadence; locking presents to every second vblank would need `r.VSync 1` at 120 Hz in AutoPlay (a contract change, not made) or in-engine frame capture.
 
 UE's `StartRecordingOutput` is queued to the audio thread and starts late by an unknown amount (≈ 0.1 s, because
-the level load follows immediately). `StopRecordingOutput` is synchronous under the same lock the mixer appends
+the scenario load follows immediately). `StopRecordingOutput` is synchronous under the same lock the mixer appends
 with. So the WAV is anchored at its **end**: `system_audio.start_offset_ns = audio_stop.t_ns − WAV duration`.
 
 ### Bundle
 
 ```
-recordings\<game>\<game>_L<level>_<yyyyMMdd-HHmmss>_s<seed>\
+recordings\<game>\<game>_S<scenario>_<yyyyMMdd-HHmmss>_s<seed>\   (runs before v1.3 tooling: _L<level>_)
   video.mkv           H.264 1920x1080 60 fps CFR, no audio, BT.709 tags
   system_audio.mka    FLAC from the game's master-submix audio.wav (48 kHz, device channel count)
   inputs.jsonl        as written by the game (contract section 5)
   telemetry.jsonl     as written by the game
   outcome.json        as written by the game
-  metadata.json       game, level, seed, skill, result, build sha, ffmpeg command + version, capture rect,
+  metadata.json       game, scenario, scenario_name, seed, skill, result, build sha, ffmpeg command + version, capture rect,
                       video_start_offset_ns (+ estimate details), system_audio.start_offset_ns,
                       clock samples (game: start/go/audio_start/audio_stop/end; pipeline: record_start,
                       capture_start, go_written, capture_stopped, record_end)
@@ -202,16 +213,16 @@ rather than raw `key_down`/`mouse_move`; `edge` down/up maps onto key down/up wh
 |---|---|---|
 | outcome | missing, bad `result`, `go_timed_out` | result `abort` |
 | inputs | no `inject` rows, unparseable lines, `t_ns` going backwards | |
-| telemetry | missing `run_start`/`level_start`/`level_end`/`run_end`, unparseable lines | |
-| audio | missing, or WAV duration doesn't fit the recorded span (start lag outside −30…10000 ms; the lag is the level load) | silent (max < −60 dB) |
-| video | not 1920x1080, no frames, ffmpeg dup > 5 % of output frames, video longer than the capture span by ≥ 0.5 s or shorter by ≥ 2 s, doesn't cover level_start..level_end, start time not estimable | dup > 1 %, capture gaps > 2 % of level frames, game < 55 fps, video ends 0.5–2 s before the stop, display not 60/120 Hz |
+| telemetry | missing `run_start`/`scenario_start`/`scenario_end`/`run_end` (v1/v1.2: `level_start`/`level_end`), unparseable lines | |
+| audio | missing, or WAV duration doesn't fit the recorded span (start lag outside −30…10000 ms; the lag is the scenario load) | silent (max < −60 dB) |
+| video | not 1920x1080, no frames, ffmpeg dup > 5 % of output frames, video longer than the capture span by ≥ 0.5 s or shorter by ≥ 2 s, doesn't cover the scenario (start..end), start time not estimable | dup > 1 %, capture gaps > 2 % of scenario frames, game < 55 fps, video ends 0.5–2 s before the stop, display not 60/120 Hz |
 | process | game exit code ≠ 0, killed at timeout, window moved, ffmpeg died | |
 
 ## pipeline.ps1, nightly, triggering from a game session
 
-`pipeline.ps1 <game>`: resolves the commit (default HEAD), the levels (default 1..n from the newest
-`milestone/autoplay-<n>` tag reachable from it), skips levels that already have `-Runs` good runs of that commit
-(unless `-Force`), then `build.ps1 -Package -Smoke` and `record.ps1` per level. Each step takes the lock itself, so
+`pipeline.ps1 <game>`: resolves the commit (default HEAD), the scenarios (default 1..n from the newest
+`milestone/autoplay-<n>` tag reachable from it, meaning "scenarios 1..n are ready"), skips scenarios that already have `-Runs` good runs of that commit
+(unless `-Force`), then `build.ps1 -Package -Smoke` and `record.ps1` per scenario. Each step takes the lock itself, so
 other work can interleave between steps.
 
 **From a game session** (returns at once; a hidden drainer works through the queue):
@@ -239,11 +250,13 @@ User's rule: the names **Superposition** and **game-factory** (case-insensitive,
 messages, builds, logs, in-game files, anything passed to the game process). Recording/workflow traces are fine and
 `workflow.jsonl` stays in the game repos.
 
-- Flags passed to the game: `-AutoPlay -Level -Seed -Skill -OutputDir|-RecordDir -MaxSeconds -BuildCommit -RunId
+- Flags passed to the game: `-AutoPlay -Scenario|-Level -Seed -Skill -OutputDir|-RecordDir -MaxSeconds -BuildCommit -RunId
   -GoTimeout`, window/ini/log flags; paths under `C:\Users\Xiang\Work\recordings\` and `builds\`. None contain the names.
   build.ps1 records `autoplay_version` (the drop-in's `ContractVersion`) in `build_info.json`; record.ps1 passes
-  `-OutputDir` to v2 (contract v1.2) games and `-RecordDir` to v1 games (v2 accepts both).
-- `build_info.json` (next to the packaged build) uses the schema `ue-build/1`.
+  `-Scenario` to v3 (contract v1.3) games and `-Level` to older ones, `-OutputDir` to v2+ and `-RecordDir` to v1
+  (newer drop-ins accept the old names too). Bundles and `runs.jsonl` use `scenario`/`scenario_name`; outcome keys
+  are read as `scenario_*` with a fallback to `level_*`.
+- `build_info.json` (next to the packaged build) uses the schema `ue-build/1` and records `config` and `autoplay_version`.
 - The pipeline's own files (`.recording\*.jsonl`, bundle `metadata.json`, docs) may name things freely.
 - Game-side leaks found on 2026-10-11 (for the game sessions): `CompanyName=Superposition` in most
   `Config/DefaultGame.ini` (it also becomes the packaged exe's "Publisher"), descriptions/copyright notices in

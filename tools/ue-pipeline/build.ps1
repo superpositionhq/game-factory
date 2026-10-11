@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Build (and optionally package and smoke-test) one game at a commit. See docs/ue-pipeline.md.
 
@@ -16,7 +16,8 @@ param(
     [string]$Commit = 'HEAD',
     [switch]$Package,
     [switch]$Smoke,
-    [switch]$Force
+    [switch]$Force,
+    [ValidateSet('auto', 'Development', 'Shipping')][string]$Config = 'auto'
 )
 
 . (Join-Path $PSScriptRoot 'common.ps1')
@@ -26,7 +27,15 @@ $commandLine = "build.ps1 $Game -Commit $Commit" + $(if ($Package) { ' -Package'
 
 $sha = (Invoke-Git $info.Dir @('rev-parse', '--verify', "$Commit^{commit}")).Trim()
 $short = $sha.Substring(0, 8)
-$outDir = Join-Path (Join-Path $BuildsRoot $Game) $short
+# Packaged config. Shipping compiles out UE's trace runtime, whose TCP listener (0.0.0.0, Development/Test builds, no
+# runtime switch in 5.3) makes Windows Firewall prompt for every new exe path. Shipping also ignores -ini: overrides, so
+# 'auto' picks it only when the game sets bAllowHighDPIInGameMode=True in Config/DefaultEngine.ini (record.ps1 needs that).
+if ($Config -eq 'auto') {
+    $engineIni = (Invoke-Git $info.Dir @('show', "${sha}:Config/DefaultEngine.ini") -AllowFail) -join "`n"
+    $Config = if ($engineIni -match '(?im)^\s*bAllowHighDPIInGameMode\s*=\s*True') { 'Shipping' } else { 'Development' }
+    if ($Config -eq 'Development') { Write-Step "no bAllowHighDPIInGameMode=True in Config/DefaultEngine.ini: packaging Development (Windows Firewall will prompt once per new exe path)" }
+}
+$outDir = Join-Path (Join-Path $BuildsRoot $Game) $(if ($Config -eq 'Shipping') { "$short-shipping" } else { $short })
 $logDir = Join-Path $outDir 'logs'
 $exePath = Join-Path $outDir "Windows\$($info.ProjectName).exe"
 $buildInfoPath = Join-Path $outDir 'build_info.json'
@@ -114,7 +123,7 @@ try {
     # ---- 2. package ----
     if ($Package) {
         $r = Invoke-Step 'package' (Join-Path $EngineRoot 'Engine\Build\BatchFiles\RunUAT.bat') `
-            ("-WaitForUATMutex BuildCookRun -project=`"$uproject`" -target=$gameTarget -noP4 -platform=Win64 -clientconfig=Development " +
+            ("-WaitForUATMutex BuildCookRun -project=`"$uproject`" -target=$gameTarget -noP4 -platform=Win64 -clientconfig=$Config " +
              "-build -cook -stage -pak -archive -archivedirectory=`"$outDir`" -nocompileeditor -unattended -utf8output")
         if ($r.exit_code -ne 0) { throw 'package failed' }
         if (-not (Test-Path $exePath)) { throw "package succeeded but $exePath is missing" }
@@ -172,6 +181,7 @@ $row = [ordered]@{
     smoke = $smokeResult
     autoplay_version = $autoplayVersion
     engine = $EngineRoot
+    config = $Config
     steps = @($steps)
 }
 Add-JsonLine (Join-Path $info.LogDir 'builds.jsonl') $row

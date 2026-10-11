@@ -1,22 +1,22 @@
-<#
+﻿<#
 .SYNOPSIS
-  Queue runner: build -> package -> smoke -> record N runs per level -> validate. See docs/ue-pipeline.md.
+  Queue runner: build -> package -> smoke -> record N runs per scenario -> validate. See docs/ue-pipeline.md.
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File pipeline.ps1 stealth -Runs 3            # levels from the milestone tag
-  powershell -ExecutionPolicy Bypass -File pipeline.ps1 stealth -Levels 1,2 -Commit HEAD
+  powershell -ExecutionPolicy Bypass -File pipeline.ps1 stealth -Runs 3            # scenarios from the milestone tag
+  powershell -ExecutionPolicy Bypass -File pipeline.ps1 stealth -Scenarios 1,2 -Commit HEAD   (-Levels still works)
   powershell -ExecutionPolicy Bypass -File pipeline.ps1 -Nightly                    # every game with a milestone/autoplay-* tag
   powershell -ExecutionPolicy Bypass -File pipeline.ps1 -DrainQueue                 # requests written by enqueue.ps1
 
-  Levels default to 1..n where milestone/autoplay-<n> is the newest such tag reachable from the commit; the commit
-  defaults to the game's current branch tip (HEAD). Without -Force, levels that already have -Runs good runs
+  Scenarios default to 1..n where milestone/autoplay-<n> ("scenarios 1..n are ready") is the newest such tag reachable
+  from the commit; the commit defaults to the game's current branch tip (HEAD). Without -Force, scenarios that already have -Runs good runs
   (status ok/warn) of that commit are skipped, so a nightly run over an unchanged game does nothing.
   One summary row per invocation and game in .recording\<game>\pipeline.jsonl.
 #>
 param(
     [Parameter(Position = 0)][string]$Game,
     [int]$Runs = 3,
-    [int[]]$Levels,
+    [Alias('Levels')][string[]]$Scenarios,   # "1,2" from powershell -File arrives as one string; split below
     [string]$Commit = 'HEAD',
     [int]$MaxSeconds = 600,
     [switch]$Force,
@@ -33,21 +33,21 @@ if ($Nightly -or $DrainQueue) {
     Start-Transcript -Path (Join-Path $logs ('{0}-{1}.log' -f $(if ($Nightly) { 'nightly' } else { 'queue' }), (Get-Date -Format 'yyyyMMdd-HHmmss'))) | Out-Null
 }
 
-function Get-MilestoneLevels([string]$Dir, [string]$Rev) {
+function Get-MilestoneScenarios([string]$Dir, [string]$Rev) {
     $tag = Invoke-Git $Dir @('describe', '--tags', '--abbrev=0', '--match', 'milestone/autoplay-*', $Rev) -AllowFail
     if ($LASTEXITCODE -ne 0 -or -not $tag) { return $null }
     $tag = "$tag".Trim()
-    if ($tag -match 'milestone/autoplay-(\d+)$') { return [pscustomobject]@{ Tag = $tag; Levels = @(1..[int]$matches[1]) } }
+    if ($tag -match 'milestone/autoplay-(\d+)$') { return [pscustomobject]@{ Tag = $tag; Scenarios = @(1..[int]$matches[1]) } }
     return $null
 }
 
-function Get-GoodRunCount([string]$GameSlug, [string]$Sha, [int]$Level) {
+function Get-GoodRunCount([string]$GameSlug, [string]$Sha, [int]$Scenario) {
     $path = Join-Path (Join-Path $LogRoot $GameSlug) 'runs.jsonl'
     if (-not (Test-Path $path)) { return 0 }
     $n = 0
     foreach ($line in [System.IO.File]::ReadLines($path)) {
         try { $r = $line | ConvertFrom-Json } catch { continue }
-        if ($r.build_commit -eq $Sha -and $r.level -eq $Level -and $r.status -in @('ok', 'warn')) { $n++ }
+        if ($r.build_commit -eq $Sha -and $(if ($r.PSObject.Properties.Name -contains 'scenario') { $r.scenario } else { $r.level }) -eq $Scenario -and $r.status -in @('ok', 'warn')) { $n++ }
     }
     return $n
 }
@@ -57,27 +57,27 @@ function Test-SessionLocked {
     return [bool](Get-Process LogonUI -ErrorAction SilentlyContinue)
 }
 
-function Invoke-GamePipeline([string]$GameSlug, [int]$RunCount, [int[]]$LevelList, [string]$Rev, [string]$Trigger) {
+function Invoke-GamePipeline([string]$GameSlug, [int]$RunCount, [int[]]$ScenarioList, [string]$Rev, [string]$Trigger) {
     $info = Get-GameInfo $GameSlug
     $t0 = Get-Date
     $summary = [ordered]@{
         schema = 'superposition.ue-pipeline/v1'; game = $GameSlug; trigger = $Trigger; requested = $Rev
-        start = $t0.ToString('o'); status = 'ok'; note = ''; build = $null; levels = @(); runs = @()
+        start = $t0.ToString('o'); status = 'ok'; note = ''; build = $null; scenarios = @(); runs = @()
     }
     try {
         $sha = (Invoke-Git $info.Dir @('rev-parse', '--verify', "$Rev^{commit}")).Trim()
         $summary.commit = $sha
-        if (-not $LevelList -or $LevelList.Count -eq 0) {
-            $m = Get-MilestoneLevels $info.Dir $sha
+        if (-not $ScenarioList -or $ScenarioList.Count -eq 0) {
+            $m = Get-MilestoneScenarios $info.Dir $sha
             if (-not $m) { $summary.status = 'skipped'; $summary.note = 'no milestone/autoplay-* tag reachable'; return $summary }
-            $LevelList = $m.Levels; $summary.milestone = $m.Tag
+            $ScenarioList = $m.Scenarios; $summary.milestone = $m.Tag
         }
-        $summary.levels = $LevelList
-        $todo = @(foreach ($l in $LevelList) {
+        $summary.scenarios = $ScenarioList
+        $todo = @(foreach ($l in $ScenarioList) {
             $have = if ($Force) { 0 } else { Get-GoodRunCount $GameSlug $sha $l }
-            if ($have -lt $RunCount) { [pscustomobject]@{ Level = $l; Runs = $RunCount - $have } }
+            if ($have -lt $RunCount) { [pscustomobject]@{ Scenario = $l; Runs = $RunCount - $have } }
         })
-        if ($todo.Count -eq 0) { $summary.status = 'skipped'; $summary.note = "every level already has $RunCount good runs of $($sha.Substring(0, 8))"; return $summary }
+        if ($todo.Count -eq 0) { $summary.status = 'skipped'; $summary.note = "every scenario already has $RunCount good runs of $($sha.Substring(0, 8))"; return $summary }
 
         Write-Step "== $GameSlug $($sha.Substring(0, 8)): build + package + smoke"
         $build = & (Join-Path $PSScriptRoot 'build.ps1') $GameSlug -Commit $sha -Package -Smoke | Select-Object -Last 1
@@ -86,10 +86,10 @@ function Invoke-GamePipeline([string]$GameSlug, [int]$RunCount, [int[]]$LevelLis
 
         foreach ($t in $todo) {
             if (Test-SessionLocked) { $summary.status = 'failed'; $summary.note = 'session locked: capture impossible'; break }
-            Write-Step "== $GameSlug level $($t.Level): $($t.Runs) runs"
-            $rows = & (Join-Path $PSScriptRoot 'record.ps1') $GameSlug -Build $build.output_path -Level $t.Level -Runs $t.Runs -MaxSeconds $MaxSeconds
+            Write-Step "== $GameSlug scenario $($t.Scenario): $($t.Runs) runs"
+            $rows = & (Join-Path $PSScriptRoot 'record.ps1') $GameSlug -Build $build.output_path -Scenario $t.Scenario -Runs $t.Runs -MaxSeconds $MaxSeconds
             foreach ($r in @($rows | Where-Object { $_ -and $_.Contains('run_id') })) {
-                $summary.runs += [ordered]@{ run_id = $r.run_id; level = $r.level; status = $r.status; result = $r.result }
+                $summary.runs += [ordered]@{ run_id = $r.run_id; scenario = $r.scenario; status = $r.status; result = $r.result }
             }
         }
         if (@($summary.runs | Where-Object { $_.status -eq 'failed' }).Count -gt 0 -and $summary.status -eq 'ok') { $summary.status = 'partial' }
@@ -116,7 +116,8 @@ if ($DrainQueue) {
             $next = Get-ChildItem $QueueDir -Filter *.json -File | Sort-Object Name | Select-Object -First 1
             if (-not $next) { break }
             $req = Read-JsonFile $next.FullName
-            $levelsReq = if ($req.levels) { [int[]]$req.levels } else { $null }
+            $names = $req.PSObject.Properties.Name
+            $levelsReq = if ($names -contains 'scenarios' -and $req.scenarios) { [int[]]$req.scenarios } elseif ($names -contains 'levels' -and $req.levels) { [int[]]$req.levels } else { $null }
             $res = Invoke-GamePipeline $req.game ([int]$req.runs) $levelsReq $req.commit "queue:$($req.requested_by)"
             $req | Add-Member -NotePropertyName result -NotePropertyValue $res -Force
             Write-JsonFile (Join-Path (Join-Path $QueueDir 'done') $next.Name) $req
@@ -129,7 +130,7 @@ if ($DrainQueue) {
 if ($Nightly) {
     $games = Get-ChildItem $GamesRoot -Directory | Where-Object { $_.Name -notlike '_*' -and (Test-Path (Join-Path $_.FullName '.git')) }
     $results = foreach ($g in $games) {
-        if (-not (Get-MilestoneLevels $g.FullName 'HEAD')) { Write-Step "$($g.Name): no milestone/autoplay-* tag, skipped"; continue }
+        if (-not (Get-MilestoneScenarios $g.FullName 'HEAD')) { Write-Step "$($g.Name): no milestone/autoplay-* tag, skipped"; continue }
         Invoke-GamePipeline $g.Name $Runs $null 'HEAD' 'nightly'
     }
     $results
@@ -137,4 +138,5 @@ if ($Nightly) {
 }
 
 if (-not $Game) { throw 'give a game, -Nightly or -DrainQueue' }
-Invoke-GamePipeline $Game $Runs $Levels $Commit 'manual'
+$scenarioList = @($Scenarios | ForEach-Object { $_ -split ',' } | Where-Object { $_ } | ForEach-Object { [int]$_ })
+Invoke-GamePipeline $Game $Runs $scenarioList $Commit 'manual'

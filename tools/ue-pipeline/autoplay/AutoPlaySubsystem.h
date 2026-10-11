@@ -1,6 +1,7 @@
 // AutoPlay: command-line driven self-play. A bot drives the game through Enhanced Input while this subsystem
 // handles the flags, the clock, per-run log files, audio capture, the start handshake, blocking hardware input and
-// quitting when the run ends. The game supplies StartLevel and the bot.
+// quitting when the run ends. A run plays one scenario: a defined start state plus a win/lose condition (a level, a
+// chapter, a race stage or an open-world start setup). The game supplies StartScenario, ScenarioStarted and the bot.
 //
 // Module dependencies: "EnhancedInput", "AudioMixer", "Slate", "SlateCore", "InputCore".
 #pragma once
@@ -24,13 +25,15 @@ class UAutoPlaySubsystem : public UGameInstanceSubsystem
 	GENERATED_BODY()
 
 public:
-	static constexpr int32 ContractVersion = 2;
+	static constexpr int32 ContractVersion = 3;
 
 	static UAutoPlaySubsystem* Get(const UObject* WorldContextObject);
 
 	// ---- Flags (valid from Initialize on) ----
 	bool IsAutoPlay() const { return bEnabled; }
-	int32 GetLevel() const { return Level; }
+	int32 GetScenario() const { return Scenario; }
+	const FString& GetScenarioName() const { return ScenarioName; }
+	int32 GetLevel() const { return Scenario; } // deprecated (v1.2 name)
 	int32 GetSeed() const { return Seed; }
 	float GetSkill() const { return Skill; }
 	const FString& GetOutputDir() const { return OutputDir; }
@@ -39,13 +42,17 @@ public:
 	bool IsRunning() const { return Phase == EPhase::Running; }
 
 	// ---- Game hooks ----
-	/** Required. Called once at "go"; open the level (OpenLevel or the game's own loader). */
-	TFunction<void(int32 /*Level*/)> StartLevel;
+	/** Required. Called once at "go" with the scenario number; set up that scenario (open its map, apply its start state). */
+	TFunction<void(int32 /*Scenario*/)> StartScenario;
+	/** Deprecated v1.2 hook, used only when StartScenario is not set. */
+	TFunction<void(int32 /*Scenario*/)> StartLevel;
 	/** Optional. Called when MaxSeconds has passed; must call FinishRun. Default: FinishRun("timeout", last SetScore). */
 	TFunction<void()> OnTimeout;
 
-	/** Call when the level's gameplay starts (map loaded, player has control or the countdown begins). */
-	void LevelStarted(const FString& LevelName);
+	/** Call when the scenario's gameplay starts (map loaded, player has control or the countdown begins). Name: e.g. "First Night". */
+	void ScenarioStarted(const FString& InScenarioName);
+	/** Deprecated v1.2 name. */
+	void LevelStarted(const FString& Name) { ScenarioStarted(Name); }
 	/** Keep the score current (used when the run times out). */
 	void SetScore(double InScore) { Score = InScore; }
 	/** End the run. Result: win | lose | timeout | abort. ExtraJson: JSON members without braces, e.g. "\"stars\":2". */
@@ -105,7 +112,8 @@ private:
 
 	bool bEnabled = false;
 	bool bAllowHardwareInput = false;
-	int32 Level = 1;
+	int32 Scenario = 1;
+	FString ScenarioName;
 	int32 Seed = 0;
 	float Skill = 1.f;
 	double MaxSeconds = 600.0;
@@ -131,12 +139,11 @@ private:
 
 	uint64 GoQpc = 0;
 	uint64 GoFrame = 0;
-	uint64 LevelStartQpc = 0;
-	uint64 LevelEndQpc = 0;
-	uint64 LevelStartFrame = 0;
-	uint64 LevelEndFrame = 0;
+	uint64 ScenarioStartQpc = 0;
+	uint64 ScenarioEndQpc = 0;
+	uint64 ScenarioStartFrame = 0;
+	uint64 ScenarioEndFrame = 0;
 	double Score = 0.0;
-	FString LevelName;
 	FString Result;
 	FString ResultExtra;
 	int64 InjectCount = 0;

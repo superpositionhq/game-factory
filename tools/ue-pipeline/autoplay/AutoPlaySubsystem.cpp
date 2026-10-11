@@ -13,6 +13,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/GameUserSettings.h"
 #include "GameFramework/PlayerController.h"
+#include "Scalability.h"
 #include "HAL/FileManager.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformMisc.h"
@@ -158,8 +159,8 @@ FString UAutoPlaySubsystem::ClockSample(const TCHAR* Label) const
 
 FString UAutoPlaySubsystem::HeaderFields() const
 {
-	return FString::Printf(TEXT("\"autoplay_version\":%d,\"game\":%s,\"run_id\":%s,\"level\":%d,\"seed\":%d,\"skill\":%s,\"max_seconds\":%s,\"qpc_frequency\":%llu,\"build_commit\":%s"),
-		ContractVersion, *JsonStr(FApp::GetProjectName()), *JsonStr(RunId), Level, Seed, *JsonNum(Skill), *JsonNum(MaxSeconds),
+	return FString::Printf(TEXT("\"autoplay_version\":%d,\"game\":%s,\"run_id\":%s,\"scenario\":%d,\"scenario_name\":%s,\"seed\":%d,\"skill\":%s,\"max_seconds\":%s,\"qpc_frequency\":%llu,\"build_commit\":%s"),
+		ContractVersion, *JsonStr(FApp::GetProjectName()), *JsonStr(RunId), Scenario, *JsonStr(ScenarioName), Seed, *JsonNum(Skill), *JsonNum(MaxSeconds),
 		QpcFrequency(), *JsonStr(BuildCommit));
 }
 
@@ -217,7 +218,11 @@ void UAutoPlaySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		return;
 	}
 
-	FParse::Value(Cmd, TEXT("Level="), Level);
+	if (!FParse::Value(Cmd, TEXT("Scenario="), Scenario))
+	{
+		FParse::Value(Cmd, TEXT("Level="), Scenario); // v1.2 name, still accepted
+	}
+	FParse::Value(Cmd, TEXT("ScenarioName="), ScenarioName); // optional; ScenarioStarted() sets it otherwise
 	FParse::Value(Cmd, TEXT("Seed="), Seed);
 	FParse::Value(Cmd, TEXT("Skill="), Skill);
 	Skill = FMath::Clamp(Skill, 0.f, 1.f);
@@ -241,8 +246,8 @@ void UAutoPlaySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	InputsAr.Reset(IFileManager::Get().CreateFileWriter(*(OutputDir / TEXT("inputs.jsonl"))));
 	TelemetryAr.Reset(IFileManager::Get().CreateFileWriter(*(OutputDir / TEXT("telemetry.jsonl"))));
-	WriteLine(InputsAr.Get(), FString::Printf(TEXT("{%s,\"type\":\"header\",\"schema\":\"autoplay-inputs/1\",%s}"), *Stamp(), *HeaderFields()));
-	WriteLine(TelemetryAr.Get(), FString::Printf(TEXT("{%s,\"event\":\"header\",\"schema\":\"autoplay-telemetry/1\",%s}"), *Stamp(), *HeaderFields()));
+	WriteLine(InputsAr.Get(), FString::Printf(TEXT("{%s,\"type\":\"header\",\"schema\":\"autoplay-inputs/2\",%s}"), *Stamp(), *HeaderFields()));
+	WriteLine(TelemetryAr.Get(), FString::Printf(TEXT("{%s,\"event\":\"header\",\"schema\":\"autoplay-telemetry/2\",%s}"), *Stamp(), *HeaderFields()));
 	ClockSamples.Add(ClockSample(TEXT("start")));
 
 	FMath::RandInit(Seed);
@@ -251,7 +256,7 @@ void UAutoPlaySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	Phase = EPhase::Boot;
 	TickHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &UAutoPlaySubsystem::CoreTick));
 	PostTickHandle = FWorldDelegates::OnWorldPostActorTick.AddUObject(this, &UAutoPlaySubsystem::OnPostActorTick);
-	UE_LOG(LogTemp, Display, TEXT("AutoPlay: level %d seed %d skill %.2f max %.0fs dir %s"), Level, Seed, Skill, MaxSeconds, *OutputDir);
+	UE_LOG(LogTemp, Display, TEXT("AutoPlay: scenario %d seed %d skill %.2f max %.0fs dir %s"), Scenario, Seed, Skill, MaxSeconds, *OutputDir);
 }
 
 void UAutoPlaySubsystem::Deinitialize()
@@ -269,8 +274,8 @@ void UAutoPlaySubsystem::Deinitialize()
 			// Quit before the run finished (crash path, window closed): keep what we have.
 			Telemetry(TEXT("run_aborted"), FString::Printf(TEXT("\"phase\":%d"), (int32)Phase));
 			ClockSamples.Add(ClockSample(TEXT("end")));
-			WriteTextFile(TEXT("clock.json"), FString::Printf(TEXT("{\"schema\":\"autoplay-clock/1\",\"qpc_frequency\":%llu,\"t_ns_definition\":\"qpc * 1e9 / qpc_frequency\",\"samples\":[%s]}\n"),
-				QpcFrequency(), *FString::Join(ClockSamples, TEXT(","))));
+			WriteTextFile(TEXT("clock.json"), FString::Printf(TEXT("{\"schema\":\"autoplay-clock/2\",\"scenario\":%d,\"scenario_name\":%s,\"qpc_frequency\":%llu,\"t_ns_definition\":\"qpc * 1e9 / qpc_frequency\",\"samples\":[%s]}\n"),
+				Scenario, *JsonStr(ScenarioName), QpcFrequency(), *FString::Join(ClockSamples, TEXT(","))));
 		}
 		InputsAr.Reset();
 		TelemetryAr.Reset();
@@ -348,15 +353,18 @@ bool UAutoPlaySubsystem::CoreTick(float DeltaTime)
 				Settings->SetScreenResolution(FIntPoint(1920, 1080));
 				Settings->ApplyResolutionSettings(false);
 			}
-			GEngine->Exec(World, TEXT("scalability 3"));
+			Scalability::FQualityLevels Quality;
+			Quality.SetFromSingleQualityLevel(3); // High, fixed (works in Shipping, unlike console commands)
+			Scalability::SetQualityLevels(Quality);
 			ReadyAt = Now + 1.0; // let the window settle before ready.json is written
 		}
 		else if (Now >= ReadyAt)
 		{
 			FIntPoint Size(0, 0);
 			if (VC->Viewport) { Size = VC->Viewport->GetSizeXY(); }
-			WriteTextFile(TEXT("ready.json"), FString::Printf(TEXT("{\"pid\":%u,\"title\":%s,\"viewport\":[%d,%d],%s}\n"),
-				FPlatformProcess::GetCurrentProcessId(), *JsonStr(VC->GetWindow()->GetTitle().ToString()), Size.X, Size.Y, *Stamp()));
+			WriteTextFile(TEXT("ready.json"), FString::Printf(TEXT("{\"pid\":%u,\"title\":%s,\"viewport\":[%d,%d],\"scenario\":%d,\"scenario_name\":%s,%s}\n"),
+				FPlatformProcess::GetCurrentProcessId(), *JsonStr(VC->GetWindow()->GetTitle().ToString()), Size.X, Size.Y,
+				Scenario, *JsonStr(ScenarioName), *Stamp()));
 			Telemetry(TEXT("autoplay_ready"), FString::Printf(TEXT("\"viewport\":[%d,%d]"), Size.X, Size.Y));
 			Phase = EPhase::WaitingForGo;
 			PhaseDeadline = Now + GoTimeout;
@@ -416,35 +424,39 @@ void UAutoPlaySubsystem::BeginRun(bool bTimedOut)
 	UAudioMixerBlueprintLibrary::StartRecordingOutput(GetGameWorld(), (float)MaxSeconds + 30.f, nullptr);
 	ClockSamples.Add(ClockSample(TEXT("audio_start")));
 	Phase = EPhase::Running;
-	Telemetry(TEXT("run_start"), FString::Printf(TEXT("\"level\":%d,\"seed\":%d,\"skill\":%s,\"go_timed_out\":%s"),
-		Level, Seed, *JsonNum(Skill), bTimedOut ? TEXT("true") : TEXT("false")));
-	if (StartLevel)
+	Telemetry(TEXT("run_start"), FString::Printf(TEXT("\"scenario\":%d,\"seed\":%d,\"skill\":%s,\"go_timed_out\":%s"),
+		Scenario, Seed, *JsonNum(Skill), bTimedOut ? TEXT("true") : TEXT("false")));
+	if (StartScenario)
 	{
-		StartLevel(Level);
+		StartScenario(Scenario);
+	}
+	else if (StartLevel)
+	{
+		StartLevel(Scenario); // v1.2 hook
 	}
 	else
 	{
-		Telemetry(TEXT("error"), TEXT("\"message\":\"game did not set UAutoPlaySubsystem::StartLevel\""));
+		Telemetry(TEXT("error"), TEXT("\"message\":\"game did not set UAutoPlaySubsystem::StartScenario\""));
 		FinishRun(TEXT("abort"), 0.0);
 	}
 }
 
-void UAutoPlaySubsystem::LevelStarted(const FString& InLevelName)
+void UAutoPlaySubsystem::ScenarioStarted(const FString& InScenarioName)
 {
 	if (!bEnabled) { return; }
-	LevelStartQpc = Qpc();
-	LevelStartFrame = GFrameCounter;
-	LevelName = InLevelName;
+	ScenarioStartQpc = Qpc();
+	ScenarioStartFrame = GFrameCounter;
+	if (!InScenarioName.IsEmpty()) { ScenarioName = InScenarioName; }
 	const UWorld* World = GetGameWorld();
-	Telemetry(TEXT("level_start"), FString::Printf(TEXT("\"level\":%d,\"level_name\":%s,\"map\":%s"),
-		Level, *JsonStr(LevelName), *JsonStr(World ? World->GetMapName() : FString())));
+	Telemetry(TEXT("scenario_start"), FString::Printf(TEXT("\"scenario\":%d,\"scenario_name\":%s,\"map\":%s"),
+		Scenario, *JsonStr(ScenarioName), *JsonStr(World ? World->GetMapName() : FString())));
 }
 
 void UAutoPlaySubsystem::FinishRun(const FString& InResult, double FinalScore, const FString& ExtraJson)
 {
 	if (!bEnabled || Phase != EPhase::Running) { return; }
-	LevelEndQpc = Qpc();
-	LevelEndFrame = GFrameCounter;
+	ScenarioEndQpc = Qpc();
+	ScenarioEndFrame = GFrameCounter;
 	Result = InResult;
 	Score = FinalScore;
 	ResultExtra = ExtraJson;
@@ -455,7 +467,7 @@ void UAutoPlaySubsystem::FinishRun(const FString& InResult, double FinalScore, c
 			*Stamp(), *JsonStr(Pair.Value.Name), AutoPlay::ValueTypeName(Pair.Value.Type), *AutoPlay::ZeroJson(Pair.Value.Type), *JsonStr(Pair.Value.Key)));
 	}
 	ActiveInputs.Reset();
-	Telemetry(TEXT("level_end"), FString::Printf(TEXT("\"result\":%s,\"score\":%s%s%s"),
+	Telemetry(TEXT("scenario_end"), FString::Printf(TEXT("\"result\":%s,\"score\":%s%s%s"),
 		*JsonStr(Result), *JsonNum(Score), ExtraJson.IsEmpty() ? TEXT("") : TEXT(","), *ExtraJson));
 	Phase = EPhase::Holding;
 	PhaseDeadline = FPlatformTime::Seconds() + 2.0; // keep the result screen on video
@@ -466,17 +478,17 @@ void UAutoPlaySubsystem::StartExport()
 	UAudioMixerBlueprintLibrary::StopRecordingOutput(GetGameWorld(), EAudioRecordingExportType::WavFile, TEXT("audio"), OutputDir, nullptr, nullptr);
 	ClockSamples.Add(ClockSample(TEXT("audio_stop")));
 
-	const uint64 EndQpc = LevelEndQpc ? LevelEndQpc : Qpc();
-	const uint64 StartQpc = LevelStartQpc ? LevelStartQpc : GoQpc;
+	const uint64 EndQpc = ScenarioEndQpc ? ScenarioEndQpc : Qpc();
+	const uint64 StartQpc = ScenarioStartQpc ? ScenarioStartQpc : GoQpc;
 	const double Duration = (double)(EndQpc - StartQpc) / (double)QpcFrequency();
 	const double RunDuration = (double)(EndQpc - GoQpc) / (double)QpcFrequency();
 	WriteTextFile(TEXT("outcome.json"), FString::Printf(
-		TEXT("{\"schema\":\"autoplay-outcome/1\",%s,\"level_name\":%s,\"result\":%s,\"score\":%s,")
-		TEXT("\"duration_s\":%s,\"run_duration_s\":%s,\"go_qpc\":%llu,\"level_start_qpc\":%llu,\"level_end_qpc\":%llu,")
+		TEXT("{\"schema\":\"autoplay-outcome/2\",%s,\"result\":%s,\"score\":%s,")
+		TEXT("\"duration_s\":%s,\"run_duration_s\":%s,\"go_qpc\":%llu,\"scenario_start_qpc\":%llu,\"scenario_end_qpc\":%llu,")
 		TEXT("\"frames\":%llu,\"inputs_injected\":%lld,\"go_timed_out\":%s,\"build_config\":%s,\"engine_version\":%s,\"extra\":{%s}}\n"),
-		*HeaderFields(), *JsonStr(LevelName), *JsonStr(Result), *JsonNum(Score),
-		*JsonNum(Duration), *JsonNum(RunDuration), GoQpc, LevelStartQpc, LevelEndQpc,
-		LevelEndFrame - (LevelStartFrame ? LevelStartFrame : GoFrame), InjectCount, bGoTimedOut ? TEXT("true") : TEXT("false"),
+		*HeaderFields(), *JsonStr(Result), *JsonNum(Score),
+		*JsonNum(Duration), *JsonNum(RunDuration), GoQpc, ScenarioStartQpc, ScenarioEndQpc,
+		ScenarioEndFrame - (ScenarioStartFrame ? ScenarioStartFrame : GoFrame), InjectCount, bGoTimedOut ? TEXT("true") : TEXT("false"),
 		*JsonStr(LexToString(FApp::GetBuildConfiguration())), *JsonStr(FEngineVersion::Current().ToString()), *ResultExtra));
 
 	Phase = EPhase::Exporting;
@@ -488,8 +500,8 @@ void UAutoPlaySubsystem::StartExport()
 void UAutoPlaySubsystem::FinalizeAndQuit(bool bAudioOk)
 {
 	ClockSamples.Add(ClockSample(TEXT("end")));
-	WriteTextFile(TEXT("clock.json"), FString::Printf(TEXT("{\"schema\":\"autoplay-clock/1\",\"qpc_frequency\":%llu,\"t_ns_definition\":\"qpc * 1e9 / qpc_frequency\",\"samples\":[%s]}\n"),
-		QpcFrequency(), *FString::Join(ClockSamples, TEXT(","))));
+	WriteTextFile(TEXT("clock.json"), FString::Printf(TEXT("{\"schema\":\"autoplay-clock/2\",\"scenario\":%d,\"scenario_name\":%s,\"qpc_frequency\":%llu,\"t_ns_definition\":\"qpc * 1e9 / qpc_frequency\",\"samples\":[%s]}\n"),
+		Scenario, *JsonStr(ScenarioName), QpcFrequency(), *FString::Join(ClockSamples, TEXT(","))));
 	Telemetry(TEXT("run_end"), FString::Printf(TEXT("\"audio_ok\":%s"), bAudioOk ? TEXT("true") : TEXT("false")));
 	InputsAr.Reset();
 	TelemetryAr.Reset();
