@@ -73,10 +73,21 @@ Result (test run 2026-10-10, before GUID→path resolution):
   `m_SortingLayer 0 → 5`, `m_SortingOrder 0 → -99` (commit “修改模型层级”).
 - Converter run time: ~3 minutes (blobs fetched lazily through one `git cat-file --batch`).
 
-Project snapshot: `git worktree add --detach ~/Downloads/liaozhai_gejin_qipao/UnityProject d8adc87262` started
-2026-10-10 23:39 EDT; 15.9 GB of the pack downloaded by 00:12 (average ~8 MB/s, dipping to ~2 MB/s).
-After it finishes: rerun the converter (GUIDs get paths from the snapshot's `.meta` files), `--manifest`,
-remove `UnityProject/.git` and `git worktree prune`, write the package README.
+Project snapshot: `git worktree add --detach ~/Downloads/liaozhai_gejin_qipao/UnityProject d8adc87262`,
+2026-10-10 23:39 → 2026-10-11 ~00:33 EDT (download ~25 GB at ~2–9 MB/s, then writing 137,756 files, 42 GB).
+Then `UnityProject/.git` removed and `git worktree prune`d, so it is a plain folder.
+
+Final package (2026-10-11), converter run 3 minutes with the snapshot present:
+
+- 783 steps (same as the test run); 72,045 GUIDs indexed from `.meta` files; 393 references resolved to asset
+  paths; 14 distinct GUIDs point outside the repository (most likely Unity package scripts in
+  `Library/PackageCache`; unverified).
+- `depends_on`: 516 steps with one dependency, 229 with none, 36 with 2–8, 2 with 72.
+- Verification: all 418 files whose last change belongs to the feature hash identically (SHA-256) in the
+  snapshot; 27 more were changed again later by commits outside the feature.
+- `UnityProject.manifest.jsonl` (30 MB, 137,756 entries) and `manifest.json` written; package README added.
+- 28 of the 51 Excel tables in `墨境导表文件夹/` carry a person's name in `creator` / `lastModifiedBy`
+  (including `形态皮肤_PlayerSkins.xlsx`); left as committed, to be cleared in any copy that leaves.
 
 ## Rights
 

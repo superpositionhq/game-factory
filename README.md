@@ -21,8 +21,8 @@ see [docs/vendor-packages.md](docs/vendor-packages.md) for what they contain and
 | Vendor packages analysed (`parkour`, `island_explore`) | done, [docs/vendor-packages.md](docs/vendor-packages.md) |
 | LiaoZhaiRL repo surveyed | done, [docs/liaozhai.md](docs/liaozhai.md) |
 | Converter (`tools/build_package.py`) | working; pilot feature 葛巾_旗袍 → 27 commits, 783 steps |
-| Pilot sample | [samples/liaozhai-gejin-qipao/](samples/liaozhai-gejin-qipao/) (before GUID→path resolution) |
-| Pilot project snapshot (Unity project at the end commit) | downloading on the owner's Mac, ~44 GB of files |
+| Pilot package (with the 42 GB project snapshot) | done 2026-10-11 at `~/Downloads/liaozhai_gejin_qipao/`; all 418 end-state files hash-verified |
+| Pilot sample | [samples/liaozhai-gejin-qipao/](samples/liaozhai-gejin-qipao/) (final, GUIDs resolved to paths) |
 | Unreal track | planned, [docs/plan.md](docs/plan.md) |
 
 ## Read first

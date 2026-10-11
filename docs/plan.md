@@ -10,7 +10,9 @@ Source: [MapleLeafGitHub/LiaoZhaiRL](https://github.com/MapleLeafGitHub/LiaoZhai
 61k real commits (see [liaozhai.md](liaozhai.md)). Each package is one feature: its real commits, editor-level
 steps derived from them, the code and table history, and the project at the end commit.
 
-### A1. Finish the pilot (葛巾_旗袍)
+### A1. Finish the pilot (葛巾_旗袍) — done 2026-10-11
+
+Steps 1–6 below are done; results in [liaozhai.md](liaozhai.md). Next is A2.
 
 1. Let the snapshot checkout finish (`~/Downloads/liaozhai_gejin_qipao/UnityProject`, ~44 GB).
 2. Rerun `tools/build_package.py` into the package so GUID references gain asset paths, with `--manifest`.
