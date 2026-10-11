@@ -1,8 +1,9 @@
-# Vendor packages: `parkour` and `island_explore`
+# Vendor packages: `parkour`, `island_explore` and `robofootball`
 
-Received 2026-10-10 as two folders (`~/Downloads/parkour`, `~/Downloads/island_explore`). Same vendor, same
-README template, same build machine (paths under `D:\hk\`). Both are **game-creation** packages: a finished
-Unreal Engine 5.8 game plus a record of how it was built. Neither is gameplay data.
+`parkour` and `island_explore` were received 2026-10-10 as two folders; `robofootball` came later. All three
+are kept as zips in `samples/` (git-ignored, ~20 GB) and extracted next to them. Same vendor, same README
+template, same build machine (paths under `D:\hk\`). All are **game-creation** packages: a finished
+Unreal Engine 5.8 game plus a record of how it was built. None is gameplay data.
 
 In one sentence (中文): 就是一个做好的游戏，加上“这个游戏是怎么一步步做出来的”记录和视频，不是玩游戏的数据。
 
@@ -77,6 +78,54 @@ game and does not record video.
   package. Character: Epic Paragon **Shinbi** (959 MB); fox: VanillaFox with Khronos Fox animations (CC BY 4.0,
   attribution required); also Epic Manny/Quinn. `ReplayScripts/Docs/asset_audit.md` (Chinese) documents all
   of this frankly.
+
+## `robofootball` (IceRush robot football)
+
+- 11.5 GB extracted (zip 9.8 GB): `ReplayScripts` 5.8 GB, `UEProject` 5.6 GB. The project file is
+  `UEProject/IceRush.uproject`; the README still says `AetherIsles.uproject` (copied template, wrong name).
+  Ten-player robot football in a stadium: 120 Hz fixed-step match simulation, AI players, goals, in-game replay,
+  training mode, UI. Most gameplay stays native C++; the editor-authored part is the map, data assets,
+  one Blueprint movement function (`ComputeGroundedVelocity`), the Widget Blueprint UI and bindings.
+- `workflow.jsonl`: 361 rows, schema `icerush.editor-replay.action.v1`, tracks `prepare` 14 and `editor` 347.
+  Ops: `ui.add_elements` 110, `ui.configure_elements` 110, `movement.connect` 28, `scene.inspect_asset` 14,
+  `prepare.source.stage` 11, `scene.roster_player` 10, `ui.create_input`/`ui.configure_input` 9 each, …
+  Two thirds of the rows (242, chapter 真实Widget Blueprint与输入资产) rebuild one UI from `UI/layout.json`.
+- Row fields: parkour's set plus `classification` (`preparation` / `mutation`); key order varies by row.
+  `expected` is typed per op (`element_ids` + `count`, `connected`, `tree_sha256`, `values`, `transform`,
+  `saved`, …) instead of parkour's free-text `readback`. `presentation` gives frame counts
+  (`minimum_frames_before/after_execute`), `panel`, `selection`, `visible_typing`. No `status`, no timestamps;
+  `depends_on` is a straight chain (360 of 361 rows depend only on the previous row).
+- `git.log` (2.2 MB): `IceRush editor construction source history v1`, index schema
+  `icerush.byte-delimited-history/v1` with `history_type: reconstructed_dependency_order_not_original_git_history`.
+  11 stages (`source-foundation` … `source-replay-player`) plus build proof; header: no original author, commit
+  identity or timestamp is claimed. The last two stages are the vendor's own editor adapter and replay player.
+- `ReplayScripts/provenance.json` (`icerush.replay-provenance/v1`, recorded 2026-09-12) is the most candid file
+  in any package: rebuilt from the user's existing project `D:\hk\IceRush` (a former hockey game) via a frozen
+  snapshot; overall status `candidate_validation_pending`, with full replay, runtime binding and visual review
+  all `pending`; `no_visual_or_end_to_end_success_claim: true`.
+- New over the other two: `UEProject/Licenses/` (`THIRD_PARTY.md`, `ART_PROVENANCE.md`, acquisition JSONs with
+  per-file SHA-256, OFL fonts) and `ReplayScripts/Recording/` (`record_editor.py` captures only the replay's UE
+  windows). Assets: `SportsStadium` 3.9 GB and `CyborgGirl` (user-supplied marketplace packs, licence asserted
+  by the user, not audited), Epic Manny/Quinn template, Blender crowd model, synthesized audio.
+- `replay.mp4` 14:43 but only 35.5 MB (very low bitrate); `play.mp4` 1:43, 171.5 MB. No input log.
+
+## Schemas side by side
+
+| | `parkour` | `island_explore` | `robofootball` |
+|---|---|---|---|
+| Schema | `isle-run.editor-action/v1` | `aether.semantic-workflow/v1` | `icerush.editor-replay.action.v1` |
+| Rows / op kinds | 612 / 26 | 707 / ~80 (`ue.*` namespaced) | 361 / 38 (`ui.*`, `scene.*`, `movement.*`) |
+| Tracks | `prepare`, `editor` | `prepared_baseline`, `source_import_alternative` | `prepare`, `editor` |
+| Common fields | `schema, id, chapter, track, op, target, params, reason, depends_on, source[{path, sha256}], expected, presentation` | same | same |
+| Extra fields | — | `ui{panel, field_or_action, mapping_status}`, `execution`, `status` | `classification` |
+| `expected` | free-text `readback` (+ `connection`, `tree_sha256`) | `readback_matches`, `all_hashes_match`, … | typed per op |
+| `presentation` | `before{panel, select}`, `after{refresh, …}` | `before/after{wait_seconds, show_panel, …}` | `panel`, `minimum_frames_*`, `selection`, `visible_typing` |
+| Timestamps | none | none (only staging `wait_seconds`) | none |
+| `depends_on` | chain (611/612) | chain (705/707) | chain (360/361) |
+| `git.log` | 30 stages, “actual original history” | 21 reconstructed + replay adaptations | 11 reconstructed stages |
+
+Each package invents its own schema name and op vocabulary; only the common field set is stable. A converter to
+one buyer format would map on the common fields and keep the rest under an `extra` key.
 
 ## What the format is good for, and its weaknesses
 

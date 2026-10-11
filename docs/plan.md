@@ -51,9 +51,8 @@ recorder (inputs, native 60 fps video, voice). That pairs creation and gameplay 
 
 ### A5. Rights
 
-LiaoZhaiRL is MapleLeaf's game. The owner has authorised this work inside Superposition (2026-10-11). Before
-any package goes to a third party, record MapleLeaf's terms (what may be shared, attribution). Excel files may
-carry author names in their document properties; scrub or confirm before sharing.
+LiaoZhaiRL is fully authorised for this work, including sharing packages (confirmed 2026-10-11). Excel files may
+carry author names in their document properties; scrub them along with the other anonymization.
 
 ## Track B: new 3D games built in Unreal, recorded as they are made
 
@@ -120,8 +119,7 @@ size, step count, fidelity, replay success, cost per hour of creation.
 
 ## Open decisions
 
-1. MapleLeaf's terms for sharing LiaoZhaiRL packages outside Superposition.
-2. The buyer's exact format: vendor-compatible field names, or ours with a mapping.
-3. Snapshot strategy for Track A (A2 options a/b/c).
-4. Unreal version and hardware for Track B; whether Track B becomes a Lab project type.
-5. Human vs agent builders for Track B, and the mix.
+1. The buyer's exact format: vendor-compatible field names, or ours with a mapping.
+2. Snapshot strategy for Track A (A2 options a/b/c).
+3. Unreal version and hardware for Track B; whether Track B becomes a Lab project type.
+4. Human vs agent builders for Track B, and the mix.

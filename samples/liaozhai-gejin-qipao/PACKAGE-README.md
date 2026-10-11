@@ -62,7 +62,8 @@ only files whose path contains 葛巾 or 形态10, or that lie outside `Combat_�
 
 ## Before sharing outside Superposition
 
-- The project is MapleLeaf's commercial game; their terms apply.
+The project is fully authorised for this work, including sharing packages.
+
 - 28 of the 51 Excel tables in `UnityProject/Assets/LiaoZhaiRL/墨境导表文件夹/` carry a person's name in their
   document properties (`creator`, `lastModifiedBy`), including `形态皮肤_PlayerSkins.xlsx`. They are left as
   committed so hashes match; clear those fields in a copy before it leaves.

@@ -91,6 +91,5 @@ Final package (2026-10-11), converter run 3 minutes with the snapshot present:
 
 ## Rights
 
-The repository is MapleLeaf's private commercial game. Anonymizing commit authors does not cover the project
-snapshot (all code, art, Excel files whose document properties may name their authors, SDK configs). Confirm
-what MapleLeaf allows before anything leaves Superposition.
+Fully authorised for this work, including sharing packages (confirmed 2026-10-11). Anonymizing commit authors
+does not cover the project snapshot's Excel document properties, which may name their authors; scrub those too.

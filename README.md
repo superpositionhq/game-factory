@@ -11,14 +11,14 @@ Two tracks:
 2. **New 3D games in Unreal.** Build new games in Unreal Engine 5 and record the creation as it happens:
    real editor operations with timestamps, screen video, inputs, code commits and a playtest with inputs.
 
-Both tracks start from a format a data vendor sent us (two Unreal packages, `parkour` and `island_explore`):
+Both tracks start from a format a data vendor sent us (three Unreal packages, `parkour`, `island_explore` and `robofootball`):
 see [docs/vendor-packages.md](docs/vendor-packages.md) for what they contain and where they fall short.
 
 ## Status (2026-10-11)
 
 | Item | State |
 |---|---|
-| Vendor packages analysed (`parkour`, `island_explore`) | done, [docs/vendor-packages.md](docs/vendor-packages.md) |
+| Vendor packages analysed (`parkour`, `island_explore`, `robofootball`) | done, [docs/vendor-packages.md](docs/vendor-packages.md) |
 | LiaoZhaiRL repo surveyed | done, [docs/liaozhai.md](docs/liaozhai.md) |
 | Converter (`tools/build_package.py`) | working; pilot feature 葛巾_旗袍 → 27 commits, 783 steps |
 | Pilot package (with the 42 GB project snapshot) | done 2026-10-11 at `~/Downloads/liaozhai_gejin_qipao/`; all 418 end-state files hash-verified |

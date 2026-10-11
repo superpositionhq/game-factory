@@ -1,3 +1,9 @@
 .DS_Store
 __pycache__/
 *.pyc
+
+# vendor packages: tens of GB, third-party assets; local only (see AGENTS.md)
+samples/*.zip
+samples/parkour/
+samples/island_explore/
+samples/robofootball/
