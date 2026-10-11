@@ -311,7 +311,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
                     "-nosplash -abslog=`"$rawDir\game.log`" $ExtraArgs"
         $psi = New-Object System.Diagnostics.ProcessStartInfo
         $psi.FileName = $exe; $psi.Arguments = $gameArgs; $psi.UseShellExecute = $false
-        $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true   # the log goes to raw\game.log
+        $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true   # Development builds log to raw\game.log (-abslog); Shipping writes none
         $psi.WorkingDirectory = Split-Path $exe
         $proc = [System.Diagnostics.Process]::Start($psi)
         $proc.BeginOutputReadLine(); $proc.BeginErrorReadLine()   # drain and discard

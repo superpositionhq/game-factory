@@ -49,8 +49,10 @@ command-line `-ini:` overrides, so put the DPI setting in your game's config:
 bAllowHighDPIInGameMode=True
 ```
 
-build.ps1 packages Shipping automatically once that line is committed (Development otherwise). Shipping has no log
-file unless your game target sets `bUseLoggingInShipping = true;` (optional, useful for diagnosing runs). The drop-in
+build.ps1 packages Shipping automatically once that line is committed (Development otherwise). Shipping writes no log file
+and that's expected: the pipeline doesn't need one (`raw\game.log` is simply absent). Do **not** set
+`bUseLoggingInShipping = true;` with this launcher-installed engine: its precompiled Shipping libraries have no log
+symbols and the Shipping link fails (found by horror-escape; it only works with a source-built engine). The drop-in
 works the same in Shipping (scalability is set through the Scalability API, not a console command).
 
 | Flag | Meaning | Default |
@@ -307,8 +309,9 @@ project with v1.2: the run completes and validate-run passes).
 3. **List your scenarios** (1..n, name, start state, win/lose condition) in your design doc; that numbering is what
    `-Scenario=<n>` and `milestone/autoplay-<n>` mean.
 4. **Config:** add `bAllowHighDPIInGameMode=True` under `[/Script/Engine.UserInterfaceSettings]` in
-   `Config/DefaultEngine.ini` (Shipping recording builds); optionally `bUseLoggingInShipping = true;` in your game
-   `Target.cs`. Check your game still runs in Shipping (no editor-only or Development-only code paths in AutoPlay).
+   `Config/DefaultEngine.ini` (Shipping recording builds). Do not set `bUseLoggingInShipping` (breaks the Shipping link
+   with the launcher engine; Shipping runs have no game.log and nothing needs one). Check your game still runs in
+   Shipping (no editor-only or Development-only code paths in AutoPlay).
 5. **Re-test** by hand (§7, now `-Scenario=1`, `-RenderOffScreen`) and run `validate-run.ps1` on the output: it must say
    "AutoPlay drop-in version 3" and PASS.
 6. **Commit and re-tag** `milestone/autoplay-<n>` on the migrated commit (n = scenarios ready), then queue a recording:

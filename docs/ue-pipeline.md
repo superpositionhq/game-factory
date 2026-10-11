@@ -73,7 +73,7 @@ at that commit sets `bAllowHighDPIInGameMode=True`, else Development. Shipping c
 TCP listener (`TraceLog` control, bound to 0.0.0.0 in Development/Test, no runtime switch in 5.3) makes Windows
 Firewall prompt for every new exe path; Shipping ignores command-line `-ini:` overrides, hence the config requirement.
 Shipping builds go to `builds\<game>\<short-sha>-shipping\` (exe `<Project>-Win64-Shipping.exe`), `build_info.json`
-records `config`. Shipping has no game log unless the game target sets `bUseLoggingInShipping`.
+records `config`. Shipping runs have no `raw\game.log` (nothing needs it); `bUseLoggingInShipping` must not be set with the launcher-installed engine (its Shipping libraries lack the log symbols, so the link fails).
 
 `builds.jsonl` row: `commit`, `short_sha`, `commit_subject`, `command`, `start`/`end`/`duration_s`, `status`,
 `exit_code`, `error_excerpt` (first matching error lines of the failing log), `log_path`, `output_path`,
