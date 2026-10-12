@@ -170,6 +170,7 @@ class Player:
         self.state = "init"
         self.group = None
         self.made = []
+        self.busy = False   # Import into Level runs a nested Slate loop that calls tick() again: never re-enter
 
     def emit(self, rec):
         if self.log:
@@ -246,6 +247,15 @@ class Player:
         self.handle = unreal.register_slate_post_tick_callback(self.tick)
 
     def tick(self, dt):
+        if self.busy:
+            return
+        self.busy = True
+        try:
+            self._tick(dt)
+        finally:
+            self.busy = False
+
+    def _tick(self, dt):
         now = time.time()
         hs = self.a.handshake
         if self.state == "init":
