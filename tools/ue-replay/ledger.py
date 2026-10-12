@@ -247,7 +247,7 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
                 "background": bool(re.search(r'"backgroundTaskId"', raw_resp)) or bool(re.search(r"[^&]&[ \t]*(?:\n|$|;|echo\b|wait\b|disown\b)", c)),
                 "after": prev,
                 "env": env, "reason": reason, "mode": mode, "via_wrapper": via_wrapper, "pos": pos,
-                "command": cmd[:2000],
+                "command": cmd,   # in full: the recorded command is data, never cut
             })
     return runs
 
