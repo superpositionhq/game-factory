@@ -141,6 +141,7 @@ def cmd_package(cfg, a):
     # the build machine's per-session folders and ids in the recorded data become neutral names (ue_replay.
     # SESSION_PATH_RULES); the settings templates still match them, so a replay from this folder works the same
     neutral = {}
+    sids = ue_replay.recording_session_ids(cfg)
     for dp, _, fns in os.walk(rs):
         for fn in fns:
             if not fn.lower().endswith((".json", ".jsonl", ".md", ".py", ".txt", ".tsv", ".csv", ".ini", ".sh", ".ps1")):
@@ -149,7 +150,7 @@ def cmd_package(cfg, a):
             with open(fp, "rb") as f:
                 b = f.read()
             t = b.decode("utf-8", "surrogateescape")
-            t2, c = ue_replay.neutral_session_paths(t)
+            t2, c = ue_replay.neutral_session_paths(t, sids)
             if c:
                 with open(fp, "wb") as f:
                     f.write(t2.encode("utf-8", "surrogateescape"))

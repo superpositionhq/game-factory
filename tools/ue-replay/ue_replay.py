@@ -122,11 +122,12 @@ def recorded_path_regex(template):
 # per-session folders; those names are noise for a buyer and identify the session. They become neutral names that the
 # settings templates ({home}/AppData/Local/Temp/**/..., {home}/AppData/Roaming/**/...) still match.
 _SEP = r"([\\/]{1,2})"
+_UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 SESSION_PATH_RULES = [
-    ("session_scratch", re.compile(r"(?i)(AppData)%s(Local)%s(Temp)%s[^\\/\s'\"]+%s[^\\/\s'\"]+%s"
-                                   r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}%sscratc[h]pad"
-                                   % ((_SEP,) * 6)),
-     lambda m: "%s%s%s%s%s%ssession%sscratch" % (m.group(1), m.group(2), m.group(3), m.group(4), m.group(5), m.group(6), m.group(6))),
+    # Temp/<tool>/<project-dir>/<session uuid>[/scratch-pad] (scratch, tasks, shell-snapshots ...) -> Temp/session[/scratch]
+    ("session_temp", re.compile(r"(?i)(?P<head>AppData(?P<s>[\\/]{1,2})Local(?P=s)Temp(?P=s))[^\\/\s'\"]+(?P=s)"
+                                r"[^\\/\s'\"]+(?P=s)%s(?P<pad>(?P=s)scratc[h]pad(?![\w-]))?" % _UUID),
+     lambda m: m.group("head") + "session" + ((m.group("s") + "scratch") if m.group("pad") else "")),
     ("session_notes", re.compile(r"(?i)(AppData)%s(Roaming)%s[^\\/\s'\"]+%sside-sessio[n]-notes%slocal_[0-9a-f]{8}-[0-9a-f]{4}-"
                                  r"[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" % ((_SEP,) * 4)),
      lambda m: "%s%s%s%ssession%snotes" % (m.group(1), m.group(2), m.group(3), m.group(4), m.group(4))),
@@ -134,14 +135,40 @@ SESSION_PATH_RULES = [
 ]
 
 
-def neutral_session_paths(text):
-    """(new text, {rule: count}) with the build machine's session folders and ids replaced (SESSION_PATH_RULES)."""
+def neutral_session_paths(text, session_ids=()):
+    """(new text, {rule: count}) with the build machine's session folders and ids replaced (SESSION_PATH_RULES), and
+    the given session uuids (the recording's own session_id values) wherever they still stand alone. Other uuids
+    (Fab listing ids, asset guids) are content and stay."""
     counts = {}
     for rid, rx, f in SESSION_PATH_RULES:
         text, n = rx.subn(f, text)
         if n:
             counts[rid] = n
+    if session_ids:
+        rx = re.compile(r"(?i)\b(?:%s)\b" % "|".join(re.escape(s) for s in session_ids))
+        text, n = rx.subn("session", text)
+        if n:
+            counts["session_uuid"] = n
     return text, counts
+
+
+def recording_session_ids(cfg):
+    """The session uuids in a game's recording (actions.jsonl session_id), and the uuids of any Temp session folder the
+    recorded commands name: the ids neutral_session_paths replaces."""
+    ids = set()
+    p = os.path.join(cfg.get("recording", ""), "actions.jsonl")
+    if os.path.isfile(p):
+        rx = re.compile(r"(?i)Temp[\\/]{1,2}[^\\/\s'\"]+[\\/]{1,2}[^\\/\s'\"]+[\\/]{1,2}(%s)" % _UUID)
+        with open(p, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                try:
+                    a = json.loads(line)
+                except ValueError:
+                    continue
+                if a.get("session_id"):
+                    ids.add(str(a["session_id"]).lower())
+                ids.update(m.group(1).lower() for m in rx.finditer(line))
+    return sorted(i for i in ids if re.fullmatch(_UUID, i))
 
 
 def has_recorded(match, text):
