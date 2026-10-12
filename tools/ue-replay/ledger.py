@@ -80,7 +80,7 @@ RUN_PATTERNS = [
     re.compile(r"-run=pythonscript\s+['\"]?-script=(?P<script>[^'\"\s]+)(?P<args>[^'\"]*)['\"]?"),
 ]
 # "exit code N (S s)" (Scripts/ue.ps1) or "exit=N seconds=S" (a game's shell wrapper)
-EXIT_RE = re.compile(r"exit code (-?\d+) \((\d+) s\)|exit=(-?\d+)(?: seconds=(\d+))?")
+EXIT_RE = re.compile(r"exit code (-?\d+) \((\d+) s\)|exit=(-?\d+)(?: seconds=(\d+))?|\bexit (-?\d+) log ue-")
 
 
 # a shell command that exited non-zero still ran: its file edits and editor runs happened
@@ -105,7 +105,7 @@ def subst_var(text, var, val):
     return re.sub(r"\$(?:\{" + v + r"\}|" + v + r"\b)", lambda m: val, text)
 
 
-def expand_loops(cmd, pats=None):
+def expand_loops(cmd, pats=None, spans=False):
     """`for v in a "b c" d; do ... $v ...; done` (on one line or several) around an editor run: one run per value
     (${v}, ${v%%pat} and ${v##pat} forms included)."""
     m = re.search(r"\bfor (\w+) in ([^;\n]+?)\s*(?:;|\n)\s*do\b(.*?)(?:;|\n)\s*done\b", cmd, re.S)
@@ -119,6 +119,10 @@ def expand_loops(cmd, pats=None):
     out = [cmd[:m.start()] + subst_var(body, var, v) + cmd[m.end():] for v in values]
     if not any(p.search(subst_var(body, var, v)) for v in values for p in (pats or RUN_PATTERNS)):
         return [cmd]
+    if spans:
+        # copy k > 0 repeats the text around the loop: only its loop body counts (no duplicate runs outside the loop)
+        return [(c, 0, len(c)) if k == 0 else (c, m.start(), m.start() + len(subst_var(body, var, values[k])))
+                for k, c in enumerate(out)]
     return out
 
 
@@ -161,17 +165,21 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
         cmd = a.get("input", {}).get("command", "")
         # heredoc bodies are file contents (e.g. a wrapper script being written), not commands; loops are expanded
         # first, so a run written as `for s in ...; do wrapper "Scripts/${s%%|*}"; done` is found
-        expanded = expand_loops(shellfx.protect_heredocs(cmd)[0], pats)
-        if not any(p.search(c) for c in expanded for p in pats):
+        expanded = expand_loops(shellfx.protect_heredocs(cmd)[0], pats, spans=True)
+        if isinstance(expanded[0], str):
+            expanded = [(c, 0, len(c)) for c in expanded]
+        if not any(p.search(c) for c, _, _ in expanded for p in pats):
             continue
         resp = a.get("response") or ""
         if not isinstance(resp, str):
             resp = json.dumps(resp)
-        exits = [(x[0] or x[2], x[1] or x[3] or None) for x in EXIT_RE.findall(resp)]
+        exits = [(x[0] or x[2] or x[4], x[1] or x[3] or None) for x in EXIT_RE.findall(resp)]
         found = []
-        for k, c in enumerate(expanded):
+        for k, (c, lo_k, hi_k) in enumerate(expanded):
             for pi, pat in enumerate(pats):
                 for m in pat.finditer(c):
+                    if not (lo_k <= m.start() < hi_k):
+                        continue
                     g = {k2: (v or "") for k2, v in m.groupdict().items()}
                     if pi in templates:
                         tp = templates[pi]

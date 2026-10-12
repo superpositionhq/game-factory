@@ -208,9 +208,10 @@ def initial_assets_manifest(cfg, ctx):
     for d in cfg.get("asset_drops", []):
         for it in d["items"]:
             if it.get("from_git"):
-                for fp, size, sha in git_tree_files(cfg["repo"], ctx.ledger["final"], it["from_git"]):
+                ref = it.get("ref") or ctx.ledger["final"]
+                for fp, size, sha in git_tree_files(cfg["repo"], ref, it["from_git"]):
                     files.append({"role": "store_pack", "drop": d["id"], "pack": it.get("pack"), "path": fp, "bytes": size,
-                                  "sha256": sha, "source": "final commit (git/LFS)"})
+                                  "sha256": sha, "source": "commit %s (git/LFS)" % ref[:10]})
                 continue
             for dp, _, fns in os.walk(it["from"]):
                 for fn in fns:
@@ -347,6 +348,24 @@ def dump_maps(ctx, maps, out, assets=False, t3d=True, label="dump", project=None
     return heavy("ue-replay %s %s" % (ctx.cfg["game"], label), argv)
 
 
+def delete_paths(ctx, step):
+    """shell step 'delete path...' (an rm of files the builder removed by hand, e.g. maps that no longer load), under
+    cwd; paths stay inside the replay project."""
+    cwd = ctx.p(step.get("cwd", ""))
+    n = 0
+    for rel in step["argv"][1:]:
+        p = os.path.normpath(os.path.join(cwd, rel))
+        if not os.path.normcase(p).startswith(os.path.normcase(os.path.normpath(ctx.proj)) + os.sep):
+            raise SystemExit("shell delete outside the replay project: " + rel)
+        if os.path.isdir(p):
+            shutil.rmtree(p)
+            n += 1
+        elif os.path.exists(p):
+            os.remove(p)
+            n += 1
+    return n
+
+
 def move_merge(ctx, step):
     """shell step 'move-merge src dst' (cp -rn src/. dst/ && rm -rf src) under cwd."""
     cwd = ctx.p(step.get("cwd", ""))
@@ -394,8 +413,9 @@ def drop_assets(ctx, d):
         if it.get("from_git"):
             # the pack exactly as the game committed it (e.g. a fetch script that filtered the files), restored from the
             # final commit into the working tree at the moment the builder copied it in; LFS objects from the game's store
-            git(ctx.proj, "restore", "--source=" + ctx.ledger["final"], "--worktree", "--", it["from_git"])
-            n += len(git(ctx.proj, "ls-tree", "-r", "--name-only", ctx.ledger["final"], "--", it["from_git"]).splitlines())
+            ref = git(ctx.proj, "rev-parse", it.get("ref") or ctx.ledger["final"]).strip()   # ref: e.g. the commit that first added the pack
+            git(ctx.proj, "restore", "--source=" + ref, "--worktree", "--", it["from_git"])
+            n += len(git(ctx.proj, "ls-tree", "-r", "--name-only", ref, "--", it["from_git"]).splitlines())
             continue
         dst = ctx.p(it["to"])
         for dp, _, fns in os.walk(it["from"]):
@@ -504,7 +524,8 @@ def cmd_run(cfg, a):
                 rec["outputs"] = note_outputs(ctx, before, scan(ctx.proj), "drop:" + s["id"])
                 rec["outputs"] = {k: len(v) for k, v in rec["outputs"].items()}
             elif kind == "shell":
-                rec["files"] = move_merge(ctx, s) if s["argv"][0] == "move-merge" else 0
+                rec["files"] = (move_merge(ctx, s) if s["argv"][0] == "move-merge" else
+                                delete_paths(ctx, s) if s["argv"][0] == "delete" else 0)
                 rec["outputs"] = {k: len(v) for k, v in note_outputs(ctx, before, scan(ctx.proj), "shell:" + sid).items()}
             else:
                 r = s
