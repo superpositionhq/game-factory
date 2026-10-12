@@ -47,7 +47,7 @@ Standing user decisions (keep applying them):
 - AutoPlay runs play "scenarios" (not levels); contract changes go through you.
 - Every repo README shows screenshots (from recording stills).
 - Dataset layout v1.1 as above, no extra structure without asking.
-- Gameplay recordings capture real play. The result (win/lose/timeout) is metadata, never a quality gate. Never re-record or exclude a run because the bot lost. Package the first valid run per scenario. Bots should play like a competent human, which doesn't mean they must win.
+- What ships is what matters, in this order: the game plays; the game builds (editor and packaged Shipping); the dataset holds the replay scripts and the git log. AutoPlay bot quality does not matter: one recording per scenario that shows the game running is enough, whatever the result (win/lose/timeout is metadata). No bot tuning, win rates, seed sweeps or "clean" runs, and no re-runs or re-recordings to improve how the bot plays. No retest loops: every GPU or editor run costs about 30 minutes of the shared machine and holds up delivery, so run the minimum once and report; re-run only when the user asks. Game-session work never blocks dataset packaging or sharing.
 
 First steps on a new machine: run machine/check.ps1 and fix what the user must do by hand (docs/new-machine.md); start
 the ue-pipeline helper to prove build + record on this machine, and the asset-scout to rebuild the asset library; then

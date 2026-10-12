@@ -322,9 +322,7 @@ in file-name order (the coordinator reorders by renaming; a request being proces
 powershell -ExecutionPolicy Bypass -File %GF_ROOT%\game-factory\tools\ue-pipeline\enqueue.ps1 <game> -Scenarios 1,2 -Runs 1 -RequestedBy coordinator
 ```
 
-**Recordings and results.** Gameplay recordings capture real play. The result (win/lose/timeout) is metadata, never a
-quality gate. Never re-record or exclude a run because the bot lost. Package the first valid run per scenario. Bots
-should play like a competent human, which doesn't mean they must win.
+**Priorities (user decision).** What ships is what matters, in this order: the game plays; the game builds (editor and packaged Shipping); the dataset holds the replay scripts and the git log. AutoPlay bot quality does not matter: one recording per scenario that shows the game running is enough, whatever the result (win/lose/timeout is metadata). No bot tuning, win rates, seed sweeps or "clean" runs, and no re-runs or re-recordings to improve how the bot plays. No retest loops: every GPU or editor run costs about 30 minutes of the shared machine and holds up delivery, so run the minimum once and report; re-run only when the user asks. Game-session work never blocks dataset packaging or sharing.
 
 AutoPlay time limit: 600 s per run by default (the game gets `-MaxSeconds`, the recorder kills it 90 s later).
 `-MaxSeconds "1=300,2=600,3=900"` sets it per scenario (unlisted ones keep 600; `*=700` changes the rest), a plain

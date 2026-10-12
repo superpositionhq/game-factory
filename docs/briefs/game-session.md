@@ -55,7 +55,7 @@ Pitch:
 Brief:
 {{BRIEF}}
 
-Gameplay recordings capture real play. The result (win/lose/timeout) is metadata, never a quality gate. Never re-record or exclude a run because the bot lost. Package the first valid run per scenario. Bots should play like a competent human, which doesn't mean they must win.
+What ships is what matters, in this order: the game plays; the game builds (editor and packaged Shipping); the dataset holds the replay scripts and the git log. AutoPlay bot quality does not matter: one recording per scenario that shows the game running is enough, whatever the result (win/lose/timeout is metadata). No bot tuning, win rates, seed sweeps or "clean" runs, and no re-runs or re-recordings to improve how the bot plays. No retest loops: every GPU or editor run costs about 30 minutes of the shared machine and holds up delivery, so run the minimum once and report; re-run only when the user asks. Game-session work never blocks dataset packaging or sharing.
 
 Scenarios (AutoPlay contract; numbered start state + win/lose):
 {{SCENARIOS}}
@@ -76,8 +76,8 @@ Steps:
 3) Build the core loop first, compiling through ue-heavy.ps1 and testing as you go (-nullrhi / -RenderOffScreen for
    logic); commit each working step.
 4) AutoPlay once scenario 1 is playable end to end (contract v1.4, drop-in unchanged, bot acts only through Enhanced
-   Input injection, Skill-scaled, human-like camera); hand test + validate-run.ps1; tag milestone/autoplay-<n>;
-   framing screenshots; message me for a recording.
+   Input injection, Skill-scaled, human-like camera); one hand test + validate-run.ps1 (well-formed files; bot
+   quality does not matter); tag milestone/autoplay-<n>; framing screenshots; message me for a recording.
 5) Expand content, art, UI and story to the quality bar (menus, settings, pause, save/load where it fits, HUD, sound,
    packaged Win64 Shipping build).
 6) Finish with a playtest checklist pass and a status section in the design doc (what works, what's left, built vs

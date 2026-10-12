@@ -92,21 +92,20 @@ refuse them). Recording traces are fine: `workflow.jsonl` stays in the repo, row
   contract bump); the game supplies `StartScenario` (the template's GameInstance opens `ScenarioMaps[n-1]`),
   `ScenarioStarted(name)`, `FinishRun`, and a bot that acts **only** through `AP->Inject` (Enhanced Input), Skill-scaled
   and human-like (no snapping camera, no jump spam).
-- Test by hand per contract section 7 with `-RenderOffScreen` through ue-heavy.ps1, then
-  `tools/ue-pipeline/validate-run.ps1 <Saved\AutoPlay\<run>>` must PASS. Tag `milestone/autoplay-<n>` (scenarios 1..n
+- Test once by hand per contract section 7 with `-RenderOffScreen` through ue-heavy.ps1, then
+  `tools/ue-pipeline/validate-run.ps1 <Saved\AutoPlay\<run>>` must PASS (the run's files are well formed; how well
+  the bot plays does not matter). Tag `milestone/autoplay-<n>` (scenarios 1..n
   work).
-- **Framing gate:** before asking for a recording, take 8-10 screenshots from a short bot run (open areas, narrow
+- **Framing gate:** before asking for a recording, take 8-10 screenshots from one short bot run (open areas, narrow
   spaces, crouched, against walls) and check the camera rules above; send them with the request.
 - **Never run `enqueue.ps1` yourself.** Only the coordinator queues recordings (one GPU recording at a time). Message
   the coordinator: commit sha, tag, scenarios ready, validate-run result, screenshot paths.
 - Before a commit that will be recorded or packaged, run `tools/ue-pipeline/scrub-import-paths.py` (`--apply`,
   `--patch-remaining`, `--verify` = 0 hits; see docs/ue-pipeline.md) so the user's profile path is not in the project.
 
-## Recordings and results
+## Priorities (user decision)
 
-Gameplay recordings capture real play. The result (win/lose/timeout) is metadata, never a quality gate. Never
-re-record or exclude a run because the bot lost. Package the first valid run per scenario. Bots should play like a
-competent human, which doesn't mean they must win.
+What ships is what matters, in this order: the game plays; the game builds (editor and packaged Shipping); the dataset holds the replay scripts and the git log. AutoPlay bot quality does not matter: one recording per scenario that shows the game running is enough, whatever the result (win/lose/timeout is metadata). No bot tuning, win rates, seed sweeps or "clean" runs, and no re-runs or re-recordings to improve how the bot plays. No retest loops: every GPU or editor run costs about 30 minutes of the shared machine and holds up delivery, so run the minimum once and report; re-run only when the user asks. Game-session work never blocks dataset packaging or sharing.
 
 ## Dataset (layout v1.1)
 

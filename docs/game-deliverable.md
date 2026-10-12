@@ -340,7 +340,7 @@ is `package-game.ps1 -Rescan`; run both before a review.
 
 **Decisions.**
 
-- Gameplay recordings capture real play. The result (win/lose/timeout) is metadata, never a quality gate. Never re-record or exclude a run because the bot lost. Package the first valid run per scenario. Bots should play like a competent human, which doesn't mean they must win.
+- What ships is what matters, in this order: the game plays; the game builds (editor and packaged Shipping); the dataset holds the replay scripts and the git log. AutoPlay bot quality does not matter: one recording per scenario that shows the game running is enough, whatever the result (win/lose/timeout is metadata). No bot tuning, win rates, seed sweeps or "clean" runs, and no re-runs or re-recordings to improve how the bot plays. No retest loops: every GPU or editor run costs about 30 minutes of the shared machine and holds up delivery, so run the minimum once and report; re-run only when the user asks. Game-session work never blocks dataset packaging or sharing.
 
 - Gameplay holds mp4s only, one per scenario of the release version: no per-run bundles (inputs, telemetry, json), no
   version subfolders, no index file; the README lists the videos.

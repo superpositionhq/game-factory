@@ -5,9 +5,7 @@ Game-**creation** data: how a game gets made, step by step, with the finished pr
 We build new 3D games in Unreal Engine 5 and record the creation as it happens: real editor operations with
 timestamps, screen video, inputs, code commits and a playtest with inputs.
 
-**Recordings and results.** Gameplay recordings capture real play. The result (win/lose/timeout) is metadata, never a
-quality gate. Never re-record or exclude a run because the bot lost. Package the first valid run per scenario. Bots
-should play like a competent human, which doesn't mean they must win.
+**Priorities (user decision).** What ships is what matters, in this order: the game plays; the game builds (editor and packaged Shipping); the dataset holds the replay scripts and the git log. AutoPlay bot quality does not matter: one recording per scenario that shows the game running is enough, whatever the result (win/lose/timeout is metadata). No bot tuning, win rates, seed sweeps or "clean" runs, and no re-runs or re-recordings to improve how the bot plays. No retest loops: every GPU or editor run costs about 30 minutes of the shared machine and holds up delivery, so run the minimum once and report; re-run only when the user asks. Game-session work never blocks dataset packaging or sharing.
 
 ## Dataset format (layout v1.1, all games)
 

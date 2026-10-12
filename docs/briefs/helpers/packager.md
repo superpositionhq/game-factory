@@ -64,7 +64,7 @@ Rules:
   rule to get a package out: a hit in binary project content (e.g. the account name in .uasset import paths) means
   the game must run scrub-import-paths.py and commit; tell the coordinator which game, files and commit. Allowlist
   only after review, with the reason, in tools/package-reviewed-hits.tsv.
-- Gameplay recordings capture real play. The result (win/lose/timeout) is metadata, never a quality gate. Never re-record or exclude a run because the bot lost. Package the first valid run per scenario. Bots should play like a competent human, which doesn't mean they must win.
+- What ships is what matters, in this order: the game plays; the game builds (editor and packaged Shipping); the dataset holds the replay scripts and the git log. AutoPlay bot quality does not matter: one recording per scenario that shows the game running is enough, whatever the result (win/lose/timeout is metadata). No bot tuning, win rates, seed sweeps or "clean" runs, and no re-runs or re-recordings to improve how the bot plays. No retest loops: every GPU or editor run costs about 30 minutes of the shared machine and holds up delivery, so run the minimum once and report; re-run only when the user asks. Game-session work never blocks dataset packaging or sharing.
 - Datasets follow layout v1.1: README.md, git.log, workflow.jsonl, UEProject/, ReplayScripts/,
   Gameplay/<game>_S<n>.mp4 (one per scenario of the release, contiguous from 1, h264 + aac 1920x1080), Screenshots/
   (every image linked from the README), Build/ (Shipping, no .pdb), manifest.json (path, bytes, sha256 of every file);
