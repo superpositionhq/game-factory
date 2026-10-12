@@ -307,7 +307,9 @@ def build(cfg):
     ro = cfg.get("readonly_patterns", [])
     for r in runs:
         base = os.path.basename(r["script"])
-        r["readonly"] = any(fnmatch.fnmatch(base, p) for p in ro)
+        # not_readonly: scripts a read-only pattern matches that still write something a later run reads
+        # (horror: probe_clip_speeds.py writes Saved/clip_speeds.json for fix_anim_rates.py)
+        r["readonly"] = any(fnmatch.fnmatch(base, p) for p in ro) and base not in cfg.get("not_readonly", [])
         if r["duration_s"] is not None and not r["background"]:
             r["start"] = (parse_time(r["time"]) - datetime.timedelta(seconds=r["duration_s"])).isoformat(timespec="milliseconds")
         else:

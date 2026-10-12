@@ -62,6 +62,8 @@ def diff_keys(a, b, prefix=""):
 NORMALISE = [
     ("guid", "random GUIDs Unreal writes on save (ExpressionGUID, Guid=...)",
      lambda s: re.sub(r"(?i)(guid=)[0-9a-f]{32}", r"\1<guid>", s)),
+    ("loc_key", "random localization keys Unreal generates for text properties (NSLOCTEXT(\"\", \"<32 hex>\", ...))",
+     lambda s: re.sub(r'NSLOCTEXT\(\\"([^"\\]*)\\", \\"[0-9A-Fa-f]{32}\\"', r'NSLOCTEXT(\\"\1\\", \\"<key>\\"', s)),
     ("memory_address", "memory addresses in printed object values (delegates: '(0x00000801...)')",
      lambda s: re.sub(r"\(0x[0-9A-Fa-f]+\)", "(0x)", s)),
 ]
