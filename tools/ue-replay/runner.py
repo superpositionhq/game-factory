@@ -405,11 +405,21 @@ def build_editor(ctx, label):
     cfg = ctx.cfg
     log = os.path.join(ctx.logs, "build_%s.log" % label)
     bat = os.path.join(ctx.logs, "build_%s.bat" % label)
+    # UBT's own log goes to a file of this build (-Log=): the default %LOCALAPPDATA%\UnrealBuildTool\Log.txt is shared
+    # by every UBT on the machine, and a second build starting while one runs fails moving it ("being used by another
+    # process"; rts-command w10)
+    ubt_log = os.path.join(ctx.logs, "ubt_%s.txt" % label)
     with open(bat, "w", encoding="utf-8") as f:
         f.write('@echo off\r\ncall "%s\\Engine\\Build\\BatchFiles\\Build.bat" %s Win64 Development -Project="%s" -WaitMutex '
-                '-NoHotReloadFromIDE > "%s" 2>&1\r\nexit /b %%ERRORLEVEL%%\r\n' % (cfg["engine"].replace("/", "\\"), cfg["editor_target"],
-                                                                                 ctx.uproject.replace("/", "\\"), log))
+                '-NoHotReloadFromIDE -Log="%s" > "%s" 2>&1\r\nexit /b %%ERRORLEVEL%%\r\n' % (
+                    cfg["engine"].replace("/", "\\"), cfg["editor_target"], ctx.uproject.replace("/", "\\"), ubt_log, log))
     code, secs = heavy("ue-replay %s build %s" % (cfg["game"], label), [bat])
+    if code != 0 and "being used by another process" in open(log, encoding="utf-8", errors="replace").read():
+        # a file another build holds (UBT logs, makefiles): once more after a pause
+        time.sleep(60)
+        os.replace(log, log[:-4] + ".locked.log")
+        code, secs2 = heavy("ue-replay %s build %s (retry)" % (cfg["game"], label), [bat])
+        secs += secs2
     return code, secs, log
 
 

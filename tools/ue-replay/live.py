@@ -624,6 +624,9 @@ def cmd_live(cfg, a):
     try:
         print("== %s live job (pid %d)" % (runner.now(), os.getpid()), flush=True)
         while True:
+            # settings as committed now: a ReplayConfig.json change (asset_drops, run_patterns) made while this job
+            # ran must reach the next pass, which then replays the windows it changes
+            cfg = ue_replay.load_cfg(cfg["_path"])
             rep = catch_up(cfg, lst)
             lst.update({"head": rep["head"], "result": rep["result"], "time": rep["time"]})
             runner.jdump(lst_path, lst)

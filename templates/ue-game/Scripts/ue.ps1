@@ -31,7 +31,10 @@ switch ($Mode) {
     $log = Join-Path $Logs "build_$Target.log"
     # the limiter starts the job as its own process (no output passthrough): redirect inside a small batch file
     $bat = Join-Path $Logs "build_$Target.bat"
-    [IO.File]::WriteAllText($bat, "@echo off`r`ncall `"$Engine\Engine\Build\BatchFiles\Build.bat`" $Target Win64 $Config -Project=`"$UProject`" -WaitMutex -NoHotReloadFromIDE > `"$log`" 2>&1`r`nexit /b %ERRORLEVEL%`r`n")
+    # UBT's own log in Saved\Logs (-Log=): the default one under %LOCALAPPDATA% is shared by every build on the machine,
+    # and a build starting while another runs can fail moving it
+    $ubtLog = Join-Path $Logs "ubt_$Target.txt"
+    [IO.File]::WriteAllText($bat, "@echo off`r`ncall `"$Engine\Engine\Build\BatchFiles\Build.bat`" $Target Win64 $Config -Project=`"$UProject`" -WaitMutex -NoHotReloadFromIDE -Log=`"$ubtLog`" > `"$log`" 2>&1`r`nexit /b %ERRORLEVEL%`r`n")
     & $Heavy -Label "__SLUG__ build $Target" -- $bat *> $null
     $code = $LASTEXITCODE
     Select-String -Path $log -Pattern 'error C\d+|error LNK|error :|\): error' | Select-Object -First 15 | ForEach-Object { $_.Line.Trim() }
