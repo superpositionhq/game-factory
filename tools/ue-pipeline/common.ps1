@@ -538,3 +538,55 @@ function Invoke-WakeDisplay([int]$SettleSeconds = 3) {
     [UePipeline.Display]::Wake()
     Start-Sleep -Seconds $SettleSeconds   # monitor power-up and the first DWM frames
 }
+
+# Dataset Gameplay/ file: <run>\gameplay.mp4 = video.mkv's H.264 stream copied (no re-encode) + system audio as AAC,
+# aligned on the shared QPC clock: offset = audio start (system_audio.start_offset_ns; v1.4: from audio_clock.jsonl)
+# minus video frame 0 (video_start_offset_ns). Audio that starts later is delayed, earlier is trimmed, then padded to
+# the video's end. CPU only, below-normal priority. Never throws: errors come back in .error.
+function Export-GameplayMp4([string]$RunDir, $VideoStartNs, $AudioStartNs) {
+    $result = [ordered]@{ file = 'gameplay.mp4'; video = 'h264 (stream copy of video.mkv)'; audio = $null; audio_offset_s = $null
+                          duration_s = $null; bytes = $null; error = $null }
+    $tmp = Join-Path $RunDir 'gameplay.tmp.mp4'
+    try {
+        $video = Join-Path $RunDir 'video.mkv'
+        $audio = Join-Path $RunDir 'system_audio.mka'
+        if (-not (Test-Path $video)) { throw 'no video.mkv' }
+        $inv = [Globalization.CultureInfo]::InvariantCulture
+        $ffArgs = @('-hide_banner', '-loglevel', 'error', '-y', '-i', "`"$video`"")
+        $haveAudio = (Test-Path $audio) -and ($null -ne $VideoStartNs) -and ($null -ne $AudioStartNs)
+        if ($haveAudio) {
+            $offset = ([double]([long]$AudioStartNs - [long]$VideoStartNs)) / 1e9
+            $result.audio_offset_s = [math]::Round($offset, 4)
+            $align = if ($offset -ge 0) { 'adelay=delays={0}:all=1' -f [math]::Round($offset * 1000).ToString($inv) }
+                     else { 'atrim=start={0},asetpts=PTS-STARTPTS' -f (-$offset).ToString('0.000000', $inv) }
+            $ffArgs += @('-i', "`"$audio`"", '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy',
+                         '-af', "$align,apad", '-c:a', 'aac', '-b:a', '192k', '-ac', '2', '-shortest')
+            $result.audio = 'aac 192k stereo from system_audio.mka, aligned on the QPC clock'
+        } else {
+            $ffArgs += @('-map', '0:v:0', '-c:v', 'copy', '-an')
+            $result.audio = 'none (no aligned system audio)'
+        }
+        $ffArgs += @('-movflags', '+faststart', '-threads', '2', "`"$tmp`"")
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = (Find-FFmpeg); $psi.Arguments = ($ffArgs -join ' ')
+        $psi.UseShellExecute = $false; $psi.CreateNoWindow = $true; $psi.RedirectStandardError = $true
+        $p = [System.Diagnostics.Process]::Start($psi)
+        try { $p.PriorityClass = 'BelowNormal' } catch { }
+        $err = $p.StandardError.ReadToEnd(); $p.WaitForExit()
+        if ($p.ExitCode -ne 0 -or -not (Test-Path $tmp)) { throw "ffmpeg exit $($p.ExitCode): $($err.Trim())" }
+        # Check: one H.264 video stream (+ one AAC stream when audio was muxed) and a duration close to video.mkv's.
+        $probe = (Invoke-Native (Find-FFprobe) @('-v', 'error', '-show_entries', 'stream=codec_type,codec_name:format=duration', '-of', 'json', $tmp)) -join "`n" | ConvertFrom-Json
+        $codecs = @($probe.streams | ForEach-Object { "$($_.codec_type):$($_.codec_name)" })
+        $want = if ($haveAudio) { @('video:h264', 'audio:aac') } else { @('video:h264') }
+        if (($codecs -join ',') -ne ($want -join ',')) { throw "unexpected streams: $($codecs -join ', ')" }
+        $srcDur = [double]::Parse(("$(Invoke-Native (Find-FFprobe) @('-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $video) | Select-Object -First 1)").Trim(), $inv)
+        $dur = [double]::Parse("$($probe.format.duration)", $inv)
+        if ([math]::Abs($dur - $srcDur) -gt 0.5) { throw ("duration {0:N2} s vs video.mkv {1:N2} s" -f $dur, $srcDur) }
+        Move-Item -Force $tmp (Join-Path $RunDir 'gameplay.mp4')
+        $result.duration_s = [math]::Round($dur, 3); $result.bytes = (Get-Item (Join-Path $RunDir 'gameplay.mp4')).Length
+    } catch {
+        $result.error = $_.Exception.Message
+        if (Test-Path $tmp) { Remove-Item -Force $tmp -ErrorAction SilentlyContinue }
+    }
+    return $result
+}

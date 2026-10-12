@@ -16,6 +16,7 @@ through Enhanced Input, see [autoplay-contract.md](autoplay-contract.md)) as gam
 | `mark-invalid.ps1 <game> -Commit sha \| -RunId id -Reason text` | exclude bundles from the dataset (INVALID file, validation status `invalid`); files kept |
 | `scrub-import-paths.py` (UE Python, headless) | removes the user's profile path from a project's editor import-source paths (AssetImportData, FontFace, Interchange); see below |
 | `leak-scan.ps1 <dir> [-Patterns ..]` | byte search (ASCII + UTF-16) for the user name or other strings that must not ship |
+| `gameplay-mp4.ps1 <game> [-Commit sha..] [-RunId id] [-Force]` | gameplay.mp4 for runs recorded before record.ps1 made it (updates metadata/manifest) |
 | `stills.ps1 <game> [-RunId id] [-Force]` | README stills for runs recorded before record.ps1 made them (updates metadata/manifest) |
 | `sync-check.ps1 <bundle>` | measures video/audio lag against telemetry sync markers (pipeline test project) |
 | `autoplay/AutoPlaySubsystem.h/.cpp` | the drop-in C++ every game copies (contract implementation) |
@@ -264,6 +265,15 @@ recordings\<game>\<game>_S<scenario>_<yyyyMMdd-HHmmss>_s<seed>\   (runs before v
                       ok_video_only only; CPU decode with the pinned ffmpeg (-ss before -i, -frames:v 1, -q:v 2); also copied to
                       recordings\<game>\_stills\<run_id>_NN.jpg; metadata.json `stills` lists them. A failed extraction is logged
                       and recorded in `stills.error`; it never changes the run's status.
+  gameplay.mp4        the dataset's Gameplay/ file (packaged as <game>_S<n>.mp4), runs with status ok / warn only:
+                      video.mkv's H.264 stream copied (1080p60, no re-encode) + system_audio.mka as AAC 192k stereo,
+                      aligned on the QPC clock: offset = system_audio.start_offset_ns (v1.4: from audio_clock.jsonl)
+                      − video_start_offset_ns, applied with adelay (audio later) or atrim (earlier), then apad +
+                      -shortest to the video's end; +faststart. CPU only, below-normal priority. Checked with ffprobe
+                      (h264 + aac, duration within 0.5 s of video.mkv). metadata.json `gameplay_mp4` {audio_offset_s,
+                      duration_s, bytes, error}; a failure is logged there and never changes the run's status.
+                      Verified on the pipeline test project: beep onsets in the mp4's own audio vs the jump events
+                      lag 9.6 ms on average (9.3 ms measured on the bundle's separate files).
   FAILED              only on failed runs (problems listed); failed runs are kept, never deleted
   INVALID             excluded from the dataset after the fact (reason inside), e.g. recorded from a broken build;
                       written by mark-invalid.ps1, which also sets validation.json status "invalid" and adds a runs.jsonl row

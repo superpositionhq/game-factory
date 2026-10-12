@@ -709,6 +709,14 @@ for ($i = 0; $i -lt $Runs; $i++) {
         if ($stills.error) { Write-Step "WARNING: stills not extracted: $($stills.error)" } else { Write-Step "$($stills.count) stills -> $runDir\stills" }
     }
 
+    # ---- gameplay.mp4 for the dataset's Gameplay/ (ok/warn runs: video and audio both valid); never changes the status ----
+    $gameplayMp4 = $null
+    if ($status -in @('ok', 'warn')) {
+        $gameplayMp4 = Export-GameplayMp4 $runDir $(if ($videoStart) { $videoStart.t_ns } else { $null }) $(if ($audioAligned) { $audioStartNs } else { $null })
+        if ($gameplayMp4.error) { Write-Step "WARNING: gameplay.mp4 not written: $($gameplayMp4.error)" }
+        else { Write-Step ("gameplay.mp4: {0:N1} s, audio offset {1} s" -f $gameplayMp4.duration_s, $gameplayMp4.audio_offset_s) }
+    }
+
     # ---- metadata, manifest ----
     $videoStartNs = if ($videoStart) { $videoStart.t_ns } else { $null }
     $metadata = [ordered]@{
@@ -738,6 +746,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
         created_utc = (Get-Date).ToUniversalTime().ToString('o')
         status = $status
         stills = $stills
+        gameplay_mp4 = $gameplayMp4
     }
     Write-JsonFile (Join-Path $runDir 'metadata.json') $metadata
     $validation = [ordered]@{ run_id = $runId; status = $status; problems = @($problems); warnings = @($warnings); checks = $checks; game_exit_code = $gameExit; killed = $killed }
