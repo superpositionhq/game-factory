@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time
 
-HEAVY = r"C:\Users\Xiang\Work\tools\ue-heavy.ps1"
+HEAVY = os.path.join(os.environ.get("GF_ROOT") or os.path.join(os.path.expanduser("~"), "Work"), "tools", "ue-heavy.ps1")
 HERE = os.path.dirname(os.path.abspath(__file__))
 DUMP = os.path.join(HERE, "editor", "ue_dump.py").replace("\\", "/")
 
@@ -435,15 +435,17 @@ def cmd_run(cfg, a):
         if code_changed(w):
             ctx.state["code_dirty"] = True
             ctx.save()
-        steps = [("run", r["start"], r) for r in w["runs"]] + [("drop", d["time"], d) for d in w["drops"]] + \
-                [("shell", s["time"], s) for s in w["shell"]]
+        # order of the recorded tool calls (each call's end time), then position inside the call; estimated start
+        # times can invert two runs of one command (a duration is printed for one and not the other)
+        steps = [("run", (r["time"], k), r) for k, r in enumerate(w["runs"])] + \
+                [("drop", (d["time"], -1), d) for d in w["drops"]] + [("shell", (s["time"], -1), s) for s in w["shell"]]
         steps.sort(key=lambda s: s[1])
         wf_path = ctx.p("workflow.jsonl")
         for kind, t, s in steps:
-            sid = "w%02d.%s.%s" % (i, kind, s.get("id") or s.get("argv", ["?"])[0] + t[11:19])
+            sid = "w%02d.%s.%s" % (i, kind, s.get("id") or s.get("argv", ["?"])[0] + t[0][11:19])
             if sid in set(ctx.state["done"]):
                 continue
-            rec = {"window": i, "commit": w["sha"], "kind": kind, "step": sid, "time_original": t, "start": now()}
+            rec = {"window": i, "commit": w["sha"], "kind": kind, "step": sid, "time_original": t[0], "start": now()}
             before = scan(ctx.proj)
             if kind == "drop":
                 rec["files"] = drop_assets(ctx, s)

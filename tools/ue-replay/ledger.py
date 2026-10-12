@@ -94,7 +94,9 @@ def editor_runs(actions, repo_abs):
     """Editor-script runs found in shell commands, in order. Each: time (end of the tool call), approximate start,
     script (repo-relative or absolute), args, exit code / duration when the output says so."""
     runs = []
+    prev_time = None
     for a in actions:
+        prev, prev_time = prev_time, a["time"]
         if a.get("tool") not in ("Bash", "PowerShell") or a.get("event") != "PostToolUse":
             continue
         cmd = a.get("input", {}).get("command", "")
@@ -119,7 +121,7 @@ def editor_runs(actions, repo_abs):
             runs.append({
                 "time": a["time"], "action_tool_use_id": a.get("tool_use_id"), "script": s, "args": args,
                 "exit_code": int(ex[0]) if ex else None, "duration_s": int(ex[1]) if ex else None,
-                "background": bool(re.search(r'"backgroundTaskId"', resp)),
+                "background": bool(re.search(r'"backgroundTaskId"', resp)), "after": prev,
                 "env": env, "reason": reason,
                 "command": cmd[:2000],
             })
@@ -290,7 +292,14 @@ def build(cfg):
             cur_w += 1
 
     for a in actions:
-        close_until(a["time"])
+        # A command that ends with `git commit` did its work before that commit: close only the windows whose commits
+        # come before the command started, so its edits and runs land in the window the commit closes.
+        cmd_text = (a.get("input") or {}).get("command", "") if a.get("tool") in ("Bash", "PowerShell") else ""
+        if "git commit" in cmd_text and run_by_tool.get(a.get("tool_use_id")):
+            first = run_by_tool[a["tool_use_id"]][0]
+            close_until(first.get("start") or a["time"])
+        else:
+            close_until(a["time"])
         if cur_w >= len(windows):
             break
         w = windows[cur_w]
@@ -366,7 +375,11 @@ def build(cfg):
     all_runs = [r for w in windows for r in w["runs"]]
     for k, r in enumerate(all_runs):
         nxt = next((x for x in all_runs[k + 1:] if x["script"] == r["script"]), None)
-        lo = parse_time(r["start"]) - datetime.timedelta(seconds=5)
+        # rows are written while the tool call runs: after the previous tool call ended (tool calls are sequential)
+        lo = parse_time(r["after"] or r["start"]) - datetime.timedelta(seconds=1)
+        prev_same = next((x for x in reversed(all_runs[:k]) if x["script"] == r["script"] and x["time"] == r["time"]), None)
+        if prev_same:  # the same script twice in one command: split at the first run's estimated end
+            lo = max(lo, parse_time(prev_same["time"]))
         hi = parse_time(nxt["start"]) if nxt else parse_time(r["time"]) + datetime.timedelta(hours=2)
         hi = min(hi, parse_time(r["time"]) + datetime.timedelta(seconds=5)) if not r["background"] else hi
         r["rows"] = [x["id"] for x in by_script.get(r["script"], []) if lo <= parse_time(x["time"]) <= hi]

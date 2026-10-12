@@ -93,7 +93,9 @@ def ops_for_map_state(mapname, dump, t3d_path, prev, created, ctx_src, seq, reas
                    "presentation": {"camera": "frame_group", "group": g, "hold_seconds": hold}})
 
     if created or prev is None:
-        op("ue.level.create", mapname, {"map": mapname}, {"hold": 1.5, "presentation": {"hold_seconds": 1.5}})
+        # each build gets its own level (map name + run id), so a replay never deletes a level it has open
+        op("ue.level.create", mapname, {"map": mapname, "as": "%s__%s" % (mapname, ctx_src.get("run", "x"))},
+           {"hold": 1.5, "presentation": {"hold_seconds": 1.5}})
         for n in order:
             spawn(n)
     else:
@@ -114,10 +116,12 @@ def ops_for_map_state(mapname, dump, t3d_path, prev, created, ctx_src, seq, reas
 def cmd_derive(cfg, a):
     ctx = runner.Ctx(cfg)
     led = ctx.ledger
-    runs = {}
+    runs, ran = {}, {}
     with open(os.path.join(ctx.work, "runs.jsonl"), encoding="utf-8") as f:
         for l in f:
             r = json.loads(l)
+            if r.get("run") and not r.get("skipped"):
+                ran[r["run"]] = r
             if r.get("run") and r.get("map_dump"):
                 runs[r["run"]] = r
     orig_rows = {}
@@ -132,10 +136,24 @@ def cmd_derive(cfg, a):
     for w in led["windows"]:
         for run in w["runs"]:
             rr = runs.get(run["id"])
-            if not rr:
-                continue
             rows = [orig_rows[i] for i in run["rows"] if i in orig_rows]
-            created_maps = set(x["target"] for x in rows if x["op"] in ("level.create", "level.build") and x.get("status") == "observed")
+            if not rr:
+                if run["id"] in ran:
+                    # a run that changed no map: one caption on screen (what ran, what it logged)
+                    ops_n = collections.Counter(x["op"] for x in rows)
+                    seq[0] += 1
+                    out.append({"schema": "ue-replay.world-op/v1", "id": "WOP%05d" % seq[0], "chapter": "other", "op": "ui.caption",
+                                "target": run["script"], "params": {"rows": dict(ops_n), "exit_code": ran[run["id"]].get("exit_code")},
+                                "reason": rows[0]["reason"] if rows else None, "status": "derived_from_replayed_script_run",
+                                "source": {"run": run["id"], "script": run["script"], "commit": w["sha"], "commit_subject": w["subject"],
+                                           "workflow_rows": run["rows"][:50], "time_original": run["start"]},
+                                "hold": 0.7, "presentation": {"hold_seconds": 0.7}})
+                continue
+            rep_rows = []
+            rp = os.path.join(ctx.work, "rows", run["id"] + ".jsonl")
+            if os.path.exists(rp):
+                rep_rows = [json.loads(l) for l in open(rp, encoding="utf-8") if l.strip()]
+            created_maps = set(x["target"] for x in rows + rep_rows if x["op"] in ("level.create", "level.build") and x.get("status") == "observed")
             reason = next((x["reason"] for x in rows if x["op"] in ("level.create", "level.build")), None) or \
                 (rows[0]["reason"] if rows else None)
             src = {"run": run["id"], "script": run["script"], "commit": w["sha"], "commit_subject": w["subject"],

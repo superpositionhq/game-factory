@@ -1,13 +1,13 @@
 {
   "game": "liaozhai-night",
-  "repo": "C:/Users/Xiang/Work/games/liaozhai-night",
-  "recording": "C:/Users/Xiang/Work/.recording/liaozhai-night",
+  "repo": "{root}/games/liaozhai-night",
+  "recording": "{root}/.recording/liaozhai-night",
   "final": "2cf1aa216103ab8a21882018b37b29689c2211eb",
   "release_tag": "release/1.1.2",
   "uproject": "LiaozhaiNight.uproject",
   "editor_target": "LiaozhaiNightEditor",
   "engine": "C:/Program Files/Epic Games/UE_5.3",
-  "work_root": "C:/Users/Xiang/Work/ue-replay/liaozhai-night",
+  "work_root": "{root}/ue-replay/liaozhai-night",
   "script_env": {"UE_PYTHONPATH": "{project}/Scripts"},
   "editor_args": ["-unattended", "-nop4", "-nosplash", "-NoSound"],
   "readonly_patterns": ["probe_*", "check_*", "analyze_*", "measure_*", "fx_discover*", "scan_*"],
@@ -21,9 +21,9 @@
       "match": "cp -r \"$L/$s/Content/$d\" Content/",
       "reason": "Store packs copied from the asset library into Content/ (moved to Content/Fab/ by fab_move_packs.py; tracked in git only from a7cea1d).",
       "items": [
-        {"from": "C:/Users/Xiang/Work/asset-library/fab-ue/china-modular-temple/Content/ChinaModularTemple", "to": "Content/ChinaModularTemple", "pack": "China Modular Temple"},
-        {"from": "C:/Users/Xiang/Work/asset-library/fab-ue/photorealistic-bamboo-forest-foliage-pack/Content/PhotorealisticBambooForestFoliagePack", "to": "Content/PhotorealisticBambooForestFoliagePack", "pack": "Photorealistic Bamboo Forest Foliage Pack"},
-        {"from": "C:/Users/Xiang/Work/asset-library/fab-ue/japanese-forest-grave/Content/JapaneseForestGrave", "to": "Content/JapaneseForestGrave", "pack": "Japanese Forest Grave"}
+        {"from": "{root}/asset-library/fab-ue/china-modular-temple/Content/ChinaModularTemple", "to": "Content/ChinaModularTemple", "pack": "China Modular Temple"},
+        {"from": "{root}/asset-library/fab-ue/photorealistic-bamboo-forest-foliage-pack/Content/PhotorealisticBambooForestFoliagePack", "to": "Content/PhotorealisticBambooForestFoliagePack", "pack": "Photorealistic Bamboo Forest Foliage Pack"},
+        {"from": "{root}/asset-library/fab-ue/japanese-forest-grave/Content/JapaneseForestGrave", "to": "Content/JapaneseForestGrave", "pack": "Japanese Forest Grave"}
       ]
     }
   ],
@@ -36,6 +36,6 @@
     }
   ],
   "external_sources": [
-    {"id": "liaozhairl-snapshot", "path": "C:/Users/Xiang/Work/liaozhai-replay/end", "role": "LiaoZhaiRL Unity project snapshot at d8adc87262, read-only; import scripts read characters, animations, sprites, UI art, fonts and audio from it"}
+    {"id": "liaozhairl-snapshot", "path": "{root}/liaozhai-replay/end", "role": "LiaoZhaiRL Unity project snapshot at d8adc87262, read-only; import scripts read characters, animations, sprites, UI art, fonts and audio from it"}
   ]
 }

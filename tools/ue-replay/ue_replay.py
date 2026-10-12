@@ -9,7 +9,8 @@
   python ue_replay.py record  --game ...                             visible world replay + capture (GPU job)
   python ue_replay.py status  --game ...
 
-See docs/ue-replay.md. Every engine process runs through C:/Users/Xiang/Work/tools/ue-heavy.ps1.
+See docs/ue-replay.md. Every engine process runs through <root>/tools/ue-heavy.ps1 (machine root: machine/lib/gfroot.py).
+Game settings may use {root} for the machine root.
 """
 import argparse
 import json
@@ -18,12 +19,33 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(HERE, "..", "..", "machine", "lib"))
+
+
+def machine_root():
+    try:
+        import gfroot
+        r = gfroot.root()
+    except ImportError:  # outside the game-factory checkout (a delivered ReplayScripts/): env GF_ROOT or ~/Work
+        r = os.environ.get("GF_ROOT") or os.path.join(os.path.expanduser("~"), "Work")
+    return r.replace("\\", "/")
+
+
+def expand(v, root):
+    if isinstance(v, str):
+        return v.replace("{root}", root)
+    if isinstance(v, list):
+        return [expand(x, root) for x in v]
+    if isinstance(v, dict):
+        return {k: expand(x, root) for k, x in v.items()}
+    return v
 
 
 def load_cfg(path):
     p = path if os.path.isabs(path) else os.path.join(HERE, path)
     with open(p, encoding="utf-8") as f:
-        cfg = json.load(f)
+        cfg = expand(json.load(f), machine_root())
+    cfg["root"] = machine_root()
     cfg["_path"] = p
     w = cfg["work_root"]
     cfg.setdefault("project_dir", os.path.join(w, "project"))
@@ -77,13 +99,17 @@ def main():
     ap.add_argument("--which", default="replay")
     ap.add_argument("--only", default=None)
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--speed", type=float, default=1.0)
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
     cfg = load_cfg(a.game)
     fn = globals().get("cmd_" + a.command)
     if fn is None:
-        import runner
-        fn = getattr(runner, "cmd_" + a.command, None)
+        import importlib
+        for mod in ("runner", "verify", "derive", "record"):
+            fn = getattr(importlib.import_module(mod), "cmd_" + a.command, None)
+            if fn:
+                break
     if fn is None:
         ap.error("unknown command " + a.command)
     return fn(cfg, a)

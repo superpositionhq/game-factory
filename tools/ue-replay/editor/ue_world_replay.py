@@ -34,6 +34,8 @@ EAL = unreal.EditorAssetLibrary
 
 def args():
     raw = sys.argv[1:]
+    if not raw and os.environ.get("UE_WORLD_REPLAY_ARGS"):  # -ExecutePythonScript passes no arguments
+        raw = [os.environ["UE_WORLD_REPLAY_ARGS"]]
     if len(raw) == 1 and " " in raw[0]:
         raw = shlex.split(raw[0])
     ap = argparse.ArgumentParser()
@@ -188,7 +190,7 @@ class Player:
         p = op.get("params", {})
         res = {}
         if k == "ue.level.create":
-            path = target_map(p["map"], self.a.prefix)
+            path = target_map(p.get("as") or p["map"], self.a.prefix)
             if EAL.does_asset_exist(path):
                 EAL.delete_asset(path)
             folder = path.rsplit("/", 1)[0]
