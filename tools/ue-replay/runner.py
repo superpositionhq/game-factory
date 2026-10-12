@@ -3,7 +3,8 @@
 The replay project is a private clone of the game repo (objects shared, Git LFS reading the game's own store), checked
 out at the first commit. `run` walks the ledger's windows: inputs from the commit, script texts as they were when each
 script ran, initial-asset drops and shell steps at their recorded positions, an editor build when the code changed,
-every editor-script run headless through ue-heavy.ps1, then the boundary check. Resumable: work/state.json.
+every editor-script run headless through ue-heavy.ps1, then the boundary check. Resumable: work/state.json; a
+work/STOP file pauses it cleanly between steps.
 """
 import datetime
 import hashlib
@@ -445,6 +446,11 @@ def cmd_run(cfg, a):
             sid = "w%02d.%s.%s" % (i, kind, s.get("id") or s.get("argv", ["?"])[0] + t[0][11:19])
             if sid in set(ctx.state["done"]):
                 continue
+            # Clean pause between steps (no engine process running): create work/STOP; delete it and run again to
+            # resume from state.json. Killing the runner instead loses the record of the step in flight.
+            if os.path.exists(os.path.join(ctx.work, "STOP")):
+                print("   STOP file found: paused before %s (state saved; delete work/STOP and run again to resume)" % sid, flush=True)
+                return 3
             rec = {"window": i, "commit": w["sha"], "kind": kind, "step": sid, "time_original": t[0], "start": now()}
             before = scan(ctx.proj)
             if kind == "drop":
