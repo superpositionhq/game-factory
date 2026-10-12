@@ -1,7 +1,7 @@
 # Helper brief: game packager (dataset layout v1.1)
 
 **Role.** Turns a finished game into its deliverables with the existing tools: `tools/package-game.ps1` (scrubbed,
-scanned package with and without store content), `tools/package-dataset.ps1` (dataset layout v1.1 zips and the game
+scanned package, always with store content), `tools/package-dataset.ps1` (dataset layout v1.1 zips and the game
 repo's `Dataset/` folder; it superseded `package-pilot.ps1`), and `tools/validate-dataset.ps1` once it exists. Maintains
 the scrub rules, reviewed exceptions (`tools/package-reviewed-hits.tsv`) and `docs/game-deliverable.md`.
 
@@ -9,8 +9,8 @@ the scrub rules, reviewed exceptions (`tools/package-reviewed-hits.tsv`) and `do
 build of that commit, and at least one ok/warn AutoPlay run per scenario. Respawn or message it when new runs, a new
 release, or a creation replay (`ReplayScripts/`) arrive, since packages are snapshots.
 
-**Produces.** `{{GF_ROOT}}\deliverables\<game>\<game>_<sha8>[_nostore]\` + zips and reports, `{{GF_ROOT}}\deliverables\dataset\<game>\`
-(`<game>.zip`, `<game>_nostore.zip`, or `.pending.zip` while the replay is missing), the game repo's `Dataset/` folder
+**Produces.** `{{GF_ROOT}}\deliverables\<game>\<game>_<sha8>\` + zips and reports, `{{GF_ROOT}}\deliverables\dataset\<game>\`
+(`<game>.zip`, or `.pending.zip` while the replay is missing), the game repo's `Dataset/` folder
 (written, not committed: the game session commits it), and a status table for the coordinator.
 
 **Original prompt:** [../original/helper-packager.md](../original/helper-packager.md) (it wrote package-game.ps1 from
@@ -43,8 +43,8 @@ gameplay bundles in {{GF_ROOT}}\recordings\<game>\<run-id>\ (each ok/warn run ha
 creation-replay helper ({{REPLAY_SESSION_ID}}) delivers ReplayScripts/ per game (no video).
 The packaging tools exist: tools/package-game.ps1 (UEProject/ from git with LFS objects from the repo's own store,
 git.log with dev_NN authors, Gameplay/, Build/, README.md, Screenshots/, StoreContent.tsv, scrub-report.json,
-manifest.json; -WithoutStoreContent, -DryRun, -Rescan, -ScrubDir, -Version, -ExcludeRuns, -OnlyCommitRuns, -Force)
-and tools/package-dataset.ps1 (layout v1.1 delivery from a finished package and its _nostore twin, zips, repo Dataset/).
+manifest.json; -DryRun, -Rescan, -ScrubDir, -Version, -ExcludeRuns, -OnlyCommitRuns, -Force)
+and tools/package-dataset.ps1 (layout v1.1 delivery from a finished package, zip, repo Dataset/).
 Read README.md, AGENTS.md, CLAUDE.md (if present), docs/game-deliverable.md, docs/dataset-layout-v1.json (the
 authoritative layout), docs/ue-pipeline.md ("Names that must not reach the games",
 scrub-import-paths.py), docs/ue-replay.md (deliverable layout), docs/asset-library.md (licences), and the shared note
@@ -72,13 +72,13 @@ Rules:
   zips are .pending.zip with a README banner and status pending.
 - Never modify the game repos (except writing the Dataset/ folder into the working tree for the game session to
   commit), .recording, recordings or builds; never download LFS objects (a missing object is an error to report).
-  Fab Standard content may ship in Build/ but never as source: every game gets a full and a _nostore variant.
+  Always with store content (user decision 2026-10-12): no _nostore variant.
   Failed or invalid runs are never shipped; runs are tied to the release commit's lineage.
 - Report results to the coordinator with the commit sha; blockers go to the coordinator and the shared notes.
 
 Task:
 1. For each game in {{READY_GAMES}}: package-game.ps1 <game> -Commit <rev> [-Version v] -DryRun first (lineage, build
-   chosen, store split, runs in/out and why), then the full package and the -WithoutStoreContent twin. Check the
+   chosen, store split, runs in/out and why), then the package (with store content). Check the
    build chosen is a pipeline Shipping build of the release commit with the store art cooked; if not, ask the
    coordinator for one instead of shipping a stated or Development build.
 2. package-dataset.ps1 <game> -Package <full package dir> -Version v [-ReplayScripts <dir>]: builds
@@ -87,7 +87,7 @@ Task:
    keys and hashes yourself).
 3. Read every rescan or leak report (<name>.rescan-hits.tsv, .leaks.tsv, .BLOCKED.txt). Fix tool false positives in
    the tools (commit), and route real leaks to the coordinator with the exact files and the fix the game needs.
-4. Tell the coordinator per game: sizes full / nostore (folder and zip), runs and scenarios included, build used,
+4. Tell the coordinator per game: sizes (folder and zip), runs and scenarios included, build used,
    pending parts, Dataset/ written and waiting for the game session to commit it.
 5. When ReplayScripts/ arrives, rerun step 2 with them (ReplayScripts/ is scrubbed with -ScrubDir) so the
    zips lose .pending. When new runs or releases arrive, repackage with -Force and supersede the old outputs (list
@@ -95,7 +95,7 @@ Task:
 6. Keep docs/game-deliverable.md current (Dataset layout v1.1 section, measured sizes, known gaps) and the shared note
    game-deliverables.md (READY / BLOCKED / superseded per game).
 
-Done = every game in {{READY_GAMES}} has full and nostore dataset zips that pass the rescan and the layout check
+Done = every game in {{READY_GAMES}} has a dataset zip that pass the rescan and the layout check
 (complete, or pending only on the replay), its Dataset/ folder written for the game session, tool and doc changes
 committed on game-factory main, and the coordinator has the commit sha and the per-game status table.
 

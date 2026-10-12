@@ -11,7 +11,6 @@ first is the verified, scrubbed intermediate it is assembled from.
 
 ```
 powershell -ExecutionPolicy Bypass -File tools\package-game.ps1 <game> -Commit milestone                       # with store content
-powershell -ExecutionPolicy Bypass -File tools\package-game.ps1 <game> -Commit milestone -WithoutStoreContent  # source-safe variant
 powershell -ExecutionPolicy Bypass -File tools\package-game.ps1 <game> -Commit milestone -DryRun               # what it would take
 ```
 
@@ -30,7 +29,7 @@ but packaging is not creation work; `history.actions.jsonl.sessions_left_out` in
 
 ## Output
 
-`deliverables\<game>\<game>_<sha8>\` (with store content) or `<game>_<sha8>_nostore\`, plus a `.zip` of the same name
+`deliverables\<game>\<game>_<sha8>\` (always with store content; no `_nostore` variant since 2026-10-12), plus a `.zip` of the same name
 whose single top folder is the package. Next to them, outside the package: `package-log.jsonl` (one row per run:
 sizes per section, warnings, notes), `<name>.leaks.tsv` (report-only findings, see Scrub) and, on refusal,
 `<name>.refused-hits.tsv`.
@@ -110,8 +109,8 @@ variants. Store content is, per file:
 - `-StoreFolders`.
 
 "Store content" means everything that came from the Fab store, including the few Fab items under CC BY 4.0 (their
-licence column says so). With `-WithoutStoreContent` all of it is left out and listed as `dropped` with sha256, so a
-buyer can add their own copies of the packs at the same paths and verify them. `-DryRun` prints the split per folder.
+licence column says so). Packages and datasets always include it (user decision 2026-10-12; `-WithoutStoreContent`
+is retired and refused). `-DryRun` prints the split per folder.
 
 ## Scrub (deliverable copies only)
 
@@ -268,14 +267,14 @@ reads, so this text and the checks cannot drift apart. Nothing in it is per game
 | `git.log` | `package-game.ps1`, from the repo's history at the release commit | scrubbed; authors `dev_NN` |
 | `workflow.jsonl` | the repo's `workflow.jsonl` at the release commit | scrubbed copy |
 | `ReplayScripts/` | the creation replay (`tools/ue-replay/`, `ue_replay.py package`, READY) | `ReplayScripts/` scrubbed with the package rules (`package-game.ps1 -ScrubDir`) |
-| `UEProject/` | the repo tree at the release commit + its Git LFS objects; store packs kept out of git come from the game's working tree | `_nostore` zip: store content left out |
+| `UEProject/` | the repo tree at the release commit + its Git LFS objects; store packs kept out of git come from the game's working tree | always with store content |
 | `Gameplay/<game>_S<n>.mp4` | the release version's validated runs, one per scenario: an `ok` run before a `warn` run, then the latest. Taken as is from the run's `recordings\<game>\<run>\gameplay.mp4` (written by record.ps1; no re-encode); runs without one are encoded from `video.mkv` + `system_audio.mka` | 1920x1080 60 fps H.264 (the recording's NVENC stream, stream-copied; fallback: libx264 High CRF 20) + AAC 192 kbit/s stereo; the run's game audio delayed by its own `system_audio.start_offset_ns - video_start_offset_ns`; faststart; nothing added to the picture |
 | `Screenshots/` | the project's `docs/screenshots/`, else stills of the release runs (`recordings\<game>\_stills\`) | every image is shown in the README |
 | `Build/` | the pipeline's Shipping build of the release commit (store art cooked in, account name not compiled in) | `.pdb` left out |
 | `manifest.json` | generated | schema below |
 
-**Naming.** Zips: `<game>.zip` (with store content) and `<game>_nostore.zip` (without), each with one top folder
-`<game>/`. While `ReplayScripts/` is missing they are `<game>.pending.zip` / `<game>_nostore.pending.zip`.
+**Naming.** Zip: `<game>.zip` (with store content), one top folder `<game>/`. While `ReplayScripts/` is missing it
+is `<game>.pending.zip`. No `_nostore` variant (user decision 2026-10-12).
 They are written to `%GF_ROOT%\deliverables\dataset\<game>\`, with the reports kept next to the zips, not in them:
 `<name>.store-content.tsv` (store files with sha256), `<name>.scrub-report.json`, `<name>.rescan-hits.tsv`.
 
@@ -289,7 +288,7 @@ game's working tree and never commits it; the game session commits and pushes it
 ```
 layout     "dataset-layout/v1.1"        game, title, version, commit (full sha)
 status     "complete" | "pending"       pending: the missing entries ("ReplayScripts/")
-variant    "full" | "nostore" | "repo-dataset"
+variant    "full" | "repo-dataset"
 created, source_package, build {config, commit, exe, source} (null in the repo Dataset)
 scenarios  [{file, scenario, name, result, seconds, source_run, audio_offset_s}]
 totals     {files, bytes}
@@ -319,12 +318,11 @@ scanned too, with the codec/locale allowlist and the reviewed exceptions. `packa
 **Tools.**
 
 ```
-powershell -ExecutionPolicy Bypass -File tools\package-game.ps1 <game> -Commit <release> -OnlyCommitRuns -Screenshots stills -Version <v>
-powershell -ExecutionPolicy Bypass -File tools\package-game.ps1 <game> -Commit <release> -OnlyCommitRuns -Screenshots stills -Version <v> -WithoutStoreContent -Dataset [-ReplayScripts <dir>]
+powershell -ExecutionPolicy Bypass -File tools\package-game.ps1 <game> -Commit <release> -OnlyCommitRuns -Screenshots stills -Version <v> -Dataset [-ReplayScripts <dir>]
 powershell -ExecutionPolicy Bypass -File tools\validate-dataset.ps1 <zip | delivery folder | <repo>\Dataset> [-NoHash]
 ```
 
-`package-game.ps1 -Dataset` runs `tools/package-dataset.ps1` on the full package and its `_nostore` twin (one run per
+`package-game.ps1 -Dataset` runs `tools/package-dataset.ps1` on the package (one run per
 game at a time, through a lock in the output folder). `validate-dataset.ps1` prints `VALID` (exit 0), `PENDING`
 (exit 1: only `ReplayScripts/` missing, and declared pending) or `INVALID` (exit 2), with one line per
 finding. It checks the top-level entries (nothing missing, nothing extra; the repo Dataset without `UEProject/` and

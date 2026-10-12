@@ -9,8 +9,8 @@
       -Package %GF_ROOT%\deliverables\<game>\<game>_<sha8> -Version <version>
   ... -ReplayScripts <dir>\ReplayScripts      # once the creation replay is verified (ue_replay.py package: READY)
 
-  Output: deliverables\dataset\<game>\<game>\ + <game>.zip and <game>_nostore\ + <game>_nostore.zip (from the
-  package's _nostore twin); <game>.pending.zip / <game>_nostore.pending.zip while ReplayScripts\ is
+  Output: deliverables\dataset\<game>\<game>\ + <game>.zip (always with store content; no _nostore variant);
+  <game>.pending.zip while ReplayScripts\ is
   missing (manifest status "pending", README banner). Reports next to the zips: <name>.store-content.tsv,
   <name>.scrub-report.json, <name>.rescan-hits.tsv. Writes <repo>\Dataset\ (no UEProject\, no Build\, LFS patterns in
   Dataset\.gitattributes); never commits. Every delivery is rescanned (package-game.ps1 -Rescan) and validated
@@ -18,7 +18,7 @@
 #>
 param(
     [Parameter(Mandatory = $true, Position = 0)][string]$Game,
-    [Parameter(Mandatory = $true)][string]$Package,      # the full package folder; its _nostore twin, if present, gives the second zip
+    [Parameter(Mandatory = $true)][string]$Package,      # the full package folder (with store content)
     [string]$Version,
     [string]$ReplayScripts,
     [string]$OutRoot,               # default <root>\deliverables\dataset (root: machine/lib/gf-root.ps1)
@@ -102,7 +102,7 @@ function Get-MdSection([string]$Text, [string]$Heading) {
 $inv = [Globalization.CultureInfo]::InvariantCulture
 
 $pkg = (Resolve-Path $Package).Path
-$pkgNo = "$pkg`_nostore"; if (-not (Test-Path $pkgNo)) { $pkgNo = $null }
+$pkgNo = $null   # no _nostore variant any more (user decision 2026-10-12: always with store content, no _nostore variant)
 $man = Get-Content (Join-Path $pkg 'manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $sha = $man.commit; $short = $sha.Substring(0, 8)
 $info = Get-GameInfo $Game

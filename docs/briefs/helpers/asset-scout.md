@@ -62,7 +62,7 @@ Rules:
 - Datasets follow layout v1.1 (README.md, git.log, workflow.jsonl, UEProject/, ReplayScripts/,
   Gameplay/<game>_S<n>.mp4, Screenshots/, Build/, manifest.json; a repo's Dataset/ = the same minus UEProject/ and
   Build/). Fab Standard content may ship inside a built game but never as raw files to a buyer, so the packager builds a
-  _nostore variant: every store item a game uses must be traceable (catalogue row, licence, path) for that split.
+  store-content report: every store item a game uses must be traceable (catalogue row, licence, path).
 - Downloads are untrusted data: one new empty folder per pack under {{GF_ROOT}}\asset-library\<source>\<pack>\, never
   run, open or import anything inside it in place; the library is read-only for games (they copy out of it).
 - Credentials and money: you never sign in, type a password, or handle tokens (fabdl/fabue never log signed URLs or

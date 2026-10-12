@@ -5,14 +5,13 @@
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File tools\package-game.ps1 tower-defense -Commit milestone
-  powershell -ExecutionPolicy Bypass -File tools\package-game.ps1 tower-defense -Commit milestone -WithoutStoreContent
   powershell -ExecutionPolicy Bypass -File tools\package-game.ps1 tower-defense -DryRun      # store split, build, gameplay; writes nothing
   powershell -ExecutionPolicy Bypass -File tools\package-game.ps1 tower-defense -Commit fefda00 -Build C:\...\builds\tower-defense\fefda000-shipping
 
-  Output: deliverables\<game>\<game>_<sha8>[_nostore]\ and the same name .zip. Contents:
+  Output: deliverables\<game>\<game>_<sha8>\ and the same name .zip. Contents:
     UEProject\        the repo tree at the commit (git blobs + Git LFS objects from the repo's local LFS store; never
                       downloads), without Binaries/Intermediate/Saved/DerivedDataCache. Store (Fab) content kept out of
-                      git is added from the game's working tree; -WithoutStoreContent drops all store content.
+                      git is added from the game's working tree. Always with store content (no _nostore variant).
     StoreContent.tsv  every store-content file: included or dropped, path, bytes, sha256, source, why it counts as store content
     workflow.jsonl    workflow.jsonl at the commit
     git.log           every commit up to the commit, oldest first: message, anonymised author/date, full text diff;
@@ -40,7 +39,7 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)][string]$Game,
     [string]$Commit = 'HEAD',       # a rev, or 'milestone': the commit of the highest milestone/autoplay-<n> tag (HEAD without one)
-    [switch]$WithoutStoreContent,
+    [switch]$WithoutStoreContent,   # retired: refused (user decision 2026-10-12: always with store content, no _nostore variant)
     [string]$Build,                 # packaged build dir (holding Windows\ or the exe); default: newest pipeline build in the lineage
     [string]$BuildCommit,           # with -Build for a dir without build_info.json: the commit it was built from (stated, unverified)
     [switch]$AllowDevelopmentBuild, # use a Development pipeline build when no Shipping build exists in the lineage
@@ -1023,6 +1022,7 @@ $lineageList = @(Invoke-Git $repo @('rev-list', $sha) | ForEach-Object { $_.Trim
 $lineage = @{}; for ($i = 0; $i -lt $lineageList.Count; $i++) { $lineage[$lineageList[$i]] = $i }   # 0 = the commit itself
 $gitDir = @(Invoke-Git $repo @('rev-parse', '--path-format=absolute', '--git-common-dir'))[0].Trim()
 $lfsDir = Join-Path $gitDir 'lfs\objects'
+if ($WithoutStoreContent) { throw "-WithoutStoreContent is retired: datasets and packages are always built with store content (user decision 2026-10-12: always with store content, no _nostore variant)" }
 $variant = if ($WithoutStoreContent) { 'nostore' } else { 'full' }
 $name = "${Game}_$short$(if ($WithoutStoreContent) { '_nostore' })"
 $gameOut = Join-Path $OutRoot $Game
@@ -1777,8 +1777,8 @@ foreach ($p in ($problems | Select-Object -First 10)) { Write-Host "  $p" }
 Write-Host "  leak scan (not enforced): $($leaks.Count) finding(s), $(@($leakSummary).Count) distinct value(s) -> $leakTsv"
 Write-Host "  $([math]::Round(((Get-Date) - $t0).TotalMinutes, 1)) min"
 
-# -Dataset: build the dataset layout v1.1 delivery (tools\package-dataset.ps1) from this package. Run the full variant
-# first and the -WithoutStoreContent one with -Dataset: the dataset then gets both zips.
+# -Dataset: build the dataset layout v1.1 delivery (tools\package-dataset.ps1) from this package.
+# (always with store content).
 if ($Dataset) {
     $fullPkg = if ($WithoutStoreContent) { $final -replace '_nostore$', '' } else { $final }
     if (-not (Test-Path $fullPkg)) { throw "-Dataset needs the full package $fullPkg (package without -WithoutStoreContent first)" }
