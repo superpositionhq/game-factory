@@ -264,24 +264,19 @@ the virtual cursor, so it is ready to be switched onto the AutoPlay contract dro
 - [ ] Packaged Win64 build (in progress)
 - [ ] AutoPlay contract v1 (waiting for the coordinator's go on the drop-in)
 
-## Status (2026-10-11 13:15)
+## Status (2026-10-12 01:35): complete
 
-**Store art in, packaged and verified.** The Kenney look is replaced by the Fab packs (see Assets): painted
-per-level ground with a generated road, Provencal/StyleHex scatter and story props, castle-stone towers with
-animated N-Hance siege weapons and keepers' lamps, animated Paragon/Quadruped enemies with a rim glow in the colour
-of the land they were drained from, a castle Lantern keep with a lamp crown, Realistic/M5 effects, Cinematsic music,
-HONETi UI with Cinzel/Alegreya fonts (no engine font, no bare text: banners, framed cards with tower icons, gold
-icons, outlined labels). The drain is a stencil-masked post-process: in Fortress the world is grey and only the
-Glimmers and the Lantern's lamps keep colour, as the story bible asks.
+**Done.** Every brief item is in; store art (Fab packs), animated enemies and towers, HONETi UI with no plain text,
+story "The Last Lantern" told through the drain. Latest game commit `ff5f1ee` (import paths scrubbed; game code as
+recorded on `937ec12`).
 
-- Bot (headless editor, 4x): Meadow 20/20 3 stars, Canyon 12/20 2 stars (HP x1.28 after the swap), Fortress 10/15 2 stars.
-- Packaged Shipping build `Packaged/Windows/TowerDefense.exe` plays every level (screenshot runs via
-  `Scripts/shots_packaged.sh`, `-tdlevel=<Id>`). Two packaged-only crashes found and fixed: a garbage-collected ground
-  plane on level travel, and dangling UI icon brushes (symbolized with a PDB build).
-- AutoPlay v1.2 drop-in (neutral names, contract version 2) copied unchanged: validate-run PASS on level 1 (skill 1,
-  win) and level 2 (skill 0.2, lose).
-- Naming rule applied everywhere in the repo, AutoPlay code included.
-
-**Known:** an intermittent GPU hang on the first frame in editor `-game` launches (3 of ~15 runs, twice on the
-level 2 AutoPlay launch at 1920x1080; never in packaged runs); Good SKY is copied but not placed (the top-down camera
-barely sees the sky).
+- Recordings: AutoPlay v1.4, scenarios 1-3 recorded, validated and won (0 audio gaps, ~60 fps); tag
+  `milestone/autoplay-3`.
+- Package: `deliverables/tower-defense/tower-defense_ff5f1eea` (+ `_nostore`), complete.
+- Dataset (layout v1): `deliverables/dataset/tower-defense/tower-defense.pending.zip` (10.26 GB) and
+  `tower-defense_nostore.pending.zip` (1.41 GB), scan PASS; repo `Dataset/` committed (3db154b). **Pending only the
+  creation replay** (`replay.mp4`, `ReplayScripts/`) from the replay session; then rerun `tools/package-dataset.ps1
+  tower-defense -Package <package> -ReplayVideo <f> -ReplayScripts <d>`.
+- Repo: `superpositionhq/game-tower-defense`, everything tracked (store packs in LFS), README with screenshots.
+- Known: intermittent first-frame GPU hang in editor `-game` launches (mitigated with `r.RDG.AsyncCompute=0`, never seen
+  in packaged runs); Good SKY copied but not placed.
