@@ -126,9 +126,14 @@ if ($DrainQueue) {
             if ((($codeFiles | ForEach-Object { (Get-Item $_).LastWriteTimeUtc } | Measure-Object -Maximum).Maximum) -gt $codeStamp) { $handOver = $true; break }
             $next = Get-ChildItem $QueueDir -Filter *.json -File | Where-Object { $_.Name -notlike '_*' } | Sort-Object Name | Select-Object -First 1
             if (-not $next) {
-                # Queue empty: a one-drain idle-wait override (_idle-override.txt) is retired, so idle waiting is the default again.
+                # Queue empty: an idle-wait override (_idle-override.txt) stays (the user's standing "record now" is one),
+                # unless it says "one_drain": true; that one is retired so idle waiting is the default again.
                 $ov = Join-Path $QueueDir '_idle-override.txt'
-                if (Test-Path $ov) { Move-Item -Force $ov (Join-Path (Join-Path $QueueDir 'done') ("_idle-override-retired-{0}.txt" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))); Write-Step 'queue empty: idle-wait override retired' }
+                $ovData = if (Test-Path $ov) { Read-JsonFile $ov } else { $null }
+                if ($ovData -and $ovData.PSObject.Properties.Name -contains 'one_drain' -and $ovData.one_drain -eq $true) {
+                    Move-Item -Force $ov (Join-Path (Join-Path $QueueDir 'done') ("_idle-override-retired-{0}.txt" -f (Get-Date -Format 'yyyyMMdd-HHmmss')))
+                    Write-Step 'queue empty: one-drain idle-wait override retired'
+                }
                 break
             }
             $req = Read-JsonFile $next.FullName

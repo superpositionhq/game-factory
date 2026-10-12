@@ -135,7 +135,7 @@ numbers are in `metadata.json` `build.content_check {build_mb, reference_mb, ref
 
 Per run (seed = `-Seed + i`, or random; skill = `-Skill`, or cycling 1.0 / 0.75 / 0.5 / 0.25):
 
-0. **Wait until the user is away** (user's decision): no keyboard/mouse input for `-IdleMinutes` (default 5;
+0. **Wait until the user is away** (default; the user's current standing instruction overrides it, see below): no keyboard/mouse input for `-IdleMinutes` (default 5;
    `GetLastInputInfo`; the game's injected input doesn't count) and the session unlocked. From the start of that wait
    until the run ends the display is kept on (`SetThreadExecutionState`, like a video player; no settings change):
    so the screen doesn't dim or sleep during a run. Right before launch the display is also **woken** (a 1-pixel mouse
@@ -145,6 +145,10 @@ Per run (seed = `-Seed + i`, or random; skill = `-Skill`, or cycling 1.0 / 0.75 
    full-screen dim behind an unanswered Windows Firewall prompt; any such prompt blocks capture until it is answered.
    Turning off "Notify me when Microsoft Defender Firewall blocks a new app" removes the prompts; the user's call.) A first run of a new `_run` exe without a Windows Firewall rule starts
    it off-screen for 20 s first, so the one-time prompt appears while the user may be present.
+   **Idle override:** `builds\_queue\_idle-override.txt` (JSON `{idle_minutes, reason}`, written by the coordinator)
+   replaces the default when `-IdleMinutes` isn't given; `idle_minutes` 0 = record right away. It is standing (the user's
+   "record now" instruction) unless it has `"one_drain": true`, which the drainer retires when the queue empties. The
+   privacy guard and the display wake apply either way.
 1. Launch `_run\Windows\<Project>\Binaries\Win64\<Project>.exe` (the real binary, so our PID owns the window) with the
    contract flags plus `-GoTimeout=300 -windowed -ResX=1920 -ResY=1080 -WinX=200 -WinY=150
    -ini:Engine:[/Script/Engine.UserInterfaceSettings]:bAllowHighDPIInGameMode=True -nosplash -abslog=<raw>\game.log`.
