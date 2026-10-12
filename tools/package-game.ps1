@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Assemble one Track B game into a vendor-style deliverable folder + zip under C:\Users\Xiang\Work\deliverables\<game>\.
   Read-only on the game repo, its .recording logs, recordings and builds. Format: docs/game-deliverable.md.
@@ -58,7 +58,8 @@ param(
     [switch]$Force,
     [switch]$KeepRefused,
     [switch]$DryRun,                # print the store-content split, build and gameplay selection; write nothing
-    [string]$Rescan                 # an existing package folder: check it against the current rules, write <dir>.rescan-hits.tsv; changes nothing
+    [string]$Rescan,                # an existing package folder: check it against the current rules, write <dir>.rescan-hits.tsv; changes nothing
+    [string]$ScrubDir               # a folder joining a delivery: apply the scrub rules to its text files in place (<dir>.scrub.json)
 )
 
 . (Join-Path $PSScriptRoot 'ue-pipeline\common.ps1')
@@ -828,6 +829,32 @@ if ($Rescan) {
     Write-Host "  allowlisted: $($allowed.Count) hit(s), $(@($allowed | Group-Object Text).Count) distinct words (all in the tsv)"
     Write-Host "  all hits: $out"
     exit $(if ($fail) { 2 } else { 0 })
+}
+
+# -ScrubDir <dir>: apply the package scrub rules in place to every text file of a folder that is going into a delivery
+# (e.g. ReplayScripts/ from the replay session); prints the counts per rule. Git identities are numbered dev_NN by first
+# appearance in the repo's history, as in git.log.
+if ($ScrubDir) {
+    $sd = (Resolve-Path $ScrubDir).Path
+    $ids = New-Object System.Collections.ArrayList; $seen = @{}
+    foreach ($line in (Invoke-Git $repo @('log', '--all', '--reverse', '--topo-order', '--format=%an%x09%ae%n%cn%x09%ce'))) {
+        $parts = "$line" -split "`t"; if ($parts.Count -lt 2) { continue }
+        $nm = $parts[0].Trim(); if ($nm -match '(?i)^(claude|agent|dev_\d+)$') { continue }
+        if (-not $seen.ContainsKey($nm)) { $seen[$nm] = 'dev_' + ($seen.Count + 1).ToString('00') }
+        $dev = $seen[$nm]; [void]$ids.Add(@($nm, $dev))
+        foreach ($w in ($nm -split '[^A-Za-z0-9]+')) { if ($w.Length -ge 4 -and $w -notmatch '(?i)^(claude|anthropic|agent|users?|admin|root|dev|noreply|github|unknown)$') { [void]$ids.Add(@($w, $dev)) } }
+        $local = ($parts[1].Trim() -split '@')[0]; if ($local -match '\+') { $local = ($local -split '\+')[-1] }
+        if ($local.Length -ge 4) { [void]$ids.Add(@($local, $dev)) }
+    }
+    function Get-IdRx([string]$t) { $e = [regex]::Escape($t); if ($t -match '\d' -and $t.Length -ge 5) { "(?i)$WordStart$e[A-Za-z0-9]*" } else { "(?i)$WordStart$e(?![A-Za-z0-9])" } }
+    $rules = @($RulesHead) + @($ids | Sort-Object { - $_[0].Length } | ForEach-Object { @{ id = 'git-identity'; scope = 'all'; match = (Get-IdRx $_[0]); replace = $_[1] } }) + @($RulesTail)
+    $rels = [string[]]@(Get-ChildItem $sd -Recurse -File | ForEach-Object { $_.FullName.Substring($sd.Length + 1).Replace('\', '/') })
+    $res = [GameDeliverable.Tools]::ScrubAll($sd, $rels, [string[]]@($rules | ForEach-Object { $_.match }), [string[]]@($rules | ForEach-Object { $_.replace }),
+        [string[]]@($rules | ForEach-Object { $_.scope }), [string[]]@($rules | ForEach-Object { '' }))
+    $tot = @{}; foreach ($r in $res) { for ($i = 0; $i -lt $rules.Count; $i++) { if ($r.Counts[$i]) { $tot[$rules[$i].id] = [int]$tot[$rules[$i].id] + $r.Counts[$i] } } }
+    Write-Host "scrubbed $($res.Count) of $($rels.Count) files in $sd$(if ($tot.Count) { ': ' + ((@($tot.GetEnumerator() | Sort-Object Name | ForEach-Object { "$($_.Name) $($_.Value)" })) -join ', ') })"
+    Write-JsonFile "$sd.scrub.json" ([ordered]@{ dir = $sd; files = $rels.Count; touched = $res.Count; replacements = $tot })
+    exit 0
 }
 
 if ($Commit -eq 'milestone') {

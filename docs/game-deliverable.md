@@ -227,3 +227,30 @@ import source path and the Shipping exe (build paths), by category only.
 - Binary assets keep their embedded import paths (account name); fixing them needs a re-import in the editor.
 - The scrub is pattern-based: other personal names typed into logs (e.g. names seen on web pages) are not detected
   beyond the e-mail and git-identity rules; review `<name>.leaks.tsv` and spot-check `History/actions.jsonl`.
+
+## Pilot delivery (sample layout)
+
+`tools/package-pilot.ps1 <game> -Package <deliverables\<game>\<game>_<sha8>> [-Version v] [-ReplayVideo f -ReplayScripts d]`
+turns a finished, scanned package (and its `_nostore` twin) into a delivery whose top level mirrors the vendor samples
+(`samples/island_explore`, `parkour`, `robofootball`):
+
+```
+README.md  git.log  workflow.jsonl  play.mp4  replay.mp4  UEProject/  ReplayScripts/      (sample layout)
+Gameplay/  Build/  History/  Screenshots/  Package/  manifest.json  delivery-layout.json   (our data, own folders)
+```
+
+- `play.mp4`: the packaged scenario runs in scenario order, joined by plain cuts, nothing drawn on them; each run's
+  video with its own game audio, delayed by that run's `system_audio.start_offset_ns - video_start_offset_ns`
+  (0.37-0.50 s on liaozhai-night), downmixed to stereo; 1920x1080 60 fps H.264 High (CRF 20) + AAC 192k, faststart.
+- `replay.mp4` and `ReplayScripts/` come from the replay session; `ReplayScripts/` is scrubbed with the package rules
+  (`package-game.ps1 -ScrubDir`, report in `Package/replay-scrub.json`).
+- `Package/` holds `StoreContent.tsv` and `scrub-report.json`; `delivery-layout.json` (schema `game-delivery-layout/v1`)
+  names each part with its sha256, the runs in `play.mp4` with their audio offsets, and what is pending.
+- Everything else is hard-linked from the verified package, then the whole delivery is rescanned
+  (`package-game.ps1 -Rescan`); a failure stops before zipping.
+- Zips: `deliverables\pilot\<game>\<game>.zip` and `<game>_nostore.zip` (one top folder of the same name). While
+  `replay.mp4` or `ReplayScripts/` is missing they are `<game>.pending.zip` / `<game>_nostore.pending.zip`, with
+  `PENDING.txt`, a README banner and `status: pending` in `manifest.json` and `delivery-layout.json`.
+- `<repo>\Dataset\`: the same delivery minus `UEProject/` (the repository is the project) and `Build/` (rebuildable,
+  too big for git), as real copies, with `Dataset/.gitattributes` sending videos, audio and images to Git LFS. Written
+  into the game repo's working tree but never committed by the tool: the game session commits it.
