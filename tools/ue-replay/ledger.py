@@ -496,6 +496,13 @@ def build(cfg):
                         h = sha256(st)
                         blobs[h] = st
                         texts[p] = h
+                # use_commit_text: script texts in a window the recording cannot rebuild although it seems to (rally w17:
+                # build_track_v3.py was rewritten by a helper script from the builder's scratchpad; only the earlier cp
+                # was seen, and the boundary check shows the mismatch): runs use the window's commit text instead
+                for u in cfg.get("use_commit_text", []):
+                    if u["script"] in texts and w["index"] in u.get("windows", [w["index"]]):
+                        del texts[u["script"]]
+                        unknown.append(u["script"])
                 rr = dict(r, id="R%04d" % run_seq, window=w["index"], texts=texts, unknown=unknown, absent=absent)
                 if not r["script"].startswith("Scripts/"):
                     rr["script_version"] = "external"
