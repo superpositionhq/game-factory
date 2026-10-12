@@ -309,6 +309,10 @@ def run_editor_script(ctx, run):
     env.update(run.get("env") or {})
     if run.get("reason") and cfg.get("reason_env"):
         env[cfg["reason_env"]] = run["reason"]
+    if cfg.get("args_env"):
+        # the game's wrapper hands its extra arguments to the script in an environment variable (rally: RR_ARGS)
+        env[cfg["args_env"]] = run.get("args") or ""
+        run = dict(run, args="")
     log = os.path.join(ctx.logs, "runs", "%s_%s.log" % (run["id"], os.path.splitext(os.path.basename(run["script"]))[0]))
     os.makedirs(os.path.dirname(log), exist_ok=True)
     if run.get("mode") not in (None, "", "commandlet"):   # "editor", or a wrapper's own name for it (e.g. "gui")
