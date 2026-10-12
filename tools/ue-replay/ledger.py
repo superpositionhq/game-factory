@@ -385,6 +385,12 @@ def build(cfg):
         # not_readonly: scripts a read-only pattern matches that still write something a later run reads
         # (horror: probe_clip_speeds.py writes Saved/clip_speeds.json for fix_anim_rates.py)
         r["readonly"] = any(fnmatch.fnmatch(base, p) for p in ro) and base not in cfg.get("not_readonly", [])
+        # not_readonly_runs: single runs of a read-only-looking script whose side effect a later run needs, where other
+        # runs of it are slow and needed by nothing ({tool_use_id, script, reason}; stealth: the first
+        # inspect_pack_meshes.py creates Saved/PackMeshes, which prune_packs.py writes into)
+        if any(n.get("tool_use_id") == r["action_tool_use_id"] and (not n.get("script") or n["script"] in r["script"])
+               for n in cfg.get("not_readonly_runs", [])):
+            r["readonly"] = False
         if r["duration_s"] is not None and not r["background"]:
             r["start"] = (parse_time(r["time"]) - datetime.timedelta(seconds=r["duration_s"])).isoformat(timespec="milliseconds")
         else:

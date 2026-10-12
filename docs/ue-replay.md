@@ -55,7 +55,10 @@ commit. A window's steps come from the ledger (`ue_replay.py ledger`), in the or
 | `shell.replay` | game settings (allow list) | shell commands that changed `Content/` outside the editor (for example moving a pack's loose `.fbx` files) |
 | `boundary` | commit | checks the window (below), then makes the replay project's inputs equal to the commit |
 
-Read-only runs (probes, analyses, checks: settings `readonly_patterns`) are listed but skipped. Game launches,
+Read-only runs (probes, analyses, checks: settings `readonly_patterns`) are listed but skipped, except a script in
+`not_readonly` (every run of it) or a single run in `not_readonly_runs` (`{tool_use_id, script, reason}`) whose output a
+later run reads: horror's probe_clip_speeds.py writes Saved/clip_speeds.json; stealth's first inspect_pack_meshes.py
+creates Saved/PackMeshes, where prune_packs.py writes (its slow later runs stay skipped). Game launches,
 packaging and AutoPlay tests do not change the project and are not replayed. The replay never commits.
 
 **Content is never copied from a commit when the replay produced it.** At a boundary, a `.uasset`/`.umap` that the
