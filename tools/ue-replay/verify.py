@@ -429,7 +429,8 @@ def deviations(ctx, report):
         "the game was built on) pointed at its copy on this machine for the run, then put back",
         [{"source": e["id"], "recorded": e["recorded"], "copy": e.get("path") or "rebuilt",
           "runs": [x.get("run") for x in retried if x.get("script_paths_remapped")]}
-         for e in cfg.get("external_sources", []) if e.get("remap_scripts")], None)
+         for e in cfg.get("external_sources", []) if e.get("remap_scripts")
+         and any(x.get("script_paths_remapped") for x in retried)], None)
     add("runs_retried_after_engine_crash", "runs the engine crashed in before the script finished, run once more",
         [{"run": x.get("run"), "script": x.get("script"), "retries": x["retried_after_engine_crash"]} for x in retried if x.get("retried_after_engine_crash")])
     add("structure_dump_excluded", "folders left out of the structure dump (loading them crashes the editor, in the final commit too)",
