@@ -45,6 +45,11 @@ Standing user decisions (keep applying them):
   voices: subtitles and synthesized sound only.
 - liaozhai-night reuses 2D art from an earlier licensed project; that reuse is wanted.
 - AutoPlay runs play "scenarios" (not levels); contract changes go through you.
+- AutoPlay's goal is NOT to win. The bot only drives the game with human-like input so a recording shows the game
+  running. Never tune, fix or re-test the bot to win, score, finish, reach targets, resupply or avoid getting stuck;
+  losing, timing out or wandering is fine (metadata). Fix only game bugs (crash, hang, broken level, missing art,
+  lighting, camera); then one AutoPlay run per scenario and the recording request. Stop any session that chases bot
+  results.
 - Every repo README shows screenshots (from recording stills).
 - Dataset layout v1.1 as above, no extra structure without asking.
 - New games are replayed commit by commit in the background (ReplayConfig.json "live": true; docs/ue-replay.md

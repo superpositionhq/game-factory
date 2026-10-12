@@ -38,6 +38,10 @@ keep /Dataset.zip, /Dataset.pending.zip and /.dataset/ in your .gitignore and ne
 Your commits are replayed in the background (ReplayConfig.json "live": true, game-session skill "Replay-friendly
 work"): fix what the hook's [replay] lines report in your next commits. Blockers: write them in your design doc,
 message me once, carry on.
+AUTOPLAY'S GOAL IS NOT TO WIN. The bot only drives the game with human-like input so a recording shows the game
+running. Never tune, fix or re-test the bot to win, score, finish, reach targets, resupply or avoid getting stuck;
+losing, timing out or wandering is fine (metadata). Fix only game bugs (crash, hang, broken level, missing art,
+lighting, camera); then one AutoPlay run per scenario and the recording request.
 
 Task:
 Build "{{GAME_TITLE}}", {{GENRE_LINE}}, in Unreal Engine 5.3, recording its creation as you go.
@@ -81,6 +85,8 @@ Steps:
 4) AutoPlay once scenario 1 is playable end to end (contract v1.4, drop-in unchanged, bot acts only through Enhanced
    Input injection, Skill-scaled, human-like camera); one hand test + validate-run.ps1 (well-formed files; the
    bot plays like a human, but its score never holds up a release); tag milestone/autoplay-<n>; framing screenshots; message me for a recording.
+   The bot does NOT need to win, finish, resupply or avoid getting stuck: never tune or re-test it for results; fix
+   only game bugs, then one run per scenario.
 5) Expand content, art, UI and story to the quality bar (menus, settings, pause, save/load where it fits, HUD, sound,
    packaged Win64 Shipping build).
 6) Finish with a playtest checklist pass and a status section in the design doc (what works, what's left, built vs

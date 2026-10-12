@@ -112,6 +112,11 @@ After a commit, the hook prints `[replay] ...` when the last replay found someth
 
 ## AutoPlay and recordings
 
+> **AutoPlay's goal is NOT to win (user rule).** The bot only drives the game with human-like input so a recording
+> shows the game running. Never tune, fix or re-test the bot to win, score, finish, reach targets, resupply or avoid
+> getting stuck; losing, timing out or wandering is fine (metadata). Fix only game bugs (crash, hang, broken level,
+> missing art, lighting, camera); then one AutoPlay run per scenario and the recording request.
+
 - Once the first scenario is playable end to end, implement `docs/autoplay-contract.md` (v1.4): the drop-in
   `Source/<Project>/AutoPlay/AutoPlaySubsystem.h/.cpp` stays unchanged (re-copy from `tools/ue-pipeline/autoplay/` on a
   contract bump); the game supplies `StartScenario` (the template's GameInstance opens `ScenarioMaps[n-1]`),
@@ -129,6 +134,9 @@ After a commit, the hook prints `[replay] ...` when the last replay found someth
   `--patch-remaining`, `--verify` = 0 hits; see docs/ue-pipeline.md) so the user's profile path is not in the project.
 
 ## Priorities (user decision)
+
+**AutoPlay's goal is NOT to win** (rule in "AutoPlay and recordings" above): fix game bugs only, never the bot's
+results.
 
 What ships is what matters, in this order: the game plays; the game builds (editor and packaged Shipping); the dataset holds the replay scripts and the git log. The AutoPlay bot should still play like a human (human-like input, aim and camera), but bot work never blocks a release: one recording per scenario that shows the game running is enough, whatever the result (win/lose/timeout is metadata). No tuning for win rates, seed sweeps or "clean" runs, and no re-runs or re-recordings to improve how the bot plays. No retest loops: every GPU or editor run costs about 30 minutes of the shared machine and holds up delivery, so run the minimum once and report; re-run only when the user asks. Game-session work never blocks dataset packaging or sharing.
 
