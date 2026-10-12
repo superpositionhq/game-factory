@@ -31,7 +31,10 @@
   defaults), git author names/handles -> dev_NN, the account user name (incl. in user paths) -> dev, e-mail addresses ->
   <redacted-email>, other agent/provider mentions -> agent/provider. Then every file is rescanned: it refuses (exit 2,
   nothing published, hits in deliverables\<game>\<name>.refused-hits.tsv) on any remaining hit in a path or text file,
-  or the two names in a binary (ASCII or UTF-16). Binaries are never edited; user name / agent findings in binaries
+  or any blocked term in a binary (ASCII or UTF-16). One exception: the short terms (claude, opus) inside the
+  compressed audio/video stream payload of .mp4/.mkv/.mka/.wav are random bytes and are listed, not refused
+  (allowed-stream in <name>.allowlisted.tsv, file + offset + term); container metadata, tags, chapters, subtitle
+  tracks and file names still refuse. Binaries are never edited; user name / agent findings in binaries
   are listed in scrub-report.json. Other user-folder paths are reported in deliverables\<game>\<name>.leaks.tsv.
 #>
 param(
@@ -412,7 +415,10 @@ public static class Tools {
     static void ScanBinary(string full, string rel, List<byte[]> asc, List<byte[]> u16, bool[] first, bool[] refuse, string[] category,
                            List<Hit> hits, int maxPerFile) {
         const int Chunk = 4 << 20, Overlap = 64;
-        byte[] buf = new byte[Chunk + Overlap]; int carry = 0; long baseOff = 0; int found = 0;
+        byte[] buf = new byte[Chunk + Overlap]; int carry = 0; long baseOff = 0; int found = 0, streamHits = 0;
+        List<long[]> payload = StreamTerms.Count > 0 ? MediaPayload(full) : null;
+        var streamOk = new bool[asc.Count];
+        for (int k = 0; k < asc.Count; k++) streamOk[k] = StreamTerms.Contains(Encoding.ASCII.GetString(asc[k]));
         using (var fs = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20)) {
             while (true) {
                 int n = fs.Read(buf, carry, Chunk); if (n <= 0) break;
@@ -441,6 +447,13 @@ public static class Tools {
                         // the word around the hit, decoded the same way it was found
                         string w = a8 ? BinWord8(buf, i, asc[k].Length, len) : BinWord16(buf, i, u16[k].Length, len);
                         if (AllowBin != null && AllowBin.IsMatch(w)) { AddAllowed(hits, rel, (a8 ? "allowed-ascii" : "allowed-utf16"), baseOff + i, category[k] + ":" + w); continue; }
+                        if (payload != null && streamOk[k] && streamHits < MaxStreamHitsPerFile
+                            && InRanges(payload, baseOff + i, baseOff + i + (a8 ? asc[k].Length : u16[k].Length))) {
+                            bool dup = false; foreach (var x in hits) if (x.Where == baseOff + i) { dup = true; break; }
+                            if (!dup) { var sh = new Hit(); sh.Path = rel; sh.Kind = "allowed-stream" + (a8 ? "-ascii" : "-utf16"); sh.Where = baseOff + i;
+                                        sh.Text = category[k] + ":" + Encoding.ASCII.GetString(asc[k]) + " in " + w; hits.Add(sh); streamHits++; }
+                            continue;
+                        }
                         Add(hits, rel, kind + (a8 ? "-ascii" : "-utf16"), baseOff + i, category[k] + ":" + w, ref found);
                     }
                     if (found >= maxPerFile) return;
@@ -482,6 +495,132 @@ public static class Tools {
     static void Add(List<Hit> hits, string rel, string kind, long off, string cat, ref int found) {
         foreach (var x in hits) if (x.Path == rel && x.Where == off) return;
         var h = new Hit(); h.Path = rel; h.Kind = kind; h.Where = off; h.Text = cat; hits.Add(h); found++;
+    }
+
+    // ---- compressed media payloads (user rule, 2026-10-12) ----
+    // Inside the compressed audio/video stream payload of .mp4/.mkv/.mka/.wav, a hit on one of StreamTerms (the short
+    // blocked terms) is random bytes, not text: it is recorded as "allowed-stream-*" with file, offset and term (in
+    // <name>.allowlisted.tsv) instead of refusing. Container metadata, tags, chapters, subtitle/other tracks and file
+    // names are outside the payload ranges and still refuse; every other term refuses everywhere.
+    public static HashSet<string> StreamTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    const int MaxStreamHitsPerFile = 1000;   // beyond this a file's stream hits refuse again (not random any more)
+    static readonly HashSet<string> MediaExt = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".mp4", ".mkv", ".mka", ".wav" };
+    static bool InRanges(List<long[]> r, long a, long b) {   // [a, b) inside one range; r sorted by start
+        int lo = 0, hi = r.Count - 1;
+        while (lo <= hi) { int m = (lo + hi) >> 1; if (r[m][0] <= a) lo = m + 1; else hi = m - 1; }
+        return hi >= 0 && b <= r[hi][1];
+    }
+    // Byte ranges [start, end) of the stream payload, or null when the file is not a media file this understands (then
+    // nothing is relaxed). MP4: mdat contents, only when every track is video or audio (hdlr vide/soun). Matroska: the
+    // frame data of SimpleBlock/Block elements of video (1) and audio (2) tracks. WAV: the data chunk.
+    public static List<long[]> MediaPayload(string full) {
+        if (!MediaExt.Contains(Path.GetExtension(full))) return null;
+        try {
+            using (var fs = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16)) {
+                string ext = Path.GetExtension(full).ToLowerInvariant();
+                var r = ext == ".mp4" ? Mp4Payload(fs) : ext == ".wav" ? WavPayload(fs) : MkvPayload(fs);
+                if (r != null) r.Sort((x, y) => x[0].CompareTo(y[0]));
+                return r;
+            }
+        } catch (Exception) { return null; }
+    }
+    static byte[] ReadAt(FileStream fs, long off, int n) {
+        var b = new byte[n]; fs.Position = off; int got = 0;
+        while (got < n) { int k = fs.Read(b, got, n - got); if (k <= 0) return null; got += k; }
+        return b;
+    }
+    static uint BE32(byte[] b, int i) { return (uint)(b[i] << 24 | b[i + 1] << 16 | b[i + 2] << 8 | b[i + 3]); }
+    static List<long[]> Mp4Payload(FileStream fs) {
+        long len = fs.Length, pos = 0; var mdat = new List<long[]>(); byte[] moov = null;
+        while (pos + 8 <= len) {
+            byte[] h = ReadAt(fs, pos, 8); if (h == null) return null;
+            long size = BE32(h, 0); string type = Encoding.ASCII.GetString(h, 4, 4); int hl = 8;
+            if (size == 1) { byte[] x = ReadAt(fs, pos + 8, 8); if (x == null) return null; size = (long)((ulong)BE32(x, 0) << 32 | BE32(x, 4)); hl = 16; }
+            else if (size == 0) size = len - pos;
+            if (size < hl || pos + size > len) return null;
+            if (type == "mdat") mdat.Add(new long[] { pos + hl, pos + size });
+            else if (type == "moov") { if (size > (256L << 20) || moov != null) return null; moov = ReadAt(fs, pos + hl, (int)(size - hl)); }
+            pos += size;
+        }
+        if (moov == null || mdat.Count == 0) return null;
+        var handlers = new List<string>(); Mp4Handlers(moov, 0, moov.Length, handlers);
+        if (handlers.Count == 0) return null;
+        foreach (string t in handlers) if (t != "vide" && t != "soun") return null;
+        return mdat;
+    }
+    static void Mp4Handlers(byte[] b, int start, int end, List<string> outp) {   // moov > trak > mdia > hdlr
+        int p = start;
+        while (p + 8 <= end) {
+            long size = BE32(b, p); string type = Encoding.ASCII.GetString(b, p + 4, 4);
+            if (size < 8 || p + size > end) { outp.Add("?"); return; }
+            if (type == "trak" || type == "mdia") Mp4Handlers(b, p + 8, p + (int)size, outp);
+            else if (type == "hdlr" && size >= 20) outp.Add(Encoding.ASCII.GetString(b, p + 16, 4));
+            p += (int)size;
+        }
+    }
+    static List<long[]> WavPayload(FileStream fs) {
+        byte[] h = ReadAt(fs, 0, 12);
+        if (h == null || Encoding.ASCII.GetString(h, 0, 4) != "RIFF" || Encoding.ASCII.GetString(h, 8, 4) != "WAVE") return null;
+        long pos = 12, len = fs.Length; var r = new List<long[]>();
+        while (pos + 8 <= len) {
+            byte[] c = ReadAt(fs, pos, 8); if (c == null) return null;
+            long size = BitConverter.ToUInt32(c, 4); string id = Encoding.ASCII.GetString(c, 0, 4);
+            long end = Math.Min(len, pos + 8 + size);
+            if (id == "data") r.Add(new long[] { pos + 8, end });
+            pos = end + (size & 1);
+        }
+        return r.Count > 0 ? r : null;
+    }
+    // EBML variable-length integers: an element id keeps its marker bit, a size drops it; all value bits set = unknown size
+    static long Vint(FileStream fs, long pos, bool keepMarker, out int n, out bool unknown) {
+        n = 0; unknown = false; fs.Position = pos; int b0 = fs.ReadByte(); if (b0 <= 0) return -1;
+        int mask = 0x80; n = 1; while ((b0 & mask) == 0) { mask >>= 1; n++; }
+        if (n > 8) return -1;
+        long v = keepMarker ? b0 : (b0 & (mask - 1)); bool ones = (b0 & (mask - 1)) == mask - 1;
+        for (int i = 1; i < n; i++) { int b = fs.ReadByte(); if (b < 0) return -1; v = v * 256 + b; if (b != 0xFF) ones = false; }
+        unknown = !keepMarker && ones; return v;
+    }
+    static readonly HashSet<long> ClusterChildren = new HashSet<long> { 0xE7, 0xA3, 0xA0, 0xA7, 0xAB, 0x5854, 0xBF, 0xEC };
+    static List<long[]> MkvPayload(FileStream fs) {
+        long len = fs.Length; int n, n2; bool unk;
+        long id = Vint(fs, 0, true, out n, out unk); if (id != 0x1A45DFA3) return null;
+        long sz = Vint(fs, n, false, out n2, out unk); if (sz < 0 || unk) return null;
+        long pos = n + n2 + sz;
+        id = Vint(fs, pos, true, out n, out unk); if (id != 0x18538067) return null;
+        sz = Vint(fs, pos + n, false, out n2, out unk); if (sz < 0) return null;
+        long segStart = pos + n + n2, segEnd = unk ? len : Math.Min(len, segStart + sz);
+        var types = new Dictionary<long, long>(); var blocks = new List<long[]>();   // {start, end, track}
+        Ebml(fs, segStart, segEnd, 0, types, blocks);
+        var r = new List<long[]>();
+        foreach (var b in blocks) { long t; if (types.TryGetValue(b[2], out t) && (t == 1 || t == 2)) r.Add(new long[] { b[0], b[1] }); }
+        return r.Count > 0 ? r : null;
+    }
+    // level 0 = Segment children, 1 = Tracks / Cluster children, 2 = TrackEntry / BlockGroup children
+    static long Ebml(FileStream fs, long pos, long end, int level, Dictionary<long, long> types, List<long[]> blocks,
+                     long parent = 0, long[] entry = null) {
+        while (pos < end) {
+            int n, n2; bool unk;
+            long id = Vint(fs, pos, true, out n, out unk); if (id < 0) return pos;
+            if (parent == 0x1F43B675 && !ClusterChildren.Contains(id)) return pos;   // an unknown-size Cluster ends here
+            long sz = Vint(fs, pos + n, false, out n2, out unk); if (sz < 0) return pos;
+            long ds = pos + n + n2, de = unk ? end : Math.Min(end, ds + sz);
+            if (id == 0x1654AE6B || id == 0x1F43B675 || id == 0xA0) {        // Tracks, Cluster, BlockGroup
+                long stop = Ebml(fs, ds, de, level + 1, types, blocks, id);
+                if (unk) de = stop;
+            } else if (id == 0xAE) {                                         // TrackEntry
+                var e = new long[] { -1, -1 }; Ebml(fs, ds, de, level + 1, types, blocks, id, e);
+                if (e[0] >= 0) types[e[0]] = e[1];
+            } else if (entry != null && (id == 0xD7 || id == 0x83) && sz <= 8) {   // TrackNumber, TrackType
+                fs.Position = ds; long v = 0; for (int i = 0; i < sz; i++) v = v * 256 + fs.ReadByte();
+                entry[id == 0xD7 ? 0 : 1] = v;
+            } else if (id == 0xA3 || id == 0xA1) {                           // SimpleBlock, Block
+                int tn; bool tu; long track = Vint(fs, ds, false, out tn, out tu);
+                if (track >= 0 && ds + tn + 3 <= de) blocks.Add(new long[] { ds + tn + 3, de, track });
+            }
+            if (unk && !(id == 0x1F43B675)) return de;   // unknown size elsewhere: give up on the rest
+            pos = de;
+        }
+        return pos;
     }
 
     // Rewrites every text file with the rules (regex -> literal text), in order, keeping each file's encoding. Scopes:
@@ -798,6 +937,9 @@ function Set-ReviewedHits($HitList, [string]$Root) {
 [GameDeliverable.Tools]::Allow = New-Object System.Text.RegularExpressions.Regex($OpusAllowText)
 [GameDeliverable.Tools]::LocaleNeedle = $UserName
 [GameDeliverable.Tools]::AllowBin = New-Object System.Text.RegularExpressions.Regex($OpusAllowBin)
+# Short terms that random compressed bytes can spell: relaxed inside media stream payloads only (user rule, 2026-10-12).
+# Long terms (user name, anthropic, superposition, game-factory) stay blocking everywhere.
+foreach ($t in @('claude', 'opus')) { [void][GameDeliverable.Tools]::StreamTerms.Add($t) }
 $Banned = New-Object System.Text.RegularExpressions.Regex($BannedPattern, 'IgnoreCase')
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -830,7 +972,7 @@ if ($Rescan) {
     Write-Host "$(if ($fail) { 'FAIL' } else { 'PASS' })  $pkg"
     Write-Host "  blocking: $($block.Count) hit(s) in $(@($block | ForEach-Object Path | Sort-Object -Unique).Count) file(s)$(if ($block) { ': ' + ((@($block | Group-Object { $_.Kind + ' ' + $_.Text.Substring(0, [Math]::Min(40, $_.Text.Length)) } | Sort-Object Count -Descending | Select-Object -First 8 | ForEach-Object { "$($_.Count)x $($_.Name)" })) -join '; ') })"
     Write-Host "  account name in Build/: $($buildUser.Count) hit(s) in $(@($buildUser | ForEach-Object Path | Sort-Object -Unique).Count) file(s)"
-    Write-Host "  allowlisted: $($allowed.Count) hit(s), $(@($allowed | Group-Object Text).Count) distinct words (all in the tsv)"
+    Write-Host "  allowlisted: $($allowed.Count) hit(s), $(@($allowed | Group-Object Text).Count) distinct words, $(@($allowed | Where-Object Kind -like 'allowed-stream*').Count) in media stream payloads (all in the tsv)"
     Write-Host "  all hits: $out"
     exit $(if ($fail) { 2 } else { 0 })
 }
@@ -1523,9 +1665,10 @@ $allowedHits = @($scan | Where-Object { $_.Kind -like 'allowed*' })
 # Counts only inside the package (the words themselves would put the terms into its text); the full list goes next to
 # the package for review: <name>.allowlisted.tsv.
 $scrubReport.allowlisted_hits = [ordered]@{
-    note     = 'audio codec symbols and engine locale ids allowed by an exact allowlist, plus reviewed exceptions; every other hit blocks'
+    note     = 'audio codec symbols and engine locale ids allowed by an exact allowlist, short terms inside compressed media stream payloads, plus reviewed exceptions; every other hit blocks'
     total    = $allowedHits.Count
     reviewed = @($allowedHits | Where-Object Kind -eq 'allowed-reviewed').Count
+    media_stream = @($allowedHits | Where-Object Kind -like 'allowed-stream*').Count
     files    = @($allowedHits | ForEach-Object Path | Sort-Object -Unique).Count
     in_build = @($allowedHits | Where-Object { $_.Path -like 'Build/*' }).Count
 }
