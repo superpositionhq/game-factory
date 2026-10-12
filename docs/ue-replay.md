@@ -96,7 +96,7 @@ accumulate visibly instead of being reset. Files the commit deletes are deleted.
 
 ### 3.2 Preparing the isolated project
 
-`ue_replay.py prepare` creates `C:\Users\Xiang\Work\ue-replay\<game>\` with:
+`ue_replay.py prepare` creates `%GF_ROOT%\ue-replay\<game>\` with:
 
 - `project/`: `git clone --shared --no-checkout` of the game repo, Git LFS reading the game's own object store
   (`lfs.storage`; nothing downloaded), checked out at the **first commit** (for liaozhai-night: the UE 5.3 Third
