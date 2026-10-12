@@ -90,6 +90,9 @@ import builtins as _b, io as _io, os as _os, sys as _sys
 _ROOTS = %(roots)r
 _SB = %(sandbox)r
 _orig_open = _b.open
+_orig_chdir = _os.chdir
+_orig_osopen = _os.open
+_orig_mkdir = _os.mkdir
 def _map(f, write):
     p = _os.fspath(f)
     if isinstance(p, bytes):
@@ -99,19 +102,34 @@ def _map(f, write):
         q = "C:/" + q[3:]
     for r in _ROOTS:
         if q.lower().startswith(r.lower() + "/") or q.lower() == r.lower():
-            return _SB + q[len(r):]
-    if _os.path.isabs(q):
+            q = _SB + q[len(r):]
+            break
+    # fail closed: whatever the path (absolute, relative after a chdir, ..), a write must land inside the sandbox
+    if write:
         full = _os.path.abspath(q).replace("\\", "/")
-        if not full.lower().startswith(_SB.lower()) and write:
+        if not (full.lower() + "/").startswith(_SB.lower().rstrip("/") + "/"):
             raise PermissionError("sandbox: write outside the sandbox: " + p)
-    return p
+    return q
 def _open(f, mode="r", *a, **k):
+    if isinstance(f, int):
+        return _orig_open(f, mode, *a, **k)
     return _orig_open(_map(f, any(c in mode for c in "wax+")), mode, *a, **k)
+def _osopen(f, flags, *a, **k):
+    return _orig_osopen(_map(f, bool(flags & (_os.O_WRONLY | _os.O_RDWR | _os.O_CREAT | _os.O_APPEND | _os.O_TRUNC))), flags, *a, **k)
+def _chdir(d):
+    return _orig_chdir(_map(d, False))
+def _mkdir(d, *a, **k):
+    return _orig_mkdir(_map(d, True), *a, **k)
 _b.open = _open
 _io.open = _open
+_os.open = _osopen
+_os.chdir = _chdir
+_os.mkdir = _mkdir
 def _blocked(*a, **k):
     raise PermissionError("sandbox: blocked")
-_os.system = _os.remove = _os.unlink = _os.rename = _os.replace = _os.rmdir = _blocked
+_os.system = _os.remove = _os.unlink = _os.rename = _os.replace = _os.rmdir = _os.removedirs = _blocked
+import shutil as _sh
+_sh.rmtree = _sh.move = _blocked
 import subprocess as _sp
 _sp.run = _sp.Popen = _sp.call = _sp.check_call = _sp.check_output = _blocked
 '''
@@ -151,7 +169,17 @@ class Sandbox:
             r = subprocess.run([sys.executable, "-I", pf], cwd=cwd, capture_output=True, timeout=timeout)
             os.remove(pf)
         else:
-            r = subprocess.run([SED] + payload, cwd=cwd, capture_output=True, timeout=timeout)
+            # file arguments under the repo point into the sandbox; any other absolute path is refused (fail closed)
+            args = []
+            for x in payload:
+                q = x.replace("\\", "/")
+                q = "C:/" + q[3:] if q.startswith("/c/") else q
+                if q.lower().startswith(self.repo_abs.lower() + "/"):
+                    x = self.dir + q[len(self.repo_abs):]
+                elif re.match(r"^(?:[A-Za-z]:/|/)", q) and not q.lower().startswith(self.dir.lower() + "/") and not x.startswith("-"):
+                    return (False, "sandbox: sed path outside the sandbox: " + x) + (({} ,) if kind == "sed" else (b"",))
+                args.append(x)
+            r = subprocess.run([SED] + args, cwd=cwd, capture_output=True, timeout=timeout)
             if kind == "sed_stdout":
                 return r.returncode == 0, r.stderr.decode("utf-8", "replace")[-400:], r.stdout.replace(b"\r\n", b"\n")
         ok, err = r.returncode == 0, r.stderr.decode("utf-8", "replace")[-400:]
