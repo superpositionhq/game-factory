@@ -23,8 +23,12 @@ through Enhanced Input, see [autoplay-contract.md](autoplay-contract.md)) as gam
 
 ## Paths
 
+`%GF_ROOT%` is the machine root: env `GF_ROOT`, else `root` in `%USERPROFILE%\.game-factory\config.json`
+(written by `machine/bootstrap.ps1`), else `%USERPROFILE%\Work`; `machine/lib/gf-root.ps1` resolves it, and the
+same file gives `ueb` (default `C:\UEB`) and `engine`. See [../machine/README.md](../machine/README.md).
+
 ```
-C:\Users\Xiang\Work\
+%GF_ROOT%\
   games\<game>\                     the game repos (read only for the pipeline)
   games\_pipeline-test\             throwaway UE 5.3 Third Person project used to test the pipeline (not data)
   C:\UEB\src\<game>\                private clone the pipeline builds from (never the game's working copy); outside
@@ -179,9 +183,10 @@ Per run (seed = `-Seed + i`, or random; skill = `-Skill`, or cycling 1.0 / 0.75 
 
 ### Capture command (verified on this machine)
 
-ffmpeg: pinned to gyan.dev `ffmpeg-8.1.2-full_build.7z` in `C:\Users\Xiang\Work\tools\ffmpeg-8.1.2\ffmpeg-8.1.2-full_build\bin\`,
+ffmpeg: pinned to gyan.dev `ffmpeg-8.1.2-full_build.7z` in `%GF_ROOT%\tools\ffmpeg-8.1.2\ffmpeg-8.1.2-full_build\bin\`,
 SHA-256 `0fff188997a499b5382e0f66e845d4556c48c54f0113ebed4853d556dbdd7059` (matches gyan.dev's published
-`.7z.sha256`; 166,721,853 bytes, downloaded 2026-10-11). `` overrides it; without either,
+`.7z.sha256`; 166,721,853 bytes, downloaded 2026-10-11; `machine/get-ffmpeg.ps1` fetches and verifies it on a new
+machine). `$env:UE_PIPELINE_FFMPEG` overrides it; without either,
 the winget `Gyan.FFmpeg` 9.0.2 on PATH is used. Desktop Duplication (`ddagrab`) of the window's client rectangle,
 **event-driven**, no mouse cursor, converted to 60 fps CFR. With NVENC (needs NVIDIA driver ≥ 610, see Encoder below) the D3D11 frames go straight to the encoder:
 
@@ -311,7 +316,7 @@ request still records its `requested_by`. It returns at once; one hidden drainer
 in file-name order (the coordinator reorders by renaming; a request being processed must not be renamed):
 
 ```
-powershell -ExecutionPolicy Bypass -File C:\Users\Xiang\Work\game-factory\tools\ue-pipeline\enqueue.ps1 <game> -Scenarios 1,2 -Runs 1 -RequestedBy coordinator
+powershell -ExecutionPolicy Bypass -File %GF_ROOT%\game-factory\tools\ue-pipeline\enqueue.ps1 <game> -Scenarios 1,2 -Runs 1 -RequestedBy coordinator
 ```
 
 Dropping a queued request: move it to `builds\_queue\done\` with a `result` note (status `dropped`).
@@ -324,7 +329,7 @@ before the scan existed); warn-only, the packager blocks on them.
 
 ```
 schtasks /Create /TN "Superposition\UE AutoPlay nightly" /SC DAILY /ST 03:00 /IT /F
-  /TR "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File C:\Users\Xiang\Work\game-factory\tools\ue-pipeline\pipeline.ps1 -Nightly -Runs 3"
+  /TR "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File %GF_ROOT%\game-factory\tools\ue-pipeline\pipeline.ps1 -Nightly -Runs 3"
 ```
 
 It records every game under `games\` (not `_*`) whose HEAD has a `milestone/autoplay-*` tag in its history,
@@ -338,7 +343,7 @@ messages, builds, logs, in-game files, anything passed to the game process). Rec
 `workflow.jsonl` stays in the game repos.
 
 - Flags passed to the game: `-AutoPlay -Scenario|-Level -Seed -Skill -OutputDir|-RecordDir -MaxSeconds -BuildCommit -RunId
-  -GoTimeout`, window/ini/log flags; paths under `C:\Users\Xiang\Work\recordings\` and `builds\`. None contain the names.
+  -GoTimeout`, window/ini/log flags; paths under `%GF_ROOT%\recordings\` and `builds\`. None contain the names.
   build.ps1 records `autoplay_version` (the drop-in's `ContractVersion`) in `build_info.json`; record.ps1 passes
   `-Scenario` to v3 (contract v1.3) games and `-Level` to older ones, `-OutputDir` to v2+ and `-RecordDir` to v1
   (newer drop-ins accept the old names too). Bundles and `runs.jsonl` use `scenario`/`scenario_name`; outcome keys
@@ -360,7 +365,7 @@ project's `.uasset` files: in `AssetImportData` (textures, meshes, sounds, anima
 project files we ship keep it. Run it on a game's working tree (editor target built, editor closed), then commit:
 
 ```
-"C:\Program Files\Epic Games\UE_5.3\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" <Project>.uproject -run=pythonscript -script="C:/Users/Xiang/Work/game-factory/tools/ue-pipeline/scrub-import-paths.py --apply" -nullrhi -unattended -nopause -nosplash -stdout -AllowStdOutLogVerbosity
+"C:\Program Files\Epic Games\UE_5.3\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" <Project>.uproject -run=pythonscript -script="%GF_ROOT%/game-factory/tools/ue-pipeline/scrub-import-paths.py --apply" -nullrhi -unattended -nopause -nosplash -stdout -AllowStdOutLogVerbosity
 ... same with --patch-remaining   (separate run: what no editor API reaches)
 ... same with --verify            (expect "verify: 0 hits in 0 files")
 ```

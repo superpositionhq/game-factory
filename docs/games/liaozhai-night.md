@@ -2,7 +2,7 @@
 
 Track B game (batch 2): a small, complete third-person Chinese-folklore **action** game in Unreal Engine 5.3, built by
 an agent (Claude) with every real editor and code operation recorded when it happens in `workflow.jsonl`
-(schema `superposition.ue-workflow/v0`). Project: `C:\Users\Xiang\Work\games\liaozhai-night`
+(schema `superposition.ue-workflow/v0`). Project: `%GF_ROOT%\games\liaozhai-night`
 (`LiaozhaiNight.uproject`, C++ module `LiaozhaiNight`, own git repo with LFS).
 
 It shares the theme of LiaoZhaiRL (the shipped Unity game in Track A) on purpose, so the dataset has the same kind of
@@ -337,7 +337,7 @@ pass AutoPlay; packaged Win64 build rebuilt. (First pass, 08:15: third-person ve
   lanterns, the boss faltering at 30 % (`story_falter`), the dawn ending (souls rise, the figure, 花落天明).
 - AutoPlay Skill 1 (editor, latest maps): ch1 win 53.2 s, ch2 win 124.7 s (1 death, 1 fall), ch3 win 81.3 s;
   packaged exe ch3 win 98.3 s. Every story event fires in the bot runs.
-- Packaged build: `C:\Users\Xiang\Work\builds\liaozhai-night\Windows\LiaozhaiNight.exe` (Development, 2.4 GB).
+- Packaged build: `%GF_ROOT%\builds\liaozhai-night\Windows\LiaozhaiNight.exe` (Development, 2.4 GB).
 
 **Left / known issues**
 - Not hand-played by a person yet (`docs/playtest-checklist.md` has the new camera / story items).

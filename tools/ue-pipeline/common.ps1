@@ -3,17 +3,20 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2
 
-$script:WorkRoot      = 'C:\Users\Xiang\Work'
+# Machine root (GF_ROOT env, else the config file, else %USERPROFILE%\Work): see machine/lib/gf-root.ps1.
+. (Join-Path $PSScriptRoot '..\..\machine\lib\gf-root.ps1')
+$script:GFConfig      = Get-GFConfig
+$script:WorkRoot      = $GFConfig.root
 $script:GamesRoot     = Join-Path $WorkRoot 'games'
 $script:BuildsRoot    = Join-Path $WorkRoot 'builds'
 $script:RecordingsRoot = Join-Path $WorkRoot 'recordings'
 $script:LogRoot       = Join-Path $WorkRoot '.recording'
-$script:EngineRoot    = 'C:\Program Files\Epic Games\UE_5.3'
+$script:EngineRoot    = $GFConfig.engine   # default C:\Program Files\Epic Games\UE_5.3
 # Private build clones live outside the user profile: __FILE__ (check/ensure/log macros) and PDB paths compile the
 # source path into the Shipping exe, so a root under C:\Users\<name> ships the user name. Short to stay clear of MAX_PATH.
-$script:SrcRoot       = 'C:\UEB\src'
+$script:SrcRoot       = Join-Path $GFConfig.ueb 'src'   # default C:\UEB\src
 # Temp dir for build tools: the linker records its response-file path (%TEMP%\UnrealBuildTool\...) in the PDB.
-$script:BuildTempRoot = 'C:\UEB\tmp'
+$script:BuildTempRoot = Join-Path $GFConfig.ueb 'tmp'
 # The user name as it leaks: inside paths (C:\Users\<name>\...). A bare-name search also hits unrelated strings such as
 # the Xiang Chinese locale ids ('zh_XIANG', 'zh-xiang') in every UE build.
 $script:UserNamePatterns = @("\$($env:USERNAME)\", "/$($env:USERNAME)/")

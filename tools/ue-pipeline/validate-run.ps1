@@ -3,7 +3,7 @@
   Check one AutoPlay RecordDir against docs/autoplay-contract.md (no video needed). For game sessions testing by hand.
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File validate-run.ps1 C:\Users\Xiang\Work\games\stealth\Saved\AutoPlay\20261011-120000
+  powershell -ExecutionPolicy Bypass -File validate-run.ps1 %GF_ROOT%\games\stealth\Saved\AutoPlay\20261011-120000
 #>
 param([Parameter(Mandatory = $true, Position = 0)][string]$Dir)
 

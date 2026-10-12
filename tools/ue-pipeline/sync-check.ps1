@@ -5,7 +5,7 @@
   beep. The pipeline test project (games\_pipeline-test) emits these; real games don't need to.
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File sync-check.ps1 C:\Users\Xiang\Work\recordings\_pipeline-test\<run-id>
+  powershell -ExecutionPolicy Bypass -File sync-check.ps1 %GF_ROOT%\recordings\_pipeline-test\<run-id>
 #>
 param(
     [Parameter(Mandatory = $true, Position = 0)][string]$RunDir,

@@ -1,6 +1,6 @@
 # Game #3: Tower Defense (Track B, agent-built, UE 5.3)
 
-Project: `C:\Users\Xiang\Work\games\tower-defense` (own git repo, git-lfs for `*.uasset *.umap`).
+Project: `%GF_ROOT%\games\tower-defense` (own git repo, git-lfs for `*.uasset *.umap`).
 Recording: `workflow.jsonl` at the project root, schema `ue-workflow/v0` (rows before td-02090: `superposition.ue-workflow/v0`), one row per real
 operation written at the moment it happens. Builder: Claude (agent), reasons are the agent's own notes.
 

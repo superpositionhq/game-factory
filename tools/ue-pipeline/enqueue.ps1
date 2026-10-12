@@ -4,7 +4,7 @@
   the queue one request at a time; results land in builds\_queue\done\ and .recording\<game>\pipeline.jsonl.
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File C:\Users\Xiang\Work\game-factory\tools\ue-pipeline\enqueue.ps1 stealth -Runs 2
+  powershell -ExecutionPolicy Bypass -File %GF_ROOT%\game-factory\tools\ue-pipeline\enqueue.ps1 stealth -Runs 2
   powershell -ExecutionPolicy Bypass -File ...\enqueue.ps1 stealth -Scenarios 1 -Runs 1 -Commit HEAD -RequestedBy ue-stealth
 #>
 param(

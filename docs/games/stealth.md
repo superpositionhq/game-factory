@@ -2,7 +2,7 @@
 
 Track B game: a small, complete third-person stealth game built in Unreal Engine 5.3 by an agent (Claude),
 with every real editor and code operation recorded at the moment it happens in `workflow.jsonl`
-(schema `superposition.ue-workflow/v0`). Project: `C:\Users\Xiang\Work\games\stealth` (own git repo, git-lfs).
+(schema `superposition.ue-workflow/v0`). Project: `%GF_ROOT%\games\stealth` (own git repo, git-lfs).
 
 Started 2026-10-11 00:52 -04:00.
 

@@ -3,7 +3,7 @@
 Off-road rally racer built in Unreal Engine 5.3 by an agent (Claude), with every editor and code operation
 recorded as it happened in `workflow.jsonl` (schema `superposition.ue-workflow/v0`).
 
-- Project: `C:\Users\Xiang\Work\games\rally-racer` (own git repo, git-lfs for `*.uasset` / `*.umap`)
+- Project: `%GF_ROOT%\games\rally-racer` (own git repo, git-lfs for `*.uasset` / `*.umap`)
 - Builder: agent session `ue-rally-racer` (one of four parallel Track B games)
 - Started: 2026-10-11 00:55 -04:00
 

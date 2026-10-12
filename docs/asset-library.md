@@ -5,11 +5,11 @@ asset-scout session (2026-10-11). Machine-readable catalogue and logs live outsi
 
 | File | What |
 |---|---|
-| `C:\Users\Xiang\Work\asset-library\catalog.jsonl` | one row per downloaded pack: games, source, URL, licence + link, version, engine, bytes, sha256, local path, purpose, quality note |
-| `C:\Users\Xiang\Work\asset-library\scout-log.jsonl` | every search, decision, Fab library add, cart add and download (time, action, url, result, reason) |
-| `C:\Users\Xiang\Work\asset-library\fab-library.psv` | every Fab listing added to the account library: `uid|name|licence|game(s)` |
-| `C:\Users\Xiang\Work\asset-library\fab-ue\LAUNCHER-CHECKLIST.md` | Unreal-format Fab packs to pull through the Epic Launcher into the FabVault53 staging project |
-| `C:\Users\Xiang\Work\tools\asset-scout\` | scout tools: `scout.py` (log, fetch, Poly Haven), `fabdl.py` (Fab signed downloads), `build_catalog.py` + `packs_meta.tsv` (catalogue) |
+| `%GF_ROOT%\asset-library\catalog.jsonl` | one row per downloaded pack: games, source, URL, licence + link, version, engine, bytes, sha256, local path, purpose, quality note |
+| `%GF_ROOT%\asset-library\scout-log.jsonl` | every search, decision, Fab library add, cart add and download (time, action, url, result, reason) |
+| `%GF_ROOT%\asset-library\fab-library.psv` | every Fab listing added to the account library: `uid|name|licence|game(s)` |
+| `%GF_ROOT%\asset-library\fab-ue\LAUNCHER-CHECKLIST.md` | Unreal-format Fab packs to pull through the Epic Launcher into the FabVault53 staging project |
+| `%GF_ROOT%\tools\asset-scout\` | scout tools: `scout.py` (log, fetch, Poly Haven), `fabdl.py` (Fab signed downloads), `build_catalog.py` + `packs_meta.tsv` (catalogue) |
 
 Library layout: `asset-library\<source>\<pack>\` (one folder per pack, downloads are untouched archives or
 loose files; never run anything inside them). Sources: `fab` (browser downloads: Megascans, FBX/glTF packs,
@@ -34,7 +34,7 @@ WAV packs), `fab-ue\FabVault53` (Launcher-only Unreal packs), `polyhaven`, `ambi
 
 ## Storage
 
-Everything lives in `C:\Users\Xiang\Work\asset-library\` (the user asked for all packs there, overriding a
+Everything lives in `%GF_ROOT%\asset-library\` (the user asked for all packs there, overriding a
 brief plan to put new downloads on D:; the few packs that went to D: were moved back). Catalogue, scout log,
 status files and `fab-library.psv` are there too; `local_path` / `path` give exact folders. Tools:
 `scout.DL` (default = the C: library; env `ASSET_DL_ROOT` to redirect).
@@ -55,6 +55,9 @@ manifest; `fabue_batch.py` runs the batch and scans every `.uasset`/`.umap` head
 - **Status per pack:** `asset-library\fab-ue\_status\<pack>.json` (`result`, `bytes`, `saved_by`, `ue53_ok`,
   `ue53_notes`, `manifest_sha256`) plus the manifest itself. Usage note for game sessions:
   `side-session-notes\...\fab-ue-packs.md`.
+- **Pack list in the repo:** [asset-library-fab-ue.tsv](asset-library-fab-ue.tsv) (one row per `_status` file: slug,
+  listing, bytes, files, ue53_ok, saved_by, result, manifest_sha256). `machine/check.ps1` compares it and the Path
+  column of the per-game tables below with `%GF_ROOT%\asset-library\` on a new machine.
 - **Deferred to save disk (20, fetch on request):** Electric Dreams (59.8 GB), Medieval Village Megascans
   sample (22.6 GB), European Hornbeam / Black Alder / Beech, City Sample Vehicles, Downtown West, Megascans
   Warehouse, Saloon Interior, City Street Props, Office Pack, Common Hazel, Landscapes Pack, Vehicle Variety

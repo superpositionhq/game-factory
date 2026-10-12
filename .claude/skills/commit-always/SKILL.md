@@ -1,0 +1,89 @@
+---
+name: commit-always
+description: Commit discipline for every game-factory session (game builders, helpers, coordinator). Use whenever you change files in a game repo or in game-factory, before ending any turn, and when deciding what may be committed or pushed. Covers commit cadence, messages, workflow.jsonl rows, LFS, what never to commit, push policy and the WIP auto-commit hook.
+---
+
+# Commit always
+
+The git history is the product: a game's `git.log` and `workflow.jsonl` are the creation record the dataset is built
+from, and uncommitted work is invisible to the coordinator, the pipeline (it builds from commits) and the packager.
+The user's standing rule: **every session commits its work continuously.**
+
+## When
+
+- After every meaningful step: a system compiles and runs, an editor script ran and changed content, a level or asset
+  set is imported, a bug is fixed and verified, a doc section is written, a tool change passes its test. At least
+  every ~15 minutes of active work.
+- Before anything risky (an engine upgrade of an asset, a mass rename, `git lfs migrate`, a long build).
+- **Never end a turn with uncommitted work of yours.** Last step of every turn: `git status`, commit what is yours,
+  then report the sha.
+
+## Which repo, which files
+
+- **Game session:** your game repo (`%GF_ROOT%\games\<slug>`): `git add -A` is fine there, it is yours alone.
+  In game-factory you own only `docs/games/<slug>.md`; commit it with `git commit -m "..." -- docs/games/<slug>.md`.
+- **Helper / coordinator:** game-factory is one checkout shared by several sessions. Stage explicit paths only
+  (`git add <paths>`, `git commit -- <paths>`), never `git add -A` / `git commit -a`, never commit another session's
+  changes. If someone else has uncommitted edits in a file you must change, commit only your change (write your
+  version of the blob into the index with `git hash-object -w` + `git update-index --cacheinfo`, or ask them first).
+
+## Message
+
+- Subject: what changed, imperative, specific (`Add frost tower slow stacking and its data table`), under ~72 chars.
+- Body: why, how it was verified (build/test/run result), anything left open.
+- Game repos: end with the workflow rows the commit covers: `workflow: td-00412..td-00431`.
+- Game repos: no AI attribution trailers (`Co-Authored-By: Claude ...`) and never the names Superposition or
+  game-factory: commit messages ship in the dataset's `git.log`. Deliverables block Claude/Anthropic/Opus outright.
+  game-factory commits follow the normal attribution rules.
+
+## workflow.jsonl (game repos)
+
+- Rows are written **when the operation happens**, not at commit time (schema `ue-workflow/v0`: `schema, id, seq,
+  time` (ISO 8601 ms + offset), `actor:"agent", op, target, params, reason` (intent at that moment),
+  `reason_source:"agent_note", status` (`observed`/`failed`/`reverted`), `source {script, sha256, commit}`).
+- Commit `workflow.jsonl` together with the work it describes; the row ids go in the message. Many games also log an
+  `op:"vcs.commit"` row (sha, subject, files) right after committing; it rides along in the next commit.
+- Never edit, delete, reorder or backfill rows. Missed something: one `op:"log.gap"`, `status:"unrecorded"` row saying
+  what and when. Failed attempts get rows too.
+- Every editor script that ran stays in `Scripts/` unchanged (new version instead of overwriting), so `source.script`
+  + `source.sha256` point at the real code.
+
+## What to commit
+
+Everything needed to rebuild the game from the repo alone: `Source/`, `Config/`, the `.uproject`, `Content/`
+(including store packs under `Content/Fab/<Pack>/`), `Scripts/`, `RawAssets/` used for imports, `workflow.jsonl`,
+`assets.manifest.json`, `Docs/` (ThirdPartyNotices, screenshots), `README.md`, `Dataset/`. Nothing stays git-ignored
+except build output.
+
+**Binaries go through Git LFS.** `.gitattributes` from `templates/ue-game` covers every binary type
+case-insensitively. Before the first commit of a new binary type, add its pattern; check with
+`git check-attr filter -- <file>` (must say `lfs`). A binary committed outside LFS means `git lfs migrate` later,
+which rewrites history and changes every sha that recordings and briefs refer to.
+
+## Never commit
+
+- Build output and caches: `Binaries/ Intermediate/ Saved/ DerivedDataCache/ Build/ Packaged/`, `.vs/`, `*.sln`.
+- Anything under `%GF_ROOT%\.recording\` (hook-owned; never edit it either), `recordings\`, `builds\`, `deliverables\`.
+- Secrets: tokens, cookies, signed download URLs, `.env` files, credentials of any kind.
+- In game-factory: packages, project snapshots, vendor zips, `git.log` exports with asset diffs, ffmpeg or other
+  downloaded binaries (`machine/get-ffmpeg.ps1` fetches them), GPU recordings.
+- In game repos: the names Superposition / game-factory anywhere (code, comments, configs such as `CompanyName`,
+  scripts, docs). The user's absolute profile path where avoidable (run `tools/ue-pipeline/scrub-import-paths.py`
+  before a commit that will be recorded or packaged; the coordinator asks for it).
+
+## Push policy
+
+- **Never push unless the coordinator says so** (or the user, in your own session). The coordinator reviews first
+  (untracked files, ignored dirs, non-LFS blobs, LFS coverage), then tells you to push.
+- When told: `git push origin main --follow-tags`, then verify `git ls-remote origin main` matches `git rev-parse HEAD`
+  and `git lfs push origin main --dry-run` lists nothing left.
+- Game repos live at `superpositionhq/game-<slug>` (private). Never force-push. Never rewrite pushed history except a
+  coordinator-ordered scrub (`tools/ue-pipeline/scrub-history.ps1`) or LFS migration.
+
+## The WIP auto-commit
+
+The Stop hook (`record-action.ps1 -Stop`) commits leftover changes in a game repo as `WIP` at the end of every turn.
+It is a safety net so nothing is lost, not a way of working: a `WIP` commit carries no reason and no row ids, and it
+reads as sloppy in the dataset's `git.log`. If one of yours appears, say in your next commit's body what the WIP
+commit contained. Don't squash or amend it away; the history is the record. The hook does not cover game-factory:
+helpers and the coordinator must commit there themselves.

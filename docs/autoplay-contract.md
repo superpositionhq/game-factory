@@ -304,7 +304,7 @@ Without packaging (editor binaries, uncooked). **Always disable Live Coding** wi
 
 ```
 "C:\Program Files\Epic Games\UE_5.3\Engine\Binaries\Win64\UnrealEditor.exe" "<project>.uproject" -game -AutoPlay -Scenario=1 -Seed=1 -Skill=1 -MaxSeconds=120 -GoTimeout=0 -windowed -ResX=1920 -ResY=1080 -ini:EditorPerProjectUserSettings:[/Script/LiveCoding.LiveCodingSettings]:bEnabled=False -log
-powershell -ExecutionPolicy Bypass -File C:\Users\Xiang\Work\game-factory\tools\ue-pipeline\validate-run.ps1 "<project dir>\Saved\AutoPlay\<timestamp>"
+powershell -ExecutionPolicy Bypass -File %GF_ROOT%\game-factory\tools\ue-pipeline\validate-run.ps1 "<project dir>\Saved\AutoPlay\<timestamp>"
 ```
 
 (Verified on games\_pipeline-test: no LiveCodingConsole is started, the run quits by itself, validate-run passes; the uncooked editor runs at ~25 fps, the packaged build at 60. If you prefer `-unattended`, that also disables Live Coding, at the cost of a DPI-stretched 2880x1620 window. `-game` runs the editor binaries uncooked; keyboard and mouse are blocked while it runs, so close it from the

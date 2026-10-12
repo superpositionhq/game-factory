@@ -60,14 +60,26 @@ Each game repo keeps the same delivery in `Dataset/`, minus `UEProject/` and `Bu
 - [docs/ue-pipeline.md](docs/ue-pipeline.md): build, package, smoke-test and gameplay recording pipeline (`tools/ue-pipeline/`).
 - [docs/game-deliverable.md](docs/game-deliverable.md): the per-game deliverable (`tools/package-game.ps1`): layout, store-content variants, scrub.
 - [AGENTS.md](AGENTS.md): rules for agents working here (each with the failure behind it).
+- [CLAUDE.md](CLAUDE.md): what every Claude session reads first; points at the skills in `.claude/skills/`
+  (commit-always, game-session, coordinator).
+- [docs/new-machine.md](docs/new-machine.md): setting up another Windows machine (`machine/bootstrap.ps1`, `machine/check.ps1`).
+- [docs/briefs/](docs/briefs/README.md): the prompts that start the coordinator, game and helper sessions (templates + originals).
 
 ## Layout
 
 ```
 tools/build_package.py              converter: one Unity feature → workflow.jsonl + git.log + manifests
+tools/ue-pipeline/                  UE build, package and gameplay recording pipeline; AutoPlay drop-in
+tools/package-game.ps1, package-dataset.ps1   per-game deliverables and dataset layout v1
+machine/                            machine setup: bootstrap/check, ue-heavy limiter, recording hooks, ffmpeg, asset-scout
+templates/                          UE 5.3 game skeleton + new-game.ps1
+.claude/skills/                     commit-always, game-session, coordinator
 samples/liaozhai-gejin-qipao/       pilot output: workflow.jsonl, commits.json, summary.json
-docs/                               everything learned so far
+docs/                               everything learned so far; docs/briefs/ = session prompts
 ```
+
+Machine paths in docs are written `%GF_ROOT%` (the Work root: env `GF_ROOT`, else `%USERPROFILE%\.game-factory\config.json`,
+else `%USERPROFILE%\Work`); see [machine/README.md](machine/README.md).
 
 Full packages (tens of GB with the project snapshot) do not go in this repository.
 The pilot package lives at `~/Downloads/liaozhai_gejin_qipao/` on the owner's Mac.

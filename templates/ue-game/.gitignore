@@ -1,0 +1,22 @@
+# Build output and caches only, anchored to the repo root (an unanchored "Build/" would also hide Content/**/Build/
+# folders and anything named like them inside packs). Everything else is committed; binaries go through LFS
+# (.gitattributes).
+/Binaries/
+/Intermediate/
+/Saved/
+/DerivedDataCache/
+/Build/
+/Packaged/
+/Plugins/*/Binaries/
+/Plugins/*/Intermediate/
+/.vs/
+/.idea/
+/*.sln
+/*.VC.db
+/*.opensdf
+/*.sdf
+/*.suo
+__pycache__/
+*.pyc
+# generated export for review (recreate with git log); the dataset's git.log is built by the packager
+/git.log

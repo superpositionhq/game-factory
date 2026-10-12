@@ -22,7 +22,7 @@ lives under each game's `Content/Fab/<Pack>/` so packages can ship with or witho
 
 ## Already purchased (asset scout cart, 2026-10-11, Personal tier, $750.79 + tax)
 
-Owned now; do not buy again. The scout downloads them into `C:\Users\Xiang\Work\asset-library\fab-ue\<pack>\`.
+Owned now; do not buy again. The scout downloads them into `%GF_ROOT%\asset-library\fab-ue\<pack>\`.
 
 | Game | Listing | Price |
 |---|---|---|
@@ -57,7 +57,7 @@ being downloaded (#5 European Black Alder is deferred for disk; ask the scout). 
 Stealth #8 Server Room Kit, #9 Stranger Man, #10 Police Character / NPC, #13 Flashlight Set, #15 Niagara Dust,
 #16 Flashlights Pack, #17 Water Fountain, #23 Ultimate Stealth Music Pack; island-survival RamsterZ Survival
 Animations. Stealth #7 Big Office skipped (overlaps the bought DownTown Office). Free #18 Water Materials (CC BY)
-and #21 Small Sound Kit added. All downloaded to `C:\Users\Xiang\Work\asset-library\fab-ue\<pack>\`, UE 5.3 OK.
+and #21 Small Sound Kit added. All downloaded to `%GF_ROOT%\asset-library\fab-ue\<pack>\`, UE 5.3 OK.
 
 ## Asset scout: open paid suggestions (not bought)
 

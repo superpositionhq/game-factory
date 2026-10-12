@@ -3,7 +3,7 @@
   Byte search (case-insensitive, ASCII and UTF-16LE) for strings that must not ship, across every file under a folder.
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File leak-scan.ps1 C:\Users\Xiang\Work\builds\tower-defense\52a6f2a1-shipping
+  powershell -ExecutionPolicy Bypass -File leak-scan.ps1 %GF_ROOT%\builds\tower-defense\52a6f2a1-shipping
   powershell -ExecutionPolicy Bypass -File leak-scan.ps1 <dir> -Patterns xiang,superposition,game-factory
 
   Default patterns: the Windows user name inside paths (\<name>\ and /<name>/: source, PDB and temp paths compiled in;

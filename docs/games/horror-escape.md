@@ -2,7 +2,7 @@
 
 Track B game: a small, complete first-person horror escape / puzzle game built in Unreal Engine 5.3 by an agent
 (Claude), with every real editor and code operation recorded at the moment it happens in `workflow.jsonl`
-(schema `ue-workflow/v0`; rows before hx-02469 carry the old schema name). Project: `C:\Users\Xiang\Work\games\horror-escape` (own git repo,
+(schema `ue-workflow/v0`; rows before hx-02469 carry the old schema name). Project: `%GF_ROOT%\games\horror-escape` (own git repo,
 git-lfs). Started 2026-10-11 01:40 -04:00.
 
 ## 1. Game in one paragraph
@@ -387,7 +387,7 @@ the stalker chases it, waits until it leaves, then resumes. Skill: reaction dela
   reason_source:"agent_note", status, source{script, commit}}`, appended by `Scripts/wf.py` (CLI via
   `Scripts/wf.sh`, imported by editor scripts). `status`: observed / failed / reverted / unrecorded (`log.gap`).
 - Every editor script that ran stays in `Scripts/` unchanged (new version = new file).
-- Heavy jobs go through `C:\Users\Xiang\Work\tools\ue-heavy.ps1`.
+- Heavy jobs go through `%GF_ROOT%\tools\ue-heavy.ps1`.
 
 ## 11. Acceptance checklist
 
@@ -466,7 +466,7 @@ end to end.
   - materials (`M_ArchHQ`, decals); story textures (drawing, tally, height marks, scorch, scratches);
   - synthesized SFX and MetaSounds; sequences; C++ UI; the bot.
 
-**Packaged build:** `C:/Users/Xiang/Work/games/horror-escape/Packaged/Shipping/Windows/HorrorEscape.exe` (Win64
+**Packaged build:** `%GF_ROOT%/games/horror-escape/Packaged/Shipping/Windows/HorrorEscape.exe` (Win64
 Shipping, 871 MB, 4,352 cooked packages). The first attempt failed on an editor-only call (`GetActorLabel`) and was
 fixed. AutoPlay chapter 1 wins in the packaged exe (135 s), and `validate-run.ps1` passes.
 

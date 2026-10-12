@@ -4,7 +4,7 @@
   validate, and write one gameplay bundle per run. See docs/ue-pipeline.md and docs/autoplay-contract.md.
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File record.ps1 stealth -Build C:\Users\Xiang\Work\builds\stealth\a1b2c3d4 -Level 1 -Runs 3
+  powershell -ExecutionPolicy Bypass -File record.ps1 stealth -Build %GF_ROOT%\builds\stealth\a1b2c3d4 -Level 1 -Runs 3
   powershell -ExecutionPolicy Bypass -File record.ps1 stealth -Build latest -Level 2 -Runs 1 -Skill 0.5 -Seed 42
 
   Bundle: recordings\<game>\<run-id>\ video.mkv, system_audio.mka, inputs.jsonl, telemetry.jsonl, outcome.json,

@@ -1,0 +1,2 @@
+# Claude session ids (one per line) that the recording hooks never record, e.g. the coordinator session.
+# bootstrap.ps1 creates ~\.claude\hooks\recording-exclude.txt from this file once and never overwrites it.

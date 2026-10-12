@@ -3,7 +3,7 @@
 Track B game: a complete third-person island-survival game with gathering, crafting and a building flow, built in
 Unreal Engine 5.3 by an agent (Claude), with every real editor, code and build operation recorded at the moment it
 happens in `workflow.jsonl` (schema `superposition.ue-workflow/v0`, ids `is-NNNNN`).
-Project: `C:\Users\Xiang\Work\games\island-survival` (own git repo, git-lfs). Module `IslandSurvival`.
+Project: `%GF_ROOT%\games\island-survival` (own git repo, git-lfs). Module `IslandSurvival`.
 Started 2026-10-11 02:41 -04:00.
 
 The vendor's `island_explore` is the bar to beat: a marketplace demo map with fixes on top, a Paragon character,
@@ -303,7 +303,7 @@ items gathered + 10 × pieces placed + 100 × nights survived).
   reason_source:"agent_note", status, source{script, sha256, commit}}`, appended by `Scripts/wf.py` (shell: `Scripts/wf.sh`,
   editor scripts import it). `status`: observed / failed / reverted / unrecorded (`log.gap`).
 - Every editor script that ran stays in `Scripts/` unchanged (a new version is a new file).
-- Heavy jobs go through `C:\Users\Xiang\Work\tools\ue-heavy.ps1`.
+- Heavy jobs go through `%GF_ROOT%\tools\ue-heavy.ps1`.
 
 ## 13. Fab requests
 

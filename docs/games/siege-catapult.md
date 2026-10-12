@@ -4,7 +4,7 @@ A small physics game built in Unreal Engine 5.3 by an agent (Claude), recorded a
 (`workflow.jsonl`, schema `superposition.ue-workflow/v0`). Part of the four-game Track B batch
 (tower defense, siege catapult, stealth, rally racer); see [../plan.md](../plan.md) "Track B".
 
-- Project: `C:\Users\Xiang\Work\games\siege-catapult` (`SiegeCatapult.uproject`, its own git repo with LFS)
+- Project: `%GF_ROOT%\games\siege-catapult` (`SiegeCatapult.uproject`, its own git repo with LFS)
 - Engine: UE 5.3 (`C:\Program Files\Epic Games\UE_5.3`), Win64
 - Builder: agent; every row is `actor: agent`, `reason_source: agent_note`, `status: observed`
 
