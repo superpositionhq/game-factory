@@ -159,15 +159,16 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
         exits = [(x[0] or x[2], x[1] or x[3]) for x in EXIT_RE.findall(resp)]
         found = []
         for k, c in enumerate(expanded):
-            for pat in pats:
+            for pi, pat in enumerate(pats):
                 for m in pat.finditer(c):
                     g = m.groupdict()
                     reason = g.get("reason") if g.get("reason") is not None else g.get("reason_sq")
                     found.append(((k, m.start()), subst_assigned(c, m.start(), m.group("script")),
                                   subst_assigned(c, m.start(), (g.get("args") or "").strip()), run_env(c, m.start()),
-                                  reason if reason is not None else run_reason(c, m.start()), g.get("mode") or "commandlet"))
+                                  reason if reason is not None else run_reason(c, m.start()), g.get("mode") or "commandlet",
+                                  pi >= len(RUN_PATTERNS)))
         found.sort()
-        for i, (_, script, args, env, reason, mode) in enumerate(found):
+        for i, (_, script, args, env, reason, mode, via_wrapper) in enumerate(found):
             ex = exits[i] if i < len(exits) and len(exits) == len(found) else None
             s = script.replace("\\", "/")
             if re.match(r"^[A-Za-z]:/", s) and s.lower().startswith(repo_abs.lower().rstrip("/") + "/"):
@@ -175,8 +176,10 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
             runs.append({
                 "time": a["time"], "action_tool_use_id": a.get("tool_use_id"), "script": s, "args": args,
                 "exit_code": int(ex[0]) if ex else None, "duration_s": int(ex[1]) if ex else None,
-                "background": bool(re.search(r'"backgroundTaskId"', resp)), "after": prev,
-                "env": env, "reason": reason, "mode": mode,
+                # started in the background: by the tool, or with a shell `&` (rows then arrive after the call ends)
+                "background": bool(re.search(r'"backgroundTaskId"', resp)) or bool(re.search(r"[^&]&[ \t]*(?:\n|$|;|echo\b|wait\b|disown\b)", c)),
+                "after": prev,
+                "env": env, "reason": reason, "mode": mode, "via_wrapper": via_wrapper,
                 "command": cmd[:2000],
             })
     return runs
@@ -426,9 +429,14 @@ def build(cfg):
 
     # rows each run logged (by script and time window)
     by_script = collections.defaultdict(list)
+    wrapper_by_script = collections.defaultdict(list)
     wrapper_ops = set(cfg.get("wrapper_row_ops", []))   # rows a game's run wrapper logs around each run (not the script's)
     for row in wf_rows:
         if row.get("op") in wrapper_ops:
+            s = ((row.get("source") or {}).get("script") or row.get("target") or "").replace("\\", "/")
+            m = re.search(r"(?:^|/)(Scripts/.+\.py)$", s)
+            if s:
+                wrapper_by_script[m.group(1) if m and s.startswith("..") else s].append(row)
             continue
         s = (row.get("source") or {}).get("script")
         if s:
@@ -447,6 +455,10 @@ def build(cfg):
         hi = parse_time(nxt["start"]) if nxt else parse_time(r["time"]) + datetime.timedelta(hours=2)
         hi = min(hi, parse_time(r["time"]) + datetime.timedelta(seconds=5)) if not r["background"] else hi
         r["rows"] = [x["id"] for x in by_script.get(r["script"], []) if lo <= parse_time(x["time"]) <= hi]
+        if wrapper_ops and r.get("via_wrapper"):
+            # the game's run wrapper logs a row before every run it starts: none means the command never got there
+            # (an earlier step of the same command failed), so the run did not happen
+            r["wrapper_rows"] = sum(1 for x in wrapper_by_script.get(r["script"], []) if lo <= parse_time(x["time"]) <= hi)
     for w in windows:
         w["events"] = dict(w["events"])
     return {"schema": SCHEMA, "game": cfg["game"], "final": final, "first": chain[0]["sha"],

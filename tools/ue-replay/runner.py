@@ -471,6 +471,16 @@ def cmd_run(cfg, a):
                 r = s
                 rec.update({"run": r["id"], "script": r["script"], "readonly": r["readonly"], "exit_code_original": r["exit_code"],
                             "rows_original": r["rows"]})
+                not_run = ("original exit 127: the command was not found, the script never ran" if r.get("exit_code") == 127 else
+                           "no wrapper row and no exit code: the original command stopped before this run"
+                           if r.get("wrapper_rows") == 0 and r.get("exit_code") is None else None)
+                if not_run and not a.force:
+                    rec["skipped"] = not_run
+                    print("   %s %-38s skipped: %s" % (r["id"], os.path.basename(r["script"]), not_run), flush=True)
+                    jappend(runs_log, rec)
+                    ctx.state["done"].append(sid)
+                    ctx.save()
+                    continue
                 if r["readonly"] and not a.force:
                     rec["skipped"] = "read-only"
                     jappend(runs_log, rec)
