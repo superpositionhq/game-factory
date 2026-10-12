@@ -305,8 +305,15 @@ def run_editor_script(ctx, run):
         env[cfg["reason_env"]] = run["reason"]
     log = os.path.join(ctx.logs, "runs", "%s_%s.log" % (run["id"], os.path.splitext(os.path.basename(run["script"]))[0]))
     os.makedirs(os.path.dirname(log), exist_ok=True)
-    sarg = "-script=%s%s" % (script, (" " + run["args"]) if run.get("args") else "")
-    argv = [ctx.editor_cmd, ctx.uproject, "-run=pythonscript", sarg] + cfg.get("editor_args", []) + ["-abslog=" + log]
+    if run.get("mode") == "editor":
+        # the builder ran it in a full (headless) editor, not the commandlet: -ExecutePythonScript, quits when done
+        argv = [ctx.editor_cmd, ctx.uproject, "-ExecutePythonScript=%s" % script] + cfg.get("editor_args", [])
+        if not any(x.lower() == "-nullrhi" for x in argv):
+            argv.append("-nullrhi")
+        argv.append("-abslog=" + log)
+    else:
+        sarg = "-script=%s%s" % (script, (" " + run["args"]) if run.get("args") else "")
+        argv = [ctx.editor_cmd, ctx.uproject, "-run=pythonscript", sarg] + cfg.get("editor_args", []) + ["-abslog=" + log]
     code, secs = heavy("ue-replay %s %s %s" % (cfg["game"], run["id"], os.path.basename(run["script"])), argv, env=env)
     return code, secs, log, version
 

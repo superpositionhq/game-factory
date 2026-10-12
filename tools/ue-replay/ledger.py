@@ -78,21 +78,23 @@ RUN_PATTERNS = [
     # UnrealEditor-Cmd <proj> -run=pythonscript '-script=<path> --args'
     re.compile(r"-run=pythonscript\s+['\"]?-script=(?P<script>[^'\"\s]+)(?P<args>[^'\"]*)['\"]?"),
 ]
-EXIT_RE = re.compile(r"exit code (-?\d+) \((\d+) s\)")
+# "exit code N (S s)" (Scripts/ue.ps1) or "exit=N seconds=S" (a game's shell wrapper)
+EXIT_RE = re.compile(r"exit code (-?\d+) \((\d+) s\)|exit=(-?\d+) seconds=(\d+)")
 
 
-def expand_loops(cmd):
+def expand_loops(cmd, pats=None):
     """`for mode in a b c; do ... $mode ...; done` around an editor run: one run per value (only this simple form)."""
     m = re.search(r"for (\w+) in ([^;]+); do (.*?); done", cmd, re.S)
-    if not m or "pythonscript" not in m.group(3):
+    if not m or not any(p.search(m.group(3)) for p in (pats or RUN_PATTERNS)):
         return [cmd]
     var, values, body = m.group(1), m.group(2).split(), m.group(3)
     return [cmd[:m.start()] + body.replace("$" + var, v).replace("${%s}" % var, v) + cmd[m.end():] for v in values]
 
 
-def editor_runs(actions, repo_abs):
+def editor_runs(actions, repo_abs, extra_patterns=()):
     """Editor-script runs found in shell commands, in order. Each: time (end of the tool call), approximate start,
     script (repo-relative or absolute), args, exit code / duration when the output says so."""
+    pats = list(RUN_PATTERNS) + [re.compile(x) for x in extra_patterns]
     runs = []
     prev_time = None
     for a in actions:
@@ -100,20 +102,20 @@ def editor_runs(actions, repo_abs):
         if a.get("tool") not in ("Bash", "PowerShell") or a.get("event") != "PostToolUse":
             continue
         cmd = a.get("input", {}).get("command", "")
-        if "pythonscript" not in cmd and "ue.ps1 script" not in cmd:
+        if not any(p.search(cmd) for p in pats):
             continue
         resp = a.get("response") or ""
         if not isinstance(resp, str):
             resp = json.dumps(resp)
-        exits = EXIT_RE.findall(resp)
+        exits = [(x[0] or x[2], x[1] or x[3]) for x in EXIT_RE.findall(resp)]
         found = []
-        for k, c in enumerate(expand_loops(cmd)):
-            for pat in RUN_PATTERNS:
+        for k, c in enumerate(expand_loops(cmd, pats)):
+            for pat in pats:
                 for m in pat.finditer(c):
                     found.append(((k, m.start()), m.group("script"), (m.groupdict().get("args") or "").strip(), run_env(c, m.start()),
-                                  run_reason(c, m.start())))
+                                  run_reason(c, m.start()), m.groupdict().get("mode") or "commandlet"))
         found.sort()
-        for i, (_, script, args, env, reason) in enumerate(found):
+        for i, (_, script, args, env, reason, mode) in enumerate(found):
             ex = exits[i] if i < len(exits) and len(exits) == len(found) else None
             s = script.replace("\\", "/")
             if re.match(r"^[A-Za-z]:/", s) and s.lower().startswith(repo_abs.lower().rstrip("/") + "/"):
@@ -122,7 +124,7 @@ def editor_runs(actions, repo_abs):
                 "time": a["time"], "action_tool_use_id": a.get("tool_use_id"), "script": s, "args": args,
                 "exit_code": int(ex[0]) if ex else None, "duration_s": int(ex[1]) if ex else None,
                 "background": bool(re.search(r'"backgroundTaskId"', resp)), "after": prev,
-                "env": env, "reason": reason,
+                "env": env, "reason": reason, "mode": mode,
                 "command": cmd[:2000],
             })
     return runs
@@ -236,13 +238,17 @@ def build(cfg):
     repo_abs = repo.replace("\\", "/")
     final = git(repo, "rev-parse", cfg["final"]).strip()
     chain = first_parent_chain(repo, final)
+    # fold_commits: commits that hold only part of the work done before them (e.g. a README-only commit while the
+    # scripts and C++ those runs used came a commit later) are not window boundaries; their work goes to the next one
+    fold = [f.lower() for f in cfg.get("fold_commits", [])]
+    chain = [c for c in chain if c["sha"] == final or not any(c["sha"].lower().startswith(f) for f in fold)]
     actions = [json.loads(l) for l in open(os.path.join(cfg["recording"], "actions.jsonl"), encoding="utf-8")]
     actions.sort(key=lambda a: a["time"])
     t_final = parse_time(chain[-1]["time"])
     actions = [a for a in actions if parse_time(a["time"]) <= t_final + datetime.timedelta(seconds=60)]
     wf_rows = [json.loads(l) for l in git(repo, "show", "%s:workflow.jsonl" % final).splitlines() if l.strip()]
 
-    runs = editor_runs(actions, repo_abs)
+    runs = editor_runs(actions, repo_abs, cfg.get("run_patterns", []))
     ro = cfg.get("readonly_patterns", [])
     for r in runs:
         base = os.path.basename(r["script"])
@@ -368,7 +374,10 @@ def build(cfg):
 
     # rows each run logged (by script and time window)
     by_script = collections.defaultdict(list)
+    wrapper_ops = set(cfg.get("wrapper_row_ops", []))   # rows a game's run wrapper logs around each run (not the script's)
     for row in wf_rows:
+        if row.get("op") in wrapper_ops:
+            continue
         s = (row.get("source") or {}).get("script")
         if s:
             by_script[s].append(row)
