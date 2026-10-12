@@ -68,7 +68,7 @@ param(
 
 . (Join-Path $PSScriptRoot 'ue-pipeline\common.ps1')
 if (-not $OutRoot) { $OutRoot = Get-GFOut }   # GF_OUT / config "out", else <root>\deliverables
-if (-not $ScrubDir) { [void](Assert-GFFreeSpace $OutRoot 'package-game') }
+if (-not $ScrubDir -and -not $Rescan) {   # scrub-in-place and rescan write next to nothing [void](Assert-GFFreeSpace $OutRoot 'package-game') }
 $ToolVersion = 1
 $t0 = Get-Date
 
