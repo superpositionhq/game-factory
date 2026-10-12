@@ -506,6 +506,7 @@ namespace UePipeline {
                     int len = keep + read;
                     bool last = read == 0;
                     int limit = last ? len : len - overlap;   // only start matches that fit wholly in this window
+                    if (limit < 0) limit = 0;                 // a short read (or a file shorter than the overlap): carry it all over
                     for (int i = 0; i < limit; i++) {
                         if (Lower(buf[i]) != p[0]) continue;
                         if (i + n <= len) {
