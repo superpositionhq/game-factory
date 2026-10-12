@@ -358,12 +358,16 @@ if (-not $NoZip) {
     foreach ($r in ($results | Where-Object { -not $_.repo })) {
         # one name for every game: <game>\Dataset.zip (top folder inside stays <game>/)
         $zbase = if ($OutRoot) { $r.name } else { 'Dataset' }
-        foreach ($old in @("$zbase.zip", "$zbase.pending.zip")) { $p = Join-Path $zipDir $old; if (Test-Path $p) { Remove-Item -Force $p } }
         $zip = Join-Path $zipDir "$zbase$(if ($status -ne 'complete') { '.pending' }).zip"
+        # written under a temporary name and swapped in only when complete: the old zip stays usable until then
+        $tmpZip = Join-Path $outDir "$zbase.zip.partial"   # in the ignored scratch folder (same volume: a rename)
+        if (Test-Path $tmpZip) { Remove-Item -Force $tmpZip }
         Write-Step "zipping $zip"
-        $n = [DatasetV1.T]::Zip($r.dest, $zip, $Game)
+        $n = [DatasetV1.T]::Zip($r.dest, $tmpZip, $Game)
         $files = @(Get-ChildItem $r.dest -Recurse -File).Count
-        if ($n -ne $files) { throw "zip $zip has $n entries, expected $files" }
+        if ($n -ne $files) { throw "zip $tmpZip has $n entries, expected $files" }
+        foreach ($old in @("$zbase.zip", "$zbase.pending.zip")) { $p = Join-Path $zipDir $old; if (Test-Path $p) { Remove-Item -Force $p } }
+        Move-Item -LiteralPath $tmpZip -Destination $zip
         $r['zip'] = $zip; $r['zip_bytes'] = (Get-Item $zip).Length
     }
 }

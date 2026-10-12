@@ -103,6 +103,9 @@ def recorded_path_regex(template):
         elif template.startswith("{root}", i):
             out.append(r"(?:[A-Za-z]:|/[A-Za-z])(?:%s[^\\/\s'\"]+)*?" % sep)
             i += 6
+        elif template.startswith("/**/", i):   # any number of components (also none)
+            out.append(r"(?:%s[^\\/\s'\"]+)*?%s" % (sep, sep))
+            i += 4
         elif template[i] == "/":
             out.append(sep)
             i += 1
@@ -113,6 +116,32 @@ def recorded_path_regex(template):
             out.append(re.escape(template[i]))
             i += 1
     return re.compile("".join(out), re.I)
+
+
+# Packaged copies of recorded data (ReplayScripts: ledger, script blobs, settings, reports) name the build machine's
+# per-session folders; those names are noise for a buyer and identify the session. They become neutral names that the
+# settings templates ({home}/AppData/Local/Temp/**/..., {home}/AppData/Roaming/**/...) still match.
+_SEP = r"([\\/]{1,2})"
+SESSION_PATH_RULES = [
+    ("session_scratch", re.compile(r"(?i)(AppData)%s(Local)%s(Temp)%s[^\\/\s'\"]+%s[^\\/\s'\"]+%s"
+                                   r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}%sscratc[h]pad"
+                                   % ((_SEP,) * 6)),
+     lambda m: "%s%s%s%s%s%ssession%sscratch" % (m.group(1), m.group(2), m.group(3), m.group(4), m.group(5), m.group(6), m.group(6))),
+    ("session_notes", re.compile(r"(?i)(AppData)%s(Roaming)%s[^\\/\s'\"]+%sside-sessio[n]-notes%slocal_[0-9a-f]{8}-[0-9a-f]{4}-"
+                                 r"[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" % ((_SEP,) * 4)),
+     lambda m: "%s%s%s%ssession%snotes" % (m.group(1), m.group(2), m.group(3), m.group(4), m.group(4))),
+    ("session_id", re.compile(r"\blocal_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b"), lambda m: "local_session"),
+]
+
+
+def neutral_session_paths(text):
+    """(new text, {rule: count}) with the build machine's session folders and ids replaced (SESSION_PATH_RULES)."""
+    counts = {}
+    for rid, rx, f in SESSION_PATH_RULES:
+        text, n = rx.subn(f, text)
+        if n:
+            counts[rid] = n
+    return text, counts
 
 
 def has_recorded(match, text):

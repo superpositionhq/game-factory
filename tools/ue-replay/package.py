@@ -138,11 +138,28 @@ def cmd_package(cfg, a):
     report = runner.jload(os.path.join(work, "Verification", "report.json"), None)
     with open(os.path.join(rs, "README.md"), "w", encoding="utf-8", newline="\n") as f:
         f.write(readme(cfg, led, ctx.state, src, report))
+    # the build machine's per-session folders and ids in the recorded data become neutral names (ue_replay.
+    # SESSION_PATH_RULES); the settings templates still match them, so a replay from this folder works the same
+    neutral = {}
+    for dp, _, fns in os.walk(rs):
+        for fn in fns:
+            if not fn.lower().endswith((".json", ".jsonl", ".md", ".py", ".txt", ".tsv", ".csv", ".ini", ".sh", ".ps1")):
+                continue
+            fp = os.path.join(dp, fn)
+            with open(fp, "rb") as f:
+                b = f.read()
+            t = b.decode("utf-8", "surrogateescape")
+            t2, c = ue_replay.neutral_session_paths(t)
+            if c:
+                with open(fp, "wb") as f:
+                    f.write(t2.encode("utf-8", "surrogateescape"))
+                for k, v in c.items():
+                    neutral[k] = neutral.get(k, 0) + v
     summary = {
         "schema": "ue-replay.package/v1", "game": cfg["game"], "first_commit": led.get("first"), "final_commit": final,
         "created": datetime.datetime.now().astimezone().isoformat(timespec="seconds"), "complete": complete, "parts": src,
         "windows": {"done": ctx.state.get("window", 0), "total": total_windows(led)}, "blobs": nblobs,
-        "verdict": (report or {}).get("verdict"), "verify": report,
+        "verdict": (report or {}).get("verdict"), "verify": report, "session_paths_neutralised": neutral,
     }
     runner.jdump(os.path.join(out, "verification.json"), summary)
     if complete:
