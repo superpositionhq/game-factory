@@ -921,6 +921,9 @@ $RulesTail = @(
     @{ id = 'session-path'; scope = 'all'; match = '(?i)(AppData([\\/]+)Roaming\2)[^\\/\s''"]+\2side-sessio[n]-notes\2local_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'; replace = '${1}session${2}notes' },
     @{ id = 'session-path'; scope = 'all'; match = '(?i)\blocal[_][0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b'; replace = 'session' },
     @{ id = 'session-path'; scope = 'all'; match = '(?i)side-sessio[n]-notes'; replace = 'session-notes' },
+    # repair of 8671b2a's output (its replacements were written literally, e.g. ${1}session${2}notes): rescrubbed zips
+    @{ id = 'session-path'; scope = 'all'; match = '\$\{1\}session\$\{2\}notes(?=(\\\\|[\\/]))'; replace = 'AppData${1}Roaming${1}session${1}notes' },
+    @{ id = 'session-path'; scope = 'all'; match = '\$\{1\}session\$\{3\}(?=(\\\\|[\\/]))'; replace = 'AppData${1}Local${1}Temp${1}session' },
     @{ id = 'session-path'; scope = 'all'; match = '(?i)scratc[h]pad'; replace = 'scratch' },
     @{ id = 'username'; scope = 'all'; match = "(?i)$([regex]::Escape($MachineName))"; replace = 'dev-pc' },   # the machine name contains it
     @{ id = 'username'; scope = 'all'; match = "(?i)(?<=users[\\/:0-9]{0,6})$([regex]::Escape($UserName))"; replace = 'dev' },   # paths that lost their separators (C:UsersNameWork...) or use a regex backreference (Users\1Name\1Work)
