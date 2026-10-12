@@ -298,7 +298,7 @@ Add-Type -AssemblyName System.Web.Extensions
 # runtime listens on a TCP port in Development builds; a fixed path means one prompt per game, not one per build.
 if (-not $NoStablePath) {
     $runRoot = Join-Path (Join-Path $BuildsRoot $Game) '_run'
-    Enter-PipelineLock "stage $Game run copy"
+    Enter-PipelineLock "stage $Game run copy" -Game $Game
     try {
         Write-Step "mirroring $Build\Windows -> $runRoot\Windows"
         & robocopy.exe (Join-Path $Build 'Windows') (Join-Path $runRoot 'Windows') /MIR /NJH /NJS /NP /NFL /NDL /R:2 /W:2 | Out-Null
@@ -375,8 +375,11 @@ for ($i = 0; $i -lt $Runs; $i++) {
         Exit-GpuSlot $gpuSlot; $gpuSlot = $null
     }
     Write-Step "GPU slot held; $(Get-VramUsedMB) MB VRAM in use before launch"
-    Enter-PipelineLock "record $Game $runId"
+    Enter-PipelineLock "record $Game $runId" -Game $Game
     [UePipeline.Win]::KeepDisplayOn($true)
+    # The display may have gone off while we waited for the user to be away (display timeout = idle gate): wake it,
+    # or ddagrab gets no frames (2026-10-11 20:32, tower-defense 937ec12 S1).
+    Invoke-WakeDisplay
     try {
         Write-Step "run $($i + 1)/$Runs $runId (skill $runSkill, seed $runSeed)"
         if (-not $vramOk) { throw "more than $MaxVramInUseMB MB VRAM stayed in use by other processes for 120 min; not launching" }
@@ -417,7 +420,9 @@ for ($i = 0; $i -lt $Runs; $i++) {
         # ---- start capture (ddagrab, falling back to gdigrab) ----
         # gfxcapture is opt-in only: in tests it delivered ~6 frames/s for an unfocused window and its timestamps did
         # not fit the start-time estimate. ddagrab (topmost window + privacy guard) is the default.
-        $modes = if ($Capture -eq 'auto') { @('ddagrab', 'gdigrab-region') } else { @($Capture) }
+        # ddagrab is tried twice: a display that went off delivers no Desktop Duplication frames, so the second try
+        # follows a display wake (attempt files are named ddagrab and ddagrab-retry).
+        $modes = if ($Capture -eq 'auto') { @('ddagrab', 'ddagrab-retry', 'gdigrab-region') } else { @($Capture) }
         if ($modes[0] -ne 'gfxcapture') {
             # A first-run Windows Firewall prompt (or anything else) on top of the game would trip the privacy guard:
             # wait for the client area to be clear (the game waits for 'go' up to -GoTimeout=300).
@@ -430,6 +435,8 @@ for ($i = 0; $i -lt $Runs; $i++) {
             if (-not [UePipeline.Win]::IsClientUncovered($hwnd)) { throw "game window stayed covered for 240 s by $([UePipeline.Win]::CoveringWindow($hwnd)); not recording" }
         }
         foreach ($m in $modes) {
+            $mode = if ($m -eq 'ddagrab-retry') { 'ddagrab' } else { $m }
+            if ($m -eq 'ddagrab-retry') { Write-Step 'ddagrab got no frames: waking the display and trying ddagrab once more'; Invoke-WakeDisplay 5 }
             # Screen-region modes record whatever is on screen there: keep the game on top. gfxcapture doesn't need it.
             [void][UePipeline.Win]::SetTopmost($hwnd, ($m -ne 'gfxcapture'))
             # One set of files per attempt: a failed attempt's ffmpeg must never block the next attempt's files.
@@ -437,12 +444,16 @@ for ($i = 0; $i -lt $Runs; $i++) {
             $ffLog = Join-Path $rawDir "ffmpeg-$m.log"
             $ffProgress = Join-Path $rawDir "ffmpeg_progress-$m.txt"
             [void]$clock.Add((Get-ClockSample "capture_start_$m"))
-            $cap = Start-Capture $m $rect $title $videoPath $ffLog $ffProgress $hwnd
+            $cap = Start-Capture $mode $rect $title $videoPath $ffLog $ffProgress $hwnd
             try { Get-CimInstance Win32_Process -Filter "ParentProcessId=$($cap.Process.Id)" | ForEach-Object { (Get-Process -Id $_.ProcessId).PriorityClass = 'AboveNormal' } } catch { }
             $t = (Get-Date).AddSeconds(10)
             while ((Get-CapturedFrameCount $ffLog) -lt 30 -and -not $cap.Process.HasExited -and (Get-Date) -lt $t) { Start-Sleep -Milliseconds 100 }
-            if ((Get-CapturedFrameCount $ffLog) -ge 30 -and -not $cap.Process.HasExited) { $captureMode = $m; break }
-            [void]$warnings.Add("capture mode $m failed: $((Get-Content $ffLog -Tail 3 -ErrorAction SilentlyContinue) -join ' | ')")
+            $frames = Get-CapturedFrameCount $ffLog
+            if ($frames -ge 30 -and -not $cap.Process.HasExited) { $captureMode = $mode; break }
+            # ffmpeg's stderr is the attempt log (2> in Start-Capture); say whether it hung or exited, and with what.
+            $how = if ($cap.Process.HasExited) { "ffmpeg exited with code $($cap.Process.ExitCode)" } else { "ffmpeg still starting after 10 s (hung in device/probe init)" }
+            [void]$warnings.Add("capture attempt $m failed: $frames frames in 10 s, $how; log: $((Get-Content $ffLog -Tail 5 -ErrorAction SilentlyContinue) -join ' | ')")
+            Write-Step "capture attempt $m failed: $frames frames, $how"
             Stop-Capture $cap 3000
             if (Test-Path $videoPath) { Move-Item -Force $videoPath (Join-Path $rawDir "failed-attempt-$m.mkv") }
             $cap = $null

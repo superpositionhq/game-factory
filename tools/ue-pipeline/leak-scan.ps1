@@ -7,7 +7,7 @@
   powershell -ExecutionPolicy Bypass -File leak-scan.ps1 <dir> -Patterns xiang,superposition,game-factory
 
   Default patterns: the Windows user name inside paths (\<name>\ and /<name>/: source, PDB and temp paths compiled in;
-  a bare-name search also hits the engine's 'zh_XIANG'/'zh-xiang' locale ids) and the names the games must not contain. Prints hits per file with a short ASCII context; exit 1 if anything is found. build.ps1 runs the same
+  a bare-name search also hits the engine's 'zh_XIANG'/'zh-xiang' locale ids) and the names that must not ship ($ForbiddenNamePatterns in common.ps1). Prints hits per file with a short ASCII context; exit 1 if anything is found. build.ps1 runs the same
   scan (Find-LeakedStrings) after packaging and records the result.
 #>
 param(
@@ -15,8 +15,9 @@ param(
     [string[]]$Patterns = $null
 )
 . (Join-Path $PSScriptRoot 'common.ps1')
-if (-not $Patterns) { $Patterns = $UserNamePatterns + @('superposition', 'game-factory', 'game_factory', 'gamefactory') }
+if (-not $Patterns) { $Patterns = $UserNamePatterns + $ForbiddenNamePatterns }
 $hits = @(Find-LeakedStrings $Dir $Patterns)
 foreach ($h in $hits) { "{0,6}  {1}  {2}  e.g. {3}" -f $h.count, $h.pattern, $h.file, $h.example }
-"{0} hits in {1} files under {2} (patterns: {3})" -f (($hits | Measure-Object count -Sum).Sum + 0), $hits.Count, $Dir, ($Patterns -join ', ')
+$total = 0; foreach ($h in $hits) { $total += $h.count }
+"{0} hits in {1} files under {2} (patterns: {3})" -f $total, $hits.Count, $Dir, ($Patterns -join ', ')
 if ($hits.Count) { exit 1 }

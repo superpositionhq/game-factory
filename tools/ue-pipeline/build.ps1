@@ -59,7 +59,7 @@ Set-BelowNormalPriority
 New-Item -ItemType Directory -Force $BuildTempRoot | Out-Null
 $savedTemp = $env:TEMP; $savedTmp = $env:TMP
 $env:TEMP = $BuildTempRoot; $env:TMP = $BuildTempRoot
-Enter-PipelineLock "build $Game $short"
+Enter-PipelineLock "build $Game $short" -Game $Game
 $start = Get-Date
 $steps = New-Object System.Collections.ArrayList
 $failure = ''
@@ -194,9 +194,9 @@ try {
             $failure = "cook is missing $($missingByPipeline.Count) packages that exist in the game's working tree: $(($missingByPipeline | Select-Object -First 5) -join ', ')"
             throw $failure
         }
-        # Strings that must not ship: the user name (compiled-in source/PDB paths) and the two names the games must not
-        # contain. Recorded and warned about; recording still works, but such a build must not be handed out.
-        $leakHits = @(Find-LeakedStrings (Join-Path $outDir 'Windows') @($UserNamePatterns + @('superposition', 'game-factory', 'game_factory', 'gamefactory')))
+        # Strings that must not ship: the user name (compiled-in source/PDB paths) and $ForbiddenNamePatterns (common.ps1).
+        # Recorded and warned about; recording still works, but such a build must not be handed out.
+        $leakHits = @(Find-LeakedStrings (Join-Path $outDir 'Windows') @($UserNamePatterns + $ForbiddenNamePatterns))
         $leakScan = [ordered]@{ scanned = 'Windows\'; hits = @($leakHits | ForEach-Object { [ordered]@{ file = $_.file; pattern = $_.pattern; count = $_.count; example = $_.example } }) }
         if ($leakHits.Count) { Write-Step "WARNING: shipped files contain names that must not ship: $(($leakHits | ForEach-Object { "$($_.file) ($($_.pattern) x$($_.count))" }) -join '; ')" }
         else { Write-Step 'leak scan: no user name or forbidden names in the packaged files' }

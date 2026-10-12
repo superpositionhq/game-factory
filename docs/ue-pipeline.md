@@ -28,7 +28,7 @@ C:\Users\Xiang\Work\
   C:\UEB\src\<game>\                private clone the pipeline builds from (never the game's working copy); outside
                                     C:\Users so the user name isn't compiled into the exe (__FILE__, PDB paths)
   builds\<game>\<short-sha>\        packaged build: Windows\<Project>.exe, build_info.json, logs\
-  builds\_pipeline.lock(.json)      one-heavy-job lock (holder in the .json)
+  builds\_pipeline-<game>.lock(.json) per-game build/record lock (holder in the .json)
   builds\_queue\                    enqueue.ps1 requests; done\ has results
   builds\_logs\                     transcripts of nightly / queue runs
   recordings\<game>\<run-id>\       bundles
@@ -42,9 +42,11 @@ never touches them.
 
 ## One heavy job at a time
 
-`build.ps1` and `record.ps1` take an exclusive lock on `builds\_pipeline.lock` (an open file handle: released by
-the OS if the process dies, visible across sessions and Task Scheduler) for the whole build or the whole run, and
-wait for it otherwise (the holder is printed). Builds run at below-normal priority so the game sessions' own
+`build.ps1` and `record.ps1` take an exclusive per-game lock on `builds\_pipeline-<game>.lock` (an open file handle:
+released by the OS if the process dies, visible across sessions and Task Scheduler) for the whole build or the whole run,
+and wait for it otherwise (the holder is printed): a build and a recording of the same game share its clone, build
+folder and `_run` copy. Different games only share the machine, which the CPU slots and the GPU slot below ration, so a
+rebuild of one game can run while another game records (watch the recording's fps warnings). Builds run at below-normal priority so the game sessions' own
 editors stay responsive; the game and ffmpeg run at above-normal priority during a recording.
 
 Every Build.bat / RunUAT / UnrealEditor-Cmd step also holds a slot of the machine-wide limiter all game sessions use
@@ -102,7 +104,7 @@ this engine install. The recorded game itself is the packaged exe, which has no 
    `missing_asset_lines` = count. `cooked_content_mb` = size of the build's `*.pak`/`*.ucas`/`*.utoc`.
 7. Leak scan of the packaged `Windows\` folder: case-insensitive byte search (ASCII and UTF-16LE) for the Windows user
    name inside paths (`\<name>\`, `/<name>/`; a bare-name search also hits the engine's `zh_XIANG`/`zh-xiang` locale ids)
-   and for superposition / game-factory / game_factory / gamefactory; hits are warned about and recorded in
+   and for superposition / game-factory / game_factory / gamefactory / claude / anthropic (`ForbiddenNamePatterns` in common.ps1); hits are warned about and recorded in
    `leak_scan` (a build with hits can still be recorded but must not be handed out). `leak-scan.ps1 <dir>` runs the
    same scan by hand. What keeps the output clean: clones under `C:\UEB\src` (`__FILE__` in check/ensure/log macros and
    PDB source paths) and `TEMP`/`TMP` = `C:\UEB\tmp` for the build tools (the linker records its response-file path
@@ -136,7 +138,10 @@ Per run (seed = `-Seed + i`, or random; skill = `-Skill`, or cycling 1.0 / 0.75 
 0. **Wait until the user is away** (user's decision): no keyboard/mouse input for `-IdleMinutes` (default 5;
    `GetLastInputInfo`; the game's injected input doesn't count) and the session unlocked. From the start of that wait
    until the run ends the display is kept on (`SetThreadExecutionState`, like a video player; no settings change):
-   so the screen doesn't dim or sleep during a run. (Note: a `Shell_SystemDim` window owned by `PickerHost.exe FirewallNotificationDialogServer` is the
+   so the screen doesn't dim or sleep during a run. Right before launch the display is also **woken** (a 1-pixel mouse
+   move out and back, outside the game run): the AC display timeout (300 s) equals the idle gate, so when the user went
+   away during a build the display is already off, `SetThreadExecutionState` doesn't turn it back on, and Desktop
+   Duplication delivers no frames (tower-defense 937ec12 S1, 2026-10-11 20:32: ddagrab hung, gdigrab ~4 fps). (Note: a `Shell_SystemDim` window owned by `PickerHost.exe FirewallNotificationDialogServer` is the
    full-screen dim behind an unanswered Windows Firewall prompt; any such prompt blocks capture until it is answered.
    Turning off "Notify me when Microsoft Defender Firewall blocks a new app" removes the prompts; the user's call.) A first run of a new `_run` exe without a Windows Firewall rule starts
    it off-screen for 20 s first, so the one-time prompt appears while the user may be present.
@@ -205,7 +210,9 @@ With NVENC the D3D11 frames go to the encoder without any download (command abov
 Fallbacks (`-Capture`), measured on the test project: `gdigrab-region` (`-f gdigrab -framerate 60 -offset_x
 -offset_y -video_size 1920x1080 -i desktop`) captures real content but only ~44 fps (24 % duplicates);
 `gdigrab-window` (`-i title="<Project> [AutoPlay]"`) ~56 fps (8 % duplicates, 23 % gap time). Both fail validation,
-so they are for emergencies; `auto` tries ddagrab first and gdigrab-region only if ddagrab can't start.
+so they are for emergencies; `auto` tries ddagrab, then (after waking the display) ddagrab once more, and gdigrab-region
+only if both get fewer than 30 frames in 10 s. Each failed attempt is logged with its frame count, whether ffmpeg hung or
+exited (exit code) and the tail of its stderr log (`raw\ffmpeg-<attempt>.log`).
 
 `-Capture gfxcapture` (Windows.Graphics.Capture of the game window by `hwnd`, ffmpeg 8 `gfxcapture` filter) would avoid
 the screen-region problems (other windows never reach the video, no topmost needed), but on this machine it delivered

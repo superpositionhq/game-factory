@@ -17,6 +17,8 @@ $script:BuildTempRoot = 'C:\UEB\tmp'
 # The user name as it leaks: inside paths (C:\Users\<name>\...). A bare-name search also hits unrelated strings such as
 # the Xiang Chinese locale ids ('zh_XIANG', 'zh-xiang') in every UE build.
 $script:UserNamePatterns = @("\$($env:USERNAME)\", "/$($env:USERNAME)/")
+# Names that must not be in shipped files (warned about by build.ps1; the packager blocks on them).
+$script:ForbiddenNamePatterns = @('superposition', 'game-factory', 'game_factory', 'gamefactory', 'claude', 'anthropic')
 $script:LockPath      = Join-Path $BuildsRoot '_pipeline.lock'
 $script:Utf8NoBom     = New-Object System.Text.UTF8Encoding $false
 
@@ -48,8 +50,12 @@ function Read-JsonFile([string]$Path) {
 
 $script:LockStream = $null
 
-function Enter-PipelineLock([string]$Job, [int]$TimeoutMinutes = 720) {
+# Per-game lock: a build and a recording of the same game share its clone, build folder and _run copy, so they exclude
+# each other; different games only share the machine, which ue-heavy's CPU slots and the GPU slot already ration.
+function Enter-PipelineLock([string]$Job, [string]$Game, [int]$TimeoutMinutes = 720) {
     if (-not (Test-Path $BuildsRoot)) { New-Item -ItemType Directory -Force $BuildsRoot | Out-Null }
+    $LockPath = if ($Game) { Join-Path $BuildsRoot "_pipeline-$Game.lock" } else { $script:LockPath }
+    $script:HeldLockPath = $LockPath
     $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
     $announced = $false
     while ($true) {
@@ -60,7 +66,7 @@ function Enter-PipelineLock([string]$Job, [int]$TimeoutMinutes = 720) {
         } catch [System.IO.IOException] {
             if (-not $announced) {
                 $holder = Read-JsonFile "$LockPath.json"
-                Write-Step "waiting for the pipeline lock (held by: $(if ($holder) { "$($holder.job), pid $($holder.pid), since $($holder.since)" } else { 'unknown' }))"
+                Write-Step "waiting for the $(if ($Game) { "$Game " })pipeline lock (held by: $(if ($holder) { "$($holder.job), pid $($holder.pid), since $($holder.since)" } else { 'unknown' }))"
                 $announced = $true
             }
             if ((Get-Date) -gt $deadline) { throw "timed out waiting for the pipeline lock $LockPath" }
@@ -73,7 +79,7 @@ function Exit-PipelineLock {
     if ($script:LockStream) {
         $script:LockStream.Dispose()
         $script:LockStream = $null
-        Remove-Item "$LockPath.json" -ErrorAction SilentlyContinue
+        Remove-Item "$($script:HeldLockPath).json" -ErrorAction SilentlyContinue
     }
 }
 
@@ -503,4 +509,32 @@ function Find-LeakedStrings([string]$Dir, [string[]]$Patterns) {
             }
         }
     }
+}
+
+# Wake the display before a recording. The power plan's display timeout (300 s on AC here) equals the 5-minute idle
+# gate, so by the time the user counts as away the display is often already off; ES_DISPLAY_REQUIRED keeps a display
+# on but doesn't turn one back on, and Desktop Duplication (ddagrab) gets no frames from a display that is off.
+# A 1-pixel mouse move out and back is ordinary input that wakes it (outside any game run; the bot never uses it).
+# Separate type from UePipeline.Win so a process that already loaded Win (the drainer) can still add this.
+if (-not ('UePipeline.Display' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace UePipeline {
+    public static class Display {
+        [DllImport("kernel32.dll")] static extern uint SetThreadExecutionState(uint flags);
+        [DllImport("user32.dll")] static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extra);
+        const uint MOUSEEVENTF_MOVE = 0x0001;
+        public static void Wake() {
+            SetThreadExecutionState(0x80000003u);   // ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
+            mouse_event(MOUSEEVENTF_MOVE, 1, 0, 0, UIntPtr.Zero);
+            mouse_event(MOUSEEVENTF_MOVE, -1, 0, 0, UIntPtr.Zero);
+        }
+    }
+}
+'@
+}
+function Invoke-WakeDisplay([int]$SettleSeconds = 3) {
+    [UePipeline.Display]::Wake()
+    Start-Sleep -Seconds $SettleSeconds   # monitor power-up and the first DWM frames
 }
