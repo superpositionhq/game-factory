@@ -117,10 +117,11 @@ is retired and refused). `-DryRun` prints the split per folder.
 Decision of the user (2026-10-11): what leaves the PC is scrubbed; the game repos, `.recording` and `recordings` are
 never modified. Every text file of the package (no NUL byte in the first 8 KB, or a UTF-16 BOM; under 256 MB) is
 rewritten in place, keeping its encoding, with these rules in order (`scope`: `json` = `.json/.jsonl` only, for
-JSON-escaped forms; `lines` = other text files except `git.log`):
+JSON-escaped forms; `lines` = other text files except `git.log`; `logs` = `.json/.jsonl`, `git.log` and `History/*`):
 
 | Rule id | Does |
 |---|---|
+| `base64-payload` | first: every base64 run of 256+ characters in the shipped logs (`logs` scope) → `<base64 omitted, N bytes, sha256 <16 hex>>` (screenshots and binary payloads in recorded tool responses; nobody needs them in a dataset, the logs shrink, and random user-name matches inside them go away). Decided 2026-10-12; the user name stays a hard block everywhere else |
 | `agent-trailer` | removes `Co-Authored-By: Claude…` and `…Generated with Claude Code…` lines (`lines`), the same inside JSON strings with their preceding `\n` (`json`); in `git.log` the commit-message trailers are dropped while the log is written |
 | `agent-identity` | `Claude (agent)` → `dev`; `Claude [Opus 5.5] <noreply@anthropic.com>` → `dev <dev@example.invalid>` (also `\u003c…\u003e`) |
 | `banned-name` | the names Superposition / game-factory, with the defaults of `ue-pipeline/scrub-history.ps1`: schema prefix `superposition.` removed, then Superposition → Studio, game-factory → studio-tools (game_factory, GameFactory, gamefactory variants), case-preserving |
@@ -129,7 +130,10 @@ JSON-escaped forms; `lines` = other text files except `git.log`):
 | `email` | e-mail addresses → `<redacted-email>`, except placeholders (`example.com/org/net`, `*.invalid`, `*.test`, `localhost`) and `git@github.com`-style service addresses; file names such as `icon@2x.png` are not addresses |
 | `agent-mention` | `claude code` → `agent-tool`, `claude-<model>…` → `agent-model`, then remaining Claude → Agent/agent, Anthropic → Provider/provider (case kept) |
 
-`agent-mention` also covers model names: `Claude Opus 5.5`, `claude-opus-5-5`, and a bare `Opus <version>` → `agent-model`.
+`agent-mention` also covers model names: `Claude Opus 5.5`, `claude-opus-5-5`, and a bare `Opus <version>` → `agent-model`;
+a standalone capitalized `Opus` in prose → `Model` (codec identifiers such as `libopus`, `opus_*`, `AudioFormatOPUS` stay).
+
+The dataset (layout v1.1) carries no `History/`: only `git.log` and `workflow.jsonl` of the logs go into it.
 
 **Blocking terms (user rule, 2026-10-11).** Besides the two names, `Claude`, `Opus` and `Anthropic` must never appear in a
 package: any case-insensitive hit left in a path, a text file or a binary (ASCII or UTF-16LE) refuses it. The only

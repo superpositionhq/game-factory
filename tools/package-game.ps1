@@ -625,6 +625,16 @@ public static class Tools {
     // "all"; "json" (.json/.jsonl only: rules for JSON-escaped text); "lines" (other text files except git.log).
     // Returns the files changed with the number of replacements per rule.
     // hints[i]: a literal the rule cannot match without (case-insensitive); the regex is skipped when it is absent.
+    // <base64 omitted, N bytes, sha256 first 16 hex of the decoded bytes (or of the text when it does not decode)>
+    static string Base64Placeholder(string b64) {
+        byte[] data;
+        try { data = Convert.FromBase64String(b64.Length % 4 == 0 ? b64 : b64.Substring(0, b64.Length - b64.Length % 4)); }
+        catch (FormatException) { data = Encoding.ASCII.GetBytes(b64); }
+        string h;
+        using (var sha = System.Security.Cryptography.SHA256.Create()) { h = BitConverter.ToString(sha.ComputeHash(data)).Replace("-", "").ToLowerInvariant(); }
+        return "<base64 omitted, " + data.Length + " bytes, sha256 " + h.Substring(0, 16) + ">";
+    }
+
     public static List<ScrubResult> ScrubAll(string root, IList<string> rels, string[] patterns, string[] reps, string[] scopes, string[] hints) {
         root = Path.GetFullPath(root).TrimEnd('\\') + "\\";
         var rx = new Regex[patterns.Length];
@@ -642,9 +652,10 @@ public static class Tools {
             for (int i = 0; i < patterns.Length; i++) {
                 if (scopes[i] == "json" && !json) continue;
                 if (scopes[i] == "lines" && (json || rel == "git.log")) continue;
+                if (scopes[i] == "logs" && !(json || rel == "git.log" || rel.StartsWith("History/"))) continue;
                 if (!string.IsNullOrEmpty(hints[i]) && s.IndexOf(hints[i], StringComparison.OrdinalIgnoreCase) < 0) continue;
                 int c = 0; string rep = reps[i];
-                s = rx[i].Replace(s, m => { c++; return rep; });
+                s = rx[i].Replace(s, m => { c++; return rep == "<<BASE64>>" ? Base64Placeholder(m.Value) : rep; });
                 counts[i] = c; if (c > 0) any = true;
             }
             if (any) { File.WriteAllBytes(full, enc.GetBytes(s)); var r = new ScrubResult(); r.Path = rel; r.Counts = counts; lock (res) res.Add(r); }
@@ -864,8 +875,11 @@ $RuleText = [ordered]@{
     'username'       = 'account user name, including inside user paths, replaced by dev'
     'email'          = 'e-mail addresses (other than example/placeholder ones) replaced by <redacted-email>'
     'agent-mention'  = 'remaining agent/provider mentions neutralised (agent, provider)'
+    'base64-payload' = 'base64 runs of 256+ characters in shipped logs (screenshots, binary payloads in tool responses) replaced by <base64 omitted, N bytes, sha256 ...>'
 }
 $RulesHead = @(
+    # first: payloads go before any word rule could touch them (a random user-name match inside base64 included)
+    @{ id = 'base64-payload'; scope = 'logs'; match = '(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{256,}={0,2}(?![A-Za-z0-9+/=])'; replace = '<<BASE64>>' },
     @{ id = 'agent-trailer'; scope = 'lines'; match = '(?im)^[ \t]*Co-Authored-By:[ \t]*Claude[^\r\n]*\r?\n?'; replace = '' },
     @{ id = 'agent-trailer'; scope = 'lines'; match = '(?im)^[^\r\n]*Generated with \[?Claude Code\b[^\r\n]*\r?\n?'; replace = '' },
     @{ id = 'agent-trailer'; scope = 'json'; match = '(?i)(?:\\r)?(?:\\n)*Co-Authored-By:[ \t]*Claude(?:[^"\\]|\\u003[cCeE])*'; replace = '' },
