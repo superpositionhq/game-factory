@@ -2,7 +2,7 @@
 
 Output: <root>/deliverables/_replay/<game>/<final sha8>/
   ReplayScripts/            the replay tooling (unchanged; it runs outside the game-factory checkout), the game's
-                            settings, ledger, world ops, initial-assets manifest, reconstructed script texts, verification
+                            settings, ledger, initial-assets manifest, reconstructed script texts, verification
   verification.json         summary: windows, verify report
   READY                     written last, only when every window was replayed and the verification verdict is PASS
                             (verify.py pass criteria; the packager waits for it)
@@ -38,10 +38,12 @@ def total_windows(led):
     return (led.get("counts") or {}).get("windows", max(0, len(led.get("windows", [])) - 1))
 
 
-def copytree(src, dst):
+def copytree(src, dst, skip_ext=()):
     n = 0
     for root, _dirs, files in os.walk(src):
         for fn in files:
+            if fn.lower().endswith(skip_ext):
+                continue
             s = os.path.join(root, fn)
             d = os.path.join(dst, os.path.relpath(s, src))
             os.makedirs(os.path.dirname(d), exist_ok=True)
@@ -61,8 +63,8 @@ def readme(cfg, led, state, parts, report):
         "- Observed: the commits (code, scripts, config, source art), the exact script texts at the moment they ran",
         "  (rebuilt from the recorded writes and edits, `Blobs/`), the editor-script runs in their original order with",
         "  their workflow rows, and the store packs copied in (`initial-assets.manifest.json`).",
-        "- Derived: `workflow.replay.jsonl`, one op per actor (`ue.level.create`, `ue.actor.spawn`, `ue.actor.update`,",
-        "  `ue.actor.remove`, `ue.level.save`), from map exports after each replayed run (included when derived).", "",
+        "- Verified: the replayed project against the final commit (`Verification/`: report, per-window checks, JSON",
+        "  structure dumps of both projects).", "",
         "## How to replay", "",
         "Requirements: Windows, Unreal Engine 5.3, Visual Studio 2022 (C++), Python 3.11+, git with Git LFS, and the game",
         "repository. Set the machine root (`GF_ROOT`) and point `game.json` at the repository, then:", "",
@@ -71,7 +73,6 @@ def readme(cfg, led, state, parts, report):
         "python ue_replay.py prepare --game game.json   # isolated project at the first commit + truth project",
         "python ue_replay.py run     --game game.json   # every window headless; resumable",
         "python ue_replay.py verify  --game game.json   # final state vs the final commit",
-        "python ue_replay.py derive  --game game.json   # world-building ops from the map exports",
         "```", "",
         "## Results", "",
         "- Windows replayed: %d of %d (first commit `%s`, final `%s`)." % (state.get("window", 0), win_total,
@@ -100,7 +101,7 @@ def cmd_package(cfg, a):
         "Verification/report.json": os.path.isfile(os.path.join(work, "Verification", "report.json")),
         "verification PASS": bool((runner.jload(os.path.join(work, "Verification", "report.json"), {}) or {}).get("verdict", {}).get("pass")),
     }
-    complete = all(src.values())   # the world ops (derive) are included when present, but not required
+    complete = all(src.values())
     for k, v in src.items():
         print("  %-36s %s" % (k, "ok" if v else "MISSING"))
     if not complete and not a.force:
@@ -113,8 +114,9 @@ def cmd_package(cfg, a):
     for f in EDITOR:
         shutil.copy2(os.path.join(HERE, "editor", f), os.path.join(rs, "editor", f))
     shutil.copy2(cfg["_path"], os.path.join(rs, "game.json"))   # unexpanded: {root} placeholders, no machine paths
-    for name, dst in (("ledger.json", "ledger.json"), ("initial-assets.manifest.json", "initial-assets.manifest.json"),
-                      ("world-ops.jsonl", "workflow.replay.jsonl")):
+    # The derived world ops (world-ops.jsonl, one T3D block per actor, ~1 GB) and the T3D map exports only fed the
+    # optional editor video; they are not needed to replay or verify, so they stay out of ReplayScripts/.
+    for name, dst in (("ledger.json", "ledger.json"), ("initial-assets.manifest.json", "initial-assets.manifest.json")):
         if os.path.isfile(os.path.join(work, name)):
             shutil.copy2(os.path.join(work, name), os.path.join(rs, dst))
     nblobs = copytree(os.path.join(work, "blobs"), os.path.join(rs, "Blobs")) if os.path.isdir(os.path.join(work, "blobs")) else 0
@@ -128,7 +130,7 @@ def cmd_package(cfg, a):
         shutil.copy2(os.path.join(work, "windows.jsonl"), os.path.join(vdir, "windows.jsonl"))
     for d in ("dump-replay", "dump-truth"):
         if os.path.isdir(os.path.join(work, d)):
-            copytree(os.path.join(work, d), os.path.join(vdir, d))
+            copytree(os.path.join(work, d), os.path.join(vdir, d), skip_ext=(".t3d",))
     report = runner.jload(os.path.join(work, "Verification", "report.json"), None)
     with open(os.path.join(rs, "README.md"), "w", encoding="utf-8", newline="\n") as f:
         f.write(readme(cfg, led, ctx.state, src, report))
@@ -136,7 +138,6 @@ def cmd_package(cfg, a):
         "schema": "ue-replay.package/v1", "game": cfg["game"], "first_commit": led.get("first"), "final_commit": final,
         "created": datetime.datetime.now().astimezone().isoformat(timespec="seconds"), "complete": complete, "parts": src,
         "windows": {"done": ctx.state.get("window", 0), "total": total_windows(led)}, "blobs": nblobs,
-        "world_ops": os.path.isfile(os.path.join(rs, "workflow.replay.jsonl")),
         "verdict": (report or {}).get("verdict"), "verify": report,
     }
     runner.jdump(os.path.join(out, "verification.json"), summary)
