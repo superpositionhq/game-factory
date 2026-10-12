@@ -14,6 +14,7 @@ through Enhanced Input, see [autoplay-contract.md](autoplay-contract.md)) as gam
 | `validate-run.ps1 <OutputDir>` | contract check of one raw run directory (for game sessions testing by hand) |
 | `scrub-history.ps1 <game> [-Apply]` | archive, then remove the names Superposition/game-factory from a finished game's history; dry run by default |
 | `mark-invalid.ps1 <game> -Commit sha \| -RunId id -Reason text` | exclude bundles from the dataset (INVALID file, validation status `invalid`); files kept |
+| `leak-scan.ps1 <dir> [-Patterns ..]` | byte search (ASCII + UTF-16) for the user name or other strings that must not ship |
 | `stills.ps1 <game> [-RunId id] [-Force]` | README stills for runs recorded before record.ps1 made them (updates metadata/manifest) |
 | `sync-check.ps1 <bundle>` | measures video/audio lag against telemetry sync markers (pipeline test project) |
 | `autoplay/AutoPlaySubsystem.h/.cpp` | the drop-in C++ every game copies (contract implementation) |
@@ -24,7 +25,8 @@ through Enhanced Input, see [autoplay-contract.md](autoplay-contract.md)) as gam
 C:\Users\Xiang\Work\
   games\<game>\                     the game repos (read only for the pipeline)
   games\_pipeline-test\             throwaway UE 5.3 Third Person project used to test the pipeline (not data)
-  builds\_src\<game>\               private clone the pipeline builds from (never the game's working copy)
+  C:\UEB\src\<game>\                private clone the pipeline builds from (never the game's working copy); outside
+                                    C:\Users so the user name isn't compiled into the exe (__FILE__, PDB paths)
   builds\<game>\<short-sha>\        packaged build: Windows\<Project>.exe, build_info.json, logs\
   builds\_pipeline.lock(.json)      one-heavy-job lock (holder in the .json)
   builds\_queue\                    enqueue.ps1 requests; done\ has results
@@ -74,15 +76,18 @@ this engine install. The recorded game itself is the packaged exe, which has no 
 
 1. Resolve `-Commit` (default `HEAD`) in the game repo; output goes to `builds\<game>\<first 8 of sha>\`. A build that
    already succeeded for that sha is reused unless `-Force`.
-2. Source: `git clone --local --no-checkout` of the game repo into `builds\_src\<game>` once, then `fetch` +
+2. Source: `git clone --local --no-checkout` of the game repo into `C:\UEB\src\<game>` once, then `fetch` +
    `checkout --force <sha>` + `clean -ffd` (Binaries/Intermediate/DDC stay, so later builds are incremental).
    LFS files are checked out as pointers (`GIT_LFS_SKIP_SMUDGE=1`) and copied from the game repo's own
    `.git\lfs\objects` store, so nothing is downloaded and the game repo is only read. Uncommitted work is not built.
-   **Store content:** every git-ignored directory under the game's working-tree `Content/` (`git ls-files --others --ignored --exclude-standard --directory -- Content`: Fab/Marketplace packs and other content
-   kept out of git on purpose) is copied into the clone with `robocopy /MIR` (incremental; `clean -ffd` keeps ignored
+   **Store content:** every directory of the game's working-tree `Content/` that is git-ignored **at the commit being
+   built** (`git check-ignore` asked of the clone, which has that commit's `.gitignore` and index: Fab/Marketplace packs
+   and other content kept out of git on purpose) is copied into the clone with `robocopy /MIR` (incremental; `clean -ffd` keeps ignored
    dirs). The list, file counts and bytes go to `hydrated_content` in `builds.jsonl`/`build_info.json`. A build made
    before hydration existed is rebuilt automatically when the game has such dirs. Without this the cook silently drops
-   every asset that references the packs (tower-defense 52a6f2a1: 107 MB of paks instead of 852 MB, no art).
+   every asset that references the packs (tower-defense 52a6f2a1: 107 MB of paks instead of 852 MB, no art). Asking the
+   working tree instead breaks once a later commit starts tracking the packs (tower-defense efbc52f moved them to LFS;
+   from then on they come in through the LFS copy).
 3. `Engine\Build\BatchFiles\Build.bat <Project>Editor Win64 Development -Project=<uproject> -WaitMutex -NoHotReloadFromIDE`
 4. With `-Package`: `RunUAT.bat -WaitForUATMutex BuildCookRun -project=<uproject> -target=<Project> -noP4 -platform=Win64
    -clientconfig=<Shipping|Development> -build -cook -stage -pak -archive -archivedirectory=<out> -nocompileeditor -unattended -utf8output`
@@ -91,9 +96,17 @@ this engine install. The recorded game itself is the packaged exe, which has no 
    -ReportExportPath=<logs> -nullrhi -unattended -nopause -nosplash -nosound`; pass = report has ≥ 1 success and 0
    failures. Without such a test the step is `skipped` with a note.
 6. After packaging, the package log is scanned for missing-asset lines that name `/Game/` (`Failed to load`,
-   `Unable to load package`, `Couldn't find file`, `ImportFailed`, `Missing import`); any hit fails the build
-   (`missing_asset_lines` = count, `error_excerpt` = first lines). `cooked_content_mb` = size of the build's
-   `*.pak`/`*.ucas`/`*.utoc`.
+   `Unable to load package`, `Couldn't find file`, `ImportFailed`, `Missing import`). A package the game's working
+   tree has but the build lost fails the build (`missing_assets_lost_by_build`); one missing in the game itself (a broken
+   reference inside a store pack; the game's own build has it too) is a warning (`missing_assets_in_game`).
+   `missing_asset_lines` = count. `cooked_content_mb` = size of the build's `*.pak`/`*.ucas`/`*.utoc`.
+7. Leak scan of the packaged `Windows\` folder: case-insensitive byte search (ASCII and UTF-16LE) for the Windows user
+   name inside paths (`\<name>\`, `/<name>/`; a bare-name search also hits the engine's `zh_XIANG`/`zh-xiang` locale ids)
+   and for superposition / game-factory / game_factory / gamefactory; hits are warned about and recorded in
+   `leak_scan` (a build with hits can still be recorded but must not be handed out). `leak-scan.ps1 <dir>` runs the
+   same scan by hand. What keeps the output clean: clones under `C:\UEB\src` (`__FILE__` in check/ensure/log macros and
+   PDB source paths) and `TEMP`/`TMP` = `C:\UEB\tmp` for the build tools (the linker records its response-file path
+   under `%TEMP%\UnrealBuildTool` in the PDB). Builds made before this (under `builds\_src`) have the user name in the exe.
 
 **Recording config (v1.3):** `-Config auto` (default) packages **Shipping** when the game's `Config/DefaultEngine.ini`
 at that commit sets `bAllowHighDPIInGameMode=True`, else Development. Shipping compiles out UE's trace runtime, whose

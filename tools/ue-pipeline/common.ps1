@@ -9,6 +9,14 @@ $script:BuildsRoot    = Join-Path $WorkRoot 'builds'
 $script:RecordingsRoot = Join-Path $WorkRoot 'recordings'
 $script:LogRoot       = Join-Path $WorkRoot '.recording'
 $script:EngineRoot    = 'C:\Program Files\Epic Games\UE_5.3'
+# Private build clones live outside the user profile: __FILE__ (check/ensure/log macros) and PDB paths compile the
+# source path into the Shipping exe, so a root under C:\Users\<name> ships the user name. Short to stay clear of MAX_PATH.
+$script:SrcRoot       = 'C:\UEB\src'
+# Temp dir for build tools: the linker records its response-file path (%TEMP%\UnrealBuildTool\...) in the PDB.
+$script:BuildTempRoot = 'C:\UEB\tmp'
+# The user name as it leaks: inside paths (C:\Users\<name>\...). A bare-name search also hits unrelated strings such as
+# the Xiang Chinese locale ids ('zh_XIANG', 'zh-xiang') in every UE build.
+$script:UserNamePatterns = @("\$($env:USERNAME)\", "/$($env:USERNAME)/")
 $script:LockPath      = Join-Path $BuildsRoot '_pipeline.lock'
 $script:Utf8NoBom     = New-Object System.Text.UTF8Encoding $false
 
@@ -434,4 +442,65 @@ function Export-RunStills([string]$RunDir, [string]$RunId, [string]$GameStillsDi
         $result.files = @($files); $result.count = $files.Count
     } catch { $result.error = $_.Exception.Message }
     return $result
+}
+
+# Strings that must not ship (the Windows user name in compiled-in source/PDB paths, ...): case-insensitive byte
+# search for each pattern in ASCII and UTF-16LE across every file under $Dir. Returns one row per file and pattern.
+if (-not ('UePipeline.ByteScan' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+namespace UePipeline {
+    public static class ByteScan {
+        // Counts matches of an ASCII pattern (case-insensitive) as 1-byte or 2-byte little-endian chars.
+        public static long[] Count(string path, string pattern, out string example) {
+            example = null;
+            byte[] p = System.Text.Encoding.ASCII.GetBytes(pattern.ToLowerInvariant());
+            long a = 0, w = 0; int n = p.Length; int overlap = 2 * n;
+            byte[] buf = new byte[(1 << 22) + overlap]; int keep = 0; long offset = 0;
+            using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1 << 16)) {
+                while (true) {
+                    int read = fs.Read(buf, keep, buf.Length - keep);
+                    int len = keep + read;
+                    bool last = read == 0;
+                    int limit = last ? len : len - overlap;   // only start matches that fit wholly in this window
+                    for (int i = 0; i < limit; i++) {
+                        if (Lower(buf[i]) != p[0]) continue;
+                        if (i + n <= len) {
+                            int k = 1; while (k < n && Lower(buf[i + k]) == p[k]) k++;
+                            if (k == n) { a++; if (example == null) example = Context(buf, i, len); }
+                        }
+                        if (i + 2 * n <= len) {
+                            int k = 0; while (k < n && Lower(buf[i + 2 * k]) == p[k] && buf[i + 2 * k + 1] == 0) k++;
+                            if (k == n) { w++; if (example == null) example = Context(buf, i, len); }
+                        }
+                    }
+                    if (last) break;
+                    keep = len - limit; Buffer.BlockCopy(buf, limit, buf, 0, keep); offset += limit;
+                }
+            }
+            return new long[] { a, w };
+        }
+        static byte Lower(byte b) { return (b >= 65 && b <= 90) ? (byte)(b + 32) : b; }
+        static string Context(byte[] buf, int i, int len) {
+            int s = Math.Max(0, i - 40), e = Math.Min(len, i + 60);
+            var sb = new System.Text.StringBuilder();
+            for (int j = s; j < e; j++) { byte b = buf[j]; if (b >= 32 && b < 127) sb.Append((char)b); else if (b != 0) sb.Append('.'); }
+            return sb.ToString();
+        }
+    }
+}
+'@
+}
+function Find-LeakedStrings([string]$Dir, [string[]]$Patterns) {
+    foreach ($f in @(Get-ChildItem $Dir -Recurse -File -ErrorAction SilentlyContinue)) {
+        foreach ($pat in $Patterns) {
+            if (-not $pat) { continue }
+            $ex = $null
+            $c = [UePipeline.ByteScan]::Count($f.FullName, $pat, [ref]$ex)
+            if ($c[0] + $c[1] -gt 0) {
+                [pscustomobject]@{ file = $f.FullName.Substring($Dir.TrimEnd('\').Length + 1); pattern = $pat; count = $c[0] + $c[1]; ascii = $c[0]; utf16 = $c[1]; example = $ex }
+            }
+        }
+    }
 }

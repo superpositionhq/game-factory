@@ -50,7 +50,7 @@ if (-not $buildInfo -or -not $buildInfo.packaged) { throw "$Build has no package
 $autoplayVersion = if ($buildInfo.PSObject.Properties.Name -contains 'autoplay_version' -and $buildInfo.autoplay_version) { [int]$buildInfo.autoplay_version } else { $null }
 if (-not $autoplayVersion) {
     # Builds made before build.ps1 recorded it: the private clone is still at (or near) that commit.
-    $h = Get-ChildItem (Join-Path (Join-Path (Join-Path $BuildsRoot '_src') $Game) 'Source') -Recurse -Filter AutoPlaySubsystem.h -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    $h = Get-ChildItem (Join-Path (Join-Path $SrcRoot $Game) 'Source') -Recurse -Filter AutoPlaySubsystem.h -File -ErrorAction SilentlyContinue | Select-Object -First 1
     $autoplayVersion = if ($h -and ((Get-Content $h.FullName -Raw) -match 'ContractVersion\s*=\s*(\d+)')) { [int]$matches[1] } else { 1 }
 }
 $outDirFlag = if ($autoplayVersion -ge 2) { 'OutputDir' } else { 'RecordDir' }

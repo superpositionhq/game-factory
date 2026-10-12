@@ -6,7 +6,8 @@
   powershell -ExecutionPolicy Bypass -File build.ps1 stealth -Package -Smoke
   powershell -ExecutionPolicy Bypass -File build.ps1 rally-racer -Commit milestone/autoplay-1 -Package
 
-  Builds from a private clone (builds\_src\<game>) of the committed tree, never from the game's working copy:
+  Builds from a private clone (C:\UEB\src\<game>: outside the user profile, so no user name is compiled into the exe)
+  of the committed tree, never from the game's working copy:
   the game session's editor keeps its DLLs and half-edited files to itself. Uncommitted changes are not built.
   Output: builds\<game>\<short-sha>\Windows\<Project>.exe, build_info.json, logs\. One row per run in
   .recording\<game>\builds.jsonl. Holds the pipeline lock (one heavy job at a time).
@@ -53,6 +54,11 @@ if (-not $Force -and $existing -and $existing.status -eq 'ok' -and (-not $Packag
 }
 
 Set-BelowNormalPriority
+# Build tools (UBT, the linker, UAT) write temp files under %TEMP% and the linker records that path in the PDB:
+# keep them outside the user profile too.
+New-Item -ItemType Directory -Force $BuildTempRoot | Out-Null
+$savedTemp = $env:TEMP; $savedTmp = $env:TMP
+$env:TEMP = $BuildTempRoot; $env:TMP = $BuildTempRoot
 Enter-PipelineLock "build $Game $short"
 $start = Get-Date
 $steps = New-Object System.Collections.ArrayList
@@ -63,6 +69,7 @@ $missingAssets = $null
 $missingByPipeline = New-Object System.Collections.ArrayList
 $missingInGame = New-Object System.Collections.ArrayList
 $cookedBytes = $null
+$leakScan = $null
 $status = 'ok'
 $smokeResult = [ordered]@{ status = 'not_run'; note = '' }
 $stamp = $start.ToString('yyyyMMdd-HHmmss')
@@ -87,7 +94,7 @@ try {
     New-Item -ItemType Directory -Force $logDir | Out-Null
 
     # ---- source: private clone at the exact commit, LFS files copied from the game's own LFS store ----
-    $src = Join-Path (Join-Path $BuildsRoot '_src') $Game
+    $src = Join-Path $SrcRoot $Game
     $env:GIT_LFS_SKIP_SMUDGE = '1'
     if (-not (Test-Path (Join-Path $src '.git'))) {
         Write-Step "cloning $($info.Dir) -> $src"
@@ -118,10 +125,19 @@ try {
     if ($missing.Count -gt 0) { throw "LFS objects missing from $lfsStore for: $($missing -join ', ')" }
     Write-Step "source at $short in $src ($($lfsList.Count) LFS files, $copied copied)"
 
-    # Store content kept out of git on purpose (Fab/Marketplace packs, generated meshes): copy every git-ignored
-    # directory under the game's working-tree Content/ into the clone. The working tree is what the game session tested;
-    # without this the build has no art. robocopy /MIR is incremental (the clone keeps ignored dirs between builds).
-    $ignored = @(Invoke-Git $info.Dir @('-c', 'core.quotepath=false', 'ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '--', 'Content') -AllowFail | Where-Object { $_ -and $_.Trim() })
+    # Store content kept out of git on purpose (Fab/Marketplace packs, generated meshes): copy every working-tree
+    # directory under Content/ that is git-ignored AT THE COMMIT BEING BUILT (asked of the clone, which has that
+    # commit's .gitignore and index) into the clone. Asking the working tree instead misses content that a later commit
+    # started tracking (tower-defense efbc52f moved its packs into LFS, so 52a6f2a1 cooked without them). Without this
+    # the build has no art. robocopy /MIR is incremental (the clone keeps ignored dirs between builds).
+    $contentRoot = Join-Path $info.Dir 'Content'
+    $candidates = @(Get-ChildItem $contentRoot -Recurse -Directory -ErrorAction SilentlyContinue | ForEach-Object { 'Content/' + $_.FullName.Substring($contentRoot.Length + 1).Replace('\', '/') + '/' })
+    $ignoredAll = New-Object System.Collections.ArrayList
+    for ($k = 0; $k -lt $candidates.Count; $k += 100) {   # as arguments (stdin from PowerShell adds CR), in batches
+        $batch = $candidates[$k..([math]::Min($k + 99, $candidates.Count - 1))]
+        foreach ($line in @(Invoke-Git $src (@('-c', 'core.quotepath=false', 'check-ignore', '--') + $batch) -AllowFail)) { if ("$line".Trim().StartsWith('Content/')) { [void]$ignoredAll.Add("$line".Trim()) } }
+    }
+    $ignored = @($ignoredAll | Sort-Object -Unique | Where-Object { $d = $_; -not @($ignoredAll | Where-Object { $_ -ne $d -and $d.StartsWith($_) }).Count })
     foreach ($rel in $ignored) {
         $rel = $rel.Trim().TrimEnd('/')
         $from = Join-Path $info.Dir $rel; $to = Join-Path $src $rel
@@ -178,6 +194,12 @@ try {
             $failure = "cook is missing $($missingByPipeline.Count) packages that exist in the game's working tree: $(($missingByPipeline | Select-Object -First 5) -join ', ')"
             throw $failure
         }
+        # Strings that must not ship: the user name (compiled-in source/PDB paths) and the two names the games must not
+        # contain. Recorded and warned about; recording still works, but such a build must not be handed out.
+        $leakHits = @(Find-LeakedStrings (Join-Path $outDir 'Windows') @($UserNamePatterns + @('superposition', 'game-factory', 'game_factory', 'gamefactory')))
+        $leakScan = [ordered]@{ scanned = 'Windows\'; hits = @($leakHits | ForEach-Object { [ordered]@{ file = $_.file; pattern = $_.pattern; count = $_.count; example = $_.example } }) }
+        if ($leakHits.Count) { Write-Step "WARNING: shipped files contain names that must not ship: $(($leakHits | ForEach-Object { "$($_.file) ($($_.pattern) x$($_.count))" }) -join '; ')" }
+        else { Write-Step 'leak scan: no user name or forbidden names in the packaged files' }
     }
 
     # ---- 3. smoke test (only if the game defines <Project>.Smoke) ----
@@ -208,6 +230,7 @@ try {
     Write-Step "FAILED: $failure"
 } finally {
     Remove-Item Env:\GIT_LFS_SKIP_SMUDGE -ErrorAction SilentlyContinue
+    $env:TEMP = $savedTemp; $env:TMP = $savedTmp
     Exit-PipelineLock
 }
 
@@ -236,6 +259,7 @@ $row = [ordered]@{
     missing_assets_lost_by_build = @($missingByPipeline)
     missing_assets_in_game = @($missingInGame)
     cooked_content_mb = $(if ($null -ne $cookedBytes) { [math]::Round($cookedBytes / 1MB, 1) } else { $null })
+    leak_scan = $leakScan
     engine = $EngineRoot
     config = $Config
     steps = @($steps)
