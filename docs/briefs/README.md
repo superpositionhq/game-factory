@@ -1,7 +1,7 @@
 # Session briefs
 
 The prompts that start each Claude Code session of game-factory, as reusable templates. The rules every session
-follows are in the skills (`.claude/skills/`: commit-always, game-session, coordinator); the briefs carry the task.
+follows are in the skills (`.claude/skills/`: commit-always, game-session); the briefs carry the task.
 
 | File | For |
 |---|---|

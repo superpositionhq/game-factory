@@ -33,7 +33,7 @@ from zero; for a from-scratch variant, add its step 1 research per game and step
 ```text
 Background:
 game-factory ({{GF_ROOT}}\game-factory, superpositionhq/game-factory) coordinates Claude Code sessions on this PC.
-Seven sessions build small but premium-looking Unreal Engine 5.3 games in {{GF_ROOT}}\games\<slug>, each pushed to a
+Game sessions build small but premium-looking Unreal Engine 5.3 games in {{GF_ROOT}}\games\<slug>, each pushed to a
 private superpositionhq/game-<slug> repo with Git LFS; helper sessions build shared tooling; a coordinator session
 ({{COORDINATOR_ID}}) spawns and supervises everyone. Games and their sessions: {{GAME_SESSION_IDS}}. Each game's design
 doc and story bible is game-factory/docs/games/<slug>.md (art direction, levels, any "Fab requests" section).

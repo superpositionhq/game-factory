@@ -1,6 +1,6 @@
 # Asset library
 
-Curated 3D, texture, audio, UI and font resources for the seven UE 5.3 games, gathered by the
+Curated 3D, texture, audio, UI and font resources for the UE 5.3 games, gathered by the
 asset-scout session (2026-10-11). Machine-readable catalogue and logs live outside this repo:
 
 | File | What |

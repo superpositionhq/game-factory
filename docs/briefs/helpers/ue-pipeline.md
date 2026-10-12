@@ -32,7 +32,7 @@ zero; for a from-scratch variant, reuse its stage 1-4 task list).
 ```text
 Background:
 game-factory ({{GF_ROOT}}\game-factory, superpositionhq/game-factory, Windows PowerShell 5.1 tooling) coordinates
-Claude Code sessions on this PC. Seven sessions build Unreal Engine 5.3 games in {{GF_ROOT}}\games\<slug> ({{GAMES}}),
+Claude Code sessions on this PC. Game sessions build Unreal Engine 5.3 games in {{GF_ROOT}}\games\<slug> ({{GAMES}}),
 each pushed to a private superpositionhq/game-<slug> repo with Git LFS; helper sessions build the shared tooling; a
 coordinator session ({{COORDINATOR_ID}}) spawns and supervises everyone and owns the recording queue. Hooks log every
 tool call and commit of the game sessions into {{GF_ROOT}}\.recording\<game>\ (actions.jsonl, commits.jsonl: never touch

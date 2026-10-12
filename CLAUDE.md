@@ -11,7 +11,6 @@ Skills (in `.claude/skills/`, installed to `~\.claude\skills\` by `machine/boots
   LFS for binaries, push only when the coordinator says.
 - **game-session**: sessions that build a game (art, UI, story, naming, ue-heavy/GPU, workflow.jsonl, AutoPlay,
   framing screenshots, dataset v1.1).
-- **coordinator**: the parent session (queue and GPU slot, framing gate, review and push, scrub and packaging).
 
 Rules for working in this repo: [AGENTS.md](AGENTS.md). Session briefs: [docs/briefs/](docs/briefs/README.md).
 New machine: [docs/new-machine.md](docs/new-machine.md). Pipeline: [docs/ue-pipeline.md](docs/ue-pipeline.md).

@@ -37,7 +37,7 @@ as it did).
 ```text
 Background:
 game-factory ({{GF_ROOT}}\game-factory, superpositionhq/game-factory) coordinates Claude Code sessions on this PC and
-turns their games into datasets. Seven sessions build Unreal Engine 5.3 games in {{GF_ROOT}}\games\<slug> ({{GAMES}}),
+turns their games into datasets. Game sessions build Unreal Engine 5.3 games in {{GF_ROOT}}\games\<slug> ({{GAMES}}),
 each pushed to a private superpositionhq/game-<slug> repo with Git LFS; a coordinator session ({{COORDINATOR_ID}})
 spawns and supervises everyone and owns the GPU schedule. The games were built by agent sessions almost entirely
 through committed code: C++ in Source/, editor-Python scripts in Scripts/ run headless (they import art, build
