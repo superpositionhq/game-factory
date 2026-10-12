@@ -307,7 +307,7 @@ function Set-BelowNormalPriority {
 function Find-FFmpeg {
     # Order: $env:UE_PIPELINE_FFMPEG, a pinned copy in Work\tools\ffmpeg-*\bin, PATH, the winget package.
     if ($env:UE_PIPELINE_FFMPEG -and (Test-Path $env:UE_PIPELINE_FFMPEG)) { return $env:UE_PIPELINE_FFMPEG }
-    # Pinned by the user's choice: gyan.dev ffmpeg 8.1.2 full build (SHA-256 in docs/ue-pipeline.md). Its NVENC needs driver >= 610 (installed: 617.42).
+    # Pinned by the user's choice: gyan.dev ffmpeg 8.1.2 full build (SHA-256 in docs/ue-pipeline.md). Its NVENC needs NVIDIA driver >= 610.
     $pinned = Join-Path $WorkRoot 'tools\ffmpeg-8.1.2\ffmpeg-8.1.2-full_build\bin\ffmpeg.exe'
     if (Test-Path $pinned) { return $pinned }
     $cmd = Get-Command ffmpeg -ErrorAction SilentlyContinue

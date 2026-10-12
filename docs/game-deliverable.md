@@ -347,14 +347,3 @@ is `package-game.ps1 -Rescan`; run both before a review.
 - `Build/` is kept (buyers can play without Unreal), without `.pdb`.
 - `Screenshots/` is kept for the README's hero and gallery.
 
-**Status per game** (2026-10-12):
-
-| Game | Dataset v1.1 |
-|---|---|
-| liaozhai-night | 1.1.2 (`2cf1aa21`): ReplayScripts READY, being completed |
-| rally-racer | waiting for the re-recorded runs |
-| stealth | waiting for the re-recorded runs |
-| tower-defense | `ff5f1eea` built, pending `ReplayScripts/` |
-| siege-catapult | `577814b1` built, pending `ReplayScripts/` (headless replay running) |
-| horror-escape | `15e4aed5` built, pending `ReplayScripts/` (headless replay running) |
-| island-survival | `97b83264` built, pending `ReplayScripts/` |

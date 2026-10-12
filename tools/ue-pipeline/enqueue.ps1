@@ -20,7 +20,7 @@ param(
 )
 
 . (Join-Path $PSScriptRoot 'common.ps1')
-# The coordinator owns the queue (user's decision 2026-10-11: one GPU recording at a time, coordinator orders them).
+# The coordinator owns the queue (user's decision: one GPU recording at a time, in the order the coordinator sets).
 if ($RequestedBy -ne 'coordinator' -and -not $Force) {
     Write-Host ''
     Write-Host '!!! NOT QUEUED: only the coordinator queues recordings now (-RequestedBy coordinator).' -ForegroundColor Red

@@ -5,7 +5,7 @@
   Pinned build: gyan.dev ffmpeg 8.1.2 "full_build" .7z (166,721,853 bytes, SHA-256 below, matching gyan.dev's
   published .7z.sha256). Result: <root>\tools\ffmpeg-8.1.2\ffmpeg-8.1.2-full_build\bin\ffmpeg.exe, which
   tools/ue-pipeline/common.ps1 (Find-FFmpeg) prefers over anything on PATH. Binaries are never committed.
-  The archive is kept next to the folder with a .sha256 file, as on the original machine. A download whose hash does
+  The archive is kept next to the folder with a .sha256 file. A download whose hash does
   not match is deleted and the script fails; nothing from it is unpacked or run.
   Unpacks with 7-Zip when installed, else Windows' tar.exe (libarchive reads .7z on Windows 11).
 .EXAMPLE

@@ -10,7 +10,7 @@ brief stays short and the rules stay in one place. The originals this was distil
 |---|---|
 | `{{GAME_TITLE}}`, `{{SLUG}}`, `{{PROJECT}}`, `{{GENRE_LINE}}`, `{{PITCH}}`, `{{BRIEF}}`, `{{SCENARIOS}}`, `{{STORY}}`, `{{ART_PACKS}}`, `{{GAME_NOTES}}` | `games/<slug>.md` |
 | `{{GF_ROOT}}` | the machine root (`machine/lib/gf-root.ps1`; e.g. `C:\Users\<name>\Work`) |
-| `{{MACHINE}}` | one line: CPU, RAM, GPU, display (e.g. Ryzen 7 7700X 8 cores, 32 GB RAM, RTX 4080 16 GB, 4K at 120 Hz) |
+| `{{MACHINE}}` | one line: `<CPU, RAM, GPU + driver, display>` of this machine |
 | `{{SIBLINGS}}` | the other game slugs running now |
 | `{{COORDINATOR_ID}}`, `{{ASSET_SCOUT_ID}}`, `{{NOTES_DIR}}` | session ids and the shared notes folder |
 | `{{MODE}}` | `NEW` (no repo yet) or `CONTINUE` (repo cloned from `superpositionhq/game-{{SLUG}}`) |

@@ -16,6 +16,6 @@ redirects downloads). Format and per-game catalogue: [../../docs/asset-library.m
 | `../lib/gfroot.py` | the machine root (same rules as `machine/lib/gf-root.ps1`); bootstrap installs a copy next to the tools |
 
 Fab downloads only work for items the signed-in Epic account owns; sign in at fab.com in the Claude browser pane
-first. Signed URLs and tokens are passed on the command line and never logged or committed. The one-off batch inputs
-of the first machine (fabadds_*.txt, meta_batch*.py, ph_*.jsonl) are not kept: their results are in `catalog.jsonl`
+first. Signed URLs and tokens are passed on the command line and never logged or committed. One-off batch inputs
+(fabadds_*.txt, meta_batch*.py, ph_*.jsonl) are not kept: their results are in `catalog.jsonl`
 and `docs/asset-library-fab-ue.tsv`.

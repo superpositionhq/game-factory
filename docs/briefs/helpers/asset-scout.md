@@ -22,7 +22,7 @@ from zero; for a from-scratch variant, add its step 1 research per game and step
 | `{{GF_ROOT}}` | `C:\Users\<name>\Work` |
 | `{{COORDINATOR_ID}}` | session id of the coordinator |
 | `{{NOTES_DIR}}` | `%APPDATA%\Claude\side-session-notes\<group id>` |
-| `{{GAMES}}` | `tower-defense, siege-catapult, stealth, rally-racer, horror-escape, liaozhai-night, island-survival` |
+| `{{GAMES}}` | the game slugs: the folders under `{{GF_ROOT}}\games\` |
 | `{{GAME_SESSION_IDS}}` | `tower-defense = local_..., siege-catapult = local_..., ...` |
 | `{{PRIORITY_GAMES}}` | the games that start first, e.g. `tower-defense, liaozhai-night` |
 | `{{CATALOG_SOURCE}}` | where the previous machine's `catalog.jsonl` / `fab-library.psv` were copied, or `none` |
@@ -32,7 +32,7 @@ from zero; for a from-scratch variant, add its step 1 research per game and step
 
 ```text
 Background:
-game-factory ({{GF_ROOT}}\game-factory, superpositionhq/game-factory) coordinates Claude Code sessions on this PC.
+game-factory ({{GF_ROOT}}\game-factory, superpositionhq/game-factory) coordinates Claude Code sessions on one machine.
 Game sessions build small but premium-looking Unreal Engine 5.3 games in {{GF_ROOT}}\games\<slug>, each pushed to a
 private superpositionhq/game-<slug> repo with Git LFS; helper sessions build shared tooling; a coordinator session
 ({{COORDINATOR_ID}}) spawns and supervises everyone. Games and their sessions: {{GAME_SESSION_IDS}}. Each game's design
@@ -46,7 +46,7 @@ catalogue and Fab library list: {{CATALOG_SOURCE}}. The scout tools are in the r
 to {{GF_ROOT}}\tools\asset-scout\): scout.py (log, fetch, Poly Haven), fabdl.py (Fab signed browser downloads),
 fabue.py + fabue_batch.py (Unreal-format Fab packs straight from Epic's CDN using the item's build manifest, every file
 SHA-1 checked, every .uasset/.umap header scanned for the engine that saved it), build_catalog.py + packs_meta.tsv.
-Machine: Windows 11, UE 5.3 at C:\Program Files\Epic Games\UE_5.3, Python 3.12, a built-in browser pane; library budget
+Machine: Windows 11, UE 5.3 at {{ENGINE_DIR}}, Python 3.12, a built-in browser pane; library budget
 {{DISK_BUDGET_GB}} GB (check free disk before every large fetch; the C: drive filled up once).
 
 Rules:

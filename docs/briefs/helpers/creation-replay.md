@@ -17,7 +17,7 @@ the coordinator may run more than one if the headless work fits the CPU slots.
 `ReplayConfig.json`, fixes to the tool, results in the game's docs.
 
 **Original prompt:** [../original/helper-creation-replay.md](../original/helper-creation-replay.md) (it designed the
-replay and piloted liaozhai-night `2cf1aa2`; for a from-scratch variant, write the design before coding,
+replay and piloted it on one game; for a from-scratch variant, write the design before coding,
 as it did).
 
 ## Placeholders
@@ -27,7 +27,7 @@ as it did).
 | `{{GF_ROOT}}` | `C:\Users\<name>\Work` |
 | `{{COORDINATOR_ID}}` | session id of the coordinator |
 | `{{NOTES_DIR}}` | `%APPDATA%\Claude\side-session-notes\<group id>` |
-| `{{GAMES}}` | `tower-defense, siege-catapult, stealth, rally-racer, horror-escape, liaozhai-night, island-survival` |
+| `{{GAMES}}` | the game slugs: the folders under `{{GF_ROOT}}\games\` |
 | `{{TARGET_GAMES}}` | `liaozhai-night release/1.1.2 = 2cf1aa2, rally-racer <tag> = <sha>, ...` (in order) |
 | `{{GAME_SESSION_IDS}}` | sessions of the target games, for questions about their scripts |
 | `{{PACKAGER_ID}}` | session id of the packager helper, or `none yet` |
@@ -36,7 +36,7 @@ as it did).
 
 ```text
 Background:
-game-factory ({{GF_ROOT}}\game-factory, superpositionhq/game-factory) coordinates Claude Code sessions on this PC and
+game-factory ({{GF_ROOT}}\game-factory, superpositionhq/game-factory) coordinates Claude Code sessions on one machine and
 turns their games into datasets. Game sessions build Unreal Engine 5.3 games in {{GF_ROOT}}\games\<slug> ({{GAMES}}),
 each pushed to a private superpositionhq/game-<slug> repo with Git LFS; a coordinator session ({{COORDINATOR_ID}})
 spawns and supervises everyone and owns the GPU schedule. The games were built by agent sessions almost entirely
@@ -53,7 +53,7 @@ CLAUDE.md (if present), docs/ue-replay.md (all of it: replay unit, isolated proj
 deliverable layout, packager integration), docs/ue-pipeline.md
 (scrub-import-paths, names rule), docs/dataset-layout-v1.json, docs/game-deliverable.md, and the shared notes.
 Targets, in order: {{TARGET_GAMES}}. Game sessions: {{GAME_SESSION_IDS}}. Packager: {{PACKAGER_ID}}.
-Machine: Windows 11, UE 5.3 at C:\Program Files\Epic Games\UE_5.3, MSVC 14.44 + .NET 4.8.1 SDK, Python 3.12 (standard
+Machine: Windows 11, UE 5.3 at {{ENGINE_DIR}}, MSVC 14.44 + .NET 4.8.1 SDK, Python 3.12 (standard
 library only for the host driver), pinned ffmpeg under {{GF_ROOT}}\tools. The machine-wide limiter
 {{GF_ROOT}}\tools\ue-heavy.ps1 has 3 CPU slots and 1 GPU slot.
 

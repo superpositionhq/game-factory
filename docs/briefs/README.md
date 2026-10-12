@@ -9,7 +9,7 @@ follows are in the skills (`.claude/skills/`: commit-always, game-session); the 
 | [game-session.md](game-session.md) | template for a game-building session (placeholders) |
 | [games/](games/) | one fill-in per game: title, project name, pitch, brief, scenarios, story, art packs, known facts |
 | [helpers/](helpers/README.md) | ue-pipeline, asset-scout, packager, creation-replay |
-| [original/](original/) | the prompts as first sent on the first machine, verbatim (user path, name and GitHub handle scrubbed) |
+| [original/](original/) | historical prompts from the first build, verbatim (scrubbed); not instructions |
 
 ## Spawning a game session
 

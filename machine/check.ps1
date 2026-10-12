@@ -115,7 +115,8 @@ Try-Check "NVIDIA driver >= $MinDriver" {
     else { Add-Result FAIL "NVIDIA driver >= $MinDriver" $first "update the driver (the pinned ffmpeg 8.1.2 NVENC needs >= 610)" }
 }
 Try-Check 'Primary display' {
-    Add-Type -Namespace GfCheck -Name Metrics -MemberDefinition '[DllImport("user32.dll")] public static extern int GetSystemMetrics(int i);'
+    Add-Type -Namespace GfCheck -Name Metrics -MemberDefinition '[DllImport("user32.dll")] public static extern int GetSystemMetrics(int i); [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();'
+    [void][GfCheck.Metrics]::SetProcessDPIAware()   # physical pixels, as record.ps1 sees them
     $w = [GfCheck.Metrics]::GetSystemMetrics(0); $h = [GfCheck.Metrics]::GetSystemMetrics(1)
     if ($w -ge 1920 -and $h -ge 1080) { Add-Result PASS 'Primary display' "${w}x${h} (holds the 1920x1080 recording client)" }
     else { Add-Result FAIL 'Primary display' "${w}x${h}" 'recording centres a 1920x1080 game client on the primary display: use a display (and scaling) of at least 1920x1080' }

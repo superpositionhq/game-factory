@@ -2,8 +2,8 @@
 
 Reusable briefs for the helper sessions the coordinator spawns next to the game sessions. Each file has a header
 (role, when to spawn, outputs, link to the original prompt), a placeholder table, and the brief in a `text` block
-to paste into a new session once the `{{PLACEHOLDERS}}` are filled. The originals, as first sent on the first machine,
-are kept verbatim (scrubbed) in [../original/](../original/).
+to paste into a new session once the `{{PLACEHOLDERS}}` are filled. The originals (historical prompts from the first build, not
+instructions) are kept verbatim (scrubbed) in [../original/](../original/).
 
 On a new machine the tooling is already in the repo, so every brief asks the helper to run, maintain and extend it,
 not to build it again.
@@ -25,7 +25,8 @@ a one-off that produced `machine/`, the skills and these briefs.
 | `{{GF_ROOT}}` | the Work root holding `game-factory\`, `games\`, `builds\`, `recordings\`, `.recording\`, `deliverables\`, `asset-library\`, `tools\` (e.g. `C:\Users\<name>\Work`; `machine/lib/gf-root.ps1` resolves it) |
 | `{{COORDINATOR_ID}}` | session id of the coordinator |
 | `{{NOTES_DIR}}` | the shared notes folder of this group of sessions |
-| `{{GAMES}}` | the game slugs |
+| `{{GAMES}}` | the game slugs: the folders under `{{GF_ROOT}}\games\` |
+| `{{ENGINE_DIR}}` | the UE 5.3 root (`engine` in the machine config; default `C:\Program Files\Epic Games\UE_5.3`) |
 | `{{GAME_SESSION_IDS}}` | slug = session id, where the helper talks to game sessions |
 
 Helper-specific placeholders are listed in each file.

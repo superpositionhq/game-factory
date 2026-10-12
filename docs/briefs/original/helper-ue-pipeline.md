@@ -1,6 +1,9 @@
+> Historical prompt from the first build, kept verbatim (scrubbed; session ids and the notes path replaced). Not
+> instructions: the current rules are in the skills and the templated briefs.
+
 > Edited 2026-10-12: references to external sample material and to another project were removed from this original prompt.
 
-<!-- Verbatim first user turn of the session "UE build + gameplay recording pipeline" (local_f88382b5-7db8-4460-9d23-9ff329ad7076), scrubbed: user profile path -> %USERPROFILE%, user name -> <user>, GitHub handle -> <github-user>. -->
+<!-- Verbatim first user turn of the session "UE build + gameplay recording pipeline" (<session-id>), scrubbed: user profile path -> %USERPROFILE%, user name -> <user>, GitHub handle -> <github-user>. -->
 
 Background (from the session that started this one):
 Superposition's game-factory repo (C:\Users\<user>\Work\game-factory; read README.md, AGENTS.md, docs/plan.md Track B) produces game-creation and gameplay data. Four other Claude sessions are building small UE 5.3 C++ games right now, each in its own git repo: C:\Users\<user>\Work\games\tower-defense, siege-catapult, stealth, rally-racer (design docs in game-factory/docs/games/<slug>.md). Their every tool call and commit is already recorded by hooks into C:\Users\<user>\Work\.recording\<game>\actions.jsonl and commits.jsonl (don't touch those files). The user wants build + packaging + gameplay recording automated, with these decisions made: (1) gameplay is played by an in-game AutoPlay bot that injects input through Enhanced Input (UEnhancedInputLocalPlayerSubsystem / UEnhancedPlayerInput::InjectInputForAction or equivalent) and logs every injected input, not OS-level SendInput; (2) capture with ffmpeg (not OBS); (3) recording starts once each game has its first playable level. Machine: Windows 11, Ryzen 7 7700X, 32 GB RAM, RTX 4080 (NVENC) driving a 3840x2160 display, UE 5.3 at C:\Program Files\Epic Games\UE_5.3, MSVC 14.44 + .NET 4.8.1 SDK (UE 5.3 builds need `bOverrideBuildEnvironment = true; GlobalDefinitions.Add("PLATFORM_HAS_ASAN_INCLUDE=0");` in Target.cs files, already applied by the games), ffmpeg being installed via winget (Gyan.FFmpeg) right now in the user's terminal; no system Python. The CPU/GPU is shared with the four game sessions, so the pipeline must run one heavy job at a time.
@@ -18,4 +21,4 @@ Stage 4: pipeline.ps1 <game> [-Runs k]: queue runner doing build -> package -> s
 
 Rules: don't edit the four game repos yourself (send contract changes through the parent); don't commit or push game-factory, the parent reviews. Keep heavy jobs serialized and close what you launch.
 
-Shared notes folder for this group of sessions (outside the repo; read siblings' notes there, leave hand-over notes or large findings there instead of pasting them into messages): C:\Users\<user>\AppData\Roaming\Claude\side-session-notes\local_44b9474d-ba1d-4a49-aa79-27f8d3fa89db
+Shared notes folder for this group of sessions (outside the repo; read siblings' notes there, leave hand-over notes or large findings there instead of pasting them into messages): <notes-dir>

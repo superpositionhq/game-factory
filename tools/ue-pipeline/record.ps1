@@ -30,7 +30,7 @@ param(
 
 . (Join-Path $PSScriptRoot 'common.ps1')
 if ($MaxVramInUseMB -le 0) { $vt = Get-VramTotalMB; $MaxVramInUseMB = if ($vt) { [int]($vt / 2) } else { 8192 } }
-[void][UePipeline.Win]::MakeDpiAware()   # physical pixels for window rects (the display runs at 150 %)
+[void][UePipeline.Win]::MakeDpiAware()   # physical pixels for window rects (displays may run above 100 % scaling)
 
 $info = Get-GameInfo $Game
 # Coordinator override for one drain (e.g. "record now, don't wait for idle"): builds\_queue\_idle-override.txt
@@ -107,7 +107,7 @@ $ffmpegVersion = (Invoke-Native $ffmpeg @('-hide_banner', '-version') | Select-O
 $qpcFreq = [UePipeline.Win]::QpcFrequency()
 # NVENC when this ffmpeg + driver pair can open it (ffmpeg 9 needs driver >= 610), else libx264 on the CPU.
 $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-# Encoder preference: NVENC (RTX 4080), then AMF on the Ryzen's integrated Radeon, then libx264 on the CPU.
+# Encoder preference: NVENC (NVIDIA), then AMF (AMD, e.g. an integrated Radeon), then libx264 on the CPU.
 $Encoder = 'libx264'
 foreach ($enc in 'h264_nvenc', 'h264_amf') {
     & $ffmpeg -hide_banner -loglevel error -f lavfi -i 'color=c=black:s=256x256:r=60' -t 0.1 -c:v $enc -f null - 2>&1 | Out-Null
@@ -379,7 +379,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
     Enter-PipelineLock "record $Game $runId" -Game $Game
     [UePipeline.Win]::KeepDisplayOn($true)
     # The display may have gone off while we waited for the user to be away (display timeout = idle gate): wake it,
-    # or ddagrab gets no frames (2026-10-11 20:32, tower-defense 937ec12 S1).
+    # or ddagrab gets no frames.
     Invoke-WakeDisplay
     try {
         Write-Step "run $($i + 1)/$Runs $runId (skill $runSkill, seed $runSeed)"

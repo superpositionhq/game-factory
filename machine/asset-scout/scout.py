@@ -23,7 +23,7 @@ import gfroot  # noqa: E402
 
 # <root>\asset-library: catalogue, logs, status files. Env ASSET_LIB overrides it.
 LIB = os.environ.get("ASSET_LIB") or os.path.join(gfroot.root(), "asset-library")
-# Downloads go into the library too (user, 2026-10-11, overriding the earlier D: plan). Set ASSET_DL_ROOT to redirect.
+# Downloads go into the library too. Set ASSET_DL_ROOT to redirect them (e.g. to another drive).
 DL = os.environ.get("ASSET_DL_ROOT", LIB)
 LOG = os.path.join(LIB, "scout-log.jsonl")
 CAT = os.path.join(LIB, "catalog.jsonl")

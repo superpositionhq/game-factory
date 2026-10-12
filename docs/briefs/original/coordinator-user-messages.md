@@ -1,3 +1,6 @@
+> Historical prompt from the first build, kept verbatim (scrubbed; session ids and the notes path replaced). Not
+> instructions: the current rules are in the skills and the templated briefs.
+
 > Edited 2026-10-12: references to external sample material and to another project were removed from this original prompt.
 
 <!-- The coordinator session had no written brief: its first turn was "setup github for me u are on windows" and the

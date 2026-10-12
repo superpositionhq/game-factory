@@ -1,6 +1,9 @@
+> Historical prompt from the first build, kept verbatim (scrubbed; session ids and the notes path replaced). Not
+> instructions: the current rules are in the skills and the templated briefs.
+
 > Edited 2026-10-12: references to external sample material and to another project were removed from this original prompt.
 
-<!-- Verbatim first user turn of the session "UE creation replay incl. 3D world building" (local_61b10638-fbce-47cb-b3f6-d747623b0b6d), scrubbed: user profile path -> %USERPROFILE%, user name -> <user>, GitHub handle -> <github-user>. -->
+<!-- Verbatim first user turn of the session "UE creation replay incl. 3D world building" (<session-id>), scrubbed: user profile path -> %USERPROFILE%, user name -> <user>, GitHub handle -> <github-user>. -->
 
 Background (from the session that started this one):
 Superposition's game-factory (C:\Users\<user>\Work\game-factory, pushed to superpositionhq/game-factory) produces game-creation datasets for 7 Unreal Engine 5.3 games under C:\Users\<user>\Work\games\<slug> (tower-defense, siege-catapult, stealth, rally-racer, horror-escape, liaozhai-night, island-survival), each pushed privately to superpositionhq/game-<slug> with Git LFS. Each game already has real git history, workflow.jsonl recorded live, raw hook logs in C:\Users\<user>\Work\.recording\<game>\ (actions.jsonl, commits.jsonl), AutoPlay gameplay recordings (tools/ue-pipeline), Shipping builds, and packages from tools/package-game.ps1 in C:\Users\<user>\Work\deliverables. None of our 7 games has a CREATION replay (ReplayScripts/ + replay.mp4) yet. The user specifically asked whether replay covers 3D environment creation, so world building must be first-class. Rules: one GPU job at a time on this PC; every editor/game launch goes through C:\Users\<user>\Work\tools\ue-heavy.ps1, and long GPU captures are scheduled by the coordinator session. Nothing produced may mention Superposition or game-factory inside a game; deliverable copies scrub user paths/username and Claude/Anthropic mentions.
@@ -12,4 +15,4 @@ Design and build creation-replay support for our Unreal games, producing ReplayS
 2. Implement generically in game-factory/tools/ue-replay/ and pilot on ONE game end to end (liaozhai-night release/1.1.2 = 2cf1aa2, or tower-defense ff5f1ee — pick the more tractable for world building and say why). Editor/GPU work only via ue-heavy.ps1; ask the coordinator to schedule long captures.
 3. Done = the pilot game has ReplayScripts/ + a verification report (replayed project matches the final commit, including level/actor structure), + replay.mp4 showing the environment being built (or a concrete plan/estimate), + packager integration notes. Commit to game-factory main without pushing; report the sha and results to the coordinator.
 
-Shared notes folder for this group of sessions (outside the repo; read siblings' notes there, leave hand-over notes or large findings there instead of pasting them into messages): C:\Users\<user>\AppData\Roaming\Claude\side-session-notes\local_44b9474d-ba1d-4a49-aa79-27f8d3fa89db
+Shared notes folder for this group of sessions (outside the repo; read siblings' notes there, leave hand-over notes or large findings there instead of pasting them into messages): <notes-dir>

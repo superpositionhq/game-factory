@@ -21,8 +21,7 @@ dirt"), a castle (siege-catapult "Twin Towers") or an open-world start setup (is
 quality gate. Never re-record or exclude a run because the bot lost. Package the first valid run per scenario. Bots
 should play like a competent human, which doesn't mean they must win.
 
-Every game (tower-defense, siege-catapult, stealth, rally-racer) implements this once its first scenario is
-playable. The shared pipeline (`tools/ue-pipeline/`, [ue-pipeline.md](ue-pipeline.md)) then packages the game,
+Every game implements this once its first scenario is playable. The shared pipeline (`tools/ue-pipeline/`, [ue-pipeline.md](ue-pipeline.md)) then packages the game,
 launches it with the flags below, captures the window with ffmpeg and turns each run into a gameplay bundle
 (`video.mkv`, `system_audio.mka`, `inputs.jsonl`, `telemetry.jsonl`, `outcome.json`, `metadata.json`, `validation.json`,
 `manifest.json`, `stills/`, `gameplay.mp4`; see [ue-pipeline.md, Bundle](ue-pipeline.md#bundle)).
@@ -31,8 +30,8 @@ The game plays itself: an in-game **bot** reads game state and acts **only by in
 Input**, and the game logs every injected input. Nothing uses OS-level input (`SendInput`), and hardware input is
 ignored during a run.
 
-Use the drop-in implementation in `tools/ue-pipeline/autoplay/` (`AutoPlaySubsystem.h/.cpp`) unchanged, so the
-four games write identical files. Your game supplies two things: `StartScenario` (set up scenario N) plus `ScenarioStarted`, and the bot.
+Use the drop-in implementation in `tools/ue-pipeline/autoplay/` (`AutoPlaySubsystem.h/.cpp`) unchanged, so all
+games write identical files. Your game supplies two things: `StartScenario` (set up scenario N) plus `ScenarioStarted`, and the bot.
 
 ## 1. Command line
 
@@ -45,8 +44,8 @@ The pipeline launches the packaged game as:
            -nosplash -abslog=<OutputDir>\game.log
 ```
 
-The display runs at 150 % scaling: the ini override makes the game DPI-aware so 1920x1080 means physical pixels
-(otherwise Windows stretches the window to 2880x1620). No `-unattended`: UE skips DPI awareness when unattended.
+Displays often run above 100 % scaling: the ini override makes the game DPI-aware so 1920x1080 means physical
+pixels (otherwise Windows stretches the window, e.g. to 2880x1620 at 150 %). No `-unattended`: UE skips DPI awareness when unattended.
 
 **Recording builds are Shipping (v1.3).** Development and Test builds contain UE's trace runtime, which listens on a TCP
 port (0.0.0.0, no runtime switch in 5.3), so Windows Firewall shows a "Windows Security" prompt for every new exe path;
@@ -65,7 +64,7 @@ and that's expected: the pipeline doesn't need one (`raw\game.log` is simply abs
 symbols and the Shipping link fails (found by horror-escape; it only works with a source-built engine). The drop-in
 works the same in Shipping (scalability is set through the Scalability API, not a console command).
 
-**Known issue: GPU hang/crash on frame 1 (Lumen + virtual shadow maps).** On this machine UE 5.3 can lose the D3D12
+**Known issue: GPU hang/crash on frame 1 (Lumen + virtual shadow maps).** UE 5.3 can lose the D3D12
 device on the first frame: GPU breadcrumbs end in Lumen `ScreenProbeGather` on async compute while virtual shadow
 maps initialise (seen in tower-defense and siege-catapult). Fix in your game, then rebuild:
 
@@ -308,7 +307,7 @@ World->GetAudioDeviceRaw()->RegisterSubmixBufferListener(AudioCapture, nullptr);
 Without packaging (editor binaries, uncooked). **Always disable Live Coding** with the ini override shown: an `UnrealEditor.exe` that starts Live Coding makes UnrealBuildTool refuse to build *every* project on this UE 5.3 install ("Unable to build while Live Coding is active") until it exits. The override works without `-unattended` (which would also turn off DPI awareness). It is a heavy job, so run it under `Work\tools\ue-heavy.ps1`, which must wait for GUI processes; see the note below.
 
 ```
-"C:\Program Files\Epic Games\UE_5.3\Engine\Binaries\Win64\UnrealEditor.exe" "<project>.uproject" -game -AutoPlay -Scenario=1 -Seed=1 -Skill=1 -MaxSeconds=120 -GoTimeout=0 -windowed -ResX=1920 -ResY=1080 -ini:EditorPerProjectUserSettings:[/Script/LiveCoding.LiveCodingSettings]:bEnabled=False -log
+"<engine>\Engine\Binaries\Win64\UnrealEditor.exe" "<project>.uproject" -game -AutoPlay -Scenario=1 -Seed=1 -Skill=1 -MaxSeconds=120 -GoTimeout=0 -windowed -ResX=1920 -ResY=1080 -ini:EditorPerProjectUserSettings:[/Script/LiveCoding.LiveCodingSettings]:bEnabled=False -log
 powershell -ExecutionPolicy Bypass -File %GF_ROOT%\game-factory\tools\ue-pipeline\validate-run.ps1 "<project dir>\Saved\AutoPlay\<timestamp>"
 ```
 

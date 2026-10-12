@@ -130,7 +130,7 @@ try {
     # Store content kept out of git on purpose (Fab/Marketplace packs, generated meshes): copy every working-tree
     # directory under Content/ that is git-ignored AT THE COMMIT BEING BUILT (asked of the clone, which has that
     # commit's .gitignore and index) into the clone. Asking the working tree instead misses content that a later commit
-    # started tracking (tower-defense efbc52f moved its packs into LFS, so 52a6f2a1 cooked without them). Without this
+    # started tracking (a game that later moved its packs into LFS cooked without them). Without this
     # the build has no art. robocopy /MIR is incremental (the clone keeps ignored dirs between builds).
     $contentRoot = Join-Path $info.Dir 'Content'
     $candidates = @(Get-ChildItem $contentRoot -Recurse -Directory -ErrorAction SilentlyContinue | ForEach-Object { 'Content/' + $_.FullName.Substring($contentRoot.Length + 1).Replace('\', '/') + '/' })
@@ -186,7 +186,7 @@ try {
     # ---- 2. package ----
     if ($Package) {
         # -WaitMutex: BuildCookRun's own UBT call otherwise fails at once ("A conflicting instance of UnrealBuildTool is
-        # already running") while another session's UBT runs (island 5462fc8, 2026-10-12 01:08). If it still happens
+        # already running") while another session's UBT runs. If it still happens
         # (e.g. a UBT that ignores the mutex), the package step is retried once.
         foreach ($attempt in 1, 2) {
             $par = Get-UbtParallelArg

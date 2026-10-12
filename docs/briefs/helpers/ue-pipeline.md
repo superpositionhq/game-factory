@@ -22,9 +22,8 @@ zero; for a from-scratch variant, reuse its stage 1-4 task list).
 | `{{GF_ROOT}}` | `C:\Users\<name>\Work` |
 | `{{COORDINATOR_ID}}` | session id of the coordinator |
 | `{{NOTES_DIR}}` | `%APPDATA%\Claude\side-session-notes\<group id>` |
-| `{{GAMES}}` | `tower-defense, siege-catapult, stealth, rally-racer, horror-escape, liaozhai-night, island-survival` |
-| `{{MACHINE}}` | `Windows 11, Ryzen 7 7700X, 32 GB RAM, RTX 4080 16 GB (NVIDIA driver 617.42), 3840x2160 at 150 % scaling, 120 Hz` |
-| `{{ENGINE_DIR}}` | `C:\Program Files\Epic Games\UE_5.3` |
+| `{{GAMES}}` | the game slugs: the folders under `{{GF_ROOT}}\games\` |
+| `{{MACHINE}}` | `<OS, CPU, RAM, GPU + driver, display resolution, scaling and refresh>` of this machine |
 | `{{UEB}}` | `C:\UEB` (private build clones, outside the user profile) |
 
 ## Brief
@@ -32,7 +31,7 @@ zero; for a from-scratch variant, reuse its stage 1-4 task list).
 ```text
 Background:
 game-factory ({{GF_ROOT}}\game-factory, superpositionhq/game-factory, Windows PowerShell 5.1 tooling) coordinates
-Claude Code sessions on this PC. Game sessions build Unreal Engine 5.3 games in {{GF_ROOT}}\games\<slug> ({{GAMES}}),
+Claude Code sessions on one machine. Game sessions build Unreal Engine 5.3 games in {{GF_ROOT}}\games\<slug> ({{GAMES}}),
 each pushed to a private superpositionhq/game-<slug> repo with Git LFS; helper sessions build the shared tooling; a
 coordinator session ({{COORDINATOR_ID}}) spawns and supervises everyone and owns the recording queue. Hooks log every
 tool call and commit of the game sessions into {{GF_ROOT}}\.recording\<game>\ (actions.jsonl, commits.jsonl: never touch

@@ -1,6 +1,9 @@
+> Historical prompt from the first build, kept verbatim (scrubbed; session ids and the notes path replaced). Not
+> instructions: the current rules are in the skills and the templated briefs.
+
 > Edited 2026-10-12: references to external sample material and to another project were removed from this original prompt.
 
-<!-- Verbatim first user turn of the session "Unreal game 2: liaozhai night" (local_157df134-0901-4a71-bfd6-b8dacff410af), scrubbed: user profile path -> %USERPROFILE%, user name -> <user>, GitHub handle -> <github-user>. -->
+<!-- Verbatim first user turn of the session "Unreal game 2: liaozhai night" (<session-id>), scrubbed: user profile path -> %USERPROFILE%, user name -> <user>, GitHub handle -> <github-user>. -->
 
 Background (from the session that started this one):
 Superposition's game-factory repo (C:\Users\<user>\Work\game-factory: read README.md, AGENTS.md, docs/plan.md "Track B", docs/autoplay-contract.md, docs/ue-pipeline.md if present) produces game-CREATION data: how a game is built step by step, recorded as it happens. We build small games and record every real operation. Batch 1 (tower defense, siege catapult, stealth, rally racer) is being built right now by four other sessions in C:\Users\<user>\Work\games\<slug>; look at their docs/games/<slug>.md and repos for conventions and solved problems. Batch 2 is horror escape (another session) and this one. This game is based on Liaozhai/聊斋 folklore. Everything here is original. All sessions share one Windows PC (Ryzen 7 7700X 8 cores, 32 GB RAM, RTX 4080).
@@ -33,4 +36,4 @@ Brief:
 
 Steps: 1) design doc (combat systems, abilities, enemy/boss designs, level plans, art/audio direction, acceptance checklist); 2) create project + repo + recording hook, start workflow.jsonl from the very first operation; 3) build incrementally, compiling (through ue-heavy.ps1) and testing as you go; 4) AutoPlay once level 1 is playable (bot fights with lock-on, attack/dodge timing and talisman use via input injection, Skill-scaled); 5) finish with a playtest checklist pass, packaged build, and a status section (what works, what's left, built vs sampled assets, stats: workflow rows, commits, hours). Report back with a short summary when done or blocked.
 
-Shared notes folder for this group of sessions (outside the repo; read siblings' notes there, leave hand-over notes or large findings there instead of pasting them into messages): C:\Users\<user>\AppData\Roaming\Claude\side-session-notes\local_44b9474d-ba1d-4a49-aa79-27f8d3fa89db
+Shared notes folder for this group of sessions (outside the repo; read siblings' notes there, leave hand-over notes or large findings there instead of pasting them into messages): <notes-dir>

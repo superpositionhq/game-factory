@@ -156,7 +156,7 @@ Per run (seed = `-Seed + i`, or random; skill = `-Skill`, or cycling 1.0 / 0.75 
    so the screen doesn't dim or sleep during a run. Right before launch the display is also **woken** (a 1-pixel mouse
    move out and back, outside the game run): the AC display timeout (300 s) equals the idle gate, so when the user went
    away during a build the display is already off, `SetThreadExecutionState` doesn't turn it back on, and Desktop
-   Duplication delivers no frames (tower-defense 937ec12 S1, 2026-10-11 20:32: ddagrab hung, gdigrab ~4 fps). (Note: a `Shell_SystemDim` window owned by `PickerHost.exe FirewallNotificationDialogServer` is the
+   Duplication delivers no frames (ddagrab hangs, gdigrab gets ~4 fps). (Note: a `Shell_SystemDim` window owned by `PickerHost.exe FirewallNotificationDialogServer` is the
    full-screen dim behind an unanswered Windows Firewall prompt; any such prompt blocks capture until it is answered.
    Turning off "Notify me when Microsoft Defender Firewall blocks a new app" removes the prompts; the user's call.) A first run of a new `_run` exe without a Windows Firewall rule starts
    it off-screen for 20 s first, so the one-time prompt appears while the user may be present.
@@ -167,8 +167,8 @@ Per run (seed = `-Seed + i`, or random; skill = `-Skill`, or cycling 1.0 / 0.75 
 1. Launch `_run\Windows\<Project>\Binaries\Win64\<Project>.exe` (the real binary, so our PID owns the window) with the
    contract flags plus `-GoTimeout=300 -windowed -ResX=1920 -ResY=1080 -WinX=200 -WinY=150
    -ini:Engine:[/Script/Engine.UserInterfaceSettings]:bAllowHighDPIInGameMode=True -nosplash -abslog=<raw>\game.log`.
-   - The display runs at 150 % scaling. Without `bAllowHighDPIInGameMode` a UE game is DPI-unaware and Windows
-     stretches its 1920x1080 frame to a 2880x1620 window. The ini override fixes that without touching the games.
+   - Displays often run above 100 % scaling. Without `bAllowHighDPIInGameMode` a UE game is DPI-unaware and Windows
+     stretches its 1920x1080 frame (to a 2880x1620 window at 150 %). The ini override fixes that without touching the games.
    - **Never pass `-unattended`**: UE skips setting DPI awareness when unattended (`FWindowsPlatformApplicationMisc::SetHighDPIMode`).
 2. Wait for `ready.json`, find the window by PID, move it so the client area is at (40,80) (games re-center their
    window), make it topmost (not activated), check the client area is exactly 1920x1080 and fully on screen
@@ -209,10 +209,10 @@ inside `AcquireNextFrame` for each new desktop image (≈143–159 per second he
 `-fps_mode cfr -r 60` then keeps the latest image per 1/60 s slot. ffmpeg's `drop=` count is just these surplus
 samples; `dup=` counts slots without a new image (measured: 0).
 
-**Encoder.** record.ps1 probes at start and uses the first that opens: `h264_nvenc` (RTX 4080), `h264_amf` (the
-Ryzen 7700X's integrated Radeon), `libx264` (CPU); `metadata.video.encoder` says which. Since the NVIDIA driver update
-to **617.42** (2026-10-11) NVENC opens and is used: the pinned ffmpeg 8.1.2 (like 9.x) needs NVENC API 13.1, i.e.
-driver ≥ 610; on the earlier 591.86 it failed ("Required: 13.1 Found: 13.0") and recordings used AMF. `h264_mf`
+**Encoder.** record.ps1 probes at start and uses the first that opens: `h264_nvenc` (NVIDIA), `h264_amf` (AMD,
+e.g. a CPU's integrated Radeon), `libx264` (CPU); `metadata.video.encoder` says which. The pinned ffmpeg 8.1.2 (like
+9.x) needs NVENC API 13.1, i.e. NVIDIA driver ≥ 610; with an older driver it fails ("Required: 13.1 Found: 13.0")
+and recordings use AMF. `h264_mf`
 does not work. The AMF fallback, verified before the driver update:
 
 ```
@@ -235,10 +235,10 @@ only if both get fewer than 30 frames in 10 s. Each failed attempt is logged wit
 exited (exit code) and the tail of its stderr log (`raw\ffmpeg-<attempt>.log`).
 
 `-Capture gfxcapture` (Windows.Graphics.Capture of the game window by `hwnd`, ffmpeg 8 `gfxcapture` filter) would avoid
-the screen-region problems (other windows never reach the video, no topmost needed), but on this machine it delivered
+the screen-region problems (other windows never reach the video, no topmost needed), but in tests it delivered
 2–6 frames/s for an unfocused game window and its timestamps don't fit the start-time estimate, so it is opt-in only.
 
-### Measured quality (pipeline test project, machine busy with six game sessions)
+### Measured quality (pipeline test project on the first machine, busy with several game sessions)
 
 | | Result |
 |---|---|
@@ -247,9 +247,9 @@ the screen-region problems (other windows never reach the video, no topmost need
 | Capture input | 90–160 desktop images/s; gaps > 25 ms during the scenario 0.6–3 % of frames (game/compositor hitches) |
 | Video lag | a game event shows on video 14–29 ms (p5–p95 5–37 ms) after its `t_ns` with NVENC; 25 ms (15–31) with AMF; 47 ms (29–61) with the first output-side CFR libx264 path: game thread → render thread → GPU → present → DWM → capture. `video_start_offset_ns` is the capture clock and does **not** subtract this |
 | Audio lag | a sound appears in `system_audio` 13–33 ms (5–44 ms) after its `t_ns` (next mixer buffer) |
-| Game frame cadence | frame-code strip, repeated+skipped game frames: **0.3–1.1 % with NVENC** at 120 Hz (driver 617.42; desktop images arrive at ≈60/s, one per game frame); ≈7 % with AMF (4–10 % per run), 13 % on the first path |
+| Game frame cadence | frame-code strip, repeated+skipped game frames: **0.3–1.1 % with NVENC** at 120 Hz (desktop images arrive at ≈60/s, one per game frame); ≈7 % with AMF (4–10 % per run), 13 % on the first path |
 
-With NVENC (no download, frames straight from Desktop Duplication to the encoder) the cadence is close to one video frame per game frame. On the AMF/CPU paths it is inherent to sampling the desktop: with vsync off the game's 60 fps frames reach the screen on the display's vblank grid (6.3 ms at 159 Hz, 8.3 ms at 120 Hz) at irregular intervals, and a 60 Hz sample-and-hold capture, OBS included, repeats some and misses some. Measured: 13 % / 6 % at 159 Hz (output-side CFR / AMF path), **7 % at 120 Hz** (AMF, 86 of 1194). The user runs the display at 120 Hz for recording sessions; record.ps1 logs `machine.display` / `machine.display_refresh_hz` (from `Win32_VideoController`) in metadata.json and warns (does not fail) when the rate is not 60 or 120. 120 Hz alone doesn't fix the cadence; locking presents to every second vblank would need `r.VSync 1` at 120 Hz in AutoPlay (a contract change, not made) or in-engine frame capture.
+With NVENC (no download, frames straight from Desktop Duplication to the encoder) the cadence is close to one video frame per game frame. On the AMF/CPU paths it is inherent to sampling the desktop: with vsync off the game's 60 fps frames reach the screen on the display's vblank grid (6.3 ms at 159 Hz, 8.3 ms at 120 Hz) at irregular intervals, and a 60 Hz sample-and-hold capture, OBS included, repeats some and misses some. Measured: 13 % / 6 % at 159 Hz (output-side CFR / AMF path), **7 % at 120 Hz** (AMF, 86 of 1194). Run the display at a multiple of 60 Hz (e.g. 120 Hz) for recording sessions; record.ps1 logs `machine.display` / `machine.display_refresh_hz` (from `Win32_VideoController`) in metadata.json and warns (does not fail) when the rate is not a multiple of 60. 120 Hz alone doesn't fix the cadence; locking presents to every second vblank would need `r.VSync 1` at 120 Hz in AutoPlay (a contract change, not made) or in-engine frame capture.
 
 UE's `StartRecordingOutput` is queued to the audio thread and starts late by an unknown amount (≈ 0.1 s, because
 the scenario load follows immediately). `StopRecordingOutput` is synchronous under the same lock the mixer appends
@@ -379,7 +379,7 @@ user name) and a MetaSound's author (e.g. `Claude (agent)` from the script that 
 term the packager blocks in asset data. Run it on a game's working tree (editor target built, editor closed), then commit:
 
 ```
-"C:\Program Files\Epic Games\UE_5.3\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" <Project>.uproject -run=pythonscript -script="%GF_ROOT%/game-factory/tools/ue-pipeline/scrub-import-paths.py --apply" -nullrhi -unattended -nopause -nosplash -stdout -AllowStdOutLogVerbosity
+"<engine>\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" <Project>.uproject -run=pythonscript -script="%GF_ROOT%/game-factory/tools/ue-pipeline/scrub-import-paths.py --apply" -nullrhi -unattended -nopause -nosplash -stdout -AllowStdOutLogVerbosity
 ... same with --patch-remaining   (separate run: what no editor API reaches)
 ... same with --verify            (expect "verify: 0 hits in 0 files")
 ```
@@ -407,8 +407,8 @@ to LogPython (stdout with `-AllowStdOutLogVerbosity`, always in `Saved/Logs/<Pro
   is reported UNHANDLED for a person. Each patched package is then load-tested (`load_failures` in the report).
 - `--verify`: byte scan only; expect `verify: 0 hits in 0 files`.
 
-Tested on a scratch clone of tower-defense 3309e7b (`C:\UEB\scratch`; the game's tree untouched): 56 hits in 16 files
-→ 4 FontFaces fixed by `--apply` (`C:/Users/<name>/Work/games/tower-defense/Saved/Staging/FF_*.ttf` →
+Tested on a scratch clone of a game (under the private build folder; the game's tree untouched): 56 hits in 16 files
+→ 4 FontFaces fixed by `--apply` (`<root>/games/<game>/Saved/Staging/FF_*.ttf` →
 `Saved/Staging/FF_*.ttf`), 12 Interchange textures by `--patch-remaining` (all 12 load), `--verify` 0. Cook before
 vs after (9319 files): identical except the 4 fonts, whose cooked bytes differ exactly by the removed 40-character path
 prefix and its size field, `Metadata/DevelopmentAssetRegistry.bin` (editor tags, not staged), and the shader archives
@@ -445,8 +445,8 @@ powershell -ExecutionPolicy Bypass -File scrub-history.ps1 <game> -StripAgentTra
   "git ls-files -s | remap | git update-index --index-info"`, `--msg-filter`, `--env-filter`, `--tag-name-filter cat
   -- --all` (Git's perl; git filter-repo would need Python). Then `refs/original/` is removed and every reachable text
   blob, message and identity is re-scanned. Never pushes, never runs `git gc`.
-- Tested on throwaway clones: rally-racer (23 text blobs in 9 paths, 12 author identities `dev_02@game-factory.local`)
-  and tower-defense (105 text blobs in 12 paths, ~99k occurrences; 20 auto-commits → "WIP"): afterwards 0 files with a
+- Tested on throwaway clones of two games: one (23 text blobs in 9 paths, 12 author identities `dev_02@game-factory.local`)
+  and the other (105 text blobs in 12 paths, ~99k occurrences; 20 auto-commits → "WIP"): afterwards 0 files with a
   name in any commit (independent `git grep`), 0 messages, 0 identities; workflow.jsonl, trailers and row ids kept by
   default; with the opt-ins 0 Claude lines, 0 row ids, the dropped file gone.
 ## Pipeline test project
@@ -458,13 +458,14 @@ turns and jumps via Enhanced Input for 20 s (`-TestRunSeconds=n`), beeps (proced
 
 ## Machine notes
 
-- Display 3840x2160 at 150 % scaling, 159 Hz; vsync off + `t.MaxFPS 60` in the game keeps the game at 60 fps.
-- The game window sits topmost with its client area at (40,80) for the run (top-left of the 4K screen). Runs start only after 5 min without user input; if you come back mid-run, leave the window alone (moving or covering it stops the run safely).
+- Any display and scaling that holds a 1920x1080 window works; vsync off + `t.MaxFPS 60` in the game keeps the game
+  at 60 fps whatever the refresh.
+- The game window sits topmost with its 1920x1080 client area centred on the primary screen for the run. Runs start only after 5 min without user input; if you come back mid-run, leave the window alone (moving or covering it stops the run safely).
   Its audio plays on the speakers during runs.
 
 ## Known issues
 
-- **GPU hang/crash on frame 1 (UE 5.3 Lumen + virtual shadow maps).** On this machine the D3D12 device can be lost on
+- **GPU hang/crash on frame 1 (UE 5.3 Lumen + virtual shadow maps).** The D3D12 device can be lost on
   the first frame: GPU breadcrumbs end in Lumen `ScreenProbeGather` on async compute while virtual shadow maps
   initialise (seen in tower-defense and siege-catapult). Fix in the game: `r.RDG.AsyncCompute=0` under
   `[SystemSettings]` in `Config/DefaultEngine.ini`. record.ps1 classifies such runs as `gpu_crash` (evidence from

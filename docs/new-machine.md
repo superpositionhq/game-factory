@@ -5,21 +5,22 @@ most of it downloads (engine ~60 GB, game repos 3-16 GB each with LFS, asset lib
 Steps marked **(manual)** need a person: a sign-in, a licence, a UAC prompt or a purchase. Everything else is scripted
 and idempotent (`machine/bootstrap.ps1` can be run again any time).
 
-Reference machine: Windows 11 Pro, Ryzen 7 7700X (8 cores), 32 GB RAM, RTX 4080 16 GB (NVIDIA driver 617.42), 4K
-display at 120 Hz and 150 % scaling, ~400 GB free on C:.
+Example machine (the first one; not a requirement): Windows 11 Pro, 8-core CPU, 32 GB RAM, 16 GB NVIDIA GPU, 4K
+display at 120 Hz and 150 % scaling, ~400 GB free. Minimums are what `machine/check.ps1` checks.
 
 ## 1. Windows and drivers
 
-1. **(manual)** NVIDIA driver **>= 617** (GeForce/Studio driver from nvidia.com or the NVIDIA app). Recording encodes
-   with NVENC through the pinned ffmpeg; older drivers fall back to slow CPU encoding.
+1. **(manual)** NVIDIA driver **>= 610** (GeForce/Studio driver from nvidia.com or the NVIDIA app). Recording encodes
+   with NVENC through the pinned ffmpeg; without it record.ps1 falls back to AMF, then slow CPU encoding.
 2. **(manual)** Display: refresh rate as high as the monitor allows (Settings > System > Display > Advanced display;
-   120 Hz on the reference machine; at least 60 Hz). Screen and sleep: **Never** while plugged in
+   a multiple of 60 Hz for recording, e.g. 120 Hz; at least 60 Hz). The primary display must hold a 1920x1080
+   window (physical pixels). Screen and sleep: **Never** while plugged in
    (Settings > System > Power), or as admin: `powercfg /change monitor-timeout-ac 0` and
    `powercfg /change standby-timeout-ac 0`. A display that sleeps during a long build has cost a recording before.
 3. Optional (admin): enable long paths (`LongPathsEnabled=1`); Fab packs nest deeply. Keeping the root short
    (e.g. `C:\Work`) also helps.
-4. Known trouble: ASUS Armoury Crate's LightingService leaks commit memory on the reference machine; if free commit
-   memory keeps falling, restart or disable that service. Windows Firewall prompts dim the screen and block capture;
+4. Known trouble: vendor RGB/lighting services can leak commit memory; if free commit memory keeps falling, find the
+   process with the growing commit and restart or disable that service. Windows Firewall prompts dim the screen and block capture;
    recording builds are Shipping, which does not trigger them.
 
 ## 2. Toolchain (winget; each needs a UAC click)
@@ -40,7 +41,7 @@ winget install --id Microsoft.DotNet.Framework.DeveloperPack_4 -e
 winget install --id Microsoft.VisualStudio.2022.BuildTools -e --override "--passive --wait --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.14.44.17.14.x86.x64 --add Microsoft.VisualStudio.Component.Windows11SDK.22621 --add Microsoft.Net.Component.4.8.1.SDK --includeRecommended"
 ```
 
-- MSVC must be **14.44** (`VC\Tools\MSVC\14.44.*`, the reference machine has 14.44.35207); the template's Target.cs
+- MSVC must be **14.44** (`VC\Tools\MSVC\14.44.*`, e.g. 14.44.35207); the template's Target.cs
   files carry the fix UE 5.3 needs with it (`bOverrideBuildEnvironment = true;
   GlobalDefinitions.Add("PLATFORM_HAS_ASAN_INCLUDE=0");`). If the installer also puts a newer MSVC next to it, pin UBT
   to 14.44 in `%APPDATA%\Unreal Engine\UnrealBuildTool\BuildConfiguration.xml`:

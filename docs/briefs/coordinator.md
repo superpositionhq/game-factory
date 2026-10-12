@@ -1,6 +1,6 @@
 # Coordinator brief
 
-The coordinator on the first machine had no written brief: it started as "setup github for me" and the role grew out
+The first coordinator had no written brief: it started as "setup github for me" and the role grew out
 of the user's messages over two days (kept verbatim, scrubbed, in
 [original/coordinator-user-messages.md](original/coordinator-user-messages.md)). This is that role written down, for
 starting a coordinator on a new machine. The standing rules below are the user's decisions so far.

@@ -194,8 +194,8 @@ $pkgReadme = Get-Content (Join-Path $pkg 'README.md') -Raw -Encoding UTF8
 $title = if ($pkgReadme -match '(?m)^#\s+(.+)$') { $Matches[1].Trim() } else { $info.ProjectName }
 $exe = Get-Prop $man.build 'exe'
 # Link (or copy) a whole folder and prove it arrived: the destination must hold exactly the source's files (minus
-# $SkipExt). A delivery once came out without UEProject\ and Screenshots\ while Build\ was fine and nothing complained
-# (siege-catapult 577814b1, 2026-10-12 01:12); a missing or short tree now stops the run here.
+# $SkipExt). A delivery once came out without UEProject\ and Screenshots\ while Build\ was fine and nothing complained;
+# a missing or short tree now stops the run here.
 function Copy-TreeChecked([string]$From, [string]$To, [bool]$Copy, [string]$SkipExt, [string]$What) {
     if (-not (Test-Path -LiteralPath $From -PathType Container)) { throw "the package has no $What folder ($From)" }
     $expected = @(Get-ChildItem -LiteralPath $From -Recurse -File -Force | Where-Object { -not $SkipExt -or -not $_.Name.EndsWith($SkipExt, [StringComparison]::OrdinalIgnoreCase) }).Count

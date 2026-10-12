@@ -1,6 +1,9 @@
+> Historical prompt from the first build, kept verbatim (scrubbed; session ids and the notes path replaced). Not
+> instructions: the current rules are in the skills and the templated briefs.
+
 > Edited 2026-10-12: references to external sample material were removed from this original prompt.
 
-<!-- Verbatim first user turn of the session "Unreal game: rally racer" (local_f30f9573-ae13-4542-92f1-7fb1323a9508), scrubbed: user profile path -> %USERPROFILE%, user name -> <user>, GitHub handle -> <github-user>. -->
+<!-- Verbatim first user turn of the session "Unreal game: rally racer" (<session-id>), scrubbed: user profile path -> %USERPROFILE%, user name -> <user>, GitHub handle -> <github-user>. -->
 
 Background (from the session that started this one):
 Superposition's game-factory repo (C:\Users\<user>\Work\game-factory, read README.md, AGENTS.md, docs/plan.md "Track B") produces game-CREATION data: how a game is built step by step. Track B: build new small Unreal games and record every real operation as it happens. The user chose four games to build in parallel, one session each: tower defense, siege catapult, stealth, rally racer. This session is one of the four; the others run at the same time on the same Windows PC (Ryzen 7 7700X, 32 GB RAM).
@@ -31,4 +34,4 @@ Game brief:
 
 Steps: 1) write the design doc (systems, classes, vehicle tuning, track plans, acceptance checklist); 2) create the project and git repo, start workflow.jsonl from the very first operation; 3) build systems incrementally, compiling and testing as you go; 4) finish with a playtest checklist pass, a packaged build if possible, and a status section in the design doc (what works, what's left, stats: rows in workflow.jsonl, commits, hours). Report back with a short summary when done or blocked.
 
-Shared notes folder for this group of sessions (outside the repo; read siblings' notes there, leave hand-over notes or large findings there instead of pasting them into messages): C:\Users\<user>\AppData\Roaming\Claude\side-session-notes\local_44b9474d-ba1d-4a49-aa79-27f8d3fa89db
+Shared notes folder for this group of sessions (outside the repo; read siblings' notes there, leave hand-over notes or large findings there instead of pasting them into messages): <notes-dir>
