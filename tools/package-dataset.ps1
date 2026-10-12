@@ -18,7 +18,9 @@
 #>
 param(
     [Parameter(Mandatory = $true, Position = 0)][string]$Game,
-    [Parameter(Mandatory = $true)][string]$Package,      # the full package folder (with store content)
+    [string]$Package,               # the full package folder (with store content); not with -Rescrub
+    [switch]$Rescrub,               # re-scrub the existing <repo>\Dataset.zip (and with -AlsoRepoDataset the committed Dataset\) in place: current scrub rules for text, same-length session patches for binaries
+    [switch]$AlsoRepoDataset,
     [string]$Version,
     [string]$ReplayScripts,
     [string]$OutRoot,               # default: the game's folder (Dataset.zip + .dataset\); a path puts both under <path>\<game>\ (tests)
@@ -82,6 +84,59 @@ public static class T {
         }
         using (var za = ZipFile.OpenRead(zipPath)) return za.Entries.Count;
     }
+    // -Rescrub: the build machine's session ids (known uuids) and session folder names inside any file, ASCII and
+    // UTF-16LE, replaced by same-length neutral bytes (binary assets keep their layout, like scrub-import-paths does).
+    public class Hit { public string Path; public int Uuids; public int Words; }
+    static readonly string[] Words = { "scratchpad", "Scratchpad", "SCRATCHPAD", "side-session-notes", "Side-Session-Notes" };
+    static readonly string[] WordRepl = { "scratchdir", "Scratchdir", "SCRATCHDIR", "session-notes-path", "Session-Notes-Path" };
+    static bool Hex(byte c) { return (c >= 48 && c <= 57) || (c >= 97 && c <= 102) || (c >= 65 && c <= 70); }
+    // a uuid (8-4-4-4-12) that starts at i with stride w (1 = ASCII, 2 = UTF-16LE)
+    static string UuidAt(byte[] b, int i, int w) {
+        if (i < 0 || i + 36 * w > b.Length) return null;
+        var sb = new StringBuilder(36);
+        for (int k = 0; k < 36; k++) {
+            byte c = b[i + k * w]; if (w == 2 && b[i + k * w + 1] != 0) return null;
+            if (k == 8 || k == 13 || k == 18 || k == 23) { if (c != 45) return null; } else if (!Hex(c)) return null;
+            sb.Append((char)c);
+        }
+        return sb.ToString().ToLowerInvariant();
+    }
+    static int PutAscii(byte[] b, int i, int w, string s) { for (int k = 0; k < s.Length; k++) { b[i + k * w] = (byte)s[k]; if (w == 2) b[i + k * w + 1] = 0; } return s.Length; }
+    static bool WordAt(byte[] b, int i, int w, string s) {
+        if (i + s.Length * w > b.Length) return false;
+        for (int k = 0; k < s.Length; k++) { if (b[i + k * w] != (byte)s[k] || (w == 2 && b[i + k * w + 1] != 0)) return false; }
+        return true;
+    }
+    public static List<Hit> SessionScan(string root, string[] sessionIds, string skipExts, bool patch) {
+        root = Path.GetFullPath(root).TrimEnd('\\') + "\\";
+        var ids = new HashSet<string>(sessionIds, StringComparer.OrdinalIgnoreCase);
+        var skip = new HashSet<string>((skipExts ?? "").Split(';'), StringComparer.OrdinalIgnoreCase);
+        var hits = new List<Hit>(); var lk = new object();
+        var files = new List<string>(Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories));
+        Parallel.ForEach(files, new ParallelOptions { MaxDegreeOfParallelism = 6 }, f => {
+            if (skip.Contains(Path.GetExtension(f))) return;
+            byte[] b = File.ReadAllBytes(f); int nu = 0, nw = 0;
+            for (int i = 0; i < b.Length; i++) {
+                byte c = b[i];
+                if (c == 45) {   // '-': the end of a uuid's first group, ASCII (i-8) or UTF-16LE (i-16)
+                    foreach (int w in new[] { 1, 2 }) {
+                        string u = UuidAt(b, i - 8 * w, w);
+                        if (u != null && ids.Contains(u)) { nu++; if (patch) PutAscii(b, i - 8 * w, w, "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"); }
+                    }
+                } else if (c == 115 || c == 83) {   // s / S
+                    for (int k = 0; k < Words.Length; k++)
+                        foreach (int w in new[] { 1, 2 })
+                            if (WordAt(b, i, w, Words[k])) { nw++; if (patch) PutAscii(b, i, w, WordRepl[k]); }
+                }
+            }
+            if (nu + nw > 0) {
+                if (patch) File.WriteAllBytes(f, b);
+                lock (lk) hits.Add(new Hit { Path = f.Substring(root.Length).Replace('\\', '/'), Uuids = nu, Words = nw });
+            }
+        });
+        hits.Sort((x, y) => string.CompareOrdinal(x.Path, y.Path));
+        return hits;
+    }
 }
 }
 '@
@@ -99,6 +154,88 @@ function Get-MdSection([string]$Text, [string]$Heading) {
     return (($out -join "`n").Trim())
 }
 $inv = [Globalization.CultureInfo]::InvariantCulture
+
+# ---- -Rescrub: an existing Dataset.zip (no package or build needed) ---------------------------------------------------
+# Extract to <repo>\.dataset\rescrub\, apply package-game's current scrub rules to every text file (-ScrubDir), patch
+# the build machine's session ids and session folder names in every other file (same length), refresh manifest.json
+# entries of changed files, check (session scan = 0, leak scan, layout), zip under a temporary name and swap it in.
+function Get-SessionIds {
+    $ids = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($act in @(Get-ChildItem (Join-Path $WorkRoot '.recording') -Filter actions.jsonl -Recurse -File -ErrorAction SilentlyContinue)) {
+        foreach ($m in (Select-String -LiteralPath $act.FullName -AllMatches -Pattern '"session_id":\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"|Temp[\\/]{1,2}[^\\/"]+[\\/]{1,2}[^\\/"]+[\\/]{1,2}([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})').Matches) {
+            foreach ($g in 1, 2) { if ($m.Groups[$g].Success) { [void]$ids.Add($m.Groups[$g].Value.ToLower()) } }
+        }
+    }
+    return [string[]]@($ids)
+}
+function Invoke-SessionRescrub([string]$Dir, [string[]]$Ids, [string]$What) {
+    $t0 = (Get-Date).AddSeconds(-2)
+    Write-Step "$What`: text scrub (package-game -ScrubDir)"
+    $o = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'package-game.ps1') $Game -ScrubDir $Dir 2>&1
+    $o | Select-Object -Last 2 | ForEach-Object { Write-Host "  $_" }
+    if ($LASTEXITCODE -ne 0) { throw "text scrub of $Dir failed" }
+    $skip = '.mp4;.mkv;.mka;.wav;.flac;.ogg;.mp3;.png;.jpg;.jpeg;.pak;.ucas;.utoc;.zip'
+    $p = [DatasetV1.T]::SessionScan($Dir, $Ids, $skip, $true)
+    Write-Step "$What`: binary session patches in $($p.Count) file(s)$(if ($p.Count) { ': ' + (($p | Select-Object -First 6 | ForEach-Object { "$($_.Path) ($($_.Uuids)+$($_.Words))" }) -join ', ') })"
+    # manifest.json: refresh the entries of every file changed above
+    $manPath = Join-Path $Dir 'manifest.json'
+    if (Test-Path $manPath) {
+        $man = Get-Content $manPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $changed = 0
+        foreach ($e in @($man.files)) {
+            $fp = Join-Path $Dir ($e.path -replace '/', '\')
+            if ((Test-Path -LiteralPath $fp) -and (Get-Item -LiteralPath $fp).LastWriteTime -ge $t0) {
+                $e.bytes = (Get-Item -LiteralPath $fp).Length; $e.sha256 = [DatasetV1.T]::HashFile($fp); $changed++
+            }
+        }
+        if ($man.PSObject.Properties['totals']) { $man.totals.bytes = [long](@($man.files) | Measure-Object -Property bytes -Sum).Sum }
+        Write-JsonFile $manPath $man
+        Write-Step "$What`: manifest entries refreshed: $changed"
+    }
+    $left = [DatasetV1.T]::SessionScan($Dir, $Ids, $skip, $false)
+    $nl = [int]($left | Measure-Object -Property Uuids -Sum).Sum + [int]($left | Measure-Object -Property Words -Sum).Sum
+    Write-Step "$What`: session scan after: $nl"
+    if ($nl) { throw "session traces left in $What`: $(($left | ForEach-Object { $_.Path }) -join ', ')" }
+}
+if ($Rescrub) {
+    $info = Get-GameInfo $Game
+    $zipPath = Join-Path $info.Dir 'Dataset.zip'
+    if (-not (Test-Path -LiteralPath $zipPath)) { throw "no $zipPath to rescrub" }
+    $scratch = Join-Path $info.Dir '.dataset'
+    $work = Join-Path $scratch 'rescrub'
+    [void](Assert-GFFreeSpace $info.Dir 'package-dataset -Rescrub')
+    if (Test-Path $work) { Remove-Item -Recurse -Force $work }
+    New-Item -ItemType Directory -Force $work | Out-Null
+    $ids = Get-SessionIds
+    Write-Step "rescrub $Game ($($ids.Count) session ids known): extracting $zipPath"
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $work)
+    $top = Join-Path $work $Game
+    if (-not (Test-Path $top)) { throw "the zip has no top folder $Game/" }
+    Invoke-SessionRescrub $top $ids 'Dataset.zip'
+    $leak = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'ue-pipeline\leak-scan.ps1') $top 2>&1
+    Write-Step "leak scan: $(@($leak)[-1])"
+    $val = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'validate-dataset.ps1') $top 2>&1
+    $vline = @($val | Where-Object { $_ -match '^(VALID|PENDING|INVALID)' })[0]
+    Write-Step "layout: $vline"
+    if ($vline -notmatch '^(VALID|PENDING)') { $val | Where-Object { $_ -match '^\s+x' } | Write-Host; throw 'the rescrubbed delivery fails the layout check: Dataset.zip left as it was' }
+    $tmpZip = Join-Path $scratch 'Dataset.zip.partial'
+    Write-Step "zipping $tmpZip"
+    $n = [DatasetV1.T]::Zip($top, $tmpZip, $Game)
+    $files = @(Get-ChildItem $top -Recurse -File).Count
+    if ($n -ne $files) { throw "zip has $n entries, expected $files" }
+    Remove-Item -Force -LiteralPath $zipPath
+    Move-Item -LiteralPath $tmpZip -Destination $zipPath
+    Write-Step "swapped in $zipPath ($(Format-Bytes (Get-Item $zipPath).Length))"
+    if ($AlsoRepoDataset) {
+        $ds = Join-Path $info.Dir 'Dataset'
+        if (Test-Path $ds) { Invoke-SessionRescrub $ds $ids 'repo Dataset\' }
+        $st = @(& git -C $info.Dir status --porcelain -- Dataset)
+        Write-Step "repo Dataset\: $(if ($st.Count) { "$($st.Count) changed path(s): commit Dataset/ in $($info.Dir)" } else { 'unchanged' })"
+    }
+    Remove-Item -Recurse -Force $work
+    exit 0
+}
+if (-not $Package) { throw '-Package is required (unless -Rescrub)' }
 
 $pkg = (Resolve-Path $Package).Path
 $pkgNo = $null   # no _nostore variant any more (user decision 2026-10-12: always with store content, no _nostore variant)
