@@ -93,8 +93,8 @@ refuse them). Recording traces are fine: `workflow.jsonl` stays in the repo, row
   `ScenarioStarted(name)`, `FinishRun`, and a bot that acts **only** through `AP->Inject` (Enhanced Input), Skill-scaled
   and human-like (no snapping camera, no jump spam).
 - Test once by hand per contract section 7 with `-RenderOffScreen` through ue-heavy.ps1, then
-  `tools/ue-pipeline/validate-run.ps1 <Saved\AutoPlay\<run>>` must PASS (the run's files are well formed; how well
-  the bot plays does not matter). Tag `milestone/autoplay-<n>` (scenarios 1..n
+  `tools/ue-pipeline/validate-run.ps1 <Saved\AutoPlay\<run>>` must PASS (the run's files are well formed; the bot
+  plays like a human, but its score never holds up a release). Tag `milestone/autoplay-<n>` (scenarios 1..n
   work).
 - **Framing gate:** before asking for a recording, take 8-10 screenshots from one short bot run (open areas, narrow
   spaces, crouched, against walls) and check the camera rules above; send them with the request.
@@ -105,7 +105,7 @@ refuse them). Recording traces are fine: `workflow.jsonl` stays in the repo, row
 
 ## Priorities (user decision)
 
-What ships is what matters, in this order: the game plays; the game builds (editor and packaged Shipping); the dataset holds the replay scripts and the git log. AutoPlay bot quality does not matter: one recording per scenario that shows the game running is enough, whatever the result (win/lose/timeout is metadata). No bot tuning, win rates, seed sweeps or "clean" runs, and no re-runs or re-recordings to improve how the bot plays. No retest loops: every GPU or editor run costs about 30 minutes of the shared machine and holds up delivery, so run the minimum once and report; re-run only when the user asks. Game-session work never blocks dataset packaging or sharing.
+What ships is what matters, in this order: the game plays; the game builds (editor and packaged Shipping); the dataset holds the replay scripts and the git log. The AutoPlay bot should still play like a human (human-like input, aim and camera), but bot work never blocks a release: one recording per scenario that shows the game running is enough, whatever the result (win/lose/timeout is metadata). No tuning for win rates, seed sweeps or "clean" runs, and no re-runs or re-recordings to improve how the bot plays. No retest loops: every GPU or editor run costs about 30 minutes of the shared machine and holds up delivery, so run the minimum once and report; re-run only when the user asks. Game-session work never blocks dataset packaging or sharing.
 
 ## Dataset (layout v1.1)
 

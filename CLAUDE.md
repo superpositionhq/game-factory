@@ -15,9 +15,9 @@ Skills (in `.claude/skills/`, installed to `~\.claude\skills\` by `machine/boots
 Rules for working in this repo: [AGENTS.md](AGENTS.md). Session briefs: [docs/briefs/](docs/briefs/README.md).
 New machine: [docs/new-machine.md](docs/new-machine.md). Pipeline: [docs/ue-pipeline.md](docs/ue-pipeline.md).
 
-**Recordings and results.** Gameplay recordings capture real play. The result (win/lose/timeout) is metadata, never a
-quality gate. Never re-record or exclude a run because the bot lost. Package the first valid run per scenario. Bots
-should play like a competent human, which doesn't mean they must win.
+**Priorities (user decision).** What ships is what matters, in this order: the game plays; the game builds (editor and packaged Shipping); the dataset holds the replay scripts and the git log. The AutoPlay bot should still play like a human (human-like input, aim and camera), but bot work never blocks a release: one recording per scenario that shows the game running is enough, whatever the result (win/lose/timeout is metadata). No tuning for win rates, seed sweeps or "clean" runs, and no re-runs or re-recordings to improve how the bot plays. No retest loops: every GPU or editor run costs about 30 minutes of the shared machine and holds up delivery, so run the minimum once and report; re-run only when the user asks. Game-session work never blocks dataset packaging or sharing.
+
+**Dataset.** Each game's full dataset is `games\<slug>\Dataset.zip`: the same name everywhere, git-ignored (`/Dataset.zip`, `/Dataset.pending.zip`, `/.dataset/`), produced by `tools/package-dataset.ps1`, never committed. The committed `Dataset\` is the same minus `UEProject/` and `Build/`.
 
 This checkout is shared by several sessions at once: stage explicit paths only and never commit another session's
 changes.

@@ -340,7 +340,7 @@ is `package-game.ps1 -Rescan`; run both before a review.
 
 **Decisions.**
 
-- What ships is what matters, in this order: the game plays; the game builds (editor and packaged Shipping); the dataset holds the replay scripts and the git log. AutoPlay bot quality does not matter: one recording per scenario that shows the game running is enough, whatever the result (win/lose/timeout is metadata). No bot tuning, win rates, seed sweeps or "clean" runs, and no re-runs or re-recordings to improve how the bot plays. No retest loops: every GPU or editor run costs about 30 minutes of the shared machine and holds up delivery, so run the minimum once and report; re-run only when the user asks. Game-session work never blocks dataset packaging or sharing.
+- What ships is what matters, in this order: the game plays; the game builds (editor and packaged Shipping); the dataset holds the replay scripts and the git log. The AutoPlay bot should still play like a human (human-like input, aim and camera), but bot work never blocks a release: one recording per scenario that shows the game running is enough, whatever the result (win/lose/timeout is metadata). No tuning for win rates, seed sweeps or "clean" runs, and no re-runs or re-recordings to improve how the bot plays. No retest loops: every GPU or editor run costs about 30 minutes of the shared machine and holds up delivery, so run the minimum once and report; re-run only when the user asks. Game-session work never blocks dataset packaging or sharing.
 
 - Gameplay holds mp4s only, one per scenario of the release version: no per-run bundles (inputs, telemetry, json), no
   version subfolders, no index file; the README lists the videos.
