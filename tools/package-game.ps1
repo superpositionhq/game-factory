@@ -1231,8 +1231,33 @@ $shotSource = $null
 $repoShots = @(Get-ChildItem $ueDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -in @('docs', 'Docs') } |
         ForEach-Object { Join-Path $_.FullName 'screenshots' } | Where-Object { Test-Path $_ } |
         ForEach-Object { Get-ChildItem $_ -File | Where-Object { $_.Extension -match '^\.(png|jpe?g|webp|gif)$' } } | Sort-Object Name)
-if ($Screenshots -eq 'stills') { $repoShots = @() }
-if ($repoShots.Count) {
+# Preferred: the images the project's own README.md shows (in README order, alt text as caption; any folder or case,
+# e.g. Docs/screenshots/), then everything in docs/screenshots/, then stills.
+$readmeShots = New-Object System.Collections.ArrayList
+$readmePath = Join-Path $ueDir 'README.md'
+if (Test-Path $readmePath) {
+    $rt = [System.IO.File]::ReadAllText($readmePath, $Utf8NoBom)
+    $refs = @([regex]::Matches($rt, '!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)') | ForEach-Object { [pscustomobject]@{ alt = $_.Groups[1].Value; path = $_.Groups[2].Value } }) +
+            @([regex]::Matches($rt, '<img\b[^>]*\bsrc\s*=\s*"([^"]+)"[^>]*>') | ForEach-Object { $alt = [regex]::Match($_.Value, '\balt\s*=\s*"([^"]*)"').Groups[1].Value; [pscustomobject]@{ alt = $alt; path = $_.Groups[1].Value } })
+    foreach ($ref in $refs) {
+        $rel = [uri]::UnescapeDataString(($ref.path -split '[?#]')[0]).TrimStart('.', '/').Replace('/', '\')
+        if ($rel -match '^[a-z]+:' -or $rel -notmatch '\.(png|jpe?g|webp|gif)$') { continue }   # URLs and non-images
+        $full = Join-Path $ueDir $rel
+        if ((Test-Path -LiteralPath $full) -and -not ($readmeShots | Where-Object { $_.f.FullName -eq (Get-Item -LiteralPath $full).FullName })) {
+            [void]$readmeShots.Add([pscustomobject]@{ f = (Get-Item -LiteralPath $full); alt = $ref.alt.Trim() })
+        }
+    }
+}
+if ($Screenshots -eq 'stills') { $repoShots = @(); $readmeShots.Clear() }
+if ($readmeShots.Count) {
+    New-Item -ItemType Directory -Force $shotDir | Out-Null
+    foreach ($s in $readmeShots) {
+        Copy-Item $s.f.FullName (Join-Path $shotDir $s.f.Name) -Force
+        $cap = if ($s.alt) { $s.alt } else { ($s.f.BaseName -replace '^\d+[-_ ]*', '' -replace '[-_]+', ' ').Trim() }
+        [void]$shots.Add([pscustomobject]@{ file = $s.f.Name; caption = $(if ($cap) { $cap } else { $s.f.BaseName }) })
+    }
+    $shotSource = "the images in the project's README.md"
+} elseif ($repoShots.Count) {
     New-Item -ItemType Directory -Force $shotDir | Out-Null
     foreach ($f in $repoShots) {
         Copy-Item $f.FullName (Join-Path $shotDir $f.Name)
