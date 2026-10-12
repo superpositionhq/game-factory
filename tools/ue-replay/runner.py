@@ -185,6 +185,56 @@ def clone_at(cfg, dest, sha):
     return True
 
 
+def external_dir(ctx, e):
+    return os.path.join(ctx.work, "external", e["id"])
+
+
+def build_externals(ctx):
+    """External sources with a "rebuild" recipe (the builder unpacked library archives into a scratch folder that no
+    longer exists): {"unzip": [{"zip": "<glob>", "to": "<subdir>", "exclude": ["*Cavity*", ...]}]} rebuilds the folder
+    under work/external/<id>/; runs whose env names the recorded folder get this one (map_external_env)."""
+    import fnmatch
+    import glob
+    import zipfile
+    for e in ctx.cfg.get("external_sources", []):
+        rb = e.get("rebuild")
+        if not rb:
+            continue
+        d = external_dir(ctx, e)
+        if os.path.isdir(d):
+            continue
+        tmp = d + ".partial"
+        shutil.rmtree(tmp, ignore_errors=True)
+        n = 0
+        for u in rb.get("unzip", []):
+            zips = sorted(glob.glob(u["zip"]))
+            if not zips:
+                sys.exit("external source %s: no archive matches %s" % (e["id"], u["zip"]))
+            for z in zips:
+                with zipfile.ZipFile(z) as zf:
+                    for m in zf.namelist():
+                        if m.endswith("/") or any(fnmatch.fnmatch(m, x) for x in u.get("exclude", [])):
+                            continue
+                        zf.extract(m, os.path.join(tmp, u.get("to", "")))
+                        n += 1
+        os.replace(tmp, d)
+        print("external source %s rebuilt: %d files -> %s" % (e["id"], n, d))
+
+
+def map_external_env(ctx, env):
+    """Env values naming a rebuilt external source's recorded folder point at the rebuilt one."""
+    for e in ctx.cfg.get("external_sources", []):
+        if not e.get("rebuild") or not e.get("path"):
+            continue
+        rec = os.path.normpath(e["path"]).replace("\\", "/").rstrip("/")
+        loc = external_dir(ctx, e).replace("\\", "/")
+        for k, v in env.items():
+            vv = v.replace("\\", "/")
+            if vv.lower().startswith(rec.lower()):
+                env[k] = loc + vv[len(rec):]
+    return env
+
+
 def cmd_prepare(cfg, a):
     ctx = Ctx(cfg)
     if ctx.ledger is None:
@@ -199,6 +249,7 @@ def cmd_prepare(cfg, a):
         prov = {p: "git:" + first[:10] for p in scan(ctx.proj)}
         ctx.state["provenance"] = prov
         ctx.save()
+    build_externals(ctx)
     manifest = initial_assets_manifest(cfg, ctx)
     jdump(os.path.join(ctx.work, "initial-assets.manifest.json"), manifest)
     print("initial assets: %d files, %.2f GB" % (manifest["counts"]["files"], manifest["counts"]["bytes"] / 1e9))
@@ -227,7 +278,16 @@ def initial_assets_manifest(cfg, ctx):
                                   "bytes": os.path.getsize(fp), "sha256": sha256_file(fp)})
     ext = []
     for e in cfg.get("external_sources", []):
-        ext.append({"id": e["id"], "role": e["role"], "root": "<external:%s>" % e["id"]})
+        ext.append({"id": e["id"], "role": e["role"], "root": "<external:%s>" % e["id"],
+                    **({"rebuild": e["rebuild"]} if e.get("rebuild") else {})})
+        d = external_dir(ctx, e)
+        if e.get("rebuild") and os.path.isdir(d):
+            for dp, _, fns in os.walk(d):
+                for fn in fns:
+                    fp = os.path.join(dp, fn)
+                    files.append({"role": "external_source", "source": e["id"],
+                                  "path": "<external:%s>/%s" % (e["id"], os.path.relpath(fp, d).replace("\\", "/")),
+                                  "bytes": os.path.getsize(fp), "sha256": sha256_file(fp)})
     return {"schema": "ue-replay.initial-assets/v1", "game": cfg["game"], "first_commit": ctx.ledger["first"],
             "drops": [{k: v for k, v in d.items() if k != "match"} for d in cfg.get("asset_drops", [])],
             "external_sources": ext, "files": files,
@@ -315,6 +375,8 @@ def run_editor_script(ctx, run):
     env = {k: v.replace("{project}", ctx.proj) for k, v in cfg.get("script_env", {}).items()}
     # values the builder's shell expanded ($USERPROFILE, %USERPROFILE%, ...) as the recording machine had them
     env.update({k: os.path.expandvars(v) for k, v in (run.get("env") or {}).items()})
+    build_externals(ctx)
+    map_external_env(ctx, env)
     if run.get("reason") and cfg.get("reason_env"):
         env[cfg["reason_env"]] = run["reason"]
     if cfg.get("args_env") and run.get("via_wrapper"):

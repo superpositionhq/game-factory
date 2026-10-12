@@ -78,6 +78,12 @@ the store packs (from `asset-library\fab-ue\<pack>\Content\<Folder>`) and extern
 (read-only, listed in the game's settings; only the files the import scripts name). The engine is `UE_5.3` as
 installed; the C++ toolchain is the one the game compiled with.
 
+An external source the builder unpacked into a scratch folder that no longer exists takes a `rebuild` recipe in
+`external_sources`: `{"unzip": [{"zip": "{root}/asset-library/...*.zip", "to": "<subdir>", "exclude": ["*Cavity*"]}]}`,
+the builder's own unpack command in data. `prepare` rebuilds it under `work/external/<id>/` (listed with sha256 in the
+manifest), and a run whose recorded env names the old folder (`path`) gets the rebuilt one. Without it the import
+script finds nothing and the replay silently diverges (horror: three scanned surfaces, 11 material instances).
+
 ### 2.3 Running
 
 `ue_replay.py run` executes the plan, resumable (`work/state.json`). Every engine process goes through
