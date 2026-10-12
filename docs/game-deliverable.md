@@ -13,7 +13,14 @@ powershell -ExecutionPolicy Bypass -File tools\package-game.ps1 <game> -Commit m
 ```
 
 `-Commit` takes any rev; `milestone` means the commit of the highest `milestone/autoplay-<n>` tag (HEAD when there is
-none). Other options: `-Build <dir>` (+ `-BuildCommit <rev>` when the dir has no `build_info.json`),
+none). A release: `-Commit release/1.0 -Version 1.0` (README "Version 1.0 (tag release/1.0)", `manifest.json`
+`version`/`release_tag`). `-ExcludeRuns id,id` leaves validated runs out (e.g. superseded recordings). `-PlayNote`
+adds a launch note to the README's Play section. `-OnlyCommitRuns` keeps only gameplay runs played on a build of the
+packaged commit itself (e.g. after a fix that changed what the game looks or sounds like). `-Screenshots
+auto|repo|stills` chooses the README images (auto: the project's `docs/screenshots/`, else stills of the packaged
+runs). `-ExcludeSessions id,id` leaves those sessions' rows out of `History/actions.jsonl`; sessions that ran this
+packager are always left out (the hooks log their tool calls under the game when their working directory is inside it,
+but packaging is not creation work; `history.actions.jsonl.sessions_left_out` in `manifest.json`). Other options: `-Build <dir>` (+ `-BuildCommit <rev>` when the dir has no `build_info.json`),
 `-AllowDevelopmentBuild`, `-IncludePdb`, `-StoreFolders a,b` (extra store paths), `-RepoPath` (package another clone),
 `-OutRoot`, `-ZipLevel Fastest|Optimal|NoCompression`, `-NoZip`, `-Force` (replace an existing package), `-KeepRefused`,
 `-NoScrub` (diagnostics only; the scan then refuses).
@@ -35,7 +42,8 @@ sizes per section, warnings, notes), `<name>.leaks.tsv` (report-only findings, s
 | `Gameplay/<run>/` | every validated gameplay bundle of the lineage, as recorded (video, audio, inputs, telemetry, outcome, metadata, validation, manifest, `raw/`) | `recordings\<game>\` |
 | `Gameplay/summary.md`, `summary.json` | one row per run: scenario, seed, skill, result, score, durations, game fps, inputs, build, validation; runs left out and why | derived |
 | `Build/` | the packaged Windows build (`.pdb` left out unless `-IncludePdb`) and our own `build_info.json` | see Build |
-| `README.md` | what the game is, how to play and open it, scenarios, observed vs derived, licences, store content, integrity | generated from the project's `README.md`, `Docs/*.md`, `Docs/ThirdPartyNotices.md`, `assets.manifest.json` and the package |
+| `README.md` | hero image, version, what the game is, screenshots, how to play and open it, scenarios, observed vs derived, licences, store content, integrity | generated from the project's `README.md`, `Docs/*.md`, `Docs/ThirdPartyNotices.md`, `assets.manifest.json` and the package |
+| `Screenshots/` | the README's images: the project's `docs/screenshots/` at the commit when it has one, else 3–4 stills (`recordings\<game>\_stills\<run>_NN.jpg`) of the runs in this package only, round robin over the runs (middle frame first); the first is the hero | copied |
 | `scrub-report.json` | what the scrub changed (below) | derived |
 | `manifest.json` | package metadata and `files[]`: path, bytes, sha256 of every file (after the scrub) | derived |
 
@@ -119,6 +127,35 @@ JSON-escaped forms; `lines` = other text files except `git.log`):
 | `email` | e-mail addresses → `<redacted-email>`, except placeholders (`example.com/org/net`, `*.invalid`, `*.test`, `localhost`) and `git@github.com`-style service addresses; file names such as `icon@2x.png` are not addresses |
 | `agent-mention` | `claude code` → `agent-tool`, `claude-<model>…` → `agent-model`, then remaining Claude → Agent/agent, Anthropic → Provider/provider (case kept) |
 
+`agent-mention` also covers model names: `Claude Opus 5.5`, `claude-opus-5-5`, and a bare `Opus <version>` → `agent-model`.
+
+**Blocking terms (user rule, 2026-10-11).** Besides the two names, `Claude`, `Opus` and `Anthropic` must never appear in a
+package: any case-insensitive hit left in a path, a text file or a binary (ASCII or UTF-16LE) refuses it. The only
+exception is the Opus **audio codec**, allowed by an exact allowlist of codec forms (see below); each allowed hit is
+listed for review in `<name>.allowlisted.tsv` next to the package (path, kind, offset, word); inside the package `scrub-report.json` (`allowlisted_hits`) carries counts only, since the words would put the terms into its text. The account name inside `Build/`
+blocks too (`-PendingCleanBuild` produces a package marked "pending clean build" instead: README banner, manifest
+`status`); elsewhere in binaries (UE asset import paths) it is reported only.
+
+How "opus" is matched (it is four letters and occurs by chance in compressed bytes and ordinary words such as
+`stopUsing`, `Octopus`, base64): only as a word of its own, i.e. at a non-letter or lower→upper camel boundary, not
+followed by a lowercase letter, and spelled `opus`, `Opus` or `OPUS`; in binaries it must also sit in a run of at least
+8 printable characters (a string, not pixel or bitstream data). `claude` and `anthropic` count as any substring.
+
+Allowlist (exact forms, matched against the whole word around a hit; a word may carry other `:`/`/`-joined segments,
+such as C++ scopes): Opus codec forms seen in the engine binaries (EOS SDK, WebRTC): `third_party/opus/...` source
+paths, `libopus…`, `opus_*` and `OPUS_*` symbols and constants, `WebRtcOpus_*`, `WebRTC-…Opus…` field trials,
+`…AudioEncoder…Opus…`, `Opus{Impl,Config,Decoder,Encoder,Custom,…}…`, codec source file names (`*opus*.c/.cc/.h`),
+`opus/48000/2`, `audio/opus`, `A_OPUS`, and in binaries only the bare codec name `opus`; UE's locale ids `zh_XIANG` /
+`zh-xiang` (which contain the account name). Allowed hits are listed in `<name>.allowlisted.tsv` (outside the package) and
+in the rescan tsv.
+
+Reviewed exceptions: `tools/package-reviewed-hits.tsv` holds single binary hits that a person judged to be data, keyed
+by the file's sha256 + byte offset + word, with the reason (the first: `opusWTTj` in the raw grayscale pixels of the
+Fab PSD `fantasy_gui_4/sources/psd/fg4_glass_01.psd`). Any other file, or another version of that file, still blocks.
+
+`-Rescan <package dir>` checks an existing package against the current rules and writes `<dir>.rescan-hits.tsv`
+(blocking hits, account name in `Build/`, allowlisted hits); it changes nothing.
+
 A word start also counts right after a JSON escape (`\n`, `\t`, …), whose letter would otherwise hide the boundary.
 Gameplay bundle `manifest.json` entries of rewritten files get the new bytes and sha256.
 
@@ -150,10 +187,11 @@ never contains the original values.
 
 | Game @ commit | Full: folder / zip | Without store: folder / zip | Store files dropped | Build/ | Gameplay runs |
 |---|---|---|---|---|---|
-| tower-defense @ `52a6f2a1` (`milestone/autoplay-3`) | 11.02 / 9.88 GB (9,011 files) | 1.55 / 1.40 GB (2,624) | 6,387 (9.46 GB, from the working tree) | pipeline `52a6f2a1-shipping` (verified, art cooked) | 1 (played on clean-clone `b697a896`: no store art) |
+| **liaozhai-night 1.0** @ `7239cc20` (`release/1.0`) | 9.60 / 8.74 GB (1,935 files) | 3.21 / 2.93 GB (1,177) | 758 (6.39 GB, `Content/Fab` from the working tree) | pipeline `7239cc20-shipping` (verified, all 3 packs cooked) | 3 (S1–S3; S2 warn: 54 fps) |
+| tower-defense @ `52a6f2a1` (`milestone/autoplay-3`) | 12.53 / 11.35 GB (9,072 files) | 3.06 / 2.88 GB (2,685) | 6,387 (9.47 GB, from the working tree) | pipeline `52a6f2a1-shipping` (verified, art cooked) | 3 (S1–S3 with art; the older art-less L1 run left out with `-ExcludeRuns`) |
 | rally-racer @ `174f1a0e` (`milestone/autoplay-3`) | 16.12 / 15.22 GB (4,871) | 6.48 / 6.17 GB (966) | 3,905 (9.64 GB, tracked) | pipeline `174f1a0e-shipping` (verified) | 3 (S1–S3) |
 | island-survival @ `4207861a` (HEAD; tag `bf92f9d3` in its lineage) | 10.75 / 10.27 GB (3,145) | 5.79 / 5.58 GB (1,170) | 1,975 (4.97 GB, `Content/Fab`, tracked) | session Shipping package of `f05b85f` (`-Build`, stated) | 0 |
-| liaozhai-night @ `328a8654` (HEAD; tag `7239cc20` in its lineage) | 8.84 / 8.00 GB (1,855) | 2.45 / 2.19 GB (1,097) | 758 (6.39 GB, `Content/Fab` from the working tree) | Shipping package of `25c4cb9` (`-Build`, stated; launch from `Build/`) | 0 |
+| liaozhai-night @ `328a8654` (superseded by 1.0; no runs at the time) | 8.84 / 8.00 GB (1,855) | 2.45 / 2.19 GB (1,097) | 758 (6.39 GB, `Content/Fab` from the working tree) | Shipping package of `25c4cb9` (`-Build`, stated; launch from `Build/`) | 0 |
 
 One run takes 1.5–8 minutes (copy, scrub, scan, hash, zip `Fastest`). Not packaged: siege-catapult (refused: its only
 Shipping package, `f9d3aa9`, predates the v1.3 migration and embeds the old drop-in's schema names in the exe; waiting
@@ -177,7 +215,9 @@ import source path and the Shipping exe (build paths), by category only.
 - Packages are a snapshot: runs the recording queue adds later (tower-defense re-recording, island-survival,
   liaozhai-night, siege-catapult) need a rerun of the tool with `-Force`. Running it while the pipeline builds that
   game is refused (pipeline lock).
-- tower-defense's only validated run was played on a clean-clone build without the store art.
+- Store folders outside git are found as folders under `Content/` not tracked at the commit that are git-ignored now
+  or named as store content by the commit's `assets.manifest.json` (tower-defense changed its `.gitignore` after
+  `52a6f2a1`, so the ignore state alone is not enough).
 - Binary assets keep their embedded import paths (account name); fixing them needs a re-import in the editor.
 - The scrub is pattern-based: other personal names typed into logs (e.g. names seen on web pages) are not detected
   beyond the e-mail and git-identity rules; review `<name>.leaks.tsv` and spot-check `History/actions.jsonl`.

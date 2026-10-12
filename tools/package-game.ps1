@@ -42,16 +42,23 @@ param(
     [string]$BuildCommit,           # with -Build for a dir without build_info.json: the commit it was built from (stated, unverified)
     [switch]$AllowDevelopmentBuild, # use a Development pipeline build when no Shipping build exists in the lineage
     [switch]$IncludePdb,
-    [string]$PlayNote,              # extra sentence for the README's Play section (e.g. a launch requirement of the build)
+    [string]$PlayNote,
+    [string]$Version,
+    [switch]$PendingCleanBuild,     # allow a build with the account name compiled in: the package is marked "pending clean build", not final               # release version for README and manifest.json (e.g. 1.0); the tag release/<v> is named when it points at the commit              # extra sentence for the README's Play section (e.g. a launch requirement of the build)
     [switch]$NoScrub,               # diagnostics only: skip the deliverable scrub (the scan then refuses)
     [string[]]$StoreFolders = @(),  # extra paths (relative to the project) that count as store content
+    [string[]]$ExcludeRuns = @(),   # gameplay run ids to leave out although they validated (e.g. superseded recordings)
+    [switch]$OnlyCommitRuns,
+    [ValidateSet('auto', 'repo', 'stills')][string]$Screenshots = 'auto',   # auto: the project's docs/screenshots/, else stills of the packaged runs        # only runs played on a build of the packaged commit itself (not of earlier commits)
+    [string[]]$ExcludeSessions = @(), # session ids whose actions.jsonl rows are not creation work (packager sessions are left out anyway)
     [string]$RepoPath,              # package this clone (e.g. a scrubbed copy) instead of games\<game>
     [string]$OutRoot = 'C:\Users\Xiang\Work\deliverables',
     [ValidateSet('Fastest', 'Optimal', 'NoCompression')][string]$ZipLevel = 'Fastest',
     [switch]$NoZip,
     [switch]$Force,
     [switch]$KeepRefused,
-    [switch]$DryRun                 # print the store-content split, build and gameplay selection; write nothing
+    [switch]$DryRun,                # print the store-content split, build and gameplay selection; write nothing
+    [string]$Rescan                 # an existing package folder: check it against the current rules, write <dir>.rescan-hits.tsv; changes nothing
 )
 
 . (Join-Path $PSScriptRoot 'ue-pipeline\common.ps1')
@@ -307,6 +314,39 @@ public static class Tools {
     // Text files: every match of `banned` (the enforced pattern) is a hit; `leak` matches are collected separately.
     // Binary files: ASCII and UTF-16LE search for each needle; kind "binary-*" when its refuse flag is set, else
     // "binary-info-*" (reported only); Text = the needle's category. File paths are matched against `banned` too.
+    // allow: a match whose surrounding word (letters, digits, _ . / : -) matches it is recorded as "allowed-*" instead of a
+    // hit (the Opus audio codec in engine binaries and media); null = nothing allowed.
+    public static Regex Allow = null;       // text files
+    public static Regex AllowBin = null;    // binary files (adds bare codec names)
+    // "opus" is four letters and turns up inside ordinary words and compressed bytes (stOPUSing, Octopus, base64), so it
+    // counts only as a word of its own: starting at a non-letter or a lower->upper camel boundary, not followed by a
+    // lowercase letter. Every other needle counts as any case-insensitive substring.
+    static bool IsUpper(int c) { return c >= 'A' && c <= 'Z'; }
+    static bool IsLower(int c) { return c >= 'a' && c <= 'z'; }
+    // ...and only spelled the way a word is written (opus, Opus, OPUS): random bytes give oPuS, OpUs, ...
+    static bool OpusToken(int prev, int c0, int c1, int c2, int c3, int next) {
+        bool lower = IsLower(c0) && IsLower(c1) && IsLower(c2) && IsLower(c3);
+        bool cap = IsUpper(c0) && IsLower(c1) && IsLower(c2) && IsLower(c3);
+        bool upper = IsUpper(c0) && IsUpper(c1) && IsUpper(c2) && IsUpper(c3);
+        if (!(lower || cap || upper)) return false;
+        bool start = prev < 0 || !(IsUpper(prev) || IsLower(prev)) || (IsLower(prev) && c0 == 'O');
+        return start && !IsLower(next);
+    }
+    // In binaries a string is a run of printable characters: count the run around a hit (ASCII bytes, or UTF-16 code
+    // units with a zero high byte). Compressed data seldom holds 8 printable bytes in a row; compiled-in strings do.
+    static bool Printable(int c) { return c >= 0x20 && c <= 0x7E; }
+    static int PrintRun(byte[] b, int at, int n, int len, bool wide) {
+        int step = wide ? 2 : 1, run = wide ? n / 2 : n;
+        for (int p = at - step; p >= 0 && run < 64; p -= step) { if (!Printable(b[p]) || (wide && b[p + 1] != 0)) break; run++; }
+        for (int p = at + n; p + (wide ? 1 : 0) < len && run < 64; p += step) { if (!Printable(b[p]) || (wide && b[p + 1] != 0)) break; run++; }
+        return run;
+    }
+    static readonly Regex WordCh = new Regex(@"[A-Za-z0-9_./:\-]");
+    static string WordAt(string s, int at, int len) {
+        int a = at; while (a > 0 && at - a < 40 && WordCh.IsMatch(s[a - 1].ToString())) a--;
+        int z = at + len; while (z < s.Length && z - at - len < 40 && WordCh.IsMatch(s[z].ToString())) z++;
+        return s.Substring(a, z - a);
+    }
     public static List<Hit> Scan(string root, IList<string> rels, Regex banned, Regex leak, List<Hit> leaks, int maxPerFile,
                                  string[] needles, bool[] refuse, string[] category) {
         root = Path.GetFullPath(root).TrimEnd('\\') + "\\";
@@ -327,6 +367,13 @@ public static class Tools {
                     int nl = text.IndexOf('\n', pos); if (nl < 0) nl = text.Length;
                     string s = text.Substring(pos, nl - pos);
                     foreach (Match m in banned.Matches(s)) {
+                        if (m.Length == 4 && string.Equals(m.Value, "opus", StringComparison.OrdinalIgnoreCase)
+                            && !OpusToken(m.Index > 0 ? s[m.Index - 1] : -1, s[m.Index], s[m.Index + 1], s[m.Index + 2], s[m.Index + 3],
+                                          m.Index + 4 < s.Length ? s[m.Index + 4] : -1)) continue;
+                        if (Allow != null) {
+                            string w = WordAt(s, m.Index, m.Length);
+                            if (Allow.IsMatch(w)) { var ah = new Hit(); ah.Path = rel; ah.Kind = "allowed-text"; ah.Where = line; ah.Text = w; mine.Add(ah); continue; }
+                        }
                         if (found++ < maxPerFile) { var h = new Hit(); h.Path = rel; h.Kind = "text"; h.Where = line; h.Text = Snip(s, m.Index, m.Length); mine.Add(h); }
                     }
                     if (leak != null) foreach (Match m in leak.Matches(s)) { var h = new Hit(); h.Path = rel; h.Kind = "leak"; h.Where = line; h.Text = m.Value; myLeaks.Add(h); }
@@ -360,8 +407,19 @@ public static class Tools {
                     if (!first[c]) continue;
                     for (int k = 0; k < asc.Count; k++) {
                         string kind = refuse[k] ? "binary" : "binary-info";
-                        if (Eq(buf, i, len, asc[k], false)) Add(hits, rel, kind + "-ascii", baseOff + i, category[k], ref found);
-                        else if (Eq(buf, i, len, u16[k], true)) Add(hits, rel, kind + "-utf16", baseOff + i, category[k], ref found);
+                        bool a8 = Eq(buf, i, len, asc[k], false), a16 = !a8 && Eq(buf, i, len, u16[k], true);
+                        if (!a8 && !a16) continue;
+                        if (asc[k].Length == 4 && asc[k][0] == 'o' && asc[k][1] == 'p' && asc[k][2] == 'u' && asc[k][3] == 's') {
+                            int prev, next, st = a8 ? 1 : 2;
+                            if (a8) { prev = i > 0 ? buf[i - 1] : -1; next = i + 4 < len ? buf[i + 4] : -1; }
+                            else { prev = (i >= 2 && buf[i - 1] == 0) ? buf[i - 2] : -1; next = (i + 9 < len && buf[i + 9] == 0) ? buf[i + 8] : -1; }
+                            if (!OpusToken(prev, buf[i], buf[i + st], buf[i + 2 * st], buf[i + 3 * st], next)) continue;
+                            if (PrintRun(buf, i, a8 ? 4 : 8, len, !a8) < 8) continue;
+                        }
+                        // the word around the hit, decoded the same way it was found
+                        string w = a8 ? BinWord8(buf, i, asc[k].Length, len) : BinWord16(buf, i, u16[k].Length, len);
+                        if (AllowBin != null && AllowBin.IsMatch(w)) { AddAllowed(hits, rel, (a8 ? "allowed-ascii" : "allowed-utf16"), baseOff + i, category[k] + ":" + w); continue; }
+                        Add(hits, rel, kind + (a8 ? "-ascii" : "-utf16"), baseOff + i, category[k] + ":" + w, ref found);
                     }
                     if (found >= maxPerFile) return;
                 }
@@ -381,6 +439,23 @@ public static class Tools {
             if (c != want) return false;
         }
         return true;
+    }
+    static bool IsWordByte(byte c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '/' || c == ':' || c == '-'; }
+    static string BinWord8(byte[] b, int at, int n, int len) {
+        int a = at; while (a > 0 && at - a < 40 && IsWordByte(b[a - 1])) a--;
+        int z = at + n; while (z < len && z - at - n < 40 && IsWordByte(b[z])) z++;
+        return Encoding.ASCII.GetString(b, a, z - a);
+    }
+    static string BinWord16(byte[] b, int at, int n, int len) {
+        int a = at; while (a >= 2 && at - a < 80 && b[a - 1] == 0 && IsWordByte(b[a - 2])) a -= 2;
+        int z = at + n; while (z + 1 < len && z - at - n < 80 && b[z + 1] == 0 && IsWordByte(b[z])) z += 2;
+        return Encoding.Unicode.GetString(b, a, z - a);
+    }
+    // allowed hits: kept for the report (one per offset), never counted against maxPerFile, capped at 200 per file
+    static void AddAllowed(List<Hit> hits, string rel, string kind, long off, string text) {
+        int n = 0; foreach (var x in hits) { if (x.Where == off) return; if (x.Kind.StartsWith("allowed")) n++; }
+        if (n >= 200) return;
+        var h = new Hit(); h.Path = rel; h.Kind = kind; h.Where = off; h.Text = text; hits.Add(h);
     }
     static void Add(List<Hit> hits, string rel, string kind, long off, string cat, ref int found) {
         foreach (var x in hits) if (x.Path == rel && x.Where == off) return;
@@ -649,13 +724,51 @@ $RulesTail = @(
     @{ id = 'username'; scope = 'all'; match = "(?i)$UserRx"; replace = 'dev' },
     @{ id = 'email'; scope = 'all'; match = $EmailRx; replace = '<redacted-email>' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bclaude[-_ ]code\b'; replace = 'agent-tool' },
-    @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bclaude[-_](?:opus|sonnet|haiku|fable|instant)[\w.-]*'; replace = 'agent-model' },
+    @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bclaude[-_ ]?(?:opus|sonnet|haiku|fable|instant)(?:[-_ ]?[0-9]+(?:[._-][0-9]+)*)?[\w.-]*'; replace = 'agent-model' },
+    @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bopus[-_ ]?[0-9]+(?:\.[0-9]+)*\b'; replace = 'agent-model' },
     @{ id = 'agent-mention'; scope = 'all'; match = 'CLAUDE'; replace = 'AGENT' }, @{ id = 'agent-mention'; scope = 'all'; match = 'Claude'; replace = 'Agent' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)claude'; replace = 'agent' },
     @{ id = 'agent-mention'; scope = 'all'; match = 'ANTHROPIC'; replace = 'PROVIDER' }, @{ id = 'agent-mention'; scope = 'all'; match = 'Anthropic'; replace = 'Provider' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)anthropic'; replace = 'provider' }
 )
 $BannedPattern = 'superposition|game[-_]?factory'
+# Binary needles (ASCII + UTF-16LE, case-insensitive). The agent/vendor names block like the two names (user rule);
+# the account name in binaries is reported (and blocks inside Build/, checked separately).
+$BinNeedles = @('superposition', 'game-factory', 'game_factory', 'gamefactory', $UserName, 'claude', 'anthropic', 'opus')
+$BinRefuse = @($true, $true, $true, $true, $false, $true, $true, $true)
+$BinCats = @('banned-name', 'banned-name', 'banned-name', 'banned-name', 'username', 'agent-name', 'agent-name', 'agent-name')
+# Exact allowlist, matched against the whole word around a hit (letters, digits, _ . / : -). Only forms seen in the
+# packages' engine binaries (Opus audio codec inside the EOS SDK / WebRTC and the engine) and UE's locale ids.
+$OpusCodec = @(
+    '(?:^|.*/)third_party/opus/.*',                                   # codec source paths
+    'libopus(?:file|enc|dec)?(?:\.(?:dll|lib|so|a|h))?', 'opus(?:file|enc|dec)(?:\.(?:dll|lib|so|a|h))?',
+    'opus_[a-z][a-z0-9_]*', 'OPUS_[A-Z][A-Z0-9_]*',                   # C API symbols and constants
+    '\w*WebRtcOpus_\w+', 'WebRTC-[\w-]*Opus[\w-]*', 'OpusCustom\w*',
+    '\w*Audio(?:En|De)coder\w*Opus\w*', '\w*Opus(?:Impl|Config|Decoder|Encoder|AudioInfo|Format|Codec|Header|Head|Tags|File)\w*',
+    '[\w./-]*opus[\w.-]*\.(?:c|cc|cpp|h)',                            # codec source file names
+    'opus/\d+(?:/\d+)?', 'audio/opus', 'A_OPUS'
+)
+$Locale = @('zh[-_]xiang')                                            # UE's Xiang Chinese locale ids
+# the word may carry other segments joined by : or / (C++ scopes, paths): one segment must be an allowed form
+$OpusAllowText = '(?i)^(?:[\w./:-]*?[:/])?(?:' + (($OpusCodec + $Locale) -join '|') + ')(?:[:/.][\w./:-]*)?$'
+$OpusAllowBin = $OpusAllowText + '|(?i)^(?:[\w./:-]*?/)?opus$'   # binaries: also the bare codec name, exactly
+# Reviewed exceptions (tools\package-reviewed-hits.tsv): single binary hits judged by a person to be data, not text,
+# keyed by the file's sha256 + byte offset + word, so another file or another version of it still blocks.
+$Reviewed = @{}
+$ReviewedPath = Join-Path $PSScriptRoot 'package-reviewed-hits.tsv'
+if (Test-Path $ReviewedPath) { foreach ($r in (Import-Csv $ReviewedPath -Delimiter "`t")) { $Reviewed["$($r.sha256)`t$($r.offset)"] = $r.word } }
+function Set-ReviewedHits($HitList, [string]$Root) {
+    $cache = @{}
+    foreach ($h in $HitList) {
+        if ($h.Kind -notlike 'binary-*' -or $h.Kind -like 'binary-info*') { continue }
+        $full = Join-Path $Root $h.Path.Replace('/', '\')
+        if (-not $cache.ContainsKey($full)) { $cache[$full] = [GameDeliverable.Tools]::HashFile($full) }
+        $k = "$($cache[$full])`t$($h.Where)"
+        if ($Reviewed.ContainsKey($k) -and $h.Text -ceq ((($h.Text -split ':', 2)[0]) + ':' + $Reviewed[$k])) { $h.Kind = 'allowed-reviewed' }
+    }
+}
+[GameDeliverable.Tools]::Allow = New-Object System.Text.RegularExpressions.Regex($OpusAllowText)
+[GameDeliverable.Tools]::AllowBin = New-Object System.Text.RegularExpressions.Regex($OpusAllowBin)
 $Banned = New-Object System.Text.RegularExpressions.Regex($BannedPattern, 'IgnoreCase')
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -663,6 +776,34 @@ $Banned = New-Object System.Text.RegularExpressions.Regex($BannedPattern, 'Ignor
 # ---------------------------------------------------------------------------------------------------------------------
 $info = Get-GameInfo $Game
 $repo = if ($RepoPath) { (Resolve-Path $RepoPath).Path } else { $info.Dir }
+
+# -Rescan <package dir>: check an existing package against the current rules (names, agent/vendor names with the
+# Opus-codec allowlist, account name, e-mail addresses, git identity names) without changing it.
+if ($Rescan) {
+    $pkg = (Resolve-Path $Rescan).Path
+    $terms = @(Invoke-Git $repo @('log', '--all', '--format=%an%n%cn') | ForEach-Object { "$_".Trim() } | Where-Object { $_ -and $_ -notmatch '(?i)^(claude|agent|dev_\d+)$' } | Sort-Object -Unique)
+    $parts = @($BannedPattern, 'claude', 'anthropic', 'opus', $UserRx, $EmailRx) + @($terms | ForEach-Object { "$WordStart$([regex]::Escape($_))(?![A-Za-z0-9])" })
+    $rx = New-Object System.Text.RegularExpressions.Regex(($parts -join '|'), 'IgnoreCase')
+    $rels = [string[]]@(Get-ChildItem $pkg -Recurse -File | ForEach-Object { $_.FullName.Substring($pkg.Length + 1).Replace('\', '/') })
+    $lk = New-Object 'System.Collections.Generic.List[GameDeliverable.Hit]'
+    $all = @([GameDeliverable.Tools]::Scan($pkg, $rels, $rx, $null, $lk, 20, [string[]]$BinNeedles, [bool[]]$BinRefuse, [string[]]$BinCats))
+    Set-ReviewedHits $all $pkg
+    $block = @($all | Where-Object { $_.Kind -notlike 'binary-info*' -and $_.Kind -notlike 'allowed*' })
+    $buildUser = @($all | Where-Object { $_.Kind -like 'binary-info*' -and $_.Text -like 'username*' -and $_.Path -like 'Build/*' })
+    $allowed = @($all | Where-Object { $_.Kind -like 'allowed*' })
+    $out = "$pkg.rescan-hits.tsv"
+    $t = New-Object System.Text.StringBuilder; [void]$t.Append("path`tkind`tline_or_offset`ttext`n")
+    foreach ($h in ($block + $buildUser + $allowed)) { [void]$t.Append("$($h.Path)`t$(if ($buildUser -contains $h) { 'build-username' } else { $h.Kind })`t$($h.Where)`t$($h.Text)`n") }
+    Write-Utf8 $out $t.ToString()
+    $fail = $block.Count -or $buildUser.Count
+    Write-Host "$(if ($fail) { 'FAIL' } else { 'PASS' })  $pkg"
+    Write-Host "  blocking: $($block.Count) hit(s) in $(@($block | ForEach-Object Path | Sort-Object -Unique).Count) file(s)$(if ($block) { ': ' + ((@($block | Group-Object { $_.Kind + ' ' + $_.Text.Substring(0, [Math]::Min(40, $_.Text.Length)) } | Sort-Object Count -Descending | Select-Object -First 8 | ForEach-Object { "$($_.Count)x $($_.Name)" })) -join '; ') })"
+    Write-Host "  account name in Build/: $($buildUser.Count) hit(s) in $(@($buildUser | ForEach-Object Path | Sort-Object -Unique).Count) file(s)"
+    Write-Host "  allowlisted: $($allowed.Count) hit(s), $(@($allowed | Group-Object Text).Count) distinct words (all in the tsv)"
+    Write-Host "  all hits: $out"
+    exit $(if ($fail) { 2 } else { 0 })
+}
+
 if ($Commit -eq 'milestone') {
     $tags = @(Invoke-Git $repo @('tag', '-l', 'milestone/autoplay-*') | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match '^milestone/autoplay-(\d+)$' } |
         Sort-Object { [int]($_ -replace '^milestone/autoplay-', '') } -Descending)
@@ -671,6 +812,12 @@ if ($Commit -eq 'milestone') {
 }
 $sha = @(Invoke-Git $repo @('rev-parse', '--verify', "$Commit^{commit}"))[0].Trim()
 $short = $sha.Substring(0, 8)
+$releaseTag = $null
+if ($Version) {
+    $rt = "release/$Version"
+    $rts = @(Invoke-Git $repo @('rev-parse', '--verify', '-q', "$rt^{commit}") -AllowFail)
+    if ($rts.Count -and "$($rts[0])".Trim() -eq $sha) { $releaseTag = $rt }
+}
 $commitTime = @(Invoke-Git $repo @('show', '-s', '--format=%cI', $sha))[0].Trim()
 $commitSubject = @(Invoke-Git $repo @('show', '-s', '--format=%s', $sha))[0].Trim()
 $lineageList = @(Invoke-Git $repo @('rev-list', $sha) | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -691,6 +838,15 @@ Write-Step "package $Game @ $short ($variant)  repo $repo  ->  $final$(if ($DryR
 # Store packs kept out of git: folders under Content/ that are git-ignored in the game's working tree and not tracked
 # at the commit (tower-defense Content/<Pack>/, liaozhai-night Content/Fab/). The full variant copies them from the
 # working tree, and the build must have been cooked with them: a pipeline build from a clean clone has none.
+$matcher = New-Object GameDeliverable.StoreMatcher
+$manifestText = [GameDeliverable.Tools]::ReadBlobText($repo, "${sha}:assets.manifest.json")
+$assetsManifest = $null
+if ($manifestText) {
+    $assetsManifest = $manifestText | ConvertFrom-Json
+    Find-ManifestStore $assetsManifest ''
+    foreach ($e in $script:ManifestStore) { $matcher.Add($e.path, $e.why) }
+}
+foreach ($f in $StoreFolders) { $matcher.Add($f, '-StoreFolders') }
 $trackedTop = @{}; foreach ($d in (Invoke-Git $repo @('ls-tree', '-d', '--name-only', $sha, 'Content/'))) { $trackedTop[$d.Trim()] = 1 }
 $untrackedStore = New-Object System.Collections.ArrayList
 $contentDir = Join-Path $info.Dir 'Content'
@@ -698,8 +854,10 @@ if (Test-Path $contentDir) {
     foreach ($d in Get-ChildItem $contentDir -Directory) {
         $rel = "Content/$($d.Name)"
         if ($trackedTop.ContainsKey($rel)) { continue }
+        # store when git-ignored now, or when the commit's manifest calls it store content (the working tree's .gitignore
+        # may have changed since the commit, e.g. once the packs were committed later)
         $null = Invoke-Git $info.Dir @('check-ignore', '-q', "$rel/") -AllowFail
-        if ($LASTEXITCODE -eq 0) { [void]$untrackedStore.Add([pscustomobject]@{ rel = $rel; dir = $d.FullName; why = $null }) }
+        if ($LASTEXITCODE -eq 0 -or $matcher.Match("$rel/x")) { [void]$untrackedStore.Add([pscustomobject]@{ rel = $rel; dir = $d.FullName; why = $null }) }
     }
 }
 # pack folder names to look for in a build's .utoc/.pak directory index (Content/Fab/<Pack> -> <Pack>)
@@ -788,17 +946,20 @@ if ($buildSel) {
 } elseif (-not $DryRun) { throw $buildMsg }
 
 # Gameplay: validated bundles (ok|warn, no FAILED marker) played on a build of the lineage.
+$ExcludeRunIds = @($ExcludeRuns | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 $selectedRuns = New-Object System.Collections.ArrayList; $skippedRuns = New-Object System.Collections.ArrayList
 $recDir = Join-Path $RecordingsRoot $Game
 if (Test-Path $recDir) {
-    foreach ($b in Get-ChildItem $recDir -Directory | Sort-Object Name) {
+    foreach ($b in Get-ChildItem $recDir -Directory | Where-Object { $_.Name -notlike '_*' } | Sort-Object Name) {   # _stills etc. are not runs
         $meta = Read-JsonFile (Join-Path $b.FullName 'metadata.json'); $val = Read-JsonFile (Join-Path $b.FullName 'validation.json')
         $bsha = Get-Prop (Get-Prop $meta 'build') 'commit'; $vstat = Get-Prop $val 'status'
         $why = $null
-        if (Test-Path (Join-Path $b.FullName 'FAILED')) { $why = 'FAILED' }
+        if ($ExcludeRunIds -contains $b.Name) { $why = 'left out with -ExcludeRuns' }
+        elseif (Test-Path (Join-Path $b.FullName 'FAILED')) { $why = 'FAILED' }
         elseif (-not $meta -or -not $val) { $why = 'no metadata/validation' }
         elseif ($vstat -notin @('ok', 'warn')) { $why = "validation $vstat" }
         elseif (-not $bsha -or -not $lineage.ContainsKey($bsha)) { $why = 'build not in the lineage' }
+        elseif ($OnlyCommitRuns -and $bsha -ne $sha) { $why = 'played on an earlier commit (-OnlyCommitRuns)' }
         if ($why) { [void]$skippedRuns.Add([pscustomobject]@{ run = $b.Name; why = $why }) }
         else { [void]$selectedRuns.Add([pscustomobject]@{ dir = $b; meta = $meta; val = $val; sha = $bsha; status = $vstat }) }
     }
@@ -814,18 +975,7 @@ if (-not $DryRun) {
 # ---------------------------------------------------------------------------------------------------------------------
 # store content: what counts
 # ---------------------------------------------------------------------------------------------------------------------
-$matcher = New-Object GameDeliverable.StoreMatcher
-$manifestText = [GameDeliverable.Tools]::ReadBlobText($repo, "${sha}:assets.manifest.json")
-$assetsManifest = $null
-if ($manifestText) {
-    $assetsManifest = $manifestText | ConvertFrom-Json
-    Find-ManifestStore $assetsManifest ''
-    foreach ($e in $script:ManifestStore) { $matcher.Add($e.path, $e.why) }
-}
-foreach ($f in $StoreFolders) { $matcher.Add($f, '-StoreFolders') }
-# Folders under Content/ that are git-ignored in the game's working tree and not tracked at the commit: store packs kept
-# out of git (e.g. tower-defense Content/<Pack>/, liaozhai-night Content/Fab/). Their files come from the working tree.
-# (found before the build selection, $untrackedStore)
+# (manifest rules, $matcher and $untrackedStore were set up before the build selection)
 foreach ($u in $untrackedStore) {
     $why = $matcher.Match("$($u.rel)/x"); if (-not $why) { $why = 'git-ignored folder under Content/ (store pack kept out of git)' }
     $u.why = $why; $matcher.Add($u.rel, $why)
@@ -901,6 +1051,15 @@ $commitCount = [GameDeliverable.Tools]::WriteGitLog($repo, $sha, (Join-Path $sta
 $histDir = Join-Path $stage 'History'; New-Item -ItemType Directory -Force $histDir | Out-Null
 $commitDto = [DateTimeOffset]::Parse($commitTime)
 $histStats = [ordered]@{}
+# actions.jsonl rows of sessions that are not creation work: any session that ran this packager (its tool calls get
+# logged under the game when their working directory is inside it), plus -ExcludeSessions.
+$skipSessions = @{}; foreach ($x in @($ExcludeSessions | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })) { $skipSessions[$x] = 'given' }
+$actSrc = Join-Path $info.LogDir 'actions.jsonl'
+if (Test-Path $actSrc) {
+    foreach ($line in [System.IO.File]::ReadAllLines($actSrc, $Utf8NoBom)) {
+        if ($line -match 'package-game\.ps1' -and $line -match '"session_id"\s*:\s*"([^"]+)"' -and -not $skipSessions.ContainsKey($Matches[1])) { $skipSessions[$Matches[1]] = 'ran the packager' }
+    }
+}
 foreach ($h in @(
         @{ file = 'commits.jsonl'; rx = '"sha"\s*:\s*"([0-9a-f]{40})"'; kind = 'commit' },
         @{ file = 'actions.jsonl'; rx = '"time"\s*:\s*"([^"]+)"'; kind = 'time' },
@@ -912,11 +1071,13 @@ foreach ($h in @(
     foreach ($line in [System.IO.File]::ReadAllLines($src, $Utf8NoBom)) {
         if (-not $line.Trim()) { continue }
         $total++; $m = [regex]::Match($line, $h.rx); if (-not $m.Success) { continue }
+        if ($h.file -eq 'actions.jsonl' -and $skipSessions.Count -and $line -match '"session_id"\s*:\s*"([^"]+)"' -and $skipSessions.ContainsKey($Matches[1])) { continue }
         if ($h.kind -eq 'commit') { if ($lineage.ContainsKey($m.Groups[1].Value)) { $kept.Add($line) } }
         else { $dt = [DateTimeOffset]::MinValue; if ([DateTimeOffset]::TryParse($m.Groups[1].Value, [ref]$dt) -and $dt -le $commitDto) { $kept.Add($line) } }
     }
     Write-Utf8 (Join-Path $histDir $h.file) ((($kept -join "`n") + $(if ($kept.Count) { "`n" } else { '' })))
     $histStats[$h.file] = [ordered]@{ rows = $kept.Count; source_rows = $total }
+    if ($h.file -eq 'actions.jsonl') { $histStats[$h.file].sessions_left_out = $skipSessions.Count }
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -981,6 +1142,66 @@ $buildInfo = [ordered]@{
     store_packs_outside_git = $(if ($storeArt) { [ordered]@{ cooked = @($storeArt.found); not_in_pak_index = @($storeArt.missing) } } else { $null })
 }
 Write-JsonFile (Join-Path $buildDir 'build_info.json') $buildInfo
+# The account name compiled into the build (source paths in the exe) is a blocker; -PendingCleanBuild produces a package
+# marked "pending clean build" (README + manifest) until the build is redone from a root without it.
+$buildRels = [string[]]@(Get-ChildItem $buildDir -Recurse -File | ForEach-Object { 'Build/' + $_.FullName.Substring($buildDir.Length + 1).Replace('\', '/') })
+$bl = New-Object 'System.Collections.Generic.List[GameDeliverable.Hit]'
+$buildUserHits = @([GameDeliverable.Tools]::Scan($stage, $buildRels, (New-Object System.Text.RegularExpressions.Regex('(?!)')), $null, $bl, 20,
+        [string[]]@($UserName), [bool[]]@($false), [string[]]@('username')) | Where-Object { $_.Kind -like 'binary*' })
+$pendingClean = $false
+if ($buildUserHits.Count) {
+    $files = @($buildUserHits | ForEach-Object Path | Sort-Object -Unique)
+    if (-not $PendingCleanBuild) {
+        Remove-Item -Recurse -Force $stage
+        throw "Build/ has the account name compiled in ($($buildUserHits.Count) hits in $($files.Count) files, e.g. $($files[0])): rebuild from a root without it, or pass -PendingCleanBuild for a package marked as pending"
+    }
+    $pendingClean = $true
+    [void]$warnings.Add("PENDING CLEAN BUILD: Build/ has the account name compiled in ($($files.Count) files); package marked as not final")
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Screenshots: the project's docs/screenshots/ at the commit, else 3-4 stills of the gameplay runs in this package
+# (recordings\<game>\_stills\<run>_NN.jpg; stills of runs left out may show old art, so never those)
+# ---------------------------------------------------------------------------------------------------------------------
+$shots = New-Object System.Collections.ArrayList   # { file, caption }
+$shotDir = Join-Path $stage 'Screenshots'
+$shotSource = $null
+$repoShots = @(Get-ChildItem $ueDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -in @('docs', 'Docs') } |
+        ForEach-Object { Join-Path $_.FullName 'screenshots' } | Where-Object { Test-Path $_ } |
+        ForEach-Object { Get-ChildItem $_ -File | Where-Object { $_.Extension -match '^\.(png|jpe?g|webp|gif)$' } } | Sort-Object Name)
+if ($Screenshots -eq 'stills') { $repoShots = @() }
+if ($repoShots.Count) {
+    New-Item -ItemType Directory -Force $shotDir | Out-Null
+    foreach ($f in $repoShots) {
+        Copy-Item $f.FullName (Join-Path $shotDir $f.Name)
+        $cap = ($f.BaseName -replace '^\d+[-_ ]*', '' -replace '[-_]+', ' ').Trim()
+        [void]$shots.Add([pscustomobject]@{ file = $f.Name; caption = $(if ($cap) { $cap } else { $f.BaseName }) })
+    }
+    $shotSource = "the project's $(Split-Path (Split-Path $repoShots[0].DirectoryName -Parent) -Leaf)/screenshots/"
+} elseif ($Screenshots -ne 'repo') {
+    $stillDir = Join-Path $recDir '_stills'
+    $perRun = @(foreach ($r in $runs) {
+            $fr = @(Get-ChildItem $stillDir -File -Filter "$($r.run_id)_*.jpg" -ErrorAction SilentlyContinue | Sort-Object Name)
+            if ($fr.Count) { [pscustomobject]@{ run = $r; frames = $fr } } })
+    $picked = New-Object System.Collections.ArrayList
+    foreach ($pos in @(0.5, 0.25, 0.75, 0.1)) {   # round robin over the runs: middle frame first, then quarter points
+        foreach ($p in $perRun) {
+            if ($picked.Count -ge 4) { break }
+            $f = $p.frames[[math]::Min($p.frames.Count - 1, [int][math]::Floor($pos * $p.frames.Count))]
+            if (-not ($picked | Where-Object { $_.f.FullName -eq $f.FullName })) { [void]$picked.Add([pscustomobject]@{ f = $f; r = $p.run }) }
+        }
+    }
+    if ($picked.Count) {
+        New-Item -ItemType Directory -Force $shotDir | Out-Null
+        foreach ($p in $picked) {
+            Copy-Item $p.f.FullName (Join-Path $shotDir $p.f.Name)
+            $n = $p.f.BaseName.Substring($p.r.run_id.Length).TrimStart('_')
+            [void]$shots.Add([pscustomobject]@{ file = $p.f.Name; caption = "Scenario $($p.r.scenario) $($p.r.scenario_name), frame $n of run ``$($p.r.run_id)``" })
+        }
+        $shotSource = 'frames of the gameplay recordings in `Gameplay/`'
+    }
+}
+if ($shots.Count) { Write-Step "screenshots: $($shots.Count) from $shotSource" } else { [void]$warnings.Add('no screenshots: no docs/screenshots/ in the project and no stills of the runs in this package') }
 
 # ---------------------------------------------------------------------------------------------------------------------
 # README.md
@@ -1024,10 +1245,24 @@ $sb = New-Object System.Text.StringBuilder
 function A([string]$s = '') { [void]$sb.Append($s + "`n") }
 A "# $title"
 A ''
+if ($shots.Count) { A "![$title]($('Screenshots/' + $shots[0].file))"; A '' }
+if ($Version) { A "**Version $Version**$(if ($releaseTag) { " (tag ``$releaseTag``)" })$(if ($pendingClean) { ', pending clean build' })."; A '' }
+if ($pendingClean) {
+    A '> **Pending clean build: not final.** The executable in `Build/` was compiled on a machine path that is to be removed;'
+    A '> this package will be replaced by one with a clean rebuild of the same commit. Source, history and recordings are unaffected.'
+    A ''
+}
 A "Unreal Engine $engine project ``$($info.ProjectName)``, packaged at commit ``$short`` ($commitTime, ""$commitSubject"")."
 A "Variant: **$(if ($WithoutStoreContent) { 'without store content' } else { 'with store content' })** (see Store content below)."
 A ''
 if ($intro) { A $intro; A '' }
+if ($shots.Count) {
+    A '## Screenshots'
+    A ''
+    A "From $shotSource."
+    A ''
+    foreach ($s in $shots) { A "![$($s.caption -replace '[\[\]`]', '')](Screenshots/$($s.file))"; A "*$($s.caption)*"; A '' }
+}
 A '## Contents'
 A ''
 A '| Path | What |'
@@ -1038,6 +1273,7 @@ A "| ``git.log`` | $commitCount commits, oldest first, with message, anonymised 
 A '| `History/` | machine logs of the creation sessions: `actions.jsonl` (every tool call of the builder), `commits.jsonl`, `builds.jsonl`, `runs.jsonl` |'
 A "| ``Gameplay/`` | $($runs.Count) validated gameplay recording(s); table in ``Gameplay/summary.md`` |"
 A "| ``Build/`` | the packaged Windows $($buildSel.config) build$(if ($exe) { " (``Build/$($exe.Name)``)" }), built from commit ``$(if ($buildSel.commit) { $buildSel.commit.Substring(0,8) } else { 'unknown' })``$(if (-not $buildInfo.commit_verified) { ' (as stated by the build log)' }); ``Build/build_info.json`` |"
+if ($shots.Count) { A "| ``Screenshots/`` | $($shots.Count) image(s) shown in this README, from $shotSource |" }
 A '| `StoreContent.tsv` | every store-content file of the project: included or dropped, path, bytes, sha256, why it is store content |'
 A '| `scrub-report.json` | what was rewritten in this copy before packaging (studio names, user paths, e-mail addresses, agent identities): counts per rule and the files touched |'
 A '| `manifest.json` | path, bytes and sha256 of every file in this package |'
@@ -1101,7 +1337,7 @@ A ''
 A '`manifest.json` lists every file with its size and sha256. Verify with PowerShell:'
 A ''
 A '```'
-A '$m = Get-Content manifest.json -Raw | ConvertFrom-Json'
+A '$m = Get-Content manifest.json -Raw -Encoding UTF8 | ConvertFrom-Json'
 A '$m.files | ? { (Get-FileHash -Algorithm SHA256 $_.path).Hash -ne $_.sha256 } | % path   # prints nothing when all files match'
 A '```'
 Write-Utf8 (Join-Path $stage 'README.md') $sb.ToString()
@@ -1131,12 +1367,10 @@ function Get-IdentityRx([string]$t) {
 }
 $idRules = @($identityTerms | Sort-Object { - $_[0].Length } | ForEach-Object { @{ id = 'git-identity'; scope = 'all'; match = (Get-IdentityRx $_[0]); replace = $_[1] } })
 $Rules = @($RulesHead) + $idRules + @($RulesTail)
-$enforcedParts = @($BannedPattern, 'claude', 'anthropic', $UserRx, $EmailRx) +
+$enforcedParts = @($BannedPattern, 'claude', 'anthropic', 'opus', $UserRx, $EmailRx) +
     @($identityTerms | ForEach-Object { (Get-IdentityRx $_[0]) -replace '^\(\?i\)', '' })
 $Enforced = New-Object System.Text.RegularExpressions.Regex(($enforcedParts -join '|'), 'IgnoreCase')
-$needles = @('superposition', 'game-factory', 'game_factory', 'gamefactory', $UserName, 'claude', 'anthropic')
-$refuse = @($true, $true, $true, $true, $false, $false, $false)
-$cats = @('banned-name', 'banned-name', 'banned-name', 'banned-name', 'username', 'agent-name', 'agent-name')
+$needles = $BinNeedles; $refuse = $BinRefuse; $cats = $BinCats
 # reported only (outside the package): any other user-folder paths
 $leakRx = New-Object System.Text.RegularExpressions.Regex(('[A-Za-z]:[\\/]{1,2}Users[\\/]{1,2}(?!dev\b)[^\\/"\s]+|/Users/(?!dev\b)[^/"\s]+|/home/[^/"\s]+|[A-Za-z0-9._-]*' + [regex]::Escape($UserName) + '[A-Za-z0-9._-]*'), 'IgnoreCase')
 
@@ -1152,7 +1386,9 @@ if (-not $NoScrub) {
                 'username' { $UserName }
                 'email' { '@' }
                 'git-identity' { '' }
-                default { if ($m -match '(?i)anthropic' -and $m -notmatch '(?i)claude') { 'anthropic' } else { 'claude' } }
+                default {
+                    if ($m -match '(?i)anthropic' -and $m -notmatch '(?i)claude') { 'anthropic' }
+                    elseif ($m -match '(?i)opus' -and $m -notmatch '(?i)claude') { 'opus' } else { 'claude' } }
             } })
     $res = [GameDeliverable.Tools]::ScrubAll($stage, [string[]](Get-Rels), [string[]]@($Rules | ForEach-Object { $_.match }),
         [string[]]@($Rules | ForEach-Object { $_.replace }), [string[]]@($Rules | ForEach-Object { $_.scope }), $hints)
@@ -1190,10 +1426,25 @@ if (-not $NoScrub) {
 Write-Step 'scanning every file (paths, text; binaries ASCII/UTF-16)'
 $leaks = New-Object 'System.Collections.Generic.List[GameDeliverable.Hit]'
 $scan = [GameDeliverable.Tools]::Scan($stage, [string[]](Get-Rels), $Enforced, $leakRx, $leaks, 20, [string[]]$needles, [bool[]]$refuse, [string[]]$cats)
-$hits = @($scan | Where-Object { $_.Kind -notlike 'binary-info*' })
+Set-ReviewedHits $scan $stage
+$hits = @($scan | Where-Object { $_.Kind -notlike 'binary-info*' -and $_.Kind -notlike 'allowed*' })
 $binInfo = @($scan | Where-Object { $_.Kind -like 'binary-info*' })
+$allowedHits = @($scan | Where-Object { $_.Kind -like 'allowed*' })
+# Counts only inside the package (the words themselves would put the terms into its text); the full list goes next to
+# the package for review: <name>.allowlisted.tsv.
+$scrubReport.allowlisted_hits = [ordered]@{
+    note     = 'audio codec symbols and engine locale ids allowed by an exact allowlist, plus reviewed exceptions; every other hit blocks'
+    total    = $allowedHits.Count
+    reviewed = @($allowedHits | Where-Object Kind -eq 'allowed-reviewed').Count
+    files    = @($allowedHits | ForEach-Object Path | Sort-Object -Unique).Count
+    in_build = @($allowedHits | Where-Object { $_.Path -like 'Build/*' }).Count
+}
+$alTsv = Join-Path $gameOut "$name.allowlisted.tsv"
+$asb = New-Object System.Text.StringBuilder; [void]$asb.Append("path`tkind`tline_or_offset`tword`n")
+foreach ($h in ($allowedHits | Sort-Object Path, Where)) { [void]$asb.Append("$($h.Path)`t$($h.Kind)`t$($h.Where)`t$(($h.Text -split ':', 2)[-1])`n") }
+Write-Utf8 $alTsv $asb.ToString()
 $scrubReport.binary_files_with_findings = @($binInfo | Group-Object Path | ForEach-Object { [ordered]@{ path = $_.Name
-            categories = @($_.Group | ForEach-Object Text | Sort-Object -Unique); encodings = @($_.Group | ForEach-Object { $_.Kind -replace '^binary-info-', '' } | Sort-Object -Unique)
+            categories = @($_.Group | ForEach-Object { ($_.Text -split ':', 2)[0] } | Sort-Object -Unique); encodings = @($_.Group | ForEach-Object { $_.Kind -replace '^binary-info-', '' } | Sort-Object -Unique)
             hits = $_.Count; capped = ($_.Count -ge 20) } })
 $scrubReport.binary_note = 'binary files are never edited; findings are listed by category only (username, agent-name)'
 $scrubReport.verification = [ordered]@{ text_and_path_hits_after_scrub = @($hits | Where-Object { $_.Kind -notlike 'binary*' }).Count
@@ -1203,7 +1454,7 @@ $leakTsv = Join-Path $gameOut "$name.leaks.tsv"
 $leakSummary = $leaks | Group-Object { $_.Text.ToLowerInvariant() } | Sort-Object Count -Descending
 $lsb = New-Object System.Text.StringBuilder; [void]$lsb.Append("count`tfiles`tvalue`texample_file`n")
 foreach ($g in $leakSummary) { [void]$lsb.Append("$($g.Count)`t$(@($g.Group | ForEach-Object Path | Sort-Object -Unique).Count)`t$($g.Name)`t$($g.Group[0].Path)`n") }
-foreach ($g in ($binInfo | Group-Object Text)) { [void]$lsb.Append("$($g.Count)`t$(@($g.Group | ForEach-Object Path | Sort-Object -Unique).Count)`tbinary:$($g.Name)`t$($g.Group[0].Path)`n") }
+foreach ($g in ($binInfo | Group-Object { ($_.Text -split ':', 2)[0] })) { [void]$lsb.Append("$($g.Count)`t$(@($g.Group | ForEach-Object Path | Sort-Object -Unique).Count)`tbinary:$($g.Name)`t$($g.Group[0].Path)`n") }
 Write-Utf8 $leakTsv $lsb.ToString()
 
 $errors = @($problems | Where-Object { $_ -like 'error:*' })
@@ -1245,6 +1496,9 @@ $sections = [ordered]@{}
 foreach ($f in $all) { $top = ($f.Path -split '/')[0]; if ($f.Path -notmatch '/') { $top = '(top level)' }; $sections[$top] = [long]$sections[$top] + $f.Bytes }
 $manifest = [ordered]@{
     package = $name; game = $Game; project = $info.ProjectName; engine = $engine
+    version = $(if ($Version) { $Version } else { $null }); release_tag = $releaseTag
+    status = $(if ($pendingClean) { 'pending clean build' } else { 'complete' })
+    screenshots = @($shots | ForEach-Object { "Screenshots/$($_.file)" })
     commit = $sha; commit_time = $commitTime; commits = $commitCount; variant = $variant
     created = (Get-IsoNow); tool_version = $ToolVersion
     store_content = [ordered]@{ included_files = @($storeRows | Where-Object status -eq 'included').Count; dropped_files = @($storeRows | Where-Object status -eq 'dropped').Count
@@ -1255,9 +1509,16 @@ $manifest = [ordered]@{
     files = @($all | ForEach-Object { [ordered]@{ path = $_.Path; bytes = $_.Bytes; sha256 = $_.Sha256 } })
 }
 Write-JsonFile (Join-Path $stage 'manifest.json') $manifest
-$mHits = @([GameDeliverable.Tools]::Scan($stage, [string[]]@('manifest.json', 'scrub-report.json'), $Enforced, $null, $leaks, 5, [string[]]@(), [bool[]]@(), [string[]]@()))
+# (scrub-report.json lists the words allowed in binaries, so it is checked with the binary allowlist)
+$textAllow = [GameDeliverable.Tools]::Allow; [GameDeliverable.Tools]::Allow = [GameDeliverable.Tools]::AllowBin
+$mHits = @([GameDeliverable.Tools]::Scan($stage, [string[]]@('manifest.json', 'scrub-report.json'), $Enforced, $null, $leaks, 5, [string[]]@(), [bool[]]@(), [string[]]@()) |
+        Where-Object { $_.Kind -notlike 'allowed*' })
+[GameDeliverable.Tools]::Allow = $textAllow
 if ($mHits.Count) { Remove-Item -Recurse -Force $stage; throw "manifest.json contains a banned name: $($mHits[0].Text)" }
-Rename-Item $stage (Split-Path $final -Leaf)
+for ($try = 1; ; $try++) {   # a virus scanner or indexer may still hold a just-written file for a moment
+    try { Rename-Item $stage (Split-Path $final -Leaf) -ErrorAction Stop; break }
+    catch { if ($try -ge 20) { throw "could not rename $stage to $final after $try tries: $($_.Exception.Message)" }; Start-Sleep -Seconds 3 }
+}
 $zipBytes = $null; $zipEntries = $null
 if (-not $NoZip) {
     Write-Step "zipping ($ZipLevel)"
@@ -1267,7 +1528,7 @@ if (-not $NoZip) {
 }
 $folderBytes = $manifest.totals.bytes + (Get-Item (Join-Path $final 'manifest.json')).Length
 Add-JsonLine (Join-Path $gameOut 'package-log.jsonl') ([ordered]@{
-        time = (Get-IsoNow); package = $name; commit = $sha; variant = $variant; folder = $final; folder_bytes = $folderBytes
+        time = (Get-IsoNow); package = $name; commit = $sha; variant = $variant; status = $manifest.status; version = $Version; folder = $final; folder_bytes = $folderBytes
         zip = $(if ($zipBytes) { $zipPath }); zip_bytes = $zipBytes; files = $all.Count + 1; sections = $sections
         store_dropped_files = $manifest.store_content.dropped_files; gameplay_runs = $runs.Count; build = "$($buildSel.source) $($buildSel.config)"
         scrubbed_files = $touched.Count; warnings = @($warnings); notes = @($problems); leaks_tsv = $leakTsv; duration_s = [math]::Round(((Get-Date) - $t0).TotalSeconds, 1)

@@ -1,0 +1,3 @@
+sha256	offset	word	file (for reading)	reason
+9c75d0a0c978c900a8a297d1c0a241b02955e05297f7b20ccb7e3541f91fbf98	14033855	opusWTTj	Content/fantasy_gui_4/sources/psd/fg4_glass_01.psd	raw grayscale pixel bytes (neighbours are 0x5x-0x8x grey levels: ...`opusWTTj|}|wmqo...), not text; Fab pack source PSD
+9c75d0a0c978c900a8a297d1c0a241b02955e05297f7b20ccb7e3541f91fbf98	19103925	opusWTTj	Content/fantasy_gui_4/sources/psd/fg4_glass_01.psd	same pixel row repeated in the PSD's merged image data
