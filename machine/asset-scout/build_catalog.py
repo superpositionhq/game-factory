@@ -19,35 +19,17 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 COLS = ["path", "games", "source", "url", "licence", "licence_url", "version", "engine", "purpose", "quality_note"]
 
 
-PURCHASED = {  # listing uid -> price paid (Personal tier), from logcart.py
-    l.split("|")[0]: l.split("|")[1] for l in """482af403-8e34-4425-9d6e-9627d2e121a9|9.99
-f083b1c2-05df-4de8-b01c-6ee7dce60228|24.99
-41a8c493-85ee-4e72-a6d4-5982971ce073|24.99
-6c9ecebd-a408-4c23-94aa-982e5f915dca|14.99
-0ca8912a-1d9c-49f7-98ac-36fbcb6e0b03|24.99
-dc5210c9-9659-47b9-9c23-bf8cc31e5d19|49.99
-451900df-be30-426a-81bf-fc610e9d28bb|39.99
-7b404175-8036-4cdc-bb7f-fd3629b94557|34.99
-278716ba-8cc9-4b63-a09a-db272db34abc|29.99
-1158af28-2664-4849-9b94-4e4525e17480|13.99
-b2760e03-30d9-42fb-be3f-857c21e3acc4|99.99
-0a0c8009-ad66-440f-b342-6bda3d90b4da|49.99
-0461bb09-487e-42f1-bcb5-c89a63ec16e9|39.99
-0c920ed7-64f9-4010-a099-5374b4f79bfb|79.99
-5de627fd-5c59-431d-b8e9-3009f8fc8605|29.99
-5e1941eb-82a5-4249-8f02-de9c2c2a6f66|49.99
-5f59fc84-396f-4189-9889-49a9836246e9|13.99
-858e8829-b612-436c-90f0-9bb2f082571e|19.99
-c9051974-5025-48f0-99e7-6edb899805f0|12.99
-2b3ef29d-0ceb-4616-a883-27c3f1db04b2|14.99
-12e74c0f-afb2-499a-a624-0cb66136203f|69.99""".splitlines()}
-PURCHASED_GAMES = {"482af403": "liaozhai-night", "f083b1c2": "liaozhai-night", "41a8c493": "liaozhai-night",
-                   "6c9ecebd": "tower-defense", "0ca8912a": "tower-defense,siege-catapult", "dc5210c9": "tower-defense",
-                   "451900df": "siege-catapult", "7b404175": "siege-catapult", "278716ba": "rally-racer",
-                   "1158af28": "rally-racer", "b2760e03": "horror-escape", "0a0c8009": "horror-escape",
-                   "0461bb09": "stealth", "0c920ed7": "stealth", "5de627fd": "stealth", "5e1941eb": "island-survival",
-                   "5f59fc84": "island-survival", "858e8829": "island-survival", "c9051974": "island-survival",
-                   "2b3ef29d": "island-survival", "12e74c0f": "island-survival"}
+def load_purchases():
+    """purchases.tsv: Fab listing uid -> (price paid, games comma list)."""
+    out = {}
+    for line in open(os.path.join(HERE, "purchases.tsv"), encoding="utf-8"):
+        if line.strip() and not line.startswith("#"):
+            uid, price, games = (line.rstrip("\r\n").split("\t") + ["", ""])[:3]
+            out[uid] = (price, games)
+    return out
+
+
+PURCHASED = load_purchases()
 
 
 def fab_ue_rows():
@@ -65,8 +47,8 @@ def fab_ue_rows():
             continue
         uid = s["listing"].rsplit("/", 1)[1]
         if uid in PURCHASED:
-            lic = f"Fab Standard License (Personal tier, purchased ${PURCHASED[uid]})"
-            games = PURCHASED_GAMES.get(uid[:8], "")
+            lic = f"Fab Standard License (Personal tier, purchased ${PURCHASED[uid][0]})"
+            games = PURCHASED[uid][1]
         else:
             name, lic, games = lib.get(uid, ("", "Fab Standard License", ""))
             lic = "CC BY 4.0" if lic == "CC-BY" else lic

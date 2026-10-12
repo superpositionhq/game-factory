@@ -250,7 +250,14 @@ function Get-VramUsedMB {
     if ("$v".Trim() -match '^\d+$') { return [int]"$v".Trim() } else { return $null }
 }
 
+function Get-VramTotalMB {
+    $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try { $v = & nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>$null | Select-Object -First 1 } catch { $v = $null } finally { $ErrorActionPreference = $eap }
+    if ("$v".Trim() -match '^\d+$') { return [int]"$v".Trim() } else { return $null }
+}
+
 function Wait-VramFree([string]$Label, [int]$MaxUsedMB = 4096, [int]$MaxMinutes = 120) {
+    if ($MaxUsedMB -le 0) { $tot = Get-VramTotalMB; $MaxUsedMB = if ($tot) { [int]($tot / 2) } else { 8192 } }   # 0: half the GPU's VRAM
     # Per-process VRAM is N/A under WDDM, so this uses the total in use before our game starts (desktop ~2-4 GB).
     # Returns $true when below the limit, $false after MaxMinutes.
     $t0 = Get-Date; $next = $t0

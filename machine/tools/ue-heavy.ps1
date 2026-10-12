@@ -6,7 +6,7 @@
 [CmdletBinding(PositionalBinding = $false)]
 param(
   [string]$Label = 'ue job',
-  [int]$Slots = 3,
+  [int]$Slots = 0,   # 0: "heavy_slots" in the machine config, else one per 3 physical cores (8 cores -> 3), 1..6
   [switch]$Gpu,   # force the GPU slot (auto-detected for editor GUI, -game, packaged games)
   [Parameter(ValueFromRemainingArguments = $true)][string[]]$Command
 )
@@ -25,6 +25,12 @@ if (-not $Command) { Write-Error 'usage: ue-heavy.ps1 -Label <text> -- <exe> <ar
 # gf-root.ps1 sits next to the installed copy, or in ..\lib in the repo.
 $gfLib = @((Join-Path $PSScriptRoot 'gf-root.ps1'), (Join-Path $PSScriptRoot '..\lib\gf-root.ps1')) | Where-Object { Test-Path $_ } | Select-Object -First 1
 $gfRoot = if ($gfLib) { . $gfLib; Get-GFRoot } elseif ($env:GF_ROOT) { $env:GF_ROOT } else { Join-Path $env:USERPROFILE 'Work' }
+if ($Slots -le 0) {
+  $cfgSlots = if ($gfLib) { $c = Get-GFConfig; if ($c.PSObject.Properties['heavy_slots']) { [int]$c.heavy_slots } else { 0 } } else { 0 }
+  $cores = (@(Get-CimInstance Win32_Processor) | Measure-Object -Property NumberOfCores -Sum).Sum
+  $Slots = if ($cfgSlots -gt 0) { $cfgSlots } else { [math]::Max(1, [math]::Min(6, [int][math]::Round($cores / 3))) }
+}
+# (the machine-wide semaphore keeps the count it was created with while any job holds it)
 $log = Join-Path $gfRoot '.recording\_heavy-jobs.jsonl'
 New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
 function Log($event, $extra) {
@@ -43,7 +49,7 @@ function Log($event, $extra) {
 }
 $sem = New-Object Threading.Semaphore($Slots, $Slots, 'Global\ue-heavy-jobs')
 # GPU jobs (a rendering editor, -game runs, packaged games) also take the single machine-wide GPU slot, which
-# the recording pipeline holds for the whole of a recording: 16 GB of VRAM does not fit several at once.
+# the recording pipeline holds for the whole of a recording: one GPU's VRAM does not fit several at once.
 $cmdText = $Command -join ' '
 $isGpu = $Gpu -or ($Command[0] -match '(?i)UnrealEditor\.exe$|-Shipping\.exe$') -or
   ($cmdText -match '(?i)(^|\s)-game(\s|$)|-AllowCommandletRendering') -or

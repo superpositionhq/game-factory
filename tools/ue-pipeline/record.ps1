@@ -22,13 +22,14 @@ param(
     [ValidateSet('auto', 'gfxcapture', 'ddagrab', 'gdigrab-region', 'gdigrab-window')][string]$Capture = 'auto',
     [switch]$NoStablePath,
     [double]$IdleMinutes = 5,   # user's decision: record only after this long without keyboard/mouse input (0 = don't wait)
-    [int]$MaxVramInUseMB = 8192,   # before launch, wait while more VRAM than this is in use by other processes (nvidia-smi total)
+    [int]$MaxVramInUseMB = 0,   # before launch, wait while more VRAM than this is in use by other processes (nvidia-smi total); 0: half the GPU's VRAM
     [int]$OutputIndex = 0,
     [int]$CaptureRate = 240,
     [string]$ExtraArgs = ''
 )
 
 . (Join-Path $PSScriptRoot 'common.ps1')
+if ($MaxVramInUseMB -le 0) { $vt = Get-VramTotalMB; $MaxVramInUseMB = if ($vt) { [int]($vt / 2) } else { 8192 } }
 [void][UePipeline.Win]::MakeDpiAware()   # physical pixels for window rects (the display runs at 150 %)
 
 $info = Get-GameInfo $Game
