@@ -86,8 +86,15 @@ def add_project_path_rule(cfg):
             rx.append(r"[^/\\\"]+" if i > 0 and parts[i - 1].lower() == "users" else re.escape(p))
         pats.append(r"(?:/|\\\\)+".join(rx))
     big = re.compile("(?i)(?:%s)(?=/|\\\\)" % "|".join(pats))
-    NORMALISE.append(("project_path", "absolute paths into the folder the editor ran in (game repo vs replay project; "
-                      "user profile name) in import-source fields", lambda s: big.sub("<project>", s)))
+    # a whole string value naming a file inside the project, absolute ("C:\\...\\RawAssets\\x.ttf") or project-relative
+    # ("RawAssets/x.ttf", as the import-path scrub rewrites it): both as "RawAssets/x.ttf"
+    whole = re.compile(r'"<project>((?:(?:/|\\\\)+[^"/\\]+)+)"')
+
+    def rule(s):
+        s = big.sub("<project>", s)
+        return whole.sub(lambda m: '"' + re.sub(r"(?:/|\\\\)+", "/", m.group(1)).lstrip("/") + '"', s)
+    NORMALISE.append(("project_path", "paths into the folder the editor ran in (game repo vs replay project, user "
+                      "profile name; absolute or project-relative) in import-source fields", rule))
 
 
 DROP_KEYS = {

@@ -125,9 +125,24 @@ def expand_loops(cmd, pats=None, spans=False):
     if not any(p.search(subst_var(body, var, v)) for v in values for p in (pats or RUN_PATTERNS)):
         return [cmd]
     if spans:
-        # copy k > 0 repeats the text around the loop: only its loop body counts (no duplicate runs outside the loop)
-        return [(c, 0, len(c)) if k == 0 else (c, m.start(), m.start() + len(subst_var(body, var, values[k])))
-                for k, c in enumerate(out)]
+        # copy k > 0 repeats the text around the loop: only its loop body counts (no duplicate runs outside the loop).
+        # Positions map back to the original command: before the loop as is, iteration k's body inside the loop's span
+        # in iteration order (bodies differ in length with the value), after the loop shifted back
+        n, lo0, hi0 = len(values), m.start(), m.end()
+
+        def mapper(k, blen):
+            def f(p):
+                if p < lo0:
+                    return p
+                if p < lo0 + blen:
+                    return lo0 + (k + (p - lo0) / max(blen, 1)) / n * (hi0 - lo0)
+                return p - (lo0 + blen) + hi0
+            return f
+        res = []
+        for k, c in enumerate(out):
+            blen = len(subst_var(body, var, values[k]))
+            res.append((c, 0, len(c), mapper(k, blen)) if k == 0 else (c, lo0, lo0 + blen, mapper(k, blen)))
+        return res
     return out
 
 
@@ -173,8 +188,8 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
         # first, so a run written as `for s in ...; do wrapper "Scripts/${s%%|*}"; done` is found
         expanded = expand_loops(shellfx.protect_heredocs(cmd)[0], pats, spans=True)
         if isinstance(expanded[0], str):
-            expanded = [(c, 0, len(c)) for c in expanded]
-        if not any(p.search(c) for c, _, _ in expanded for p in pats):
+            expanded = [(c, 0, len(c), lambda p: p) for c in expanded]
+        if not any(p.search(c) for c, _, _, _ in expanded for p in pats):
             continue
         resp = a.get("response") or ""
         raw_resp = resp if isinstance(resp, str) else json.dumps(resp)
@@ -189,7 +204,7 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
             resp = json.dumps(resp)
         exits = [(x[0] or x[2] or x[4], x[1] or x[3] or x[5] or None) for x in EXIT_RE.findall(resp)]
         found = []
-        for k, (c, lo_k, hi_k) in enumerate(expanded):
+        for k, (c, lo_k, hi_k, posmap) in enumerate(expanded):
             for pi, pat in enumerate(pats):
                 for m in pat.finditer(c):
                     if not (lo_k <= m.start() < hi_k):
@@ -214,12 +229,12 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
                             if kv and "=" in kv:
                                 ek, ev = kv.split("=", 1)
                                 env[ek] = ev
-                    found.append(((k, m.start()), subst_assigned(c, m.start(), g["script"]),
+                    found.append(((posmap(m.start()), k), subst_assigned(c, m.start(), g["script"]),
                                   subst_assigned(c, m.start(), (g.get("args") or "").strip()), env,
                                   reason if reason is not None else run_reason(c, m.start()), g.get("mode") or "commandlet",
                                   pi >= len(RUN_PATTERNS)))
         found.sort()
-        for i, ((_, pos), script, args, env, reason, mode, via_wrapper) in enumerate(found):
+        for i, ((pos, _), script, args, env, reason, mode, via_wrapper) in enumerate(found):
             ex = exits[i] if i < len(exits) and len(exits) == len(found) else None
             s = script.replace("\\", "/")
             if re.match(r"^[A-Za-z]:/", s) and s.lower().startswith(repo_abs.lower().rstrip("/") + "/"):
