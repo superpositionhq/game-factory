@@ -311,7 +311,8 @@ def run_editor_script(ctx, run):
     else:
         script, version = external_script(ctx, run)
     env = {k: v.replace("{project}", ctx.proj) for k, v in cfg.get("script_env", {}).items()}
-    env.update(run.get("env") or {})
+    # values the builder's shell expanded ($USERPROFILE, %USERPROFILE%, ...) as the recording machine had them
+    env.update({k: os.path.expandvars(v) for k, v in (run.get("env") or {}).items()})
     if run.get("reason") and cfg.get("reason_env"):
         env[cfg["reason_env"]] = run["reason"]
     if cfg.get("args_env") and run.get("via_wrapper"):

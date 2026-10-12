@@ -176,7 +176,15 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
         if not any(p.search(c) for c, _, _ in expanded for p in pats):
             continue
         resp = a.get("response") or ""
-        if not isinstance(resp, str):
+        raw_resp = resp if isinstance(resp, str) else json.dumps(resp)
+        if isinstance(resp, str) and resp.lstrip().startswith("{"):
+            try:   # a JSON-encoded tool response: read its stdout/stderr as text (escaped newlines broke \b matches)
+                resp = json.loads(resp)
+            except ValueError:
+                pass
+        if isinstance(resp, dict):
+            resp = "%s\n%s" % (resp.get("stdout") or "", resp.get("stderr") or "")
+        elif not isinstance(resp, str):
             resp = json.dumps(resp)
         exits = [(x[0] or x[2] or x[4], x[1] or x[3] or x[5] or None) for x in EXIT_RE.findall(resp)]
         found = []
@@ -219,7 +227,7 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
                 "time": a["time"], "action_tool_use_id": a.get("tool_use_id"), "script": s, "args": args,
                 "exit_code": int(ex[0]) if ex else None, "duration_s": int(ex[1]) if ex and ex[1] else None,
                 # started in the background: by the tool, or with a shell `&` (rows then arrive after the call ends)
-                "background": bool(re.search(r'"backgroundTaskId"', resp)) or bool(re.search(r"[^&]&[ \t]*(?:\n|$|;|echo\b|wait\b|disown\b)", c)),
+                "background": bool(re.search(r'"backgroundTaskId"', raw_resp)) or bool(re.search(r"[^&]&[ \t]*(?:\n|$|;|echo\b|wait\b|disown\b)", c)),
                 "after": prev,
                 "env": env, "reason": reason, "mode": mode, "via_wrapper": via_wrapper, "pos": pos,
                 "command": cmd[:2000],

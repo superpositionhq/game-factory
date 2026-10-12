@@ -327,6 +327,11 @@ def verdict(report, ctx, counts):
                               "maps": (report.get("maps_excluded") or {}).get("maps", [])},
         "git_ignored_extra_files": sorted(ignored),
     }
+    if ctx.cfg.get("dump_exclusions"):
+        # folders left out of the structure dump (settings dump_exclusions: loading them crashes the editor, in the
+        # final commit too); their files are still compared byte for byte under criterion files / Content bytes
+        exclusions["structure_dump_excluded"] = {"what": "; ".join("%s: %s" % (d["path"], d["reason"]) for d in ctx.cfg["dump_exclusions"]),
+                                                 "count": len(ctx.cfg["dump_exclusions"])}
     for rid, what, _ in NORMALISE:
         exclusions[rid] = {"what": what, "count": counts.get(rid, 0)}
     for k, (rid, what) in DROP_KEYS.items():
