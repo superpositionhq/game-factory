@@ -3,8 +3,9 @@
 A visible editor on the replayed project plays work/world-ops.jsonl one op per Slate tick (editor/ue_world_replay.py,
 mode play): every map is created empty and its actors come in through the editor's Import into Level in the order the
 scripts spawned them, group by group, with the viewport camera on each group. ffmpeg's gfxcapture records the editor
-window only (Windows Graphics Capture; other windows, the cursor and other monitors are not recorded). The editor
-runs through ue-heavy.ps1, which holds the machine's GPU slot for its whole length.
+window only (Windows Graphics Capture; other windows, the cursor and other monitors are not recorded). Like a
+pipeline recording, it raises builds/_queue/_recording-wants-gpu (session GPU jobs yield) and holds the machine's
+GPU slot for the editor's whole length.
 
 Outputs in work/video/: raw.mp4 (fragmented MP4), replay.mp4 (captions burned in), captions.ass, ops-played.jsonl
 (wall clock per op), video-verification.json (every op id with its video time, decode check, hashes).
@@ -27,6 +28,69 @@ import runner
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PLAYER = os.path.join(HERE, "editor", "ue_world_replay.py").replace("\\", "/")
+
+
+def gpu_priority_run(label, argv, env, root):
+    """Run the visible editor with recording priority, as the pipeline recorder does: keep
+    builds/_queue/_recording-wants-gpu fresh (ue-heavy holds session GPU jobs back while it is), take the machine's GPU
+    slot (Global\\ue-gpu-jobs) directly, run the editor, release. Returns (exit code, seconds)."""
+    flag = os.path.join(root, "builds", "_queue", "_recording-wants-gpu")
+    heavy_log = os.path.join(root, ".recording", "_heavy-jobs.jsonl")
+    stop = threading.Event()
+    me = "pid %d %s" % (os.getpid(), label)
+
+    def keep_flag():
+        while not stop.is_set():
+            try:
+                os.makedirs(os.path.dirname(flag), exist_ok=True)
+                with open(flag, "w", encoding="ascii", errors="replace") as f:
+                    f.write("%s %s" % (datetime.datetime.now().astimezone().isoformat(), me))
+            except OSError:
+                pass
+            stop.wait(60)
+
+    def log(event, **kw):
+        row = {"time": datetime.datetime.now().astimezone().isoformat(timespec="milliseconds"), "event": event,
+               "label": label, "pid": os.getpid(), "cwd": os.getcwd(), "gpu": True}
+        row.update(kw)
+        try:
+            with open(heavy_log, "a", encoding="utf-8") as f:
+                f.write(json.dumps(row) + "\n")
+        except OSError:
+            pass
+
+    k32 = ctypes.windll.kernel32
+    k32.CreateSemaphoreW.restype = wintypes.HANDLE
+    k32.CreateSemaphoreW.argtypes = [ctypes.c_void_p, ctypes.c_long, ctypes.c_long, wintypes.LPCWSTR]
+    k32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    k32.ReleaseSemaphore.argtypes = [wintypes.HANDLE, ctypes.c_long, ctypes.c_void_p]
+    sem = k32.CreateSemaphoreW(None, 1, 1, "Global\\ue-gpu-jobs")
+    if not sem:
+        sys.exit("cannot open the GPU slot semaphore")
+    ft = threading.Thread(target=keep_flag, daemon=True)
+    ft.start()
+    t0 = time.time()
+    log("wait", command=" ".join(argv))
+    print(runner.now(), "recording priority flag set; waiting for the GPU slot", flush=True)
+    while k32.WaitForSingleObject(sem, 60000) != 0:   # WAIT_OBJECT_0
+        pass
+    log("start", waited_s=int(time.time() - t0))
+    print(runner.now(), "GPU slot held after %d s; starting the editor" % (time.time() - t0), flush=True)
+    t1 = time.time()
+    try:
+        e = dict(os.environ)
+        e.update(env)
+        code = subprocess.run(argv, env=e).returncode
+    finally:
+        k32.ReleaseSemaphore(sem, 1, None)
+        stop.set()
+        try:
+            if open(flag, encoding="ascii", errors="replace").read().endswith(me):
+                os.remove(flag)
+        except OSError:
+            pass
+        log("end", exit_code=locals().get("code"), duration_s=int(time.time() - t1))
+    return code, round(time.time() - t1, 1)
 
 
 def ffmpeg_exe():
@@ -140,11 +204,11 @@ def cmd_record(cfg, a):
     holder = {}
 
     def run_editor():
-        holder["code"], holder["secs"] = runner.heavy("ue-replay %s world-building video" % cfg["game"], argv, env=env)
+        holder["code"], holder["secs"] = gpu_priority_run("ue-replay %s world-building video" % cfg["game"], argv, env, cfg["root"])
 
     th = threading.Thread(target=run_editor, daemon=True)
     th.start()
-    print(runner.now(), "editor started through ue-heavy (GPU slot); waiting for ready", flush=True)
+    print(runner.now(), "editor launch requested (recording priority on the GPU slot); waiting for ready", flush=True)
     while not os.path.exists(os.path.join(hs, "ready")):
         if not th.is_alive():
             sys.exit("editor exited (%s) before the replay was ready; see %s" % (holder.get("code"), log))
