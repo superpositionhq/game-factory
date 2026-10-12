@@ -14,6 +14,30 @@ Two tracks:
 Both tracks start from a format a data vendor sent us (three Unreal packages, `parkour`, `island_explore` and `robofootball`):
 see [docs/vendor-packages.md](docs/vendor-packages.md) for what they contain and where they fall short.
 
+## Dataset format (layout v1, all games)
+
+Every Track B game is delivered in **dataset layout v1**, the vendor samples' top level plus per-scenario gameplay
+videos, README screenshots and the packaged build:
+
+```
+<game>/                          <game>.zip, and <game>_nostore.zip without the store packs
+  README.md
+  git.log
+  workflow.jsonl
+  replay.mp4
+  UEProject/                     not in the repo Dataset/
+  ReplayScripts/
+  Gameplay/<game>_S<n>.mp4       one video per scenario of the release version, game audio muxed
+  Screenshots/                   the README's hero and gallery
+  Build/                         Windows Shipping, no .pdb; not in the repo Dataset/
+  manifest.json
+```
+
+Each game repo keeps the same delivery in `Dataset/`, minus `UEProject/` and `Build/`. Spec:
+[docs/game-deliverable.md](docs/game-deliverable.md#dataset-layout-v1-the-delivery-approved-2026-10-12), machine-readable:
+[docs/dataset-layout-v1.json](docs/dataset-layout-v1.json). Build with `tools/package-game.ps1 ... -Dataset`, check with
+`tools/validate-dataset.ps1 <zip | folder>`.
+
 ## Status (2026-10-11)
 
 | Item | State |
