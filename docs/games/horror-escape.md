@@ -426,7 +426,9 @@ end to end.
 - **Fixes found by the framing screenshots:**
   - the roof hatch sat inside the roof boards (it kept the pre-fix slope), so it could not be used;
   - both attic gables were upside down under the floor, leaving the attic's ends open to the sky;
-  - the wardrobe's hanging rail ran 1 m out of its side.
+  - the wardrobe's hanging rail ran 1 m out of its side;
+  - the wardrobe doors' louvre slats were rolled in the door plane (diagonal stripes from outside, angled boards in
+    the peek view); they are horizontal and tilted in depth since 3360f04.
 - **Import paths:** the user profile path is scrubbed from the assets' import-source paths (verify: 0 hits).
 - **Art pass:**
   - scanned surfaces on every wall, floor and ceiling (Megascans, Poly Haven);
@@ -449,9 +451,10 @@ end to end.
   - movement has weight, bob, sway and breathing (§6c).
 
 **What's left**
-- **Re-run after the last two fixes.** The gables were flipped and the import paths scrubbed after the last verified
-  wins. Chapter 3 won on the scrubbed content (ch3_try34) but before the gables were upright, and chapter 2's win
-  (ch2_try32) predates both. Runs ch2_try33 and ch3_try35 are queued. Closing the attic ends makes the attic darker.
+- **Re-run after the last fixes.** The gables, the import-path scrub and the louvres (3360f04) all came after the last
+  verified wins. Chapter 3 won on the scrubbed content (ch3_try34) but before the gables were upright, and chapter 2's
+  win (ch2_try32) predates all three. Runs ch2_try33 and ch3_try35 are queued; the S1–S3 recording on 3360f04 is the
+  first run on the louvre doors. Closing the attic ends makes the attic darker.
 - **The packaged Shipping build** (below) is from 2026-10-11 14:21 and predates these fixes; repackage before release.
 - **The ending has still not been watched in a run.** The family photograph's scratch decal placement is approximate.
 - **Cellar doors, the hall stairs and the puzzle clocks** are still our script-built meshes, on scanned materials,

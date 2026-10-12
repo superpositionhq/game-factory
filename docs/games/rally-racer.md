@@ -179,6 +179,11 @@ the next (speed x 2 s) of track with a per-driver skill factor; throttle/brake t
 car is close ahead, shift lateral offset to the side with more room; rubber band: target speed x 0.9 to
 1.08 based on distance to the player; reset to last checkpoint if stuck for 3 s or upside down.
 
+Track distance (the "project car onto spline" step) follows the car's previous value: a windowed search −30..+60 m
+around it on the spline. The global search (`FindInputKeyClosest`) is used only after a spawn or teleport, or when it
+lands 20 m closer. Reason: the global search sometimes snapped to another leg of SS1 where the stage doubles back; the
+bot then aimed across country and crashed, which cost the S1 AutoPlay runs.
+
 ## 6b. AutoPlay (QA self-play, contract v1.4)
 
 - Drop-in `Source/RallyRacer/AutoPlay/AutoPlaySubsystem.h/.cpp`, copied unchanged (v1.4, ContractVersion 4: audio clock, render stalls filled with silence). Shipping
