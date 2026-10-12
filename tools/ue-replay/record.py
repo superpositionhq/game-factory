@@ -123,10 +123,17 @@ def cmd_record(cfg, a):
     raw = os.path.join(vd, "raw.mp4")
     fps = 30
     width, height = 1920, 1080
+    # The player starts as a Python start-up script (init_unreal.py in a UE_PYTHONPATH folder): -ExecutePythonScript
+    # quits the editor as soon as the script returns (QUIT_EDITOR), and the player only registers a tick callback.
+    startup = os.path.join(vd, "startup")
+    os.makedirs(startup, exist_ok=True)
+    with open(os.path.join(startup, "init_unreal.py"), "w", encoding="utf-8") as f:
+        f.write("import runpy\nrunpy.run_path(%r, run_name='ue_world_replay')\n" % PLAYER)
     env = {"UE_WORLD_REPLAY_ARGS": "--ops %s --mode play --prefix /Game/_Replay --handshake %s --log %s --speed %s" % (
-        ops_path.replace("\\", "/"), hs.replace("\\", "/"), played.replace("\\", "/"), a.speed if hasattr(a, "speed") else 1.0)}
+        ops_path.replace("\\", "/"), hs.replace("\\", "/"), played.replace("\\", "/"), a.speed if hasattr(a, "speed") else 1.0),
+        "UE_PYTHONPATH": startup}
     log = os.path.join(ctx.logs, "record_editor.log")
-    argv = [ctx.editor_cmd.replace("UnrealEditor-Cmd.exe", "UnrealEditor.exe"), uproject, "-ExecutePythonScript=" + PLAYER,
+    argv = [ctx.editor_cmd.replace("UnrealEditor-Cmd.exe", "UnrealEditor.exe"), uproject,
             "-nosplash", "-NoSound", "-ResX=%d" % width, "-ResY=%d" % height,
             "-ini:EditorPerProjectUserSettings:[/Script/LiveCoding.LiveCodingSettings]:bEnabled=False", "-abslog=" + log]
     t_start = time.time()
@@ -142,6 +149,9 @@ def cmd_record(cfg, a):
         if not th.is_alive():
             sys.exit("editor exited (%s) before the replay was ready; see %s" % (holder.get("code"), log))
         time.sleep(2)
+    time.sleep(5)
+    if not th.is_alive():
+        sys.exit("editor exited (%s) right after ready; see %s" % (holder.get("code"), log))
     hwnd, title, pid = editor_window(os.path.splitext(cfg["uproject"])[0])
     if not hwnd:
         sys.exit("editor window not found")
