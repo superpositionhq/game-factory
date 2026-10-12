@@ -415,6 +415,10 @@ def deviations(ctx, report):
     add("runs_not_replayed", "runs listed in the recording that never started (settings not_run, or the wrapper logged no start)",
         [{"script": r["script"], "run": r["id"], "reason": r.get("not_run") or "no wrapper row and no exit code: the command stopped before it"}
          for r in runs if r.get("not_run") or (r.get("via_wrapper") and r.get("wrapper_rows") == 0 and r.get("exit_code") is None)])
+    add("runs_from_rows", "runs the recorded actions missed (a gap in the recording), rebuilt from the workflow row the "
+        "run wrapper wrote (settings runs_from_rows): script, time, duration and mode from the row",
+        [{"script": r["script"], "run": r["id"], "row": r["from_row"], "window": r["_w"]["index"],
+          "script_version": r.get("script_version")} for r in runs if r.get("from_row")])
     add("readonly_runs_skipped", "probes/checks (settings readonly_patterns) listed but not replayed",
         [{"script": r["script"], "run": r["id"]} for r in runs if r.get("readonly")])
     add("shell_steps", "shell commands of the builder replayed from settings (delete, move-merge, host-python), each matched "

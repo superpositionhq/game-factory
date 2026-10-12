@@ -386,6 +386,29 @@ def build(cfg):
     wf_rows = [json.loads(l) for l in git(repo, "show", "%s:workflow.jsonl" % final).splitlines() if l.strip()]
 
     runs = editor_runs(actions, repo_abs, cfg.get("run_patterns", []))
+    # runs_from_rows: runs the recording missed (a gap in the action hooks; rts-command 03:55-04:46 recorded no tool
+    # call while three editor scripts ran), rebuilt from the workflow row the run wrapper wrote when the run ended
+    # ({"row": "<id>", "mode": "gui"?, "args": ""?, "reason": ...}): script from source.script or target, end time from
+    # the row, duration from params seconds/duration_s, mode from params.mode (ExecutePythonScript = full editor).
+    # Each becomes a pseudo-action at that time, so it lands in its window like a recorded command.
+    rows_by_id = {r.get("id"): r for r in wf_rows}
+    for item in cfg.get("runs_from_rows", []):
+        row = rows_by_id.get(item["row"])
+        if not row:
+            raise SystemExit("runs_from_rows: no workflow row %s at the final commit" % item["row"])
+        p = row.get("params") or {}
+        script = ((row.get("source") or {}).get("script") or str(row.get("target") or "").split(" ")[0]).replace("\\", "/")
+        secs = p.get("seconds") if p.get("seconds") is not None else p.get("duration_s")
+        mode = item.get("mode") or ("gui" if "ExecutePythonScript" in str(p.get("mode") or "") else "commandlet")
+        tid = "row:" + item["row"]
+        runs.append({"time": row["time"], "action_tool_use_id": tid, "script": script, "args": item.get("args", ""),
+                     "exit_code": p.get("exit_code"), "duration_s": int(secs) if secs is not None else None,
+                     "background": False, "after": None, "env": item.get("env", {}), "reason": item.get("reason") or row.get("reason"),
+                     "mode": mode, "via_wrapper": False, "pos": 0, "from_row": item["row"],
+                     "command": "(not in the recorded actions: rebuilt from workflow row %s)" % item["row"]})
+        actions.append({"time": row["time"], "tool": "Bash", "event": "PostToolUse", "tool_use_id": tid, "input": {"command": ""},
+                        "session_id": "runs_from_rows"})
+    actions.sort(key=lambda a: a["time"])
     ro = cfg.get("readonly_patterns", [])
     for r in runs:
         base = os.path.basename(r["script"])
