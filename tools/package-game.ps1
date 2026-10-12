@@ -912,7 +912,8 @@ $OpusCodec = @(
     '\w*WebRtcOpus_\w+', 'WebRTC-[\w-]*Opus[\w-]*', 'OpusCustom\w*',
     '\w*Audio(?:En|De)coder\w*Opus\w*', '\w*Opus(?:Impl|Config|Decoder|Encoder|AudioInfo|Format|Codec|Header|Head|Tags|File)\w*',
     '[\w./-]*opus[\w.-]*\.(?:c|cc|cpp|h)',                            # codec source file names
-    'opus/\d+(?:/\d+)?', 'audio/opus', 'A_OPUS'
+    'opus/\d+(?:/\d+)?', 'audio/opus', 'A_OPUS',
+    'AudioFormatOpus[\w.]*'                                           # UE's Opus audio format key in SoundWave data (AudioFormatOPUS.LastCompileMethod)
 )
 $Locale = @('zh[-_]xiang',                                           # UE's Xiang Chinese locale ids
     'wuxiangshan[\w.]*')                                              # 无相山 (WuXiangShan), a place name in game content, and asset names built on it (WuXiangShanBoss1, ...)

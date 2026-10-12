@@ -154,7 +154,7 @@ Allowlist (exact forms, matched against the whole word around a hit; a word may 
 such as C++ scopes): Opus codec forms seen in the engine binaries (EOS SDK, WebRTC): `third_party/opus/...` source
 paths, `libopus…`, `opus_*` and `OPUS_*` symbols and constants, `WebRtcOpus_*`, `WebRTC-…Opus…` field trials,
 `…AudioEncoder…Opus…`, `Opus{Impl,Config,Decoder,Encoder,Custom,…}…`, codec source file names (`*opus*.c/.cc/.h`),
-`opus/48000/2`, `audio/opus`, `A_OPUS`, and in binaries only the bare codec name `opus`; UE's locale ids `zh_XIANG` /
+`opus/48000/2`, `audio/opus`, `A_OPUS`, UE's audio format key `AudioFormatOPUS…`, and in binaries only the bare codec name `opus`; UE's locale ids `zh_XIANG` /
 `zh-xiang` (which contain the account name). Allowed hits are listed in `<name>.allowlisted.tsv` (outside the package) and
 in the rescan tsv.
 
