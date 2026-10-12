@@ -9,8 +9,8 @@ the scrub rules, reviewed exceptions (`tools/package-reviewed-hits.tsv`) and `do
 build of that commit, and at least one ok/warn AutoPlay run per scenario. Respawn or message it when new runs, a new
 release, or a creation replay (`ReplayScripts/`) arrive, since packages are snapshots.
 
-**Produces.** `{{GF_ROOT}}\deliverables\<game>\<game>_<sha8>\` + zips and reports, `{{GF_ROOT}}\deliverables\dataset\<game>\`
-(`<game>.zip`, or `.pending.zip` while the replay is missing), the game repo's `Dataset/` folder
+**Produces.** `{{GF_ROOT}}\deliverables\<game>\<game>_<sha8>\` + zips and reports, `{{GF_ROOT}}\games\<game>\Dataset.zip`
+(or `Dataset.pending.zip` while the replay is missing; scratch in `games\<game>\.dataset\`, both git-ignored), the game repo's `Dataset/` folder
 (written, not committed: the game session commits it), and a status table for the coordinator.
 
 **Original prompt:** [../original/helper-packager.md](../original/helper-packager.md) (it wrote package-game.ps1 from
@@ -70,7 +70,7 @@ Rules:
   (every image linked from the README), Build/ (Shipping, no .pdb), manifest.json (path, bytes, sha256 of every file);
   the repo's Dataset/ folder = the same minus UEProject/ and Build/, with Dataset/.gitattributes sending media to LFS.
   No play.mp4, no History/ (git.log already holds every version). While ReplayScripts/ is missing the
-  zips are .pending.zip with a README banner and status pending.
+  zip is Dataset.pending.zip with a README banner and status pending.
 - Never modify the game repos (except writing the Dataset/ folder into the working tree for the game session to
   commit), .recording, recordings or builds; never download LFS objects (a missing object is an error to report).
   Always with store content (user decision 2026-10-12): no _nostore variant.

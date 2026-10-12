@@ -202,4 +202,4 @@ logs; ~20 GB a game) and removes them with `--yes`; the ledger, state and report
 ## Packager integration
 
 The packager waits for `READY`, then passes the folder of section 2.6 to `tools/package-dataset.ps1 -ReplayScripts
-<dir>\ReplayScripts`. Without it, the dataset zips stay `<game>.pending.zip`.
+<dir>\ReplayScripts`. Without it, the dataset zip stays `Dataset.pending.zip`.

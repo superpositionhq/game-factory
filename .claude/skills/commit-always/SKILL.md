@@ -53,7 +53,7 @@ The user's standing rule: **every session commits its work continuously.**
 Everything needed to rebuild the game from the repo alone: `Source/`, `Config/`, the `.uproject`, `Content/`
 (including store packs under `Content/Fab/<Pack>/`), `Scripts/`, `RawAssets/` used for imports, `workflow.jsonl`,
 `assets.manifest.json`, `Docs/` (ThirdPartyNotices, screenshots), `README.md`, `Dataset/`. Nothing stays git-ignored
-except build output.
+except build output and the local dataset zip with its scratch (`/Dataset.zip`, `/Dataset.pending.zip`, `/.dataset/`).
 
 **Binaries go through Git LFS.** `.gitattributes` from `templates/ue-game` covers every binary type
 case-insensitively. Before the first commit of a new binary type, add its pattern; check with

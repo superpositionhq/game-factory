@@ -16,7 +16,7 @@ Every game is delivered in **dataset layout v1.1**, our standard delivery: the c
 the packaged build:
 
 ```
-<game>/                          <game>.zip (always with store content)
+<game>/                          games\<game>\Dataset.zip (always with store content; git-ignored)
   README.md
   git.log
   workflow.jsonl

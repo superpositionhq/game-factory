@@ -9,10 +9,10 @@
       -Package %GF_ROOT%\deliverables\<game>\<game>_<sha8> -Version <version>
   ... -ReplayScripts <dir>\ReplayScripts      # once the creation replay is verified (ue_replay.py package: READY)
 
-  Output: deliverables\dataset\<game>\<game>\ + <game>.zip (always with store content; no _nostore variant);
-  <game>.pending.zip while ReplayScripts\ is
-  missing (manifest status "pending", README banner). Reports next to the zips: <name>.store-content.tsv,
-  <name>.scrub-report.json, <name>.rescan-hits.tsv. Writes <repo>\Dataset\ (no UEProject\, no Build\, LFS patterns in
+  Output, all in the game's own folder <repo>\ (git-ignored): <repo>\Dataset.zip, the full dataset (always with store
+  content; top folder <game>/), or Dataset.pending.zip while ReplayScripts\ is missing (manifest status "pending",
+  README banner); scratch in <repo>\.dataset\: the unpacked delivery <game>\, _videos\ and reports
+  (<game>.store-content.tsv, .scrub-report.json, .rescan-hits.tsv). Writes <repo>\Dataset\ (no UEProject\, no Build\, LFS patterns in
   Dataset\.gitattributes); never commits. Every delivery is rescanned (package-game.ps1 -Rescan) and validated
   (validate-dataset.ps1) before anything is zipped.
 #>
@@ -21,15 +21,13 @@ param(
     [Parameter(Mandatory = $true)][string]$Package,      # the full package folder (with store content)
     [string]$Version,
     [string]$ReplayScripts,
-    [string]$OutRoot,               # default <GF_OUT>\dataset, else <root>\deliverables\dataset (machine/lib/gf-root.ps1)
+    [string]$OutRoot,               # default: the game's folder (Dataset.zip + .dataset\); a path puts both under <path>\<game>\ (tests)
     [switch]$NoDataset,
     [switch]$NoZip,
     [switch]$RebuildVideos
 )
 
 . (Join-Path $PSScriptRoot 'ue-pipeline\common.ps1')
-if (-not $OutRoot) { $OutRoot = Join-Path (Get-GFOut) 'dataset' }   # GF_OUT / config "out", else <root>\deliverables
-[void](Assert-GFFreeSpace $OutRoot 'package-dataset')
 $t0 = Get-Date
 $tool = Join-Path $PSScriptRoot 'package-game.ps1'
 $validator = Join-Path $PSScriptRoot 'validate-dataset.ps1'
@@ -107,8 +105,24 @@ $pkgNo = $null   # no _nostore variant any more (user decision 2026-10-12: alway
 $man = Get-Content (Join-Path $pkg 'manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $sha = $man.commit; $short = $sha.Substring(0, 8)
 $info = Get-GameInfo $Game
-$outDir = Join-Path $OutRoot $Game
+# Everything lives in the game's own folder (user decision 2026-10-12): the full dataset zip is <game>\Dataset.zip
+# (Dataset.pending.zip while ReplayScripts\ is missing); the unpacked delivery, videos and reports are scratch in
+# <game>\.dataset\. Both are git-ignored (template .gitignore; added to .git/info/exclude below if a repo lacks it).
+$outDir = if ($OutRoot) { Join-Path $OutRoot $Game } else { Join-Path $info.Dir '.dataset' }
+$zipDir = if ($OutRoot) { $outDir } else { $info.Dir }
 New-Item -ItemType Directory -Force $outDir | Out-Null
+[void](Assert-GFFreeSpace $zipDir 'package-dataset')
+if (-not $OutRoot) {
+    $exclude = Join-Path $info.Dir '.git\info\exclude'
+    foreach ($pat in '/Dataset.zip', '/Dataset.pending.zip', '/.dataset/') {
+        $probe = $pat.Trim('/')
+        & git -C $info.Dir check-ignore -q -- $probe 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            Add-Content -LiteralPath $exclude -Value $pat -Encoding ascii
+            Write-Step "added $pat to $exclude (the repo's .gitignore lacks it; commit it there)"
+        }
+    }
+}
 # One run per game at a time: two runs write the same folders (an open handle; the OS releases it if the run dies).
 $lockPath = Join-Path $outDir '_dataset.lock'
 try { $script:Lock = [System.IO.File]::Open($lockPath, 'OpenOrCreate', 'ReadWrite', 'None') }
@@ -342,8 +356,10 @@ foreach ($r in $results) {
 if ($fail) { throw 'a delivery failed the scan or the layout check: nothing zipped' }
 if (-not $NoZip) {
     foreach ($r in ($results | Where-Object { -not $_.repo })) {
-        foreach ($old in @("$($r.name).zip", "$($r.name).pending.zip")) { $p = Join-Path $outDir $old; if (Test-Path $p) { Remove-Item -Force $p } }
-        $zip = Join-Path $outDir "$($r.name)$(if ($status -ne 'complete') { '.pending' }).zip"
+        # one name for every game: <game>\Dataset.zip (top folder inside stays <game>/)
+        $zbase = if ($OutRoot) { $r.name } else { 'Dataset' }
+        foreach ($old in @("$zbase.zip", "$zbase.pending.zip")) { $p = Join-Path $zipDir $old; if (Test-Path $p) { Remove-Item -Force $p } }
+        $zip = Join-Path $zipDir "$zbase$(if ($status -ne 'complete') { '.pending' }).zip"
         Write-Step "zipping $zip"
         $n = [DatasetV1.T]::Zip($r.dest, $zip, $Game)
         $files = @(Get-ChildItem $r.dest -Recurse -File).Count

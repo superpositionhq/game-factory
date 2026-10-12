@@ -20,3 +20,7 @@ __pycache__/
 *.pyc
 # generated export for review (recreate with git log); the dataset's git.log is built by the packager
 /git.log
+# the full dataset delivery and its packaging scratch (tools/package-dataset.ps1): local only, too big for git
+/Dataset.zip
+/Dataset.pending.zip
+/.dataset/

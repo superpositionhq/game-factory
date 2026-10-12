@@ -1,10 +1,11 @@
 {
   "schema": "dataset-layout/v1.1",
   "approved": "2026-10-12",
-  "changes": "v1.1 (2026-10-12, user): no replay video; the creation replay is ReplayScripts/ only",
+  "changes": "v1.1 (2026-10-12, user): no replay video; the creation replay is ReplayScripts/ only; the full dataset is <repo>/Dataset.zip (same name for every game, git-ignored)",
   "description": "Our standard delivery layout for every game: the creation record (git.log, workflow.jsonl, ReplayScripts/), the project, per-scenario gameplay videos, README screenshots and the packaged build. docs/game-deliverable.md, section 'Dataset layout v1.1', is the prose version of this file; tools/validate-dataset.ps1 checks against this file.",
   "names": {
-    "zip": "<game>.zip",
+    "zip": "Dataset.zip",
+    "zip_place": "the game repo's own folder, next to Dataset/ (git-ignored, with the packager's scratch in .dataset/)",
     "zip_pending_suffix": ".pending.zip",
     "top_folder_in_zip": "<game>",
     "repo_folder": "Dataset"

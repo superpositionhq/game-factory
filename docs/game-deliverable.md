@@ -277,10 +277,13 @@ reads, so this text and the checks cannot drift apart. Nothing in it is per game
 | `Build/` | the pipeline's Shipping build of the release commit (store art cooked in, account name not compiled in) | `.pdb` left out |
 | `manifest.json` | generated | schema below |
 
-**Naming.** Zip: `<game>.zip` (with store content), one top folder `<game>/`. While `ReplayScripts/` is missing it
-is `<game>.pending.zip`. No `_nostore` variant (user decision 2026-10-12).
-They are written to `%GF_ROOT%\deliverables\dataset\<game>\`, with the reports kept next to the zips, not in them:
-`<name>.store-content.tsv` (store files with sha256), `<name>.scrub-report.json`, `<name>.rescan-hits.tsv`.
+**Naming and place.** Every game keeps its full dataset in its own folder: `<repo>\Dataset.zip` (with store
+content), one top folder `<game>/` inside; `Dataset.pending.zip` while `ReplayScripts/` is missing. The same name
+for every game; git-ignored (too big for git: `/Dataset.zip`, `/Dataset.pending.zip`, `/.dataset/` in the template
+.gitignore). Packaging scratch stays in the game folder too, in `<repo>\.dataset\`: the unpacked delivery
+`<game>\`, `_videos\` and the reports (`<game>.store-content.tsv` with sha256 of every store file,
+`<game>.scrub-report.json`, `<game>.rescan-hits.tsv`). Nothing is written under `deliverables\dataset\` any more.
+No `_nostore` variant (user decision 2026-10-12).
 
 **Repo `Dataset/`.** Each game repo carries `Dataset/`: the same layout minus `UEProject/` (the repository is the
 project) and `Build/` (rebuildable; too big for git), as real copies of the same scrubbed files, plus

@@ -112,7 +112,8 @@ competent human, which doesn't mean they must win.
 
 A finished game ships as: `README.md, git.log, workflow.jsonl, UEProject/, ReplayScripts/,
 Gameplay/<slug>_S<n>.mp4, Screenshots/, Build/, manifest.json`. The repo's `Dataset/` folder holds the same minus
-`UEProject/` and `Build/`; the packager produces it and you commit it. README screenshots live in `Docs/screenshots/`
+`UEProject/` and `Build/`; the packager produces it and you commit it. The full dataset zip is `Dataset.zip` in
+the game folder, next to `Dataset/`: git-ignored (with `.dataset/`, the packager's scratch), never committed. README screenshots live in `Docs/screenshots/`
 (jpg, LFS), taken from stills of validated recordings, not from extra GPU launches.
 
 ## Working with the coordinator
