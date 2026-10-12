@@ -135,10 +135,29 @@ $scen = @($runs | Group-Object scenario | Sort-Object { [int]$_.Name } | ForEach
         $_.Group | Sort-Object @{ e = { if ($_.status -eq 'ok') { 0 } else { 1 } } }, @{ e = { $_.name }; Descending = $true } | Select-Object -First 1 })
 $vidDir = Join-Path $outDir '_videos'; New-Item -ItemType Directory -Force $vidDir | Out-Null
 $ff = Find-FFmpeg
+# Preferred source: the run's own gameplay.mp4 (record.ps1 / gameplay-mp4.ps1: video.mkv's H.264 stream copied + the
+# system audio as AAC, aligned on the QPC clock), hard-linked as is. The libx264 re-encode below is the fallback for
+# runs recorded before gameplay.mp4 existed.
+function Test-GameplayMp4([string]$Path) {
+    try {
+        $j = (Invoke-Native (Find-FFprobe) @('-v', 'error', '-show_entries', 'stream=codec_type,codec_name,width,height', '-of', 'json', $Path)) -join "`n" | ConvertFrom-Json
+        $v = @($j.streams | Where-Object { $_.codec_type -eq 'video' }); $au = @($j.streams | Where-Object { $_.codec_type -eq 'audio' })
+        return ($v.Count -eq 1 -and $v[0].codec_name -eq 'h264' -and [int]$v[0].width -eq 1920 -and [int]$v[0].height -eq 1080 -and $au.Count -eq 1 -and $au[0].codec_name -eq 'aac')
+    } catch { return $false }
+}
 foreach ($r in $scen) {
     $out = Join-Path $vidDir "$($Game)_S$($r.scenario).mp4"
     $tag = Join-Path $vidDir "$($Game)_S$($r.scenario).source"
-    if (-not $RebuildVideos -and (Test-Path $out) -and (Test-Path $tag) -and ((Get-Content $tag -Raw).Trim() -eq $r.name)) { continue }
+    $gm = @((Join-Path $r.dir 'gameplay.mp4'), (Join-Path (Join-Path (Join-Path $RecordingsRoot $Game) $r.name) 'gameplay.mp4')) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if ($gm -and -not (Test-GameplayMp4 $gm)) { Write-Step "WARNING: $gm is not h264 1920x1080 + aac: re-encoding instead"; $gm = $null }
+    $srcTag = if ($gm) { "$($r.name) gameplay.mp4" } else { $r.name }
+    if (-not $RebuildVideos -and (Test-Path $out) -and (Test-Path $tag) -and ((Get-Content $tag -Raw).Trim() -eq $srcTag)) { continue }
+    if ($gm) {
+        [DatasetV1.T]::LinkFile($gm, $out, $false)
+        Write-Utf8 $tag $srcTag
+        Write-Step "$(Split-Path $out -Leaf) from $($r.name)\gameplay.mp4 (stream copy, no re-encode; audio offset $([math]::Round($r.offset, 3)) s)"
+        continue
+    }
     $d = $r.dur.ToString('0.000', $inv)
     $shift = if ($r.offset -ge 0) { "adelay=$([int][math]::Round($r.offset * 1000)):all=1," } else { "atrim=start=$((-$r.offset).ToString('0.000', $inv)),asetpts=PTS-STARTPTS," }
     $fc = "[0:v]scale=1920:1080:flags=lanczos,fps=60,format=yuv420p,setsar=1,trim=0:$d,setpts=PTS-STARTPTS[v];[1:a]aformat=sample_rates=48000:channel_layouts=stereo,${shift}apad,atrim=0:$d,asetpts=PTS-STARTPTS[a]"
