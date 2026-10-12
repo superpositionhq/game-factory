@@ -1,3 +1,5 @@
 sha256	offset	word	file (for reading)	reason
 9c75d0a0c978c900a8a297d1c0a241b02955e05297f7b20ccb7e3541f91fbf98	14033855	opusWTTj	Content/fantasy_gui_4/sources/psd/fg4_glass_01.psd	raw grayscale pixel bytes (neighbours are 0x5x-0x8x grey levels: ...`opusWTTj|}|wmqo...), not text; Fab pack source PSD
 9c75d0a0c978c900a8a297d1c0a241b02955e05297f7b20ccb7e3541f91fbf98	19103925	opusWTTj	Content/fantasy_gui_4/sources/psd/fg4_glass_01.psd	same pixel row repeated in the PSD's merged image data
+f8a9e6ed9e4e1aa350c727f0712da3aabe82e933bf2a47e145baab86fd86ffde	22291982	OPUSJNRpNQT	Content/Fab/JapaneseForestGrave/Textures/Assets/Rock01/Rock02_PM3D_Cube3D3_BaseColor.tga	uncompressed TGA (type 2, 4096x4096, 32 bpp) pixel bytes, BGRA quadruplets around the hit; Fab pack texture
+6d7057bf9322933cf4c304610b4361a1bf25924c74ddfc0ca073efd5b9b5c250	21114831	bhOPUS	Content/Fab/JapaneseForestGrave/Textures/Tilable/Dirt_Stony02/Dirt01_basecolor.tga	uncompressed TGA (type 2, 4096x4096, 24 bpp) pixel bytes, BGR triplets around the hit; Fab pack texture
