@@ -140,7 +140,18 @@ def subst_assigned(cmd, pos, text):
 def editor_runs(actions, repo_abs, extra_patterns=()):
     """Editor-script runs found in shell commands, in order. Each: time (end of the tool call), approximate start,
     script (repo-relative or absolute), args, exit code / duration when the output says so."""
-    pats = list(RUN_PATTERNS) + [re.compile(x) for x in extra_patterns]
+    # extra patterns: a regex (named groups script, args, mode, reason), or {"pattern": regex, "script": template,
+    # "args": template, "mode": ...} for a host-side wrapper that starts the editor itself with a fixed script
+    # (rally: Scripts/scrub_paths.py --mode apply -> the factory's scrub-import-paths.py --apply); templates take
+    # {name} for the pattern's named groups
+    templates = {}
+    pats = list(RUN_PATTERNS)
+    for x in extra_patterns:
+        if isinstance(x, dict):
+            templates[len(pats)] = x
+            pats.append(re.compile(x["pattern"]))
+        else:
+            pats.append(re.compile(x))
     runs = []
     prev_time = None
     for a in actions:
@@ -161,9 +172,15 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
         for k, c in enumerate(expanded):
             for pi, pat in enumerate(pats):
                 for m in pat.finditer(c):
-                    g = m.groupdict()
+                    g = {k2: (v or "") for k2, v in m.groupdict().items()}
+                    if pi in templates:
+                        tp = templates[pi]
+                        g["script"] = tp["script"].format(**g)
+                        g["args"] = tp.get("args", "{args}" if "args" in g else "").format(**g)
+                        g["mode"] = tp.get("mode", g.get("mode") or "commandlet")
+                    g = {k2: (v if v != "" else None) for k2, v in g.items()}
                     reason = g.get("reason") if g.get("reason") is not None else g.get("reason_sq")
-                    found.append(((k, m.start()), subst_assigned(c, m.start(), m.group("script")),
+                    found.append(((k, m.start()), subst_assigned(c, m.start(), g["script"]),
                                   subst_assigned(c, m.start(), (g.get("args") or "").strip()), run_env(c, m.start()),
                                   reason if reason is not None else run_reason(c, m.start()), g.get("mode") or "commandlet",
                                   pi >= len(RUN_PATTERNS)))
