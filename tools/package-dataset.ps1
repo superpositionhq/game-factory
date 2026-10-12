@@ -174,6 +174,10 @@ function Invoke-SessionRescrub([string]$Dir, [string[]]$Ids, [string]$What) {
     $o = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'package-game.ps1') $Game -ScrubDir $Dir 2>&1
     $o | Select-Object -Last 2 | ForEach-Object { Write-Host "  $_" }
     if ($LASTEXITCODE -ne 0) { throw "text scrub of $Dir failed" }
+    # -ScrubDir writes <dir>.scrub.json next to the folder: for the repo's Dataset\ that is the repo root. Reports live
+    # in the ignored scratch folder only.
+    $sj = "$Dir.scrub.json"
+    if (Test-Path -LiteralPath $sj) { Move-Item -Force -LiteralPath $sj -Destination (Join-Path $scratch "$(Split-Path $Dir -Leaf).rescrub-scrub.json") }
     # media and packed data are skipped; so are executables and libraries (third-party code may hold such words for its
     # own reasons; patching them could change behaviour): the patch is for assets' recorded import paths and logs
     $skip = '.mp4;.mkv;.mka;.wav;.flac;.ogg;.mp3;.png;.jpg;.jpeg;.pak;.ucas;.utoc;.zip;.dll;.exe;.pdb;.sys;.so;.dylib;.lib;.a;.o'
@@ -486,6 +490,7 @@ foreach ($r in $results) {
     $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $tool $Game -Rescan $r.dest 2>&1
     $verdict = @($o | Where-Object { $_ -match '^(PASS|FAIL)' })[0]
     Move-Item -Force "$($r.dest).rescan-hits.tsv" (Join-Path $outDir "$($r.name).rescan-hits.tsv") -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath "$($r.dest).rescan-hits.tsv") { throw "could not move $($r.dest).rescan-hits.tsv into $outDir (it would sit in the repo root)" }
     $va = @('-Path', $r.dest); if ($r.repo) { $va += '-RepoDataset' }
     $vo = & powershell -NoProfile -ExecutionPolicy Bypass -File $validator @va 2>&1
     $vv = @($vo | Where-Object { $_ -match '^(VALID|PENDING|INVALID)' })[0]
