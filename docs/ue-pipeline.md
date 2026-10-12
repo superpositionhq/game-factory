@@ -14,6 +14,7 @@ through Enhanced Input, see [autoplay-contract.md](autoplay-contract.md)) as gam
 | `validate-run.ps1 <OutputDir>` | contract check of one raw run directory (for game sessions testing by hand) |
 | `scrub-history.ps1 <game> [-Apply]` | archive, then remove the names Superposition/game-factory from a finished game's history; dry run by default |
 | `mark-invalid.ps1 <game> -Commit sha \| -RunId id -Reason text` | exclude bundles from the dataset (INVALID file, validation status `invalid`); files kept |
+| `scrub-import-paths.py` (UE Python, headless) | removes the user's profile path from a project's editor import-source paths (AssetImportData, FontFace, Interchange); see below |
 | `leak-scan.ps1 <dir> [-Patterns ..]` | byte search (ASCII + UTF-16) for the user name or other strings that must not ship |
 | `stills.ps1 <game> [-RunId id] [-Force]` | README stills for runs recorded before record.ps1 made them (updates metadata/manifest) |
 | `sync-check.ps1 <bundle>` | measures video/audio lag against telemetry sync markers (pipeline test project) |
@@ -339,6 +340,46 @@ messages, builds, logs, in-game files, anything passed to the game process). Rec
   `DefaultGame.ini` and `.uproject`, `superposition.ue-workflow/v0` and `superposition.asset-manifest/v0` schema strings
   in scripts, `workflow.jsonl` and `assets.manifest.json`, `...\game-factory\...` paths, v1 drop-in copies, and the
   author e-mail `dev_02@game-factory.local` (rally-racer).
+
+## scrub-import-paths.py (user path in a project's import data)
+
+Assets remember the file they were imported from. Imports made under `C:\Users\<name>\` leave that path in the
+project's `.uasset` files: in `AssetImportData` (textures, meshes, sounds, animations, data tables), in
+`FontFace.SourceFilename` (which even reaches the cooked font), and in the node ids of Interchange-imported assets
+(`UInterchangeAssetImportData`, e.g. `Factory_C:/Users/<name>/.../T.png`). The cook strips import data, but the
+project files we ship keep it. Run it on a game's working tree (editor target built, editor closed), then commit:
+
+```
+"C:\Program Files\Epic Games\UE_5.3\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" <Project>.uproject -run=pythonscript -script="C:/Users/Xiang/Work/game-factory/tools/ue-pipeline/scrub-import-paths.py --apply" -nullrhi -unattended -nopause -nosplash -stdout -AllowStdOutLogVerbosity
+... same with --patch-remaining   (separate run: what no editor API reaches)
+... same with --verify            (expect "verify: 0 hits in 0 files")
+```
+
+Use forward slashes inside `-script="..."` (the commandlet un-escapes backslashes: `\t` becomes a tab). Output goes
+to LogPython (stdout with `-AllowStdOutLogVerbosity`, always in `Saved/Logs/<Project>.log`), the report to
+`Saved/scrub-import-paths.json` (`--report=<file>` elsewhere). Runs through ue-heavy (CPU slot); no GPU, no window.
+
+- It byte-scans `Content/**/*.uasset|umap|uexp` for `\<name>\` and `/<name>/` (case-insensitive, ASCII and UTF-16LE)
+  and loads only packages with hits. Default is a dry run; `--apply` saves only changed packages.
+- `AssetImportData`: each source file under the user profile becomes a path inside the project if it is there
+  (stored package-relative by UE; `--original-project-dir=<dir>` also counts files under the project's original
+  location when running on a copy), else just the file name. Written with `ScriptedAddFilename`, which re-reads the
+  file's timestamp/MD5 (a bare name has none: reimport then asks for the file).
+- `FontFace.SourceFilename`: same mapping, written with `notify_mode=NEVER` (its `PostEditChangeProperty` flushes Slate's
+  font cache and asserts in a commandlet) and saved with `save_loaded_asset`.
+- `--patch-remaining` (opt-in, its own run before anything loads): Interchange node ids can't be set from Python
+  (`NodeUniqueID` is read-only, the node container is a cached byte blob), so the remaining `\<name>\` / `/<name>/`
+  are rewritten in place to the same length (`/user_/`): FString lengths and package offsets stay valid, and UE5
+  discards the name map's stored hashes. Each patched package is then load-tested (`load_failures` in the report).
+- `--verify`: byte scan only. Bare `xiang` also matches the engine's Xiang Chinese locale ids (`zh_XIANG`) in some
+  binaries, never in Content; the path patterns don't.
+
+Tested on a scratch clone of tower-defense 3309e7b (`C:\UEB\scratch`; the game's tree untouched): 56 hits in 16 files
+â†’ 4 FontFaces fixed by `--apply` (`C:/Users/<name>/Work/games/tower-defense/Saved/Staging/FF_*.ttf` â†’
+`Saved/Staging/FF_*.ttf`), 12 Interchange textures by `--patch-remaining` (all 12 load), `--verify` 0. Cook before
+vs after (9319 files): identical except the 4 fonts, whose cooked bytes differ exactly by the removed 40-character path
+prefix and its size field, `Metadata/DevelopmentAssetRegistry.bin` (editor tags, not staged), and the shader archives
+and cook metadata that also differ between two cooks of unchanged content. Gameplay data is unchanged.
 
 ## scrub-history.ps1 (finished games only; not run on any game yet)
 
