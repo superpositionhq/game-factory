@@ -305,7 +305,9 @@ powershell -ExecutionPolicy Bypass -File C:\Users\Xiang\Work\game-factory\tools\
 
 Dropping a queued request: move it to `builds\_queue\done\` with a `result` note (status `dropped`).
 
-Results: `.recording\<game>\pipeline.jsonl` (summary), `runs.jsonl`, `builds\_queue\done\<request>.json`.
+Results: `.recording\<game>\pipeline.jsonl` (summary), `runs.jsonl`, `builds\_queue\done\<request>.json`. The job summary's
+`build.leak_scan_hits` lists the build's leak-scan hits (file, pattern, count, example; `[]` = clean, null = build made
+before the scan existed); warn-only, the packager blocks on them.
 
 **Nightly** (Task Scheduler, interactive session only: Desktop Duplication needs the unlocked desktop):
 

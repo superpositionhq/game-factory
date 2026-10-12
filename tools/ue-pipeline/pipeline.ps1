@@ -87,6 +87,18 @@ function Invoke-GamePipeline([string]$GameSlug, [int]$RunCount, [int[]]$Scenario
         Write-Step "== $GameSlug $($sha.Substring(0, 8)): build + package + smoke"
         $build = & (Join-Path $PSScriptRoot 'build.ps1') $GameSlug -Commit $sha -Package -Smoke | Select-Object -Last 1
         $summary.build = [ordered]@{ status = $build.status; short_sha = $build.short_sha; output = $build.output_path; smoke = $build.smoke.status }
+        # Leak-scan hits (user name in paths, forbidden names) in the job summary, so they show without builds.jsonl.
+        # Warn-only here; the packager is the gate. Builds made before the scan existed have no leak_scan (null).
+        # $build is the fresh row (ordered dictionary) or a reused build_info.json (PSCustomObject).
+        function Get-Member0($Obj, [string]$Name) {
+            if ($null -eq $Obj) { return $null }
+            if ($Obj -is [System.Collections.IDictionary]) { if ($Obj.Contains($Name)) { return $Obj[$Name] } else { return $null } }
+            if ($Obj.PSObject.Properties.Name -contains $Name) { return $Obj.$Name } else { return $null }
+        }
+        $ls = Get-Member0 $build 'leak_scan'
+        $summary.build.leak_scan_hits = if ($null -eq $ls) { $null } else {
+            @(Get-Member0 $ls 'hits' | Where-Object { $_ } | ForEach-Object { [ordered]@{ file = (Get-Member0 $_ 'file'); pattern = (Get-Member0 $_ 'pattern'); count = (Get-Member0 $_ 'count'); example = (Get-Member0 $_ 'example') } })
+        }
         if ($build.status -ne 'ok') { $summary.status = 'failed'; $summary.note = "build failed: $($build.error_excerpt)"; return $summary }
 
         foreach ($t in $todo) {
