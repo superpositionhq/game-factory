@@ -10,6 +10,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -206,6 +207,11 @@ def initial_assets_manifest(cfg, ctx):
     files = []
     for d in cfg.get("asset_drops", []):
         for it in d["items"]:
+            if it.get("from_git"):
+                for fp, size, sha in git_tree_files(cfg["repo"], ctx.ledger["final"], it["from_git"]):
+                    files.append({"role": "store_pack", "drop": d["id"], "pack": it.get("pack"), "path": fp, "bytes": size,
+                                  "sha256": sha, "source": "final commit (git/LFS)"})
+                continue
             for dp, _, fns in os.walk(it["from"]):
                 for fn in fns:
                     fp = os.path.join(dp, fn)
@@ -305,7 +311,7 @@ def run_editor_script(ctx, run):
         env[cfg["reason_env"]] = run["reason"]
     log = os.path.join(ctx.logs, "runs", "%s_%s.log" % (run["id"], os.path.splitext(os.path.basename(run["script"]))[0]))
     os.makedirs(os.path.dirname(log), exist_ok=True)
-    if run.get("mode") == "editor":
+    if run.get("mode") not in (None, "", "commandlet"):   # "editor", or a wrapper's own name for it (e.g. "gui")
         # the builder ran it in a full (headless) editor, not the commandlet: -ExecutePythonScript, quits when done
         argv = [ctx.editor_cmd, ctx.uproject, "-ExecutePythonScript=%s" % script] + cfg.get("editor_args", [])
         if not any(x.lower() == "-nullrhi" for x in argv):
@@ -355,9 +361,38 @@ def move_merge(ctx, step):
     return moved
 
 
+def git_tree_files(repo, sha, path):
+    """(path, bytes, sha256) of every file under path at sha; Git LFS pointers give the object's own size and oid."""
+    out = []
+    lines = [l for l in git(repo, "ls-tree", "-r", sha, "--", path).splitlines() if l.strip()]
+    ids = [(l.split("\t", 1)[1], l.split()[2]) for l in lines]
+    if not ids:
+        return out
+    r = subprocess.run(["git", "-C", repo, "cat-file", "--batch"], input=("\n".join(i for _, i in ids) + "\n").encode(),
+                       capture_output=True)
+    data, pos = r.stdout, 0
+    for fp, oid in ids:
+        nl = data.index(b"\n", pos)
+        size = int(data[pos:nl].split()[2])
+        body = data[nl + 1:nl + 1 + size]
+        pos = nl + 1 + size + 1
+        m = re.match(rb"version https://git-lfs.github.com/spec/v1\noid sha256:([0-9a-f]{64})\nsize (\d+)", body)
+        if m:
+            out.append((fp, int(m.group(2)), m.group(1).decode()))
+        else:
+            out.append((fp, size, hashlib.sha256(body).hexdigest()))
+    return out
+
+
 def drop_assets(ctx, d):
     n = 0
     for it in d["items"]:
+        if it.get("from_git"):
+            # the pack exactly as the game committed it (e.g. a fetch script that filtered the files), restored from the
+            # final commit into the working tree at the moment the builder copied it in; LFS objects from the game's store
+            git(ctx.proj, "restore", "--source=" + ctx.ledger["final"], "--worktree", "--", it["from_git"])
+            n += len(git(ctx.proj, "ls-tree", "-r", "--name-only", ctx.ledger["final"], "--", it["from_git"]).splitlines())
+            continue
         dst = ctx.p(it["to"])
         for dp, _, fns in os.walk(it["from"]):
             for fn in fns:
@@ -471,8 +506,8 @@ def cmd_run(cfg, a):
                 r = s
                 rec.update({"run": r["id"], "script": r["script"], "readonly": r["readonly"], "exit_code_original": r["exit_code"],
                             "rows_original": r["rows"]})
-                not_run = ("original exit 127: the command was not found, the script never ran" if r.get("exit_code") == 127 else
-                           "no wrapper row and no exit code: the original command stopped before this run"
+                # (an exit code, even 127, means the run happened: the wrapper printed it after the editor exited)
+                not_run = ("no wrapper row and no exit code: the original command stopped before this run"
                            if r.get("wrapper_rows") == 0 and r.get("exit_code") is None else None)
                 if not_run and not a.force:
                     rec["skipped"] = not_run

@@ -80,7 +80,7 @@ RUN_PATTERNS = [
     re.compile(r"-run=pythonscript\s+['\"]?-script=(?P<script>[^'\"\s]+)(?P<args>[^'\"]*)['\"]?"),
 ]
 # "exit code N (S s)" (Scripts/ue.ps1) or "exit=N seconds=S" (a game's shell wrapper)
-EXIT_RE = re.compile(r"exit code (-?\d+) \((\d+) s\)|exit=(-?\d+) seconds=(\d+)")
+EXIT_RE = re.compile(r"exit code (-?\d+) \((\d+) s\)|exit=(-?\d+)(?: seconds=(\d+))?")
 
 
 # a shell command that exited non-zero still ran: its file edits and editor runs happened
@@ -156,7 +156,7 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
         resp = a.get("response") or ""
         if not isinstance(resp, str):
             resp = json.dumps(resp)
-        exits = [(x[0] or x[2], x[1] or x[3]) for x in EXIT_RE.findall(resp)]
+        exits = [(x[0] or x[2], x[1] or x[3] or None) for x in EXIT_RE.findall(resp)]
         found = []
         for k, c in enumerate(expanded):
             for pi, pat in enumerate(pats):
@@ -175,7 +175,7 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
                 s = s[len(repo_abs.rstrip("/")) + 1:]
             runs.append({
                 "time": a["time"], "action_tool_use_id": a.get("tool_use_id"), "script": s, "args": args,
-                "exit_code": int(ex[0]) if ex else None, "duration_s": int(ex[1]) if ex else None,
+                "exit_code": int(ex[0]) if ex else None, "duration_s": int(ex[1]) if ex and ex[1] else None,
                 # started in the background: by the tool, or with a shell `&` (rows then arrive after the call ends)
                 "background": bool(re.search(r'"backgroundTaskId"', resp)) or bool(re.search(r"[^&]&[ \t]*(?:\n|$|;|echo\b|wait\b|disown\b)", c)),
                 "after": prev,
@@ -435,10 +435,12 @@ def build(cfg):
     wrapper_ops = set(cfg.get("wrapper_row_ops", []))   # rows a game's run wrapper logs around each run (not the script's)
     for row in wf_rows:
         if row.get("op") in wrapper_ops:
-            s = ((row.get("source") or {}).get("script") or row.get("target") or "").replace("\\", "/")
-            m = re.search(r"(?:^|/)(Scripts/.+\.py)$", s)
-            if s:
-                wrapper_by_script[m.group(1) if m and s.startswith("..") else s].append(row)
+            # a wrapper names the script it ran in source.script (siege) or in target (tower-defense: source.script is
+            # the wrapper itself); index the row under both
+            for s in {((row.get("source") or {}).get("script") or "").replace("\\", "/"), str(row.get("target") or "").replace("\\", "/")}:
+                m = re.search(r"(?:^|/)(Scripts/.+\.py)$", s)
+                if s:
+                    wrapper_by_script[m.group(1) if m and (s.startswith("..") or re.match(r"^[A-Za-z]:/|^/", s)) else s].append(row)
             continue
         s = (row.get("source") or {}).get("script")
         if s:
