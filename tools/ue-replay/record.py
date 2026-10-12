@@ -72,8 +72,11 @@ def gpu_priority_run(label, argv, env, root):
     t0 = time.time()
     log("wait", command=" ".join(argv))
     print(runner.now(), "recording priority flag set; waiting for the GPU slot", flush=True)
-    while k32.WaitForSingleObject(sem, 60000) != 0:   # WAIT_OBJECT_0
-        pass
+    if os.environ.get("GF_GPU_SLOT_HELD") == "1":   # a killed earlier capture left the slot taken: adopt it
+        print(runner.now(), "adopting the GPU slot left held by the previous capture", flush=True)
+    else:
+        while k32.WaitForSingleObject(sem, 60000) != 0:   # WAIT_OBJECT_0
+            pass
     log("start", waited_s=int(time.time() - t0))
     print(runner.now(), "GPU slot held after %d s; starting the editor" % (time.time() - t0), flush=True)
     t1 = time.time()
@@ -104,8 +107,10 @@ def ffmpeg_exe():
 def editor_window(title_part, timeout=600):
     """Visible top-level window of UnrealEditor.exe whose title contains title_part."""
     user32 = ctypes.windll.user32
-    psapi = ctypes.windll.psapi
     k32 = ctypes.windll.kernel32
+    k32.OpenProcess.restype = wintypes.HANDLE
+    k32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
+    k32.CloseHandle.argtypes = [wintypes.HANDLE]
     found = []
 
     @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
@@ -119,11 +124,15 @@ def editor_window(title_part, timeout=600):
             return True
         pid = wintypes.DWORD()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        # PROCESS_QUERY_LIMITED_INFORMATION is enough for QueryFullProcessImageNameW (GetModuleBaseNameW would need
+        # VM_READ and returns nothing with it, so no window ever matched)
         h = k32.OpenProcess(0x1000, False, pid.value)
-        name = ctypes.create_unicode_buffer(260)
-        psapi.GetModuleBaseNameW(h, None, name, 260)
-        k32.CloseHandle(h)
-        if name.value.lower() == "unrealeditor.exe":
+        name = ctypes.create_unicode_buffer(1024)
+        size = wintypes.DWORD(1024)
+        if h:
+            k32.QueryFullProcessImageNameW(h, 0, name, ctypes.byref(size))
+            k32.CloseHandle(h)
+        if os.path.basename(name.value).lower() == "unrealeditor.exe":
             found.append((hwnd, buf.value, pid.value))
         return True
 
