@@ -904,9 +904,11 @@ $RulesTail = @(
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bclaude[-_ ]code\b'; replace = 'agent-tool' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bclaude[-_ ]?(?:opus|sonnet|haiku|fable|instant)(?:[-_ ]?[0-9]+(?:[._-][0-9]+)*)?[\w.-]*'; replace = 'agent-model' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bopus[-_ ]?[0-9]+(?:\.[0-9]+)*\b'; replace = 'agent-model' },
-    # the capitalized word Opus on its own in prose (e.g. quoted policy text: "Agent", "Opus" and "Provider"; also
+    # the word opus on its own in prose, any case (quoted policy text "Agent/Provider/Opus", "agent or opus or ..."; also
     # "the Opus audio codec", which the rescan would block too); codec identifiers (libopus, opus_*, AudioFormatOPUS) stay
-    @{ id = 'agent-mention'; scope = 'all'; match = '(?<![\w/.-])Opus(?![\w/.-])'; replace = 'Model' },
+    @{ id = 'agent-mention'; scope = 'all'; match = '(?<![\w.-])(?<!audio/)OPUS(?![\w.-]|/\d)'; replace = 'MODEL' },
+    @{ id = 'agent-mention'; scope = 'all'; match = '(?<![\w.-])(?<!audio/)Opus(?![\w.-]|/\d)'; replace = 'Model' },
+    @{ id = 'agent-mention'; scope = 'all'; match = '(?i)(?<![\w.-])(?<!audio/)opus(?![\w.-]|/\d)'; replace = 'model' },
     @{ id = 'agent-mention'; scope = 'all'; match = 'CLAUDE'; replace = 'AGENT' }, @{ id = 'agent-mention'; scope = 'all'; match = 'Claude'; replace = 'Agent' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)claude'; replace = 'agent' },
     @{ id = 'agent-mention'; scope = 'all'; match = 'ANTHROPIC'; replace = 'PROVIDER' }, @{ id = 'agent-mention'; scope = 'all'; match = 'Anthropic'; replace = 'Provider' },
