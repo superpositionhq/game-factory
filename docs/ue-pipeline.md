@@ -104,6 +104,11 @@ this engine install. The recorded game itself is the packaged exe, which has no 
    / `-ubtargs="-MaxParallelActions=4"` (BuildCookRun). Each parallel cl.exe with a PCH reserves a large block of commit,
    and with little left they fail with C3859 "Failed to create virtual memory for PCH" / C1076. `free_commit_gb` and
    `max_parallel_actions` go to builds.jsonl.
+
+   BuildCookRun's own UBT call always gets `-ubtargs="-WaitMutex[ -MaxParallelActions=4]"`: without it, it fails at once
+   ("A conflicting instance of UnrealBuildTool is already running") while another session's UBT runs (island 5462fc8,
+   2026-10-12). If the package log still has that message, the step is retried once as `package-retry`; the first
+   attempt stays in `steps[]` marked `retried`, so a successful retry leaves a clean build row.
 5. With `-Smoke`: if the game's Source contains an automation test named `<Project>.Smoke…`,
    `UnrealEditor-Cmd.exe <uproject> -ExecCmds="Automation RunTests <Project>.Smoke; Quit" -TestExit="Automation Test Queue Empty"
    -ReportExportPath=<logs> -nullrhi -unattended -nopause -nosplash -nosound`; pass = report has ≥ 1 success and 0
