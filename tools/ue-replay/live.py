@@ -542,7 +542,14 @@ def write_report(cfg, rep):
     status["findings"] = dict(collections.Counter(f["level"] for f in rep["findings"]))
     status["report"] = stem + ".md"
     runner.jdump(os.path.join(d, "status.json"), status)
-    fb = feedback(rep, (stem + ".md").replace("\\", "/"))
+    # the session hears about a finding once: a window replayed again after a reset (or a historical commandlet) gives
+    # the same findings, which stay in the report but not in the feedback
+    seen_p = os.path.join(d, "reported.json")
+    seen = set(runner.jload(seen_p, []) or [])
+    key = lambda f: "%s|%s|%s|%s" % (f["kind"], f.get("window"), f.get("script"), re.sub(r"\d+", "#", f["message"])[:160])
+    fresh = [f for f in rep["findings"] if key(f) not in seen]
+    runner.jdump(seen_p, sorted(seen | set(key(f) for f in rep["findings"])))
+    fb = feedback(dict(rep, findings=fresh), (stem + ".md").replace("\\", "/"))
     fbp = os.path.join(d, "feedback.md")
     if fb:
         with open(fbp, "w", encoding="utf-8", newline="\n") as f:
