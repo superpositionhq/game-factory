@@ -303,6 +303,23 @@ def patch_remaining(hits, content_dir, project_dir):
     return patched
 
 
+def load_package_asset(pkg):
+    """The package's main asset. EditorAssetLibrary.load_asset goes through the asset registry, which a fresh commandlet
+    may still be scanning ("could not be found in the Asset Registry" for a package that exists); fall back to loading
+    the object path directly."""
+    asset = None
+    try:
+        asset = unreal.EditorAssetLibrary.load_asset(pkg)
+    except Exception:
+        asset = None
+    if asset is None:
+        try:
+            asset = unreal.load_asset('%s.%s' % (pkg, pkg.rsplit('/', 1)[-1]))
+        except Exception:
+            asset = None
+    return asset
+
+
 def main(argv):
     apply = '--apply' in argv
     verify = '--verify' in argv
@@ -316,6 +333,11 @@ def main(argv):
         content_dir = os.path.normpath([a for a in argv if not a.startswith('--')][0])
         project_dir = os.path.dirname(content_dir)
     log('project %s, user profile %s, mode %s' % (project_dir, user_profile(), 'verify' if verify else ('apply' if apply else 'dry run')))
+    if unreal is not None and not verify:
+        try:   # finish the asset registry scan before loading packages by name
+            unreal.AssetRegistryHelpers.get_asset_registry().wait_for_completion()
+        except Exception:
+            pass
 
     hits = scan(content_dir)
     total = sum(sum(c.values()) for c in hits.values())
@@ -329,7 +351,7 @@ def main(argv):
     if patch:
         patched = patch_remaining(hits, content_dir, project_dir)
         for p in patched:   # first load in this process: proves the patched package still loads
-            asset = unreal.EditorAssetLibrary.load_asset(p['package']) if unreal is not None else None
+            asset = load_package_asset(p['package']) if unreal is not None else None
             p['loads'] = asset is not None
             p['class'] = asset.get_class().get_name() if asset is not None else None
             if asset is None:
@@ -354,7 +376,7 @@ def main(argv):
         pkg = package_name(path, content_dir)
         entry = {'package': pkg, 'file': os.path.relpath(path, project_dir), 'hits': hits[path], 'changes': [], 'saved': False}
         try:
-            asset = unreal.EditorAssetLibrary.load_asset(pkg)
+            asset = load_package_asset(pkg)
         except Exception as e:
             asset = None
             entry['error'] = 'load failed: %s' % e
