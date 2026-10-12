@@ -58,7 +58,11 @@ commit. A window's steps come from the ledger (`ue_replay.py ledger`), in the or
 Read-only runs (probes, analyses, checks: settings `readonly_patterns`) are listed but skipped, except a script in
 `not_readonly` (every run of it) or a single run in `not_readonly_runs` (`{tool_use_id, script, reason}`) whose output a
 later run reads: horror's probe_clip_speeds.py writes Saved/clip_speeds.json; stealth's first inspect_pack_meshes.py
-creates Saved/PackMeshes, where prune_packs.py writes (its slow later runs stay skipped). Game launches,
+creates Saved/PackMeshes, where prune_packs.py writes (its slow later runs stay skipped). A run the recorded actions
+miss is rebuilt from the workflow row its wrapper wrote when it ended (`runs_from_rows`: `[{"row": "<id>"}]`; script,
+time, duration and mode from the row; listed as a deviation). The usual cause is a tool call interrupted while its
+editor kept running: an interrupted call records no PostToolUse event (rts-command: three runs at 03:55-04:12). Rows a
+wrapper writes around each run go in `wrapper_row_ops`, so they are not counted as the script's own. Game launches,
 packaging and AutoPlay tests do not change the project and are not replayed. The replay never commits.
 
 **Content is never copied from a commit when the replay produced it.** At a boundary, a `.uasset`/`.umap` that the
