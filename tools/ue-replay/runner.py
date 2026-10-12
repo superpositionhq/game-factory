@@ -343,6 +343,22 @@ def materialize_scripts(ctx, run):
         with open(fp, "wb") as f:
             f.write(data)
         n += 1
+    # files the recording cannot rebuild at this point (e.g. after a perl -i edit) get the window's commit text; left
+    # alone they kept whatever an earlier run of the window had written (stealth: build_level_L01.py imported the
+    # pre-perl level_kit.py, whose spawn() fails, and L01 got 16 of its 150 actors)
+    sha = run.get("window_sha") or ctx.state.get("window_sha")
+    for p in run.get("unknown") or []:
+        if not sha:
+            break
+        try:
+            data = git(ctx.proj, "show", "%s:%s" % (sha, p), binary=True)
+        except Exception:
+            continue
+        fp = ctx.p(p)
+        os.makedirs(os.path.dirname(fp), exist_ok=True)
+        with open(fp, "wb") as f:
+            f.write(data)
+        n += 1
     return n
 
 
@@ -700,7 +716,7 @@ def cmd_run(cfg, a):
                     ctx.state["built"] = w["sha"]
                     ctx.state["code_dirty"] = False
                     ctx.save()
-                rec["materialized"] = materialize_scripts(ctx, r)
+                rec["materialized"] = materialize_scripts(ctx, dict(r, window_sha=w["sha"]))
                 rows_before = wf_rows(wf_path)
                 code, secs, log, version = run_editor_script(ctx, r)
                 rows_after = wf_rows(wf_path)
