@@ -7,7 +7,8 @@ setup, including the manual sign-ins: [../docs/new-machine.md](../docs/new-machi
 
 All machine paths hang off one root, the "Work" folder that holds `game-factory\`, `games\`, `builds\`,
 `recordings\`, `.recording\`, `deliverables\`, `asset-library\` and `tools\`. Docs write it as `%GF_ROOT%`.
-`lib/gf-root.ps1` (and `asset-scout/gfroot.py`) resolve it in this order:
+`lib/gf-root.ps1` (PowerShell, dot-source it) and `lib/gfroot.py` (Python: `sys.path.insert(0, <repo>/machine/lib)`,
+`gfroot.root()`) resolve it in this order:
 
 1. env `GF_ROOT`;
 2. `root` in the config file: env `GF_CONFIG`, else `%USERPROFILE%\.game-factory\config.json` (bootstrap writes it);

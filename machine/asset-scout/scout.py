@@ -17,7 +17,8 @@ import urllib.parse
 import urllib.request
 from datetime import datetime
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_here = os.path.dirname(os.path.abspath(__file__))
+sys.path[0:0] = [_here, os.path.join(_here, "..", "lib")]   # installed copy: gfroot.py next to it; repo: machine/lib
 import gfroot  # noqa: E402
 
 # <root>\asset-library: catalogue, logs, status files. Env ASSET_LIB overrides it.

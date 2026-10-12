@@ -124,6 +124,7 @@ $toolsBackup = Join-Path $Root "tools\_backup\$stamp"
 Sync-File (Join-Path $PSScriptRoot 'tools\ue-heavy.ps1') (Join-Path $Root 'tools\ue-heavy.ps1') $toolsBackup 'tools\ue-heavy.ps1'
 Sync-File (Join-Path $PSScriptRoot 'lib\gf-root.ps1') (Join-Path $Root 'tools\gf-root.ps1') $toolsBackup 'tools\gf-root.ps1'
 Sync-Dir (Join-Path $PSScriptRoot 'asset-scout') (Join-Path $Root 'tools\asset-scout') (Join-Path $toolsBackup 'asset-scout') 'tools\asset-scout'
+Sync-File (Join-Path $PSScriptRoot 'lib\gfroot.py') (Join-Path $Root 'tools\asset-scout\gfroot.py') (Join-Path $toolsBackup 'asset-scout') 'tools\asset-scout\gfroot.py'
 if ($SkipFfmpeg) { Note skip 'ffmpeg' '-SkipFfmpeg' }
 else {
     $fa = @{ Root = $Root }; if ($FfmpegArchive) { $fa.Archive = $FfmpegArchive }

@@ -13,7 +13,7 @@ redirects downloads). Format and per-game catalogue: [../../docs/asset-library.m
 | `fabue_batch.py` | batch `fabue.py`, write `fab-ue\_status\<pack>.json`, scan .uasset headers for the saving engine version |
 | `build_catalog.py` + `packs_meta.tsv` | rebuild `catalog.jsonl` from the library, the Fab library list and the per-pack metadata |
 | `unitypkg_audio.py` | extract audio files from a `.unitypackage` without running anything |
-| `gfroot.py` | the machine root (same rules as `machine/lib/gf-root.ps1`) |
+| `../lib/gfroot.py` | the machine root (same rules as `machine/lib/gf-root.ps1`); bootstrap installs a copy next to the tools |
 
 Fab downloads only work for items the signed-in Epic account owns; sign in at fab.com in the Claude browser pane
 first. Signed URLs and tokens are passed on the command line and never logged or committed. The one-off batch inputs
