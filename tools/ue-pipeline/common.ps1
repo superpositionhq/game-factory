@@ -221,26 +221,49 @@ function Stop-RecordingWantsGpuHold {
     try { if (Test-Path $RecordingWantsGpuFlag) { Remove-Item -Force $RecordingWantsGpuFlag } } catch { }
 }
 
+# GPU slots: Global\ue-gpu-jobs-v2 with "gpu_slots" in the machine config (default 3), one per session GPU job
+# (ue-heavy.ps1). A recording takes ALL of them, plus the old single slot Global\ue-gpu-jobs that jobs started before
+# the change may still use, so a capture has the GPU to itself. Slots are collected as running GPU jobs end; the
+# recording-wants-gpu flag keeps new session GPU jobs from taking freed ones meanwhile.
+function Get-GpuSlotCount {
+    if ($GFConfig.PSObject.Properties['gpu_slots'] -and [int]$GFConfig.gpu_slots -gt 0) { return [math]::Min(8, [int]$GFConfig.gpu_slots) }
+    return 3
+}
+
 function Enter-GpuSlot([string]$Label, [switch]$Recording) {
-    $sem = New-Object System.Threading.Semaphore(1, 1, 'Global\ue-gpu-jobs')
+    $n = Get-GpuSlotCount
+    $sem = New-Object System.Threading.Semaphore($n, $n, 'Global\ue-gpu-jobs-v2')
+    $old = if ($Recording) { New-Object System.Threading.Semaphore(1, 1, 'Global\ue-gpu-jobs') } else { $null }
+    $want = if ($Recording) { $n } else { 1 }
     $t0 = Get-Date
-    Write-HeavyLog 'wait' $Label @{ gpu = $true }
+    Write-HeavyLog 'wait' $Label @{ gpu = $true; gpu_slots = $want }
     $said = $false
+    $held = 0; $heldOld = $false
     try {
         if ($Recording) { Set-RecordingWantsGpu $Label }
-        while (-not $sem.WaitOne(60000)) {
+        while ($held -lt $want) {
+            if ($sem.WaitOne(60000)) { $held++; continue }
             if ($Recording) { Set-RecordingWantsGpu $Label }
-            if (-not $said) { Write-Step "[gpu] waiting for the GPU slot (another recording or GPU job is running) since $($t0.ToString('HH:mm:ss'))$(if ($Recording) { '; recording priority flag set' })"; $said = $true }
+            if (-not $said) { Write-Step "[gpu] waiting for $(if ($Recording) { "all $n GPU slots ($held held)" } else { 'a GPU slot' }) since $($t0.ToString('HH:mm:ss'))$(if ($Recording) { '; recording priority flag set' })"; $said = $true }
         }
+        if ($old) {
+            while (-not $old.WaitOne(60000)) { if ($Recording) { Set-RecordingWantsGpu $Label } }
+            $heldOld = $true
+        }
+    } catch {
+        if ($held) { [void]$sem.Release($held) }
+        if ($heldOld) { [void]$old.Release() }
+        throw
     } finally { if ($Recording) { Clear-RecordingWantsGpu } }
-    Write-HeavyLog 'start' $Label @{ gpu = $true; waited_s = [int]((Get-Date) - $t0).TotalSeconds }
-    return [pscustomobject]@{ Sem = $sem; Label = $Label; Since = Get-Date }
+    Write-HeavyLog 'start' $Label @{ gpu = $true; gpu_slots = $held; waited_s = [int]((Get-Date) - $t0).TotalSeconds }
+    return [pscustomobject]@{ Sem = $sem; Count = $held; Old = $old; Label = $Label; Since = Get-Date }
 }
 
 function Exit-GpuSlot($Slot) {
     if (-not $Slot) { return }
-    try { [void]$Slot.Sem.Release() } catch { }
+    try { [void]$Slot.Sem.Release([int]$Slot.Count) } catch { }
     $Slot.Sem.Dispose()
+    if ($Slot.Old) { try { [void]$Slot.Old.Release() } catch { }; $Slot.Old.Dispose() }
     Write-HeavyLog 'end' $Slot.Label @{ gpu = $true; duration_s = [int]((Get-Date) - $Slot.Since).TotalSeconds }
 }
 

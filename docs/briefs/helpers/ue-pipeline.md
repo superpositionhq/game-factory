@@ -47,8 +47,9 @@ docs/autoplay-contract.md, docs/dataset-layout-v1.json, and the shared notes
 Machine: {{MACHINE}}. UE 5.3 at {{ENGINE_DIR}}; MSVC 14.44 + .NET 4.8.1 SDK; pinned ffmpeg 8.1.2 under
 {{GF_ROOT}}\tools\ffmpeg-8.1.2 (machine/ fetches and checksum-verifies it); Python 3.12. Private build clones live under
 {{UEB}} (outside %USERPROFILE%, so the user name is never compiled into an exe). The machine-wide limiter is
-{{GF_ROOT}}\tools\ue-heavy.ps1: 3 CPU slots (Global\ue-heavy-jobs) and 1 GPU slot (Global\ue-gpu-jobs); it holds back
-new GPU jobs while builds\_queue\_recording-wants-gpu is fresh. There is not enough VRAM for two GPU jobs.
+{{GF_ROOT}}\tools\ue-heavy.ps1: 3 CPU slots (Global\ue-heavy-jobs) and 3 GPU slots (Global\ue-gpu-jobs-v2, config
+gpu_slots) with a VRAM guard (start only under half the VRAM in use); it holds back new GPU jobs while
+builds\_queue\_recording-wants-gpu is fresh. A recording takes every GPU slot.
 
 Rules:
 - Use the commit-always skill: commit to game-factory main after every meaningful step with a descriptive message,

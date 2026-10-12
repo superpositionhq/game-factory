@@ -24,7 +24,7 @@ Dataset.zip git-ignored next to it). Other sessions are building UE 5.3 games ri
 now in {{GF_ROOT}}\games\<slug> ({{SIBLINGS}}); read their docs in game-factory/docs/games/ for conventions and
 solved problems. The asset-scout session ({{ASSET_SCOUT_ID}}) keeps the asset library in {{GF_ROOT}}\asset-library\
 (catalogue: game-factory/docs/asset-library.md) and hands each game its packs. Everything shares one Windows PC
-({{MACHINE}}). I am the coordinator ({{COORDINATOR_ID}}): I own the recording queue and the GPU slot, review your
+({{MACHINE}}). I am the coordinator ({{COORDINATOR_ID}}): I own the recording queue and the GPU slots, review your
 commits and tell you when to push.
 
 Rules: follow the game-session and commit-always skills (installed in ~\.claude\skills\, source

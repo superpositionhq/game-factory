@@ -49,14 +49,28 @@ function Log($event, $extra) {
   } finally { $m.ReleaseMutex() }
 }
 $sem = New-Object Threading.Semaphore($Slots, $Slots, 'Global\ue-heavy-jobs')
-# GPU jobs (a rendering editor, -game runs, packaged games) also take the single machine-wide GPU slot, which
-# the recording pipeline holds for the whole of a recording: one GPU's VRAM does not fit several at once.
+# GPU jobs (a rendering editor, -game runs, packaged games) also take one of the machine-wide GPU slots
+# (Global\ue-gpu-jobs-v2, "gpu_slots" in the machine config, default 3) and start only while less than half the GPU's
+# VRAM is in use ("gpu_vram_limit_mb" overrides). A recording takes every GPU slot (tools/ue-pipeline/common.ps1
+# Enter-GpuSlot -Recording), so captures still get the GPU to themselves. The old single slot (Global\ue-gpu-jobs)
+# is only drained by jobs that started before the change; recordings take it too.
 $cmdText = $Command -join ' '
 $isGpu = $Gpu -or ($Command[0] -match '(?i)UnrealEditor\.exe$|-Shipping\.exe$') -or
   ($cmdText -match '(?i)(^|\s)-game(\s|$)|-AllowCommandletRendering') -or
   ($Command[0] -match '(?i)\\Packaged\\.*\.exe$')
 if ($cmdText -match '(?i)-nullrhi|-nographics') { $isGpu = $false }
-$gpuSem = if ($isGpu) { New-Object Threading.Semaphore(1, 1, 'Global\ue-gpu-jobs') } else { $null }
+$gpuSlots = 3; $vramLimit = 0
+if ($gfLib) {
+  $c = Get-GFConfig
+  if ($c.PSObject.Properties['gpu_slots'] -and [int]$c.gpu_slots -gt 0) { $gpuSlots = [math]::Min(8, [int]$c.gpu_slots) }
+  if ($c.PSObject.Properties['gpu_vram_limit_mb'] -and [int]$c.gpu_vram_limit_mb -gt 0) { $vramLimit = [int]$c.gpu_vram_limit_mb }
+}
+$gpuSem = if ($isGpu) { New-Object Threading.Semaphore($gpuSlots, $gpuSlots, 'Global\ue-gpu-jobs-v2') } else { $null }
+function Get-VramMB([string]$What) {
+  try { $v = & nvidia-smi "--query-gpu=memory.$What" --format=csv,noheader,nounits 2>$null | Select-Object -First 1 } catch { $v = $null }
+  if ("$v".Trim() -match '^\d+$') { return [int]"$v".Trim() } else { return $null }
+}
+if ($isGpu -and $vramLimit -le 0) { $tot = Get-VramMB 'total'; $vramLimit = if ($tot) { [int]($tot / 2) } else { 8192 } }
 $t0 = Get-Date
 Log 'wait' @{ command = $cmdText; gpu = [bool]$isGpu; low = [bool]$Low }
 # GPU jobs get the GPU slot FIRST and only then a general slot, so a job queued behind a recording doesn't sit on
@@ -70,13 +84,36 @@ if ($gpuSem) {
     Write-Host "[ue-heavy] a recording is waiting for the GPU; holding back since $($t0.ToString('HH:mm:ss'))..."
     Start-Sleep -Seconds 15
   }
+  $nextVramLog = Get-Date
   while ($true) {
-    while (-not $gpuSem.WaitOne(60000)) { Write-Host "[ue-heavy] waiting for the GPU slot (a recording or another GPU job is running) since $($t0.ToString('HH:mm:ss'))..." }
+    while (-not $gpuSem.WaitOne(60000)) { Write-Host "[ue-heavy] waiting for a GPU slot ($gpuSlots max; a recording takes all) since $($t0.ToString('HH:mm:ss'))..." }
     # A recording may have started waiting while we were queued: give the slot back and let it go first.
     if ((Test-Path $flag) -and ((Get-Date) - (Get-Item $flag).LastWriteTime).TotalMinutes -lt 20) {
       [void]$gpuSem.Release()
       Write-Host "[ue-heavy] a recording is waiting for the GPU; yielding the slot..."
       Start-Sleep -Seconds 20
+      continue
+    }
+    # VRAM guard: start only while less than the limit is in use (per-process VRAM is not available under WDDM, so
+    # this is the GPU's total); otherwise hand the slot back and look again.
+    # A GPU job that started in the last minute has not loaded yet: its VRAM does not show, so wait for it to settle.
+    $used = Get-VramMB 'used'
+    $recent = $false
+    try {
+      foreach ($l in (Get-Content -LiteralPath $log -Tail 200 -ErrorAction Stop)) {
+        if ($l -notmatch '"event":"start"' -or $l -notmatch '"gpu":true') { continue }
+        $r = $l | ConvertFrom-Json
+        if ($r.pid -ne $PID -and ((Get-Date) - [datetime]$r.time).TotalSeconds -lt 60) { $recent = $true }
+      }
+    } catch { }
+    if ($recent -or ($null -ne $used -and $used -gt $vramLimit)) {
+      [void]$gpuSem.Release()
+      if ((Get-Date) -ge $nextVramLog) {
+        Write-Host "[ue-heavy] $used MB VRAM in use (limit $vramLimit MB)$(if ($recent) { ', a GPU job started under a minute ago' }): waiting..."
+        Log 'vram_wait' @{ gpu = $true; vram_used_mb = $used; limit_mb = $vramLimit; settling = $recent }
+        $nextVramLog = (Get-Date).AddMinutes(5)
+      }
+      Start-Sleep -Seconds 30
       continue
     }
     break
@@ -114,7 +151,7 @@ if ($Low) {
 } else {
   while (-not $sem.WaitOne(60000)) { Write-Host "[ue-heavy] waiting for a free slot ($Slots max) since $($t0.ToString('HH:mm:ss'))..." }
 }
-Log 'start' @{ waited_s = [int]((Get-Date) - $t0).TotalSeconds; gpu = [bool]$isGpu; low = [bool]$Low }
+Log 'start' @{ waited_s = [int]((Get-Date) - $t0).TotalSeconds; gpu = [bool]$isGpu; low = [bool]$Low; vram_used_mb = $(if ($isGpu) { Get-VramMB 'used' } else { $null }) }
 $t1 = Get-Date
 # Start the process directly and wait for it: `& exe` returns at once for GUI-subsystem programs
 # (UnrealEditor.exe -game), which would release the slot while the job still runs. Arguments are

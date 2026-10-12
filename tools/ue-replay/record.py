@@ -64,9 +64,17 @@ def gpu_priority_run(label, argv, env, root, holder=None):
     k32.CreateSemaphoreW.argtypes = [ctypes.c_void_p, ctypes.c_long, ctypes.c_long, wintypes.LPCWSTR]
     k32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
     k32.ReleaseSemaphore.argtypes = [wintypes.HANDLE, ctypes.c_long, ctypes.c_void_p]
-    sem = k32.CreateSemaphoreW(None, 1, 1, "Global\\ue-gpu-jobs")
-    if not sem:
-        sys.exit("cannot open the GPU slot semaphore")
+    # a capture takes every GPU slot (Global\ue-gpu-jobs-v2, "gpu_slots" in the machine config, default 3) and the old
+    # single slot, as the pipeline recorder does (tools/ue-pipeline/common.ps1 Enter-GpuSlot -Recording)
+    try:
+        import gfroot
+        n = max(1, min(8, int(gfroot.config().get("gpu_slots") or 3)))
+    except (ImportError, ValueError):
+        n = 3
+    sem = k32.CreateSemaphoreW(None, n, n, "Global\\ue-gpu-jobs-v2")
+    old = k32.CreateSemaphoreW(None, 1, 1, "Global\\ue-gpu-jobs")
+    if not sem or not old:
+        sys.exit("cannot open the GPU slot semaphores")
     ft = threading.Thread(target=keep_flag, daemon=True)
     ft.start()
     t0 = time.time()
@@ -75,7 +83,10 @@ def gpu_priority_run(label, argv, env, root, holder=None):
     if os.environ.get("GF_GPU_SLOT_HELD") == "1":   # a killed earlier capture left the slot taken: adopt it
         print(runner.now(), "adopting the GPU slot left held by the previous capture", flush=True)
     else:
-        while k32.WaitForSingleObject(sem, 60000) != 0:   # WAIT_OBJECT_0
+        for _ in range(n):
+            while k32.WaitForSingleObject(sem, 60000) != 0:   # WAIT_OBJECT_0
+                pass
+        while k32.WaitForSingleObject(old, 60000) != 0:
             pass
     log("start", waited_s=int(time.time() - t0))
     print(runner.now(), "GPU slot held after %d s; starting the editor" % (time.time() - t0), flush=True)
@@ -88,7 +99,8 @@ def gpu_priority_run(label, argv, env, root, holder=None):
             holder["proc"] = proc
         code = proc.wait()
     finally:
-        k32.ReleaseSemaphore(sem, 1, None)
+        k32.ReleaseSemaphore(sem, n, None)
+        k32.ReleaseSemaphore(old, 1, None)
         stop.set()
         try:
             if open(flag, encoding="ascii", errors="replace").read().endswith(me):

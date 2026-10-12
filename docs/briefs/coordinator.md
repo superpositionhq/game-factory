@@ -23,7 +23,7 @@ You:
   ~\.claude\hooks\recording-exclude.txt;
 - supervise actively, never idle (machine/coordinator/watch.ps1 in the background, re-armed after each wake-up);
   relay the user's feedback to the right session quoting their words; at most ~10 messages per user message;
-- own the recording queue (only you run tools/ue-pipeline/enqueue.ps1) and the single GPU slot; gate every recording
+- own the recording queue (only you run tools/ue-pipeline/enqueue.ps1) and the GPU slots (a recording takes all); gate every recording
   on framing screenshots you have looked at;
 - review and push: repo-audit before any game push, verify pushes (ls-remote, LFS dry run); review helpers' commits
   in game-factory and push after the user's go-ahead;

@@ -33,11 +33,12 @@ started you. Use the **commit-always** skill for every commit.
 
 - **Every heavy job goes through the limiter:** Build.bat/UBT, RunUAT, UnrealEditor-Cmd, any editor launch, any
   `-game` run, packaged game:
-  `& <GF_ROOT>\tools\ue-heavy.ps1 -Label "<slug> <what>" -- <exe> <args...>` (3 CPU slots, plus the single machine-wide
-  GPU slot for anything that renders; waits for GUI programs; returns the job's exit code). From Git Bash:
+  `& <GF_ROOT>\tools\ue-heavy.ps1 -Label "<slug> <what>" -- <exe> <args...>` (3 CPU slots, plus one of the
+  machine-wide GPU slots for anything that renders; waits for GUI programs; returns the job's exit code). From Git Bash:
   `powershell -Command "& '<GF_ROOT>\tools\ue-heavy.ps1' -Label '...' -- '<exe>' args; exit $LASTEXITCODE"`
   (`powershell -File ... --` misparses `--`).
-- **GPU:** VRAM fits one renderer. Keep GPU runs short, prefer `-nullrhi` / `-RenderOffScreen` for logic tests, close
+- **GPU:** up to 3 GPU jobs run at once (one per slot, each starting only while under half the VRAM is in use); a
+  recording takes all of them. Keep GPU runs short, prefer `-nullrhi` / `-RenderOffScreen` for logic tests, close
   the process when done, at most one editor of yours alive. Recordings have priority (ue-heavy yields to them).
 - **Live Coding must stay off:** never start `UnrealEditor.exe` without `-unattended` or
   `-ini:EditorPerProjectUserSettings:[/Script/LiveCoding.LiveCodingSettings]:bEnabled=False` (the template also sets
