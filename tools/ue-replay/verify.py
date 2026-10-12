@@ -67,6 +67,29 @@ NORMALISE = [
     ("memory_address", "memory addresses in printed object values (delegates: '(0x00000801...)')",
      lambda s: re.sub(r"\(0x[0-9A-Fa-f]+\)", "(0x)", s)),
 ]
+
+
+def add_project_path_rule(cfg):
+    """Absolute paths under the project folder (import sources: FontFace source_filename, texture import data) name the
+    folder the editor ran in: the game repo for truth, the replay project for the replay, and the original user's
+    profile (or its scrubbed form). Compared as <project>/... ; counted as project_path."""
+    if any(r[0] == "project_path" for r in NORMALISE):
+        return
+    pats = []
+    for root in (cfg.get("repo"), cfg.get("project_dir"), cfg.get("truth_dir")):
+        if not root:
+            continue
+        parts = [p for p in root.replace("\\", "/").split("/") if p]
+        rx = []
+        for i, p in enumerate(parts):
+            # the profile folder after Users/ may hold any (or a scrubbed) user name
+            rx.append(r"[^/\\\"]+" if i > 0 and parts[i - 1].lower() == "users" else re.escape(p))
+        pats.append(r"(?:/|\\\\)+".join(rx))
+    big = re.compile("(?i)(?:%s)(?=/|\\\\)" % "|".join(pats))
+    NORMALISE.append(("project_path", "absolute paths into the folder the editor ran in (game repo vs replay project; "
+                      "user profile name) in import-source fields", lambda s: big.sub("<project>", s)))
+
+
 DROP_KEYS = {
     "tags.Compressed Size (KB)": ("derived_compression_size", "AnimSequence compressed size: derived data of the "
                                   "compression codec run, not authored content"),
@@ -346,6 +369,7 @@ def verdict(report, ctx, counts):
 def cmd_verify(cfg, a):
     ctx = runner.Ctx(cfg)
     final = ctx.ledger["final"]
+    add_project_path_rule(cfg)
     vdir = os.path.join(ctx.work, "Verification")
     os.makedirs(vdir, exist_ok=True)
     rep_d, tru_d = os.path.join(ctx.work, "dump-replay"), os.path.join(ctx.work, "dump-truth")

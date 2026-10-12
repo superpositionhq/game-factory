@@ -114,9 +114,12 @@ At the end (`ue_replay.py verify`, against the final commit):
    is byte-identical, none missing, and no extra files except git-ignored ones; (b) every asset has the same class and
    structure digest; (c) every game map (`map_roots`) has the same actors with the same transform, components,
    properties and world settings. Known non-content differences are normalised first and counted in
-   `verdict.exclusions`: random GUIDs (`ExpressionGUID=`/`Guid=`), memory addresses in printed values (delegates),
-   the AnimSequence compressed-size tag (derived data), Content/ bytes (random `PersistentGuid`), maps outside
-   `map_roots` (store-pack demo levels). Workflow-row comparison is informational. `package` writes `READY` only on
+   `verdict.exclusions`: random GUIDs (`ExpressionGUID=`/`Guid=`), random localization keys, memory addresses in
+   printed values (delegates), absolute paths into the folder the editor ran in (`project_path`: import sources such
+   as FontFace `source_filename` name the game repo in truth and the replay project in the replay, under any
+   user-profile name), the AnimSequence compressed-size tag (derived data), Content/ bytes (random `PersistentGuid`),
+   maps outside `map_roots` (store-pack demo levels), folders in `dump_exclusions` (assets that crash the editor on
+   load, in the final commit too). Workflow-row comparison is informational. `package` writes `READY` only on
    PASS, and a dataset is COMPLETE only with it.
 5. **Cooked content** (optional, `verify --cook`): both projects cooked for Windows with the same command; the
    cooked file sets are compared and cooked files hashed. Cooking drops editor-only data such as `PersistentGuid`,

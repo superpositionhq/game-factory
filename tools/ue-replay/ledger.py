@@ -162,9 +162,10 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
         else:
             pats.append(re.compile(x))
     runs = []
-    prev_time = None
+    prev_by_session = {}   # tool calls are sequential within a session; other sessions' rows interleave in actions.jsonl
     for a in actions:
-        prev, prev_time = prev_time, a["time"]
+        sid = a.get("session_id")
+        prev, prev_by_session[sid] = prev_by_session.get(sid), a["time"]
         if a.get("tool") not in ("Bash", "PowerShell") or a.get("event") not in RAN_EVENTS:
             continue
         cmd = a.get("input", {}).get("command", "")
@@ -495,8 +496,10 @@ def build(cfg):
     for row in wf_rows:
         if row.get("op") in wrapper_ops:
             # a wrapper names the script it ran in source.script (siege) or in target (tower-defense: source.script is
-            # the wrapper itself); index the row under both
-            for s in {((row.get("source") or {}).get("script") or "").replace("\\", "/"), str(row.get("target") or "").replace("\\", "/")}:
+            # the wrapper itself); index the row under both, and under the target's first word when the target carries
+            # the script's arguments ("Tools/scrub-import-paths.py --apply")
+            tgt = str(row.get("target") or "").replace("\\", "/")
+            for s in {((row.get("source") or {}).get("script") or "").replace("\\", "/"), tgt, tgt.split(" ")[0]}:
                 m = re.search(r"(?:^|/)(Scripts/.+\.py)$", s)
                 if s:
                     wrapper_by_script[m.group(1) if m and (s.startswith("..") or re.match(r"^[A-Za-z]:/|^/", s)) else s].append(row)
@@ -511,8 +514,9 @@ def build(cfg):
     for k, r in enumerate(all_runs):
         nxt = next((x for x in all_runs[k + 1:] if x["script"] == r["script"]), None)
         # rows are written while the tool call runs: after the previous tool call ended (tool calls are sequential)
-        lo = parse_time(r["after"] or r["start"]) - datetime.timedelta(seconds=1)
+        lo = lo_cmd = parse_time(r["after"] or r["start"]) - datetime.timedelta(seconds=1)
         prev_same = next((x for x in reversed(all_runs[:k]) if x["script"] == r["script"] and x["time"] == r["time"]), None)
+        n_same = sum(1 for x in all_runs[:k] if x["script"] == r["script"] and x["time"] == r["time"])
         if prev_same:  # the same script twice in one command: split at the first run's estimated end
             lo = max(lo, parse_time(prev_same["time"]))
         hi = parse_time(nxt["start"]) if nxt else parse_time(r["time"]) + datetime.timedelta(hours=2)
@@ -525,7 +529,12 @@ def build(cfg):
         if wrapper_ops and r.get("via_wrapper"):
             # the game's run wrapper logs a row before every run it starts: none means the command never got there
             # (an earlier step of the same command failed), so the run did not happen
-            r["wrapper_rows"] = sum(1 for x in wrapper_by_script.get(r["script"], []) if lo <= parse_time(x["time"]) <= hi)
+            if prev_same:
+                # the same script started again in one command: its row is the n-th wrapper row of that command
+                in_cmd = [x for x in wrapper_by_script.get(r["script"], []) if lo_cmd <= parse_time(x["time"]) <= hi]
+                r["wrapper_rows"] = 1 if len(in_cmd) > n_same else 0
+            else:
+                r["wrapper_rows"] = sum(1 for x in wrapper_by_script.get(r["script"], []) if lo <= parse_time(x["time"]) <= hi)
     for w in windows:
         w["events"] = dict(w["events"])
     return {"schema": SCHEMA, "game": cfg["game"], "final": final, "first": chain[0]["sha"],
