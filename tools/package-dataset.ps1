@@ -231,7 +231,7 @@ function New-Delivery([string]$Src, [string]$Dest, [string]$Variant) {
     $all = @([DatasetV1.T]::HashAll($Dest) | Where-Object { $_.Path -ne 'manifest.json' -and $_.Path -ne '.gitattributes' })
     Write-JsonFile (Join-Path $Dest 'manifest.json') ([ordered]@{
             layout = 'dataset-layout/v1.1'; game = $Game; title = $title; version = $Version; commit = $sha; status = $status; variant = $Variant
-            pending = $pending; created = (Get-IsoNow); source_package = (Split-Path $Src -Leaf)
+            pending = $(if ($pending.Count) { [System.Collections.ArrayList]@($pending) } else { New-Object System.Collections.ArrayList }); created = (Get-IsoNow); source_package = (Split-Path $Src -Leaf)
             replay_verification = $replayVerification
             build = $(if ($repo) { $null } else { [ordered]@{ config = $man.build.config; commit = $man.build.commit; exe = $exe; source = $man.build.source } })
             scenarios = @($scen | ForEach-Object { [ordered]@{ file = "Gameplay/$($Game)_S$($_.scenario).mp4"; scenario = $_.scenario; name = $_.scenario_name; result = $_.result

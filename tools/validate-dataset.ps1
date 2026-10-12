@@ -89,7 +89,7 @@ foreach ($en in $L.entries) {
     }
 }
 if ($man) {
-    $declared = @(@(Get-Prop $man 'pending') | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('/') })
+    $declared = @(@(Get-Prop $man 'pending') | Where-Object { $_ } | Where-Object { $_ -is [string] } | ForEach-Object { $_.TrimEnd('/') })
     foreach ($m in $missingPending) { if ($declared -notcontains $m) { E "$m is missing but not listed in manifest.json pending" } }
     if ($status -eq 'complete' -and $declared.Count) { E "status complete but pending lists $($declared -join ', ')" }
     if ($status -eq 'complete') {
