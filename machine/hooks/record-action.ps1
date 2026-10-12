@@ -3,10 +3,16 @@
 # A session is tied to a project the first time one of its tool calls names a path under
 # <root>\games\<slug> or <root>\<extra project> (config "record_extra_projects", default none);
 # after that, all its calls are recorded there.
+# Backfill: at that first mapping, the session's earlier tool calls are imported once from its transcript
+# (transcript_path in the hook input; subagent transcripts beside it), in order, before the mapping call's own row,
+# with status "from_transcript". Calls older than the transcript file (copied context of a fork) are not imported.
+# `record-action.ps1 -Backfill <session id> [-TranscriptPath <file>]` does the same for a session mapped before this
+# existed: the rows go in just before that session's first row. Each session is backfilled at most once
+# (recording-backfill.json next to this file), and a call already in actions.jsonl is never written twice.
 # On Stop, leftover changes in a game repo are committed ("WIP") so no work stays uncommitted.
 # <root> = the machine root (gf-root.ps1 next to this file; machine/lib/gf-root.ps1 in the repo).
 # machine/bootstrap.ps1 installs this into ~\.claude\hooks\ and wires it with machine/hooks/settings-hooks.json.
-param([switch]$Stop)
+param([switch]$Stop, [string]$Backfill, [string]$TranscriptPath)
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.Encoding]::UTF8
 $utf8 = New-Object Text.UTF8Encoding($false)
@@ -21,9 +27,126 @@ $extra = @($gf.record_extra_projects | ForEach-Object { [regex]::Escape([string]
 $projectRx = (Get-GFRootPattern $gf.root) + '[\\/]+(?:games[\\/]+([A-Za-z0-9_-]+)' +
   $(if ($extra.Count) { '|(' + ($extra -join '|') + ')(?![A-Za-z0-9_-])' } else { '' }) + ')'
 $mapFile = Join-Path $hooks 'recording-sessions.json'
+$backfillFile = Join-Path $hooks 'recording-backfill.json'
 $excludeFile = Join-Path $hooks 'recording-exclude.txt'
 $maxText = 200000   # chars kept per string field of tool_input
 $maxResp = 8000     # chars kept of the tool response
+
+function Clip($v, $n) {
+  if ($v -is [string] -and $v.Length -gt $n) { return $v.Substring(0, $n) + "...[truncated $($v.Length - $n) chars]" }
+  return $v
+}
+function Read-JsonMap([string]$Path) {
+  $h = @{}
+  if (Test-Path $Path) { ([IO.File]::ReadAllText($Path) | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $h[$_.Name] = $_.Value } }
+  return $h
+}
+function Get-RecordedIds([string]$File) {   # tool_use_ids already in actions.jsonl
+  $ids = New-Object 'System.Collections.Generic.HashSet[string]'
+  if (Test-Path $File) { foreach ($l in [IO.File]::ReadLines($File)) { $m = [regex]::Match($l, '"tool_use_id":"([^"]+)"'); if ($m.Success) { [void]$ids.Add($m.Groups[1].Value) } } }
+  return , $ids
+}
+function Find-Transcript([string]$Sid) {
+  $p = Get-ChildItem (Join-Path $env:USERPROFILE '.claude\projects') -Recurse -Filter "$Sid.jsonl" -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($p) { return $p.FullName } else { return $null }
+}
+# The session's tool calls from its transcript (and its subagents' transcripts), oldest first. Only calls with a result,
+# made by this session, and no older than the transcript file. -Until: stop before this tool_use_id (the mapping call).
+function Get-TranscriptCalls([string]$Sid, [string]$Path, [string]$Until) {
+  $files = @($Path)
+  $sub = Join-Path (Join-Path (Split-Path $Path) $Sid) 'subagents'
+  if (Test-Path $sub) { $files += @(Get-ChildItem $sub -Filter '*.jsonl' | ForEach-Object FullName) }
+  $created = (Get-Item $Path).CreationTimeUtc.AddSeconds(-5)
+  $calls = [ordered]@{}; $results = @{}; $bad = 0; $n = 0
+  foreach ($f in $files) {
+    $agent = if ($f -eq $Path) { $null } else { [IO.Path]::GetFileNameWithoutExtension($f) }
+    foreach ($line in [IO.File]::ReadLines($f)) {
+      if ($line -notmatch '"tool_(use|result)"') { continue }
+      try { $o = $line | ConvertFrom-Json } catch { $bad++; continue }
+      if ([string]$o.sessionId -ne $Sid -or -not $o.timestamp) { continue }
+      $ts = [DateTimeOffset]::Parse([string]$o.timestamp, [Globalization.CultureInfo]::InvariantCulture)
+      if ($ts.UtcDateTime -lt $created) { continue }
+      foreach ($b in @($o.message.content)) {
+        if ($b.type -eq 'tool_use' -and -not $calls.Contains([string]$b.id)) {
+          $calls[[string]$b.id] = [pscustomobject]@{ id = [string]$b.id; name = [string]$b.name; input = $b.input; ts = $ts; cwd = [string]$o.cwd; agent = $agent; n = $n++ }
+        } elseif ($b.type -eq 'tool_result') {
+          $text = if ($b.content -is [string]) { $b.content } else { (@($b.content) | Where-Object { $_.type -eq 'text' } | ForEach-Object { $_.text }) -join "`n" }
+          $resp = if ($null -ne $o.toolUseResult -and $o.toolUseResult -isnot [string]) { $o.toolUseResult | ConvertTo-Json -Depth 8 -Compress } elseif ($o.toolUseResult) { [string]$o.toolUseResult } else { $text }
+          $results[[string]$b.tool_use_id] = [pscustomobject]@{ resp = $resp; error = [bool]$b.is_error; text = $text; ts = $ts }
+        }
+      }
+    }
+  }
+  $stop = if ($Until -and $calls.Contains($Until)) { $calls[$Until].ts } else { $null }
+  $out = @($calls.Values | Where-Object { $_.id -ne $Until -and $results.ContainsKey($_.id) -and (-not $stop -or $_.ts -le $stop) } | Sort-Object ts, n)
+  return [pscustomobject]@{ calls = $out; results = $results; unparsed_lines = $bad }
+}
+function New-BackfillRows([string]$Sid, [string]$Project, $Got, $Skip) {
+  $rows = New-Object System.Collections.Generic.List[string]; $script:BackfillIds = @()
+  foreach ($c in $Got.calls) {
+    if ($Skip.Contains($c.id)) { continue }
+    $script:BackfillIds += $c.id
+    $r = $Got.results[$c.id]
+    $row = [ordered]@{
+      schema     = 'superposition.agent-action/v0'
+      time       = $c.ts.ToLocalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffzzz')
+      project    = $Project
+      session_id = $Sid
+      event      = $(if ($r.error) { 'PostToolUseFailure' } else { 'PostToolUse' })
+      cwd        = $c.cwd
+      status     = 'from_transcript'
+      tool       = $c.name
+      tool_use_id = $c.id
+    }
+    if ($c.agent) { $row.subagent = $c.agent }
+    $inp = [ordered]@{}
+    if ($c.input) { foreach ($p in $c.input.PSObject.Properties) { $inp[$p.Name] = Clip $p.Value $maxText } }
+    $row.input = $inp
+    if ($r.error) { $row.error = Clip $r.text $maxResp }
+    $row.response = Clip $r.resp $maxResp
+    $row.result_time = $r.ts.ToLocalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffzzz')
+    $rows.Add(($row | ConvertTo-Json -Depth 12 -Compress))
+  }
+  return , $rows
+}
+function Save-BackfillState([string]$Sid, [string]$Project, [string]$Path, $Rows, $Got) {
+  $state = Read-JsonMap $backfillFile
+  $state[$Sid] = [ordered]@{ project = $Project; time = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz'); transcript = $Path
+    rows = $Rows.Count; transcript_calls = @($Got.calls).Count; unparsed_lines = $Got.unparsed_lines; tool_use_ids = @($script:BackfillIds) }
+  [IO.File]::WriteAllText($backfillFile, ($state | ConvertTo-Json -Depth 4 -Compress), $utf8)
+}
+
+# ---- manual backfill of a session that was mapped before the backfill existed ---------------------------------------
+if ($Backfill) {
+  $mutex = New-Object Threading.Mutex($false, 'Global\claude-recording-hooks')
+  [void]$mutex.WaitOne(30000)
+  try {
+    $map = Read-JsonMap $mapFile
+    if (-not $map.ContainsKey($Backfill)) { throw "session $Backfill is not mapped to a project (recording-sessions.json)" }
+    if ((Read-JsonMap $backfillFile).ContainsKey($Backfill)) { Write-Host "session $Backfill was already backfilled; nothing to do"; exit 0 }
+    $project = $map[$Backfill]
+    if (-not $TranscriptPath) { $TranscriptPath = Find-Transcript $Backfill }
+    if (-not $TranscriptPath -or -not (Test-Path $TranscriptPath)) { throw "no transcript found for session $Backfill" }
+    $file = Join-Path (Join-Path $recRoot $project) 'actions.jsonl'
+    $lines = @(if (Test-Path $file) { [IO.File]::ReadAllLines($file, $utf8) })
+    $firstIdx = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match ('"session_id":"' + [regex]::Escape($Backfill) + '"')) { $firstIdx = $i; break } }
+    $until = if ($firstIdx -ge 0) { [regex]::Match($lines[$firstIdx], '"tool_use_id":"([^"]+)"').Groups[1].Value } else { $null }
+    $got = Get-TranscriptCalls $Backfill $TranscriptPath $until
+    $rows = New-BackfillRows $Backfill $project $got (Get-RecordedIds $file)
+    if ($rows.Count) {
+      $out = New-Object System.Collections.Generic.List[string]
+      if ($firstIdx -lt 0) { $out.AddRange([string[]]$lines); $out.AddRange($rows) }
+      else { for ($i = 0; $i -lt $lines.Count; $i++) { if ($i -eq $firstIdx) { $out.AddRange($rows) }; $out.Add($lines[$i]) } }
+      $tmp = "$file.backfill-tmp"
+      [IO.File]::WriteAllText($tmp, (($out -join "`n") + "`n"), $utf8)
+      Move-Item -Force $tmp $file
+    }
+    Save-BackfillState $Backfill $project $TranscriptPath $rows $got
+    Write-Host "backfilled $($rows.Count) call(s) of session $Backfill into $file (before row $([Math]::Max($firstIdx, 0) + 1); $($got.unparsed_lines) unparsed transcript lines)"
+  } finally { $mutex.ReleaseMutex() }
+  exit 0
+}
 
 $raw = [Console]::In.ReadToEnd()
 if (-not $raw.Trim()) { exit 0 }
@@ -34,8 +157,7 @@ if ((Test-Path $excludeFile) -and ((Get-Content $excludeFile) -contains $sid)) {
 $mutex = New-Object Threading.Mutex($false, 'Global\claude-recording-hooks')
 [void]$mutex.WaitOne(30000)
 try {
-  $map = @{}
-  if (Test-Path $mapFile) { (Get-Content $mapFile -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $map[$_.Name] = $_.Value } }
+  $map = Read-JsonMap $mapFile
 
   # which project does this call name?
   $texts = @([string]$e.cwd)
@@ -45,19 +167,31 @@ try {
     $m = [regex]::Match($t, $projectRx)
     if ($m.Success) { $project = if ($m.Groups[1].Success) { $m.Groups[1].Value } else { $m.Groups[2].Value }; break }
   }
+  $newlyMapped = $false
   if ($project -and $project -ne '.recording' -and -not $map.ContainsKey($sid)) {
     $map[$sid] = $project
     [IO.File]::WriteAllText($mapFile, ($map | ConvertTo-Json -Compress), $utf8)
+    $newlyMapped = $true
   }
   if (-not $map.ContainsKey($sid)) { exit 0 }
   $project = $map[$sid]
   $dir = Join-Path $recRoot $project
   New-Item -ItemType Directory -Force $dir | Out-Null
+  $actions = Join-Path $dir 'actions.jsonl'
 
-  function Clip($v, $n) {
-    if ($v -is [string] -and $v.Length -gt $n) { return $v.Substring(0, $n) + "...[truncated $($v.Length - $n) chars]" }
-    return $v
+  # first mapping: the session's earlier calls from its transcript, before this call's own row
+  if ($newlyMapped -and -not $Stop -and $e.transcript_path -and (Test-Path ([string]$e.transcript_path)) -and -not (Read-JsonMap $backfillFile).ContainsKey($sid)) {
+    try {
+      $got = Get-TranscriptCalls $sid ([string]$e.transcript_path) ([string]$e.tool_use_id)
+      $rows = New-BackfillRows $sid $project $got (Get-RecordedIds $actions)
+      if ($rows.Count) { [IO.File]::AppendAllText($actions, (($rows -join "`n") + "`n"), $utf8) }
+      Save-BackfillState $sid $project ([string]$e.transcript_path) $rows $got
+    } catch { }   # never lose the live row over a transcript problem
   }
+  # a call already imported from the transcript is not written twice
+  $bf = Read-JsonMap $backfillFile
+  if ($e.tool_use_id -and $bf.ContainsKey($sid) -and (@($bf[$sid].tool_use_ids) -contains [string]$e.tool_use_id)) { exit 0 }
+
   $row = [ordered]@{
     schema     = 'superposition.agent-action/v0'
     time       = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz')
@@ -88,6 +222,6 @@ try {
     if ($e.error) { $row.error = Clip ([string]$e.error) $maxResp }
     $row.response = Clip $resp $maxResp
   }
-  [IO.File]::AppendAllText((Join-Path $dir 'actions.jsonl'), ($row | ConvertTo-Json -Depth 12 -Compress) + "`n", $utf8)
+  [IO.File]::AppendAllText($actions, ($row | ConvertTo-Json -Depth 12 -Compress) + "`n", $utf8)
 } finally { $mutex.ReleaseMutex() }
 exit 0

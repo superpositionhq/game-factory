@@ -19,6 +19,9 @@ started you. Use the **commit-always** skill for every commit.
 2. **Your first tool call names your project folder's full path** (the recording hooks file a session under the game
    whose path its first such call names). Create the project with it:
    `powershell -ExecutionPolicy Bypass -File <GF_ROOT>\game-factory\templates\new-game.ps1 -Slug <slug> -Path <GF_ROOT>\games\<slug> -Title "<Title>" -Description "<one line>"`
+   with `<GF_ROOT>` written out as the absolute path (e.g. `C:\Users\<you>\Work`), never `%GF_ROOT%` or `$env:GF_ROOT`:
+   the hooks match the command text. new-game.ps1 refuses any other -Path. Calls made before this one (reading docs,
+   drafting the design) are imported from your transcript when the session is mapped (status `from_transcript`).
    It writes the skeleton (both Target.cs fixes, Live Coding off, Shipping/HiDPI config, AutoPlay drop-in, LFS for every
    binary type, root-anchored `.gitignore`), the first `workflow.jsonl` row, the commit recorder hook, the first
    commit, and the private repo `superpositionhq/game-<slug>` (not pushed).

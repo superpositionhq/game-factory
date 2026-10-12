@@ -7,15 +7,17 @@
   __DESCRIPTION__, __PROJECT_GUID__. tools\ue-pipeline\autoplay\AutoPlaySubsystem.h/.cpp are copied unchanged into
   Source\<Project>\AutoPlay\. The first workflow.jsonl row (op project.create) is written at the moment the project
   is created; the first commit names it. Pushing is left to the coordinator's go-ahead (commit-always skill).
-  Pass the project folder path explicitly (-Path) so the recording hooks file this session under the new game.
+  -Path is required: the absolute project folder <root>\games\<slug>, written out in the command (the recording hooks
+  see the command text, so %GF_ROOT% or $env:GF_ROOT would not map the session). That call files this session under
+  the game, and the hooks import its earlier calls from the transcript.
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File %GF_ROOT%\game-factory\templates\new-game.ps1 -Slug island-survival `
-      -Path %GF_ROOT%\games\island-survival -Title "Island Survival" -Description "Stranded on a tropical island..." `
-      -Reason "Start the island survival project from the standard skeleton"
+  powershell -ExecutionPolicy Bypass -File <root>\game-factory\templates\new-game.ps1 -Slug <game> `
+      -Path <root>\games\<game> -Title "<Title>" -Description "<one line>" -Reason "<why>"
+  (<root> written out, e.g. C:\Users\<you>\Work)
 #>
 param(
     [Parameter(Mandatory = $true)][ValidatePattern('^[a-z0-9][a-z0-9-]*[a-z0-9]$')][string]$Slug,
-    [string]$Path,                      # default <root>\games\<slug>
+    [string]$Path,                      # required: the absolute <root>\games\<slug>, written out
     [ValidatePattern('^[A-Z][A-Za-z0-9]{1,30}$')][string]$Project,   # default from the slug: island-survival -> IslandSurvival
     [string]$Title,                     # default from the slug: Island Survival
     [string]$Description = '',
@@ -30,7 +32,15 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 . (Join-Path $repo 'machine\lib\gf-root.ps1')
 if (-not $Root) { $Root = Get-GFRoot }
-if (-not $Path) { $Path = Join-Path $Root "games\$Slug" }
+# Pre-flight, first: the recording hooks tie this session to the game when a tool call names the project folder as an
+# absolute path, so the call must carry -Path <root>\games\<slug> literally (not %GF_ROOT% / $env:GF_ROOT, which the hook
+# sees unexpanded). The session's earlier calls are then imported from its transcript (machine/README.md, "Recording").
+$want = Join-Path $Root "games\$Slug"
+if (-not $Path) { throw "pass -Path $want (the absolute project folder, written out, so the recording hooks file this session under the game)" }
+if (-not [IO.Path]::IsPathRooted($Path) -or [IO.Path]::GetFullPath($Path).TrimEnd('\') -ne [IO.Path]::GetFullPath($want).TrimEnd('\')) {
+    throw "-Path must be the absolute folder $want (got '$Path')"
+}
+Write-Host "project folder: $Path (this call maps the session to $Slug for recording)"
 $words = $Slug -split '-'
 if (-not $Project) { $Project = ($words | ForEach-Object { $_.Substring(0, 1).ToUpper() + $_.Substring(1) }) -join '' }
 if (-not $Title) { $Title = ($words | ForEach-Object { $_.Substring(0, 1).ToUpper() + $_.Substring(1) }) -join ' ' }

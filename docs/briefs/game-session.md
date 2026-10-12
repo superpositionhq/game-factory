@@ -42,6 +42,7 @@ GitHub repo superpositionhq/game-{{SLUG}}). Design doc, story bible and status:
 {{GF_ROOT}}\game-factory\docs\games\{{SLUG}}.md.
 Mode {{MODE}}: NEW = your first tool call creates the project with
   powershell -ExecutionPolicy Bypass -File {{GF_ROOT}}\game-factory\templates\new-game.ps1 -Slug {{SLUG}} -Path {{GF_ROOT}}\games\{{SLUG}} -Project {{PROJECT}} -Title "<title>" -Description "<one line>"
+(the absolute path written out, as here: the recording hooks match the command text; new-game.ps1 refuses any other -Path)
 CONTINUE = the repo is already cloned there: your first tool call is `git -C {{GF_ROOT}}\games\{{SLUG}} log --oneline -20`;
 read the design doc's status section and the last workflow.jsonl rows, then carry on from where it stopped (new rows
 continue the existing id sequence).

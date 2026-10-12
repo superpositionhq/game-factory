@@ -32,7 +32,7 @@ user name is not compiled into Shipping exes), `engine` (default `C:\Program Fil
 | `get-ffmpeg.ps1` | `<root>\tools\ffmpeg-8.1.2\` | downloads gyan.dev ffmpeg 8.1.2 full_build .7z, verifies SHA-256 `0fff1889…7059`, unpacks |
 | `lib/gf-root.ps1` | `<root>\tools\`, `~\.claude\hooks\` | root/config resolver, dot-sourced by every script |
 | `tools/ue-heavy.ps1` | `<root>\tools\ue-heavy.ps1` | machine-wide job limiter: 3 general slots (`Global\ue-heavy-jobs`) + 1 GPU slot (`Global\ue-gpu-jobs`), yields to `builds\_queue\_recording-wants-gpu`, log `.recording\_heavy-jobs.jsonl` |
-| `hooks/record-action.ps1` | `~\.claude\hooks\` | PostToolUse / PostToolUseFailure / Stop hook: every tool call of a game session to `.recording\<project>\actions.jsonl`; Stop auto-commits leftovers as `WIP` |
+| `hooks/record-action.ps1` | `~\.claude\hooks\` | PostToolUse / PostToolUseFailure / Stop hook: every tool call of a game session to `.recording\<project>\actions.jsonl` (earlier calls backfilled from the transcript, see Recording); Stop auto-commits leftovers as `WIP` |
 | `hooks/record-commit.ps1` | `~\.claude\hooks\` | called by each game repo's post-commit hook: `.recording\<repo>\commits.jsonl` |
 | `hooks/settings-hooks.json` | merged into `~\.claude\settings.json` | the three hook entries (`{{HOOKS_DIR}}` filled in) |
 | `hooks/recording-exclude.txt` | `~\.claude\hooks\` (once) | session ids never recorded (the coordinator) |
@@ -42,6 +42,24 @@ user name is not compiled into Shipping exes), `engine` (default `C:\Program Fil
 
 `recording-sessions.json` (session id -> project map) is runtime state: bootstrap creates it empty next to the
 hooks and never overwrites it.
+
+### Recording
+
+- **Mapping.** A session is filed under a project the first time a tool call's input (command, file path, cwd) names
+  `<root>\games\<slug>` (or an extra project) as an absolute path, in any spelling (`C:\…`, `C:/…`, `/c/…`). Variables
+  such as `%GF_ROOT%` are seen unexpanded and do not count. `templates/new-game.ps1` therefore requires the written-out
+  `-Path <root>\games\<slug>`, and that call maps a new game's session.
+- **Backfill.** At that first mapping the hook imports the session's earlier tool calls (reading docs, drafting the
+  design) from its transcript (`transcript_path` in the hook input, plus `<session>\subagents\*.jsonl` beside it). They
+  are written in order, just before the mapping call's own row, with `"status": "from_transcript"` and the transcript's
+  times (`time` = the call, `result_time` = its result). Only calls with a result, logged under this session id and no
+  older than the transcript file are imported (a fork's copied context predates the file). Each session is backfilled
+  once (`recording-backfill.json` next to the hooks: count, transcript, imported tool_use_ids), and a call imported this
+  way is never written again by its own live hook.
+- **Sessions mapped before the backfill existed:** `powershell -File ~\.claude\hooks\record-action.ps1 -Backfill
+  <session id> [-TranscriptPath <file>]` inserts the rows before that session's first row in `actions.jsonl`
+  (finds the transcript under `~\.claude\projects\` when not given); a second run does nothing.
+- Live rows carry no `status`; every row of a backfill carries `from_transcript`, so the two are never confused.
 
 Installed copies are plain copies: after changing a file here, run `bootstrap.ps1` again (it backs up what it
 replaces under `_backup\<time>\`). `check.ps1` reports installed copies that differ from the repo.
