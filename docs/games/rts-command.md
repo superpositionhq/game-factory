@@ -191,7 +191,7 @@ Plays by the same rules (same costs, same supply, sees through its own vision on
 
 All three play on one map, `L_Haeun`, with per-scenario playable bounds, start actors and AI script (data in
 `DT_Scenarios`). `-Seed` seeds the AI build-order variant, timing jitter, resource node amounts (±10 %) and the
-bot's RNG. Target length for a recording: S1 5–7 min, S2 8–10 min, S3 10–14 min (MaxSeconds 900 for S3).
+bot's RNG. Target length for a recording: S1 3–5 min, S2 ≤ 10 min, S3 ≤ 15 min (MaxSeconds 900 for S3).
 
 | # | Name | Start state | Win | Lose |
 |---|---|---|---|---|
@@ -358,4 +358,9 @@ the text copy, imported by script.
 
 ## Status
 
-- 2026-10-12: story bible and design doc written; waiting for the coordinator's OK before building.
+- 2026-10-12: story bible and design doc written; approved by the coordinator the same morning. Notes from the
+  review, now part of the plan: S1 kept to 3–5 min (onboarding recording), S2 ≤ 10 min, S3 ≤ 15 min (MaxSeconds 900);
+  team colour must read at recording zoom (cloth tint + back banners on soldiers, coloured rim); styled selection
+  rings and order markers; hold 60 fps with ~60 units + scan buildings (LODs, instanced foliage, check early); each
+  scan pack's licence in `assets.manifest.json`; the bot uses rally points and attacks with grouped armies, never
+  trickles units; smooth camera glides only.

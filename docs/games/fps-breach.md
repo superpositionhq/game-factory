@@ -1,7 +1,7 @@
 # TIDEBREAK: story bible and game design
 
 First-person shooter, Unreal Engine 5.3, C++ module `FpsBreach`. Slug `fps-breach`.
-Status: **design draft v1, waiting for review** (2026-10-12).
+Status: **approved 2026-10-12; in production** (see section 11).
 
 ## 1. The game in one paragraph
 
@@ -112,9 +112,9 @@ environmental story.
 
 | Weapon | Mesh (low-poly kit, section 7) | Type | Numbers | Feel |
 |---|---|---|---|---|
-| **KR-7 "Tern" carbine** | low-poly carbine | Hitscan, full auto | 600 rpm, 30-round mag, 150 reserve, 16 damage, visor ×2, spread 0.6° → 2.5° bloom, aim 0.25°, reload 2.1 s (1.6 s with a round chambered) | Precise mid-range workhorse, tracer every 3rd round |
-| **"Mallet" pump shotgun** | low-poly pump shotgun | Hitscan pellets | 9 pellets × 10 damage, 7° cone, falloff 8 → 20 m, 6 shells + 30 reserve, pump 0.75 s, shell-by-shell reload 0.5 s (fire interrupts) | Close quarters, staggers a Sentinel at short range |
-| **"Lantern" EMP launcher** | low-poly launcher + teal canister glow | Projectile (arcing canister) | 2,600 cm/s, gravity 0.6, bursts on impact or after 1.6 s; radius 420 cm: 55 damage + **stun 2.5 s** (Sentinels freeze, visor flickers, cannot shoot), 1 loaded + 5 reserve, reload 1.2 s | The special: flush or freeze a group behind cover, opens the Bulwark's back core |
+| **KR-7 "Tern" carbine** | Infima AG14W | Hitscan, full auto | 600 rpm, 30-round mag, 150 reserve, 16 damage, visor ×2, spread 0.6° → 2.5° bloom, aim 0.25°, reload 2.1 s (1.6 s with a round chambered) | Precise mid-range workhorse, tracer every 3rd round |
+| **"Mallet" combat shotgun** | Infima MAK12 (magazine-fed, semi-auto) | Hitscan pellets | 9 pellets × 10 damage, 6.5° cone, falloff 8 → 20 m, 8-round magazine + 40 reserve, 110 rpm, reload 2.6 s (3.2 s empty) | Close quarters, staggers a Sentinel at short range |
+| **"Lantern" EMP launcher** | Infima LRAF9 frame, canister round | Projectile (lobbed canister) | 1,400 cm/s, full gravity (about 20 m range); aimed at a surface it flies the low arc that lands there, at open sky it flies along the view; bursts on impact or after 2.5 s; radius 420 cm: 55 damage + **stun 2.5 s** (Sentinels freeze, visor flickers, cannot shoot), 1 loaded + 5 reserve, reload 1.2 s | The special: flush or freeze a group behind cover, opens the Bulwark's back core |
 
 Ammo pickups: carbine box (+60), shells (+12), EMP canisters (+2). Health: Keeper med kit (+40; low-poly
 med kit in Keeper orange). No health regeneration except back to 25 if below it, slowly (forgiveness).
@@ -195,6 +195,13 @@ The bot lives on the PlayerController (TG_PrePhysics) and acts only through `AP-
   the same spot) and weapon choice quality. Skill 1 should usually win S1 and S2.
 
 ## 7. Art direction: low poly (user direction, 2026-10-12)
+
+**Chosen and bought (2026-10-12):** Synty **POLYGON - Sci-Fi Space** for every level (modular walls, floors,
+doorframes, consoles, tanks, rails, lift, signs, steam/explosion FX) and Infima **Low Poly Animated - Modern Guns**
+for the first-person arms and the three weapons (with their attachments, clips, HUD icons and sounds). The Sentinels
+are Quaternius's CC0 **Animated Mech Pack** (Mike = Warden, Stan = Breacher, George = Bulwark, Leela = training
+sentry), tinted with an amber visor. The sea is our own faceted low-poly mesh and material. The original asset plan
+below is kept for the record.
 
 **Low-poly stylized**, one coherent kit family, never primitives or untextured blocks: faceted shapes with
 bevelled silhouettes, flat-shaded or palette-atlas materials (Synty-style gradient atlas), clean readable
@@ -284,7 +291,27 @@ ticks; icons from game-icons. No default font or plain text anywhere.
 - [ ] Framing screenshots checked (open areas, tunnels, crouched, against walls, ADS)
 - [ ] Packaged Win64 Shipping build; scrub-import-paths `--verify` = 0; assets.manifest.json and ThirdPartyNotices
 
-## 11. Status
+## 11. Levels as built (scripts in `Scripts/build_level_S*.py`)
+
+- **S1 Calibration Yard** (`L_CalibrationYard`): a 175 m straight course on the barrier top, sea below the north rail:
+  lockers with the Keepers' name plates and the 61 % screen beside a chalked gauge; Lane A (8 carbine plates, two on
+  rails); a 66 cm jump wall; a crouch culvert (124 cm); a sprint stretch; Lane B shotgun house (6 plates); Lane C
+  launcher bunker (3 EMP-only plates behind 151 cm cover); the live drill against three training sentries. One life.
+- **S2 Pump Hall** (`L_PumpHall`): service tunnel with the waterfront posters; a two-storey turbine gallery (44 %
+  screens, chalked gauges, 4 Wardens, breaker A, the launcher); corridor; control mezzanine (the sluice schedule board,
+  2 Wardens + 2 Breachers, breaker B); sump walkway (steam, side doors, breaker C with 3 ambushers); freight lift with
+  a rear ambush. Checkpoint at each breaker, 3 lives.
+- **S3 Ninth Tide** (`L_NinthTide`): crest road between the storm sea and the harbour, Varo Low's skyline with its own
+  23 % screens; push 1 (3 Wardens + Breacher), push 2 (Bulwark + 2 Wardens); Gate Control with the gauge desk under a
+  dust sheet; uplink (hold 3 s), 60 s hold against three waves through the north, south and east doors, master lever.
+  On the win every screen flips to 98 % in a wave from the room outward and a dawn light comes up.
+- **L_MainMenu**: a still dusk view of the crest and skyline from a fixed camera.
+
+## 12. Status
 
 - 2026-10-12: design draft v1 written; art direction switched to **low poly** on the user's instruction; repo
-  created; waiting for the coordinator's OK and the low-poly asset decision before building.
+  created; approved by the coordinator.
+- 2026-10-12: systems in C++ (player, weapons, Sentinel AI + squad tokens, scenario game mode, HUD/menus, AutoPlay
+  bot); packs imported; data assets; look-dev renders checked (mech scale/facing fixed; first-person sight alignment
+  and weapon attachments added). Level scripts for S1-S3 and the menu written; waiting for the shared heavy-job slots
+  to build and test them.
