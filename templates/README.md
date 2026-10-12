@@ -29,7 +29,7 @@ What the skeleton carries, and why:
 | `.gitignore` | root-anchored build output only (`/Binaries/`, `/Saved/`, ...): everything else is committed |
 | `.gitattributes` | `* text=auto` + every binary type in LFS, case-insensitive (`*.[pP][nN][gG]`) |
 | `Scripts/`, `Docs/ThirdPartyNotices.md`, `assets.manifest.json`, `Docs/screenshots/` | editor scripts kept unchanged; third-party credits; README images |
-| `Dataset/` | dataset layout v1 placeholder (`Gameplay/`, `Screenshots/`, `ReplayScripts/`, README) |
+| `Dataset/` | dataset layout v1.1 placeholder (`Gameplay/`, `Screenshots/`, `ReplayScripts/`, README) |
 
 `workflow.jsonl` conventions (schema `ue-workflow/v0`, one row per operation at the moment it happens, id prefix per
 game, row ids in commit messages) are in the commit-always and game-session skills (`.claude/skills/`).

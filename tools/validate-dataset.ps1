@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  Check a dataset delivery against dataset layout v1 (docs/dataset-layout-v1.json, the machine-readable copy of the
+  Check a dataset delivery against dataset layout v1.1 (docs/dataset-layout-v1.json, the machine-readable copy of the
   spec in docs/game-deliverable.md): a delivery folder, a game repo's Dataset\ folder, or a <game>.zip.
 
 .EXAMPLE
@@ -10,7 +10,7 @@
 
   Prints one verdict line, then the findings ("  x" = error, "  !" = note):
     VALID    everything in the spec is present and correct (manifest status "complete")
-    PENDING  correct, but replay.mp4 and/or ReplayScripts/ are not there yet (manifest status "pending")
+    PENDING  correct, but ReplayScripts/ is not there yet (manifest status "pending")
     INVALID  anything else
   Exit code 0 for VALID, 1 for PENDING, 2 for INVALID. The content scan (names, account name, e-mail addresses) is
   package-game.ps1 -Rescan <folder>; run both before a review.
@@ -92,6 +92,17 @@ if ($man) {
     $declared = @(@(Get-Prop $man 'pending') | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('/') })
     foreach ($m in $missingPending) { if ($declared -notcontains $m) { E "$m is missing but not listed in manifest.json pending" } }
     if ($status -eq 'complete' -and $declared.Count) { E "status complete but pending lists $($declared -join ', ')" }
+    if ($status -eq 'complete') {
+        # COMPLETE needs a passing creation-replay verification, in the manifest and in ReplayScripts/Verification/report.json
+        $rv = Get-Prop $man 'replay_verification'
+        if (-not $rv -or -not (Get-Prop $rv 'pass')) { E 'status complete but manifest.json replay_verification is missing or not pass' }
+        $vrel = 'ReplayScripts/Verification/report.json'
+        if (-not $files.ContainsKey($vrel)) { E "status complete but $vrel is missing" }
+        else {
+            $vd = (Read-Text $vrel | ConvertFrom-Json).verdict
+            if (-not $vd -or -not $vd.pass) { E "status complete but $vrel verdict is not PASS" }
+        }
+    }
     if ($status -eq 'pending' -and $missingPending.Count -eq 0) { N 'status is pending although every entry is present' }
 }
 

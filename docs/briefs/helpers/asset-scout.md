@@ -59,7 +59,7 @@ Rules:
   game's Docs/ThirdPartyNotices.md read like a normal developer's, with no mention of either name or of recording.
 - Deliverable copies are scrubbed of user paths, the user name and Claude/Anthropic/Opus mentions; keep those out of
   the credit strings and import notes you hand to games in the first place.
-- Datasets follow layout v1 (README.md, git.log, workflow.jsonl, replay.mp4, UEProject/, ReplayScripts/,
+- Datasets follow layout v1.1 (README.md, git.log, workflow.jsonl, UEProject/, ReplayScripts/,
   Gameplay/<game>_S<n>.mp4, Screenshots/, Build/, manifest.json; a repo's Dataset/ = the same minus UEProject/ and
   Build/). Fab Standard content may ship inside a built game but never as raw files to a buyer, so the packager builds a
   _nostore variant: every store item a game uses must be traceable (catalogue row, licence, path) for that split.

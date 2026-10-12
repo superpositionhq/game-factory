@@ -5,8 +5,8 @@ played. Built by `tools/package-game.ps1` (Windows PowerShell 5.1, no Python) fr
 (`.recording\<game>\`), its gameplay bundles (`recordings\<game>\`) and its packaged build. The tool only reads those;
 it writes to `%GF_ROOT%\deliverables\<game>\`. Plan context: [plan.md](plan.md), "Deliverable per game".
 
-What goes to buyers is the **dataset layout v1** delivery built from this package (section
-[Dataset layout v1](#dataset-layout-v1-the-delivery-approved-2026-10-12) at the end); the package described
+What goes to buyers is the **dataset layout v1.1** delivery built from this package (section
+[Dataset layout v1.1](#dataset-layout-v11-the-delivery) at the end); the package described
 first is the verified, scrubbed intermediate it is assembled from.
 
 ```
@@ -240,10 +240,12 @@ import source path and the Shipping exe (build paths), by category only.
 - The scrub is pattern-based: other personal names typed into logs (e.g. names seen on web pages) are not detected
   beyond the e-mail and git-identity rules; review `<name>.leaks.tsv` and spot-check `History/actions.jsonl`.
 
-## Dataset layout v1 (the delivery; approved 2026-10-12)
+## Dataset layout v1.1 (the delivery)
 
-Our standard delivery of every game, the same for all seven: the creation record (`git.log`,
-`workflow.jsonl`, `replay.mp4`, `ReplayScripts/`), the project, per-scenario gameplay videos, the README's screenshots
+Approved 2026-10-12 as v1; v1.1 the same day (user): no replay video, the verified replay scripts are the creation replay.
+
+Our standard delivery of every game, the same for all of them: the creation record (`git.log`,
+`workflow.jsonl`, `ReplayScripts/`), the project, per-scenario gameplay videos, the README's screenshots
 and the packaged build. Machine-readable copy: [dataset-layout-v1.json](dataset-layout-v1.json), which the validator
 reads, so this text and the checks cannot drift apart. Nothing in it is per game except the data.
 
@@ -252,9 +254,8 @@ reads, so this text and the checks cannot drift apart. Nothing in it is per game
   README.md                      the game, how to play and open it, how to replay the creation, scenario videos, screenshots, licences
   git.log                        every commit, oldest first: message, dev_NN author, dates, full diff; binary/LFS files as path + sha256
   workflow.jsonl                 the editor operations, one row each, written when the operation happened
-  replay.mp4                     screen recording of the creation replay                      (from the replay session)
   UEProject/                     the project at the release commit                            (not in the repo Dataset/)
-  ReplayScripts/                 scripts that replay the creation from workflow.jsonl         (from the replay session)
+  ReplayScripts/                 scripts that replay the creation, with their verification    (tools/ue-replay)
   Gameplay/<game>_S<n>.mp4       one video per scenario of the release version, n = 1..N, nothing else in the folder
   Screenshots/                   the README hero and gallery images, linked from README.md by relative path
   Build/                         the packaged Windows Shipping build, no .pdb                  (not in the repo Dataset/)
@@ -266,7 +267,7 @@ reads, so this text and the checks cannot drift apart. Nothing in it is per game
 | `README.md` | generated (template below) from the package README, the project's docs, `assets.manifest.json` | sections in fixed order |
 | `git.log` | `package-game.ps1`, from the repo's history at the release commit | scrubbed; authors `dev_NN` |
 | `workflow.jsonl` | the repo's `workflow.jsonl` at the release commit | scrubbed copy |
-| `replay.mp4`, `ReplayScripts/` | the replay session (`tools/ue-replay/`) | `ReplayScripts/` scrubbed with the package rules (`package-game.ps1 -ScrubDir`) |
+| `ReplayScripts/` | the creation replay (`tools/ue-replay/`, `ue_replay.py package`, READY) | `ReplayScripts/` scrubbed with the package rules (`package-game.ps1 -ScrubDir`) |
 | `UEProject/` | the repo tree at the release commit + its Git LFS objects; store packs kept out of git come from the game's working tree | `_nostore` zip: store content left out |
 | `Gameplay/<game>_S<n>.mp4` | the release version's validated runs, one per scenario: an `ok` run before a `warn` run, then the latest. Taken as is from the run's `recordings\<game>\<run>\gameplay.mp4` (written by record.ps1; no re-encode); runs without one are encoded from `video.mkv` + `system_audio.mka` | 1920x1080 60 fps H.264 (the recording's NVENC stream, stream-copied; fallback: libx264 High CRF 20) + AAC 192 kbit/s stereo; the run's game audio delayed by its own `system_audio.start_offset_ns - video_start_offset_ns`; faststart; nothing added to the picture |
 | `Screenshots/` | the project's `docs/screenshots/`, else stills of the release runs (`recordings\<game>\_stills\`) | every image is shown in the README |
@@ -274,7 +275,7 @@ reads, so this text and the checks cannot drift apart. Nothing in it is per game
 | `manifest.json` | generated | schema below |
 
 **Naming.** Zips: `<game>.zip` (with store content) and `<game>_nostore.zip` (without), each with one top folder
-`<game>/`. While `replay.mp4` or `ReplayScripts/` is missing they are `<game>.pending.zip` / `<game>_nostore.pending.zip`.
+`<game>/`. While `ReplayScripts/` is missing they are `<game>.pending.zip` / `<game>_nostore.pending.zip`.
 They are written to `%GF_ROOT%\deliverables\dataset\<game>\`, with the reports kept next to the zips, not in them:
 `<name>.store-content.tsv` (store files with sha256), `<name>.scrub-report.json`, `<name>.rescan-hits.tsv`.
 
@@ -283,17 +284,27 @@ project) and `Build/` (rebuildable; too big for git), as real copies of the same
 `Dataset/.gitattributes` sending `mp4 mkv mka wav flac jpg jpeg png webp zip` to Git LFS. The tool writes it into the
 game's working tree and never commits it; the game session commits and pushes it, so each repo's history stays its own.
 
-**manifest.json (`dataset-layout/v1`).**
+**manifest.json (`dataset-layout/v1.1`).**
 
 ```
-layout     "dataset-layout/v1"          game, title, version, commit (full sha)
-status     "complete" | "pending"       pending: the missing entries ("replay.mp4", "ReplayScripts/")
+layout     "dataset-layout/v1.1"        game, title, version, commit (full sha)
+status     "complete" | "pending"       pending: the missing entries ("ReplayScripts/")
 variant    "full" | "nostore" | "repo-dataset"
 created, source_package, build {config, commit, exe, source} (null in the repo Dataset)
 scenarios  [{file, scenario, name, result, seconds, source_run, audio_offset_s}]
 totals     {files, bytes}
 files      [{path, bytes, sha256}]      every file except manifest.json (and .gitattributes in the repo Dataset)
+replay_verification  {pass, report, criteria [{id, text, result, pass}], exclusions [{id, what, count}]}  (null while pending)
 ```
+
+**COMPLETE needs a passing replay verification.** A dataset is `complete` only when `ReplayScripts/` comes from a
+creation replay that ran end to end, headless, from those scripts and whose verification verdict is PASS
+([ue-replay.md](ue-replay.md) 2.4): every file outside `Content/` byte-identical to the release commit, every asset
+equal by structure, every game map equal by actors, with the known non-content differences (random GUIDs, printed
+memory addresses, derived compression sizes, Content/ bytes, store-pack demo maps) listed and counted. `ue_replay.py
+package` writes `READY` only then, `package-dataset.ps1` refuses scripts without it, and the validator checks
+`replay_verification.pass` and `ReplayScripts/Verification/report.json`. The README's "Replay the creation
+process" section shows the criteria, the results and the exclusions. No verification, no COMPLETE.
 
 **README template.** Title (the game's name), hero image (`Screenshots/...`), the pending banner while pending, a
 version and commit line, then these sections in this order: Requirements, Package contents, Play the game, Replay the
@@ -309,13 +320,13 @@ scanned too, with the codec/locale allowlist and the reviewed exceptions. `packa
 
 ```
 powershell -ExecutionPolicy Bypass -File tools\package-game.ps1 <game> -Commit <release> -OnlyCommitRuns -Screenshots stills -Version <v>
-powershell -ExecutionPolicy Bypass -File tools\package-game.ps1 <game> -Commit <release> -OnlyCommitRuns -Screenshots stills -Version <v> -WithoutStoreContent -Dataset [-ReplayVideo <file> -ReplayScripts <dir>]
+powershell -ExecutionPolicy Bypass -File tools\package-game.ps1 <game> -Commit <release> -OnlyCommitRuns -Screenshots stills -Version <v> -WithoutStoreContent -Dataset [-ReplayScripts <dir>]
 powershell -ExecutionPolicy Bypass -File tools\validate-dataset.ps1 <zip | delivery folder | <repo>\Dataset> [-NoHash]
 ```
 
 `package-game.ps1 -Dataset` runs `tools/package-dataset.ps1` on the full package and its `_nostore` twin (one run per
 game at a time, through a lock in the output folder). `validate-dataset.ps1` prints `VALID` (exit 0), `PENDING`
-(exit 1: only `replay.mp4` / `ReplayScripts/` missing, and declared pending) or `INVALID` (exit 2), with one line per
+(exit 1: only `ReplayScripts/` missing, and declared pending) or `INVALID` (exit 2), with one line per
 finding. It checks the top-level entries (nothing missing, nothing extra; the repo Dataset without `UEProject/` and
 `Build/`), the Gameplay file names and numbering, that `Screenshots/` holds only images and all of them are shown in the
 README, `Build/` with an `.exe` and no `.pdb`, `UEProject/` with a `.uproject`, the manifest keys and values and every
@@ -327,18 +338,19 @@ is `package-game.ps1 -Rescan`; run both before a review.
 - Gameplay holds mp4s only, one per scenario of the release version: no per-run bundles (inputs, telemetry, json), no
   version subfolders, no index file; the README lists the videos.
 - No `play.mp4`: the per-scenario videos replace it.
+- No `replay.mp4` (v1.1, user, 2026-10-12): the verified replay scripts are the creation replay; no video of it.
 - No `History/`: `git.log` and `workflow.jsonl` carry the history.
 - `Build/` is kept (buyers can play without Unreal), without `.pdb`.
 - `Screenshots/` is kept for the README's hero and gallery.
 
 **Status per game** (2026-10-12):
 
-| Game | Dataset v1 |
+| Game | Dataset v1.1 |
 |---|---|
-| liaozhai-night | pilot: 1.1.2 (`2cf1aa21`) built, pending replay (`replay.mp4`, `ReplayScripts/`) |
-| rally-racer | pilot: waiting for the re-recorded runs |
-| stealth | pilot: waiting for the re-recorded runs |
-| tower-defense | not started (package `ff5f1eea` ready) |
-| siege-catapult | not started (package `577814b1` ready) |
-| horror-escape | not started |
-| island-survival | not started |
+| liaozhai-night | 1.1.2 (`2cf1aa21`): ReplayScripts READY, being completed |
+| rally-racer | waiting for the re-recorded runs |
+| stealth | waiting for the re-recorded runs |
+| tower-defense | `ff5f1eea` built, pending `ReplayScripts/` |
+| siege-catapult | `577814b1` built, pending `ReplayScripts/` (headless replay running) |
+| horror-escape | `15e4aed5` built, pending `ReplayScripts/` (headless replay running) |
+| island-survival | `97b83264` built, pending `ReplayScripts/` |

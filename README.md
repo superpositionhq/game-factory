@@ -5,10 +5,10 @@ Game-**creation** data: how a game gets made, step by step, with the finished pr
 We build new 3D games in Unreal Engine 5 and record the creation as it happens: real editor operations with
 timestamps, screen video, inputs, code commits and a playtest with inputs.
 
-## Dataset format (layout v1, all games)
+## Dataset format (layout v1.1, all games)
 
-Every game is delivered in **dataset layout v1**, our standard delivery: the creation record (`git.log`,
-`workflow.jsonl`, `replay.mp4`, `ReplayScripts/`), the project, per-scenario gameplay videos, README screenshots and
+Every game is delivered in **dataset layout v1.1**, our standard delivery: the creation record (`git.log`,
+`workflow.jsonl`, `ReplayScripts/`), the project, per-scenario gameplay videos, README screenshots and
 the packaged build:
 
 ```
@@ -16,7 +16,6 @@ the packaged build:
   README.md
   git.log
   workflow.jsonl
-  replay.mp4
   UEProject/                     not in the repo Dataset/
   ReplayScripts/
   Gameplay/<game>_S<n>.mp4       one video per scenario of the release version, game audio muxed
@@ -46,7 +45,7 @@ Each game repo keeps the same delivery in `Dataset/`, minus `UEProject/` and `Bu
 
 ```
 tools/ue-pipeline/                  UE build, package and gameplay recording pipeline; AutoPlay drop-in
-tools/package-game.ps1, package-dataset.ps1   per-game deliverables and dataset layout v1
+tools/package-game.ps1, package-dataset.ps1   per-game deliverables and dataset layout v1.1
 machine/                            machine setup: bootstrap/check, ue-heavy limiter, recording hooks, ffmpeg, asset-scout
 templates/                          UE 5.3 game skeleton + new-game.ps1
 .claude/skills/                     commit-always, game-session, coordinator

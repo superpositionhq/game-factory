@@ -77,10 +77,10 @@ game-factory follows the **commit-always** skill. Your brief: `docs/briefs/coord
   e-mails and Claude/Anthropic mentions; Superposition, game-factory, Claude, Opus and Anthropic are **blocking**
   (the package is refused if any survives; only the Opus audio codec is allowlisted). Reviewed binary exceptions:
   `tools/package-reviewed-hits.tsv`.
-- **Dataset layout v1** (user-approved; one standard for all games): `README.md, git.log, workflow.jsonl, replay.mp4,
+- **Dataset layout v1.1** (user-approved; one standard for all games; no replay video): `README.md, git.log, workflow.jsonl,
   UEProject/, ReplayScripts/, Gameplay/<game>_S<n>.mp4` (mp4 only, release version), `Screenshots/, Build/`
   (Shipping, no .pdb), `manifest.json`. No play.mp4, no History/, no per-run bundles. The repo's `Dataset/` = same
-  minus `UEProject/` and `Build/`. Don't add structure without asking the user. A dataset is final only when every v1
+  minus `UEProject/` and `Build/`. Don't add structure without asking the user. A dataset is final only when every v1.1
   file exists and the validator passes; then ask the user to review.
 - READMEs (repo and deliverable) show screenshots: hero + captioned gallery from recording stills.
 

@@ -1,16 +1,16 @@
 ﻿<#
 .SYNOPSIS
-  Build the dataset layout v1 delivery (docs/game-deliverable.md, "Dataset layout v1"; docs/dataset-layout-v1.json) of
+  Build the dataset layout v1.1 delivery (docs/game-deliverable.md, "Dataset layout v1.1"; docs/dataset-layout-v1.json) of
   one game from its finished package (tools\package-game.ps1 output, already scrubbed and scanned), and the game repo's
   Dataset\ folder. Usually run through package-game.ps1 -Dataset; nothing here is per game except the data.
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File tools\package-dataset.ps1 <game> `
       -Package %GF_ROOT%\deliverables\<game>\<game>_<sha8> -Version <version>
-  ... -ReplayVideo <file>\replay.mp4 -ReplayScripts <dir>\ReplayScripts      # once the replay session delivers them
+  ... -ReplayScripts <dir>\ReplayScripts      # once the creation replay is verified (ue_replay.py package: READY)
 
   Output: deliverables\dataset\<game>\<game>\ + <game>.zip and <game>_nostore\ + <game>_nostore.zip (from the
-  package's _nostore twin); <game>.pending.zip / <game>_nostore.pending.zip while replay.mp4 or ReplayScripts\ is
+  package's _nostore twin); <game>.pending.zip / <game>_nostore.pending.zip while ReplayScripts\ is
   missing (manifest status "pending", README banner). Reports next to the zips: <name>.store-content.tsv,
   <name>.scrub-report.json, <name>.rescan-hits.tsv. Writes <repo>\Dataset\ (no UEProject\, no Build\, LFS patterns in
   Dataset\.gitattributes); never commits. Every delivery is rescanned (package-game.ps1 -Rescan) and validated
@@ -20,7 +20,6 @@ param(
     [Parameter(Mandatory = $true, Position = 0)][string]$Game,
     [Parameter(Mandatory = $true)][string]$Package,      # the full package folder; its _nostore twin, if present, gives the second zip
     [string]$Version,
-    [string]$ReplayVideo,
     [string]$ReplayScripts,
     [string]$OutRoot,               # default <root>\deliverables\dataset (root: machine/lib/gf-root.ps1)
     [switch]$NoDataset,
@@ -113,9 +112,27 @@ New-Item -ItemType Directory -Force $outDir | Out-Null
 $lockPath = Join-Path $outDir '_dataset.lock'
 try { $script:Lock = [System.IO.File]::Open($lockPath, 'OpenOrCreate', 'ReadWrite', 'None') }
 catch [System.IO.IOException] { throw "another package-dataset run for $Game is in progress ($lockPath is held); wait for it to finish" }
-$haveReplay = [bool]($ReplayVideo -and (Test-Path $ReplayVideo) -and $ReplayScripts -and (Test-Path $ReplayScripts))
+$haveReplay = [bool]($ReplayScripts -and (Test-Path $ReplayScripts))
+# A dataset is COMPLETE only with a passing creation-replay verification (ReplayScripts/Verification/report.json,
+# verdict.pass; tools/ue-replay/verify.py): no verification, no COMPLETE.
+$verdict = $null
+if ($haveReplay) {
+    $vr = Join-Path $ReplayScripts 'Verification\report.json'
+    if (-not (Test-Path $vr)) { throw "ReplayScripts has no Verification\report.json: run ue_replay.py verify, then package" }
+    $verdict = (Get-Content -Raw -Encoding UTF8 $vr | ConvertFrom-Json).verdict
+    if (-not $verdict -or -not $verdict.pass) { throw "the creation replay's verification is not PASS ($vr): no COMPLETE dataset from it" }
+}
+$replayVerification = if ($verdict) {
+    [ordered]@{ pass = [bool]$verdict.pass; report = 'ReplayScripts/Verification/report.md'
+        criteria = @($verdict.criteria | ForEach-Object { [ordered]@{ id = $_.id; text = $_.text; result = $_.result; pass = [bool]$_.pass } })
+        exclusions = @($verdict.exclusions.PSObject.Properties | ForEach-Object {
+                $e = $_.Value
+                if ($e -is [System.Array] -or $e -is [string]) { [ordered]@{ id = $_.Name; what = 'git-ignored extra files'; count = @($e).Count } }
+                elseif ($e.PSObject.Properties.Name -contains 'maps') { [ordered]@{ id = $_.Name; what = $e.what; count = @($e.maps).Count; maps = @($e.maps) } }
+                else { [ordered]@{ id = $_.Name; what = $e.what; count = $e.count } } }) }
+} else { $null }
 $status = if ($haveReplay) { 'complete' } else { 'pending' }
-$pending = if ($haveReplay) { @() } else { @('replay.mp4', 'ReplayScripts/') }
+$pending = if ($haveReplay) { @() } else { @('ReplayScripts/') }
 Write-Step "dataset v1: $Game @ $short ($status)  from $pkg"
 
 # ---- Gameplay/<game>_S<n>.mp4: one video per scenario of the release version, game audio muxed ------------------------
@@ -201,7 +218,6 @@ function New-Delivery([string]$Src, [string]$Dest, [string]$Variant) {
         $null = Copy-TreeChecked (Join-Path $Src 'Build') (Join-Path $Dest 'Build') $false '.pdb' 'Build/'
     }
     if ($haveReplay) {
-        [DatasetV1.T]::LinkFile((Resolve-Path $ReplayVideo).Path, (Join-Path $Dest 'replay.mp4'), $true)
         $rs = Join-Path $Dest 'ReplayScripts'
         $null = [DatasetV1.T]::LinkTree((Resolve-Path $ReplayScripts).Path, $rs, $true, '.pdb')   # a copy: scrubbed in place
         & powershell -NoProfile -ExecutionPolicy Bypass -File $tool $Game -ScrubDir $rs | Out-Host
@@ -214,8 +230,9 @@ function New-Delivery([string]$Src, [string]$Dest, [string]$Variant) {
     }
     $all = @([DatasetV1.T]::HashAll($Dest) | Where-Object { $_.Path -ne 'manifest.json' -and $_.Path -ne '.gitattributes' })
     Write-JsonFile (Join-Path $Dest 'manifest.json') ([ordered]@{
-            layout = 'dataset-layout/v1'; game = $Game; title = $title; version = $Version; commit = $sha; status = $status; variant = $Variant
+            layout = 'dataset-layout/v1.1'; game = $Game; title = $title; version = $Version; commit = $sha; status = $status; variant = $Variant
             pending = $pending; created = (Get-IsoNow); source_package = (Split-Path $Src -Leaf)
+            replay_verification = $replayVerification
             build = $(if ($repo) { $null } else { [ordered]@{ config = $man.build.config; commit = $man.build.commit; exe = $exe; source = $man.build.source } })
             scenarios = @($scen | ForEach-Object { [ordered]@{ file = "Gameplay/$($Game)_S$($_.scenario).mp4"; scenario = $_.scenario; name = $_.scenario_name; result = $_.result
                         seconds = [math]::Round($_.dur, 3); source_run = $_.name; audio_offset_s = [math]::Round($_.offset, 3) } })
@@ -232,7 +249,7 @@ function Write-Readme([string]$Dest, [string]$Variant) {
     A "# $title"; A ''
     if ($shots.Count) { A "![$title](Screenshots/$($shots[0].Name))"; A '' }
     if ($status -ne 'complete') {
-        A '> **Pending:** `replay.mp4` and `ReplayScripts/` (the replay of the creation process) are not in this delivery yet;'
+        A '> **Pending:** `ReplayScripts/` (the replay of the creation process) is not in this delivery yet;'
         A '> everything else is final. This delivery is replaced by the complete one when they land.'
         A ''
     }
@@ -250,7 +267,6 @@ function Write-Readme([string]$Dest, [string]$Variant) {
     A ('- `ReplayScripts/` — replay of the creation process from the recorded editor operations.' + $(if ($status -ne 'complete') { ' *(pending)*' } else { '' }))
     A '- `workflow.jsonl` — editor operations and parameters, one row per operation, written when it happened.'
     A '- `git.log` — every commit with its message and full diff (binary files as path and sha256).'
-    A ('- `replay.mp4` — the recorded editor replay.' + $(if ($status -ne 'complete') { ' *(pending)*' } else { '' }))
     A "- ``Gameplay/`` — one video per scenario of this version ($($scen.Count)), played through with the game audio."
     if (-not $repo) { A "- ``Build/`` — the packaged Windows Shipping build$(if ($exe) { " (``Build/$exe``)" })." }
     A '- `Screenshots/` — the images in this README.'
@@ -262,7 +278,18 @@ function Write-Readme([string]$Dest, [string]$Variant) {
     A ''
     $play = Get-MdSection $pkgReadme '^Play'; if ($play) { A (($play -split "`n" | Where-Object { $_ -notmatch 'Build/|Windows 10/11' }) -join "`n").Trim(); A '' }
     A '## Replay the creation process'; A ''
-    if ($status -eq 'complete') { A 'See `ReplayScripts/README.md` for the command and its options; the supplied project is not changed.' } else { A '`ReplayScripts/` is pending.' }
+    if ($status -eq 'complete') {
+        A 'See `ReplayScripts/README.md` for the command and its options; the supplied project is not changed.'; A ''
+        A ('The replay was run end to end, headless, from these scripts and verified against the release commit: **' +
+           $(if ($replayVerification.pass) { 'PASS' } else { 'FAIL' }) + '** (`ReplayScripts/Verification/report.md`).'); A ''
+        A '| Pass criterion | Result | Pass |'; A '|---|---|---|'
+        foreach ($c in $replayVerification.criteria) { A "| $($c.text) | $($c.result) | $(if ($c.pass) { 'yes' } else { 'no' }) |" }
+        A ''; A 'Known differences that are not content (normalised or not compared, listed explicitly):'; A ''
+        foreach ($e in $replayVerification.exclusions) {
+            $extra = if ($e.Contains('maps') -and $e.maps.Count) { ': ' + (($e.maps | ForEach-Object { ($_ -split '/')[-1] }) -join ', ') } else { '' }
+            A "- ``$($e.id)`` ($($e.count)): $($e.what)$extra"
+        }
+    } else { A '`ReplayScripts/` is pending.' }
     A ''
     A '## Scenarios'; A ''
     A '| Video | # | Scenario | Result | Length |'; A '|---|---|---|---|---|'

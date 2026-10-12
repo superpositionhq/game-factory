@@ -63,8 +63,7 @@ param(
     [switch]$DryRun,                # print the store-content split, build and gameplay selection; write nothing
     [string]$Rescan,                # an existing package folder: check it against the current rules, write <dir>.rescan-hits.tsv; changes nothing
     [string]$ScrubDir,              # a folder joining a delivery: apply the scrub rules to its text files in place (<dir>.scrub.json)
-    [switch]$Dataset,               # after packaging, build the dataset layout v1 delivery (package-dataset.ps1); see the end of this file
-    [string]$ReplayVideo,           # with -Dataset: replay.mp4 from the replay session
+    [switch]$Dataset,               # after packaging, build the dataset layout v1.1 delivery (package-dataset.ps1); see the end of this file
     [string]$ReplayScripts          # with -Dataset: ReplayScripts\ from the replay session
 )
 
@@ -1778,13 +1777,13 @@ foreach ($p in ($problems | Select-Object -First 10)) { Write-Host "  $p" }
 Write-Host "  leak scan (not enforced): $($leaks.Count) finding(s), $(@($leakSummary).Count) distinct value(s) -> $leakTsv"
 Write-Host "  $([math]::Round(((Get-Date) - $t0).TotalMinutes, 1)) min"
 
-# -Dataset: build the dataset layout v1 delivery (tools\package-dataset.ps1) from this package. Run the full variant
+# -Dataset: build the dataset layout v1.1 delivery (tools\package-dataset.ps1) from this package. Run the full variant
 # first and the -WithoutStoreContent one with -Dataset: the dataset then gets both zips.
 if ($Dataset) {
     $fullPkg = if ($WithoutStoreContent) { $final -replace '_nostore$', '' } else { $final }
     if (-not (Test-Path $fullPkg)) { throw "-Dataset needs the full package $fullPkg (package without -WithoutStoreContent first)" }
     $da = @($Game, '-Package', $fullPkg); if ($Version) { $da += @('-Version', $Version) }
-    if ($ReplayVideo) { $da += @('-ReplayVideo', $ReplayVideo) }; if ($ReplayScripts) { $da += @('-ReplayScripts', $ReplayScripts) }
+    if ($ReplayScripts) { $da += @('-ReplayScripts', $ReplayScripts) }
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'package-dataset.ps1') @da
     if ($LASTEXITCODE) { exit $LASTEXITCODE }
 }

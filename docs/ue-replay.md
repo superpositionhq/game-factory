@@ -2,8 +2,8 @@
 
 Rebuilds one of our Unreal games from its first commit by re-running, in order, what its builder actually ran. That
 includes the editor-Python scripts that created its maps and placed every actor. The replay then checks the result
-against the game's final commit and records an editor video in which the 3D world gets built. It produces the
-dataset's `ReplayScripts/` + `replay.mp4` ([game-deliverable.md](game-deliverable.md)).
+against the game's final commit. It produces the dataset's `ReplayScripts/` ([game-deliverable.md](game-deliverable.md));
+the dataset has no replay video (layout v1.1).
 
 Tool: `tools/ue-replay/` (host driver `ue_replay.py`, Python 3.12, standard library only; editor-side scripts in
 `tools/ue-replay/editor/`). Per-game settings live in the game's own repo as `<root>/games/<slug>/ReplayConfig.json`;
@@ -110,14 +110,22 @@ At the end (`ue_replay.py verify`, against the final commit):
      texture size, format and source hash; material expressions and parameters; material instance parent and
      values; sound duration and channels; animation length, frames and skeleton; Blueprint parent and
      components; data-asset and data-table contents as exported text).
-4. **Cooked content** (optional, `verify --cook`): both projects cooked for Windows with the same command; the
+4. **Verdict** (`report.json` `verdict`, top of `report.md`): PASS only when (a) every tracked file outside `Content/`
+   is byte-identical, none missing, and no extra files except git-ignored ones; (b) every asset has the same class and
+   structure digest; (c) every game map (`map_roots`) has the same actors with the same transform, components,
+   properties and world settings. Known non-content differences are normalised first and counted in
+   `verdict.exclusions`: random GUIDs (`ExpressionGUID=`/`Guid=`), memory addresses in printed values (delegates),
+   the AnimSequence compressed-size tag (derived data), Content/ bytes (random `PersistentGuid`), maps outside
+   `map_roots` (store-pack demo levels). Workflow-row comparison is informational. `package` writes `READY` only on
+   PASS, and a dataset is COMPLETE only with it.
+5. **Cooked content** (optional, `verify --cook`): both projects cooked for Windows with the same command; the
    cooked file sets are compared and cooked files hashed. Cooking drops editor-only data such as `PersistentGuid`,
    so cooked bytes say more than editor bytes.
 
-### 2.5 World-building ops and the video
+### 2.5 World-building ops (and an optional video, not in the dataset)
 
-The headless replay is the reference. A headless script places hundreds of actors inside one call, so nothing
-appears on screen piece by piece. For the video, every map is therefore also replayed as **world ops**:
+The headless replay is the reference. A headless script places hundreds of actors inside one call; to show world
+building per actor, every map is also described as **world ops** (included in `ReplayScripts/` when derived):
 
 - After every replayed run that changed a map, `ue_dump.py` exports the map: a JSON dump, and every actor as T3D
   (the editor's own copy/paste text, every non-default property included).
@@ -126,7 +134,8 @@ appears on screen piece by piece. For the video, every map is therefore also rep
   - `ue.level.create`, `ue.actor.spawn` (the actor's T3D), `ue.actor.update`, `ue.actor.remove`, `ue.level.save`.
   - The ops are written in the workflow field set (`id`, `chapter`, `op`, `target`, `params`, `reason`,
     `depends_on`, `source`, `expected`, `presentation`) with `status: derived_from_replayed_script_run`.
-- `editor/ue_world_replay.py` runs in a visible editor and plays the ops one Slate tick at a time:
+- Optional, not part of the dataset (layout v1.1 has no video): `ue_replay.py record` plays the ops in a visible
+  editor and records it (`editor/ue_world_replay.py`, one op per Slate tick, GPU slot with recording priority):
   - a map is created empty;
   - its actors are pasted in the order the script spawned them, group by group (the script's logged groups and
     outliner folders), with the viewport camera framing each group;
@@ -138,33 +147,31 @@ appears on screen piece by piece. For the video, every map is therefore also rep
 - Code, import and material steps appear in the caption track. They take no screen time, because the headless
   replay already ran them.
 
-The video is a GPU job. It runs through `ue-heavy.ps1` in a slot the coordinator schedules.
+The optional video is a GPU job with recording priority; it is not run for datasets.
 
 ### 2.6 Deliverable layout
 
 `ue_replay.py package --game <game>` assembles it in
 `%GF_ROOT%\deliverables\_replay\<game>\<final sha8>\` (unscrubbed; `tools/package-dataset.ps1 -ReplayScripts
-<dir>\ReplayScripts -ReplayVideo <dir>\replay.mp4` copies it into the dataset and scrubs the copy):
+<dir>\ReplayScripts` copies it into the dataset and scrubs the copy):
 
 ```
 ReplayScripts/
   README.md                       how to replay, what is observed vs derived, results
-  ue_replay.py, runner.py, ledger.py, derive.py, verify.py, record.py, shellfx.py, package.py
+  ue_replay.py, runner.py, ledger.py, derive.py, verify.py, shellfx.py, package.py
                                   the tooling as it ran (it works outside the game-factory checkout: GF_ROOT or ~/Work)
-  editor/ue_dump.py, ue_world_replay.py
+  editor/ue_dump.py
   game.json                       the game's replay settings ({root} placeholders, no machine paths)
   ledger.json                     windows, script runs, versions (from history + actions)
-  workflow.replay.jsonl           the derived world ops (workflow field set) that drive replay.mp4
+  workflow.replay.jsonl           the derived world ops (workflow field set), when derived
   initial-assets.manifest.json    store packs and external sources, sha256 per file
   Blobs/                          reconstructed script texts by sha256
   Verification/
     report.md, report.json        files, content, structure, (cook) results
     windows.jsonl                 per-window checks
     dump-replay/, dump-truth/     structure dumps
-    video-verification.json
-replay.mp4
-verification.json                 summary for the packager: parts present, windows, verify report, video verification
-READY                             written last, only when every part is present; the packager waits for it
+verification.json                 summary for the packager: parts present, windows, verify report
+READY                             written last, only when every window was replayed and verified; the packager waits for it
 ```
 
 `--force` assembles an incomplete copy without `READY` (for checks only).
@@ -172,4 +179,4 @@ READY                             written last, only when every part is present;
 ## Packager integration
 
 The packager waits for `READY`, then passes the folder of section 2.6 to `tools/package-dataset.ps1 -ReplayScripts
-<dir>\ReplayScripts -ReplayVideo <dir>\replay.mp4`. Without both, the dataset zips stay `<game>.pending.zip`.
+<dir>\ReplayScripts`. Without it, the dataset zips stay `<game>.pending.zip`.

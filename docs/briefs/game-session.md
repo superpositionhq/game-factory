@@ -19,7 +19,7 @@ brief stays short and the rules stay in one place. The originals this was distil
 Background (from the session that started this one):
 game-factory ({{GF_ROOT}}\game-factory, private repo superpositionhq/game-factory: read CLAUDE.md, README.md,
 AGENTS.md, docs/plan.md, docs/autoplay-contract.md, docs/ue-pipeline.md) produces game-CREATION data: how
-a game is built step by step, recorded as it happens, packaged as a dataset (layout v1). Other sessions are building UE 5.3 games right
+a game is built step by step, recorded as it happens, packaged as a dataset (layout v1.1). Other sessions are building UE 5.3 games right
 now in {{GF_ROOT}}\games\<slug> ({{SIBLINGS}}); read their docs in game-factory/docs/games/ for conventions and
 solved problems. The asset-scout session ({{ASSET_SCOUT_ID}}) keeps the asset library in {{GF_ROOT}}\asset-library\
 (catalogue: game-factory/docs/asset-library.md) and hands each game its packs. Everything shares one Windows PC

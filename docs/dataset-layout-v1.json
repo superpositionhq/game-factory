@@ -1,7 +1,8 @@
 {
-  "schema": "dataset-layout/v1",
+  "schema": "dataset-layout/v1.1",
   "approved": "2026-10-12",
-  "description": "Our standard delivery layout for every game: the creation record (git.log, workflow.jsonl, replay.mp4, ReplayScripts/), the project, per-scenario gameplay videos, README screenshots and the packaged build. docs/game-deliverable.md, section 'Dataset layout v1', is the prose version of this file; tools/validate-dataset.ps1 checks against this file.",
+  "changes": "v1.1 (2026-10-12, user): no replay video; the creation replay is ReplayScripts/ only",
+  "description": "Our standard delivery layout for every game: the creation record (git.log, workflow.jsonl, ReplayScripts/), the project, per-scenario gameplay videos, README screenshots and the packaged build. docs/game-deliverable.md, section 'Dataset layout v1.1', is the prose version of this file; tools/validate-dataset.ps1 checks against this file.",
   "names": {
     "zip": "<game>.zip",
     "zip_without_store_content": "<game>_nostore.zip",
@@ -13,9 +14,8 @@
     { "name": "README.md",      "kind": "file", "required": true,  "in_repo_dataset": true,  "what": "game, how to play and open it, how to replay the creation, scenario videos, screenshots, licences" },
     { "name": "git.log",        "kind": "file", "required": true,  "in_repo_dataset": true,  "what": "every commit, oldest first: message, anonymised author, dates, full text diff; binary and LFS files as path + sha256" },
     { "name": "workflow.jsonl", "kind": "file", "required": true,  "in_repo_dataset": true,  "what": "editor operations, one row each, written when the operation happened" },
-    { "name": "replay.mp4",     "kind": "file", "required": true,  "in_repo_dataset": true,  "pending_allowed": true, "what": "screen recording of the creation replay (from the replay session)" },
     { "name": "UEProject",      "kind": "dir",  "required": true,  "in_repo_dataset": false, "what": "the project at the release commit (with or without store content); in the repo the repository itself is the project", "must_contain": ["*.uproject"] },
-    { "name": "ReplayScripts",  "kind": "dir",  "required": true,  "in_repo_dataset": true,  "pending_allowed": true, "what": "scripts that replay the creation from workflow.jsonl (from the replay session)" },
+    { "name": "ReplayScripts",  "kind": "dir",  "required": true,  "in_repo_dataset": true,  "pending_allowed": true, "what": "scripts that replay the creation headless, with Verification/ (report.json verdict PASS required for complete)" },
     { "name": "Gameplay",       "kind": "dir",  "required": true,  "in_repo_dataset": true,  "what": "one video per scenario of the release version", "only_files_matching": "^<game>_S([0-9]+)\\.mp4$", "contiguous_from": 1 },
     { "name": "Screenshots",    "kind": "dir",  "required": true,  "in_repo_dataset": true,  "what": "the README hero and gallery images, linked from README.md by relative path", "only_files_matching": "(?i)\\.(png|jpe?g|webp)$" },
     { "name": "Build",          "kind": "dir",  "required": true,  "in_repo_dataset": false, "what": "packaged Windows Shipping build", "must_contain": ["*.exe"], "forbid": ["*.pdb"] },
@@ -25,8 +25,10 @@
   "gameplay_video": { "container": "mp4", "video_codec": "h264", "width": 1920, "height": 1080, "audio_codec": "aac", "audio_required": true },
   "manifest": {
     "required_keys": ["layout", "game", "title", "version", "commit", "status", "variant", "pending", "scenarios", "totals", "files"],
-    "layout_value": "dataset-layout/v1",
+    "layout_value": "dataset-layout/v1.1",
     "status_values": ["complete", "pending"],
+    "complete_requires": "replay_verification.pass = true in manifest.json and verdict.pass = true in ReplayScripts/Verification/report.json (the creation replay run end to end, headless, from ReplayScripts/ and verified: files outside Content/ byte-identical, assets equal by structure, game maps equal by actors; known non-content differences listed)",
+    "replay_verification_keys": ["pass", "report", "criteria", "exclusions"],
     "variant_values": ["full", "nostore", "repo-dataset"],
     "file_keys": ["path", "bytes", "sha256"]
   },

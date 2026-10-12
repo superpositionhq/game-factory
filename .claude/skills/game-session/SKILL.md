@@ -102,9 +102,9 @@ refuse them). Recording traces are fine: `workflow.jsonl` stays in the repo, row
 - Before a commit that will be recorded or packaged, run `tools/ue-pipeline/scrub-import-paths.py` (`--apply`,
   `--patch-remaining`, `--verify` = 0 hits; see docs/ue-pipeline.md) so the user's profile path is not in the project.
 
-## Dataset (layout v1)
+## Dataset (layout v1.1)
 
-A finished game ships as: `README.md, git.log, workflow.jsonl, replay.mp4, UEProject/, ReplayScripts/,
+A finished game ships as: `README.md, git.log, workflow.jsonl, UEProject/, ReplayScripts/,
 Gameplay/<slug>_S<n>.mp4, Screenshots/, Build/, manifest.json`. The repo's `Dataset/` folder holds the same minus
 `UEProject/` and `Build/`; the packager produces it and you commit it. README screenshots live in `Docs/screenshots/`
 (jpg, LFS), taken from stills of validated recordings, not from extra GPU launches.

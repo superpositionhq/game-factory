@@ -5,7 +5,17 @@
   maps       per map: actors matched by class + label + folder (then nearest position); transform, components, settings,
              game-class properties compared; references to other actors compared by their labels
   rows       each replayed script run's workflow rows vs the original run's rows (op, target, status, params)
+  verdict    PASS / FAIL against the criteria below; the dataset is COMPLETE only with PASS
 Writes work/Verification/report.json and report.md.
+
+Pass criteria (all must hold; docs/ue-replay.md 2.4):
+  1. every tracked file outside Content/ is byte-identical to the final commit, none missing, no extra files except
+     git-ignored ones (e.g. __pycache__);
+  2. every asset of the final commit exists in the replay with the same class and the same structure digest;
+  3. every game map (settings map_roots) has the same actors (matched by class, label, folder) with the same
+     transform, components and properties, and the same world settings.
+Known differences that are not content are normalised before comparing, counted and listed in the report
+(NORMALISE); Content/ bytes are not compared for the verdict (Unreal writes random GUIDs into every saved package).
 """
 import collections
 import json
@@ -48,6 +58,48 @@ def diff_keys(a, b, prefix=""):
     return out
 
 
+# Known non-content differences, normalised before comparing (each counted in the report):
+NORMALISE = [
+    ("guid", "random GUIDs Unreal writes on save (ExpressionGUID, Guid=...)",
+     lambda s: re.sub(r"(?i)(guid=)[0-9a-f]{32}", r"\1<guid>", s)),
+    ("memory_address", "memory addresses in printed object values (delegates: '(0x00000801...)')",
+     lambda s: re.sub(r"\(0x[0-9A-Fa-f]+\)", "(0x)", s)),
+]
+DROP_KEYS = {
+    "tags.Compressed Size (KB)": ("derived_compression_size", "AnimSequence compressed size: derived data of the "
+                                  "compression codec run, not authored content"),
+}
+
+
+def norm_with(obj, rules):
+    s = json.dumps(obj, ensure_ascii=False, sort_keys=True)
+    for _, _, f in rules:
+        s = f(s)
+    return json.loads(s)
+
+
+def tolerant_diff(a, b, counts):
+    """diff_keys after the known non-content differences are taken out; counts[rule] += 1 for each rule that removed
+    a difference."""
+    dk = diff_keys(a, b)
+    if not dk:
+        return []
+    for k in list(dk):
+        if k in DROP_KEYS:
+            dk.remove(k)
+            counts[DROP_KEYS[k][0]] += 1
+    if not dk:
+        return []
+    na, nb = norm_with(a, NORMALISE), norm_with(b, NORMALISE)
+    rest = [k for k in diff_keys(na, nb) if k not in DROP_KEYS]
+    if len(rest) < len(dk):
+        # attribute to the first rule that alone removes some difference
+        for rid, _, f in NORMALISE:
+            if len([k for k in diff_keys(norm_with(a, [(rid, "", f)]), norm_with(b, [(rid, "", f)])) if k not in DROP_KEYS]) < len(dk):
+                counts[rid] += 1
+    return rest
+
+
 # ------------------------------------------------------------------------------------------------ files
 def verify_files(ctx, final):
     ids = runner.tree_ids(ctx.proj, final)
@@ -80,7 +132,8 @@ def verify_files(ctx, final):
 
 
 # ------------------------------------------------------------------------------------------------ assets
-def verify_assets(rep, tru):
+def verify_assets(rep, tru, counts=None):
+    counts = counts if counts is not None else collections.Counter()
     a = {(x["package"], x["name"]): x for x in rep["assets"]}
     b = {(x["package"], x["name"]): x for x in tru["assets"]}
     by_class = collections.defaultdict(collections.Counter)
@@ -96,7 +149,7 @@ def verify_assets(rep, tru):
             by_class[cls]["class_differs"] += 1
             diffs.append({"asset": k[0], "class": cls, "result": "class", "replay_class": r["class"]})
             continue
-        dk = diff_keys(r.get("digest", {}), t.get("digest", {}))
+        dk = tolerant_diff(r.get("digest", {}), t.get("digest", {}), counts)
         if dk:
             by_class[cls]["differs"] += 1
             diffs.append({"asset": k[0], "class": cls, "result": "differs", "keys": dk[:20]})
@@ -159,14 +212,15 @@ def match_actors(ra, ta):
     return pairs, missing, extra
 
 
-def verify_map(rep, tru):
+def verify_map(rep, tru, counts=None):
+    counts = counts if counts is not None else collections.Counter()
     rn = {x["name"]: x["label"] for x in rep["actors"]}
     tn = {x["name"]: x["label"] for x in tru["actors"]}
     pairs, missing, extra = match_actors(rep["actors"], tru["actors"])
     exact, differs = 0, []
     field_counts = collections.Counter()
     for r, t in pairs:
-        dk = diff_keys(actor_view(r, rn), actor_view(t, tn))
+        dk = tolerant_diff(actor_view(r, rn), actor_view(t, tn), counts)
         if dk:
             differs.append({"label": t["label"], "class": t["class"].rsplit(".", 1)[-1], "fields": dk[:12]})
             for k in dk:
@@ -220,6 +274,67 @@ def verify_rows(ctx, ledger):
     return {"totals": dict(totals), "runs": out}
 
 
+# ------------------------------------------------------------------------------------------------ verdict
+def verdict(report, ctx, counts):
+    f = report["files"]
+    extra = f.get("extra", [])
+    ignored = set()
+    if extra:
+        try:
+            out = runner.git(ctx.proj, "check-ignore", "--stdin", inp=("\n".join(extra) + "\n").encode("utf-8"), check=False)
+            ignored = set(l.strip() for l in (out or "").splitlines() if l.strip())
+        except Exception:
+            ignored = set()
+    extra_real = [p for p in extra if p not in ignored]
+    other_missing = [p for p in f.get("missing", []) if not p.startswith("Content/")]
+    other_diff = [p for p in f.get("differs", []) if not p.startswith("Content/")]
+    crit = []
+    crit.append({"id": "files", "text": "every tracked file outside Content/ byte-identical; none missing; no extra files except git-ignored ones",
+                 "pass": not other_missing and not other_diff and not extra_real,
+                 "result": "%d identical, %d differ, %d missing; %d extra (%d git-ignored)" % (
+                     f["other"].get("identical", 0), len(other_diff), len(other_missing), len(extra), len(ignored)),
+                 "failures": (other_diff + other_missing + extra_real)[:50]})
+    if "assets" in report:
+        t = report["assets"]["total"]
+        bad = [d for d in report["assets"]["diffs"]]
+        crit.append({"id": "assets", "text": "every asset of the final commit present with the same class and structure digest",
+                     "pass": not bad, "result": "%d same, %d differ, %d missing, %d extra, %d class changed" % (
+                         t.get("same", 0), t.get("differs", 0), t.get("missing", 0), t.get("extra", 0), t.get("class_differs", 0)),
+                     "failures": [(d["asset"], d["result"], d.get("keys")) for d in bad][:50]})
+        mfail, msum = [], []
+        for m, v in report["maps"].items():
+            if "truth_actors" not in v:
+                mfail.append((m, v.get("result")))
+                continue
+            ok = v["missing"] == 0 and v["extra"] == 0 and v["differs"] == 0 and v["world_settings_same"]
+            msum.append("%s %d/%d" % (m.rsplit("/", 1)[-1], v["identical"], v["truth_actors"]))
+            if not ok:
+                mfail.append((m, "differs %d, missing %d, extra %d, world settings %s" % (v["differs"], v["missing"], v["extra"],
+                                                                                          "same" if v["world_settings_same"] else "differ")))
+        crit.append({"id": "maps", "text": "every game map: same actors (class, label, folder) with the same transform, components, "
+                                           "properties and world settings", "pass": not mfail and bool(report["maps"]),
+                     "result": "; ".join(msum) or "no maps", "failures": mfail[:50]})
+    else:
+        crit.append({"id": "assets", "text": "structure dumps of replay and truth", "pass": False, "result": "no structure dumps",
+                     "failures": ["run dump --which replay and --which truth"]})
+    exclusions = {
+        "content_bytes": {"what": "Content/ .uasset/.umap bytes: Unreal writes a random PersistentGuid into every saved package; "
+                                  "compared by structure instead (criteria assets, maps)",
+                          "count": f["content"].get("differs", 0)},
+        "maps_not_compared": {"what": (report.get("maps_excluded") or {}).get("reason", ""),
+                              "maps": (report.get("maps_excluded") or {}).get("maps", [])},
+        "git_ignored_extra_files": sorted(ignored),
+    }
+    for rid, what, _ in NORMALISE:
+        exclusions[rid] = {"what": what, "count": counts.get(rid, 0)}
+    for k, (rid, what) in DROP_KEYS.items():
+        exclusions[rid] = {"what": what + " (key %s)" % k, "count": counts.get(rid, 0)}
+    rows = report.get("rows", {}).get("totals", {})
+    return {"pass": all(c["pass"] for c in crit), "criteria": crit, "exclusions": exclusions,
+            "informational": {"workflow_rows_per_run": rows,
+                              "note": "row comparison is informational: rows carry times, ids and per-run counts"}}
+
+
 # ------------------------------------------------------------------------------------------------ report
 def cmd_verify(cfg, a):
     ctx = runner.Ctx(cfg)
@@ -229,8 +344,9 @@ def cmd_verify(cfg, a):
     rep_d, tru_d = os.path.join(ctx.work, "dump-replay"), os.path.join(ctx.work, "dump-truth")
     report = {"schema": "ue-replay.verification/v1", "game": cfg["game"], "final_commit": final, "time": runner.now()}
     report["files"] = verify_files(ctx, final)
+    counts = collections.Counter()
     if os.path.exists(os.path.join(rep_d, "assets.json")) and os.path.exists(os.path.join(tru_d, "assets.json")):
-        report["assets"] = verify_assets(runner.jload(os.path.join(rep_d, "assets.json")), runner.jload(os.path.join(tru_d, "assets.json")))
+        report["assets"] = verify_assets(runner.jload(os.path.join(rep_d, "assets.json")), runner.jload(os.path.join(tru_d, "assets.json")), counts)
         maps, excluded = {}, []
         roots = [r.rstrip("/") + "/" for r in cfg.get("map_roots", [])]
         for fn in sorted(os.listdir(os.path.join(tru_d, "maps"))):
@@ -242,7 +358,7 @@ def cmd_verify(cfg, a):
                 excluded.append(t["map"])
                 continue
             rp = os.path.join(rep_d, "maps", fn)
-            maps[t["map"]] = verify_map(runner.jload(rp), t) if os.path.exists(rp) else {"result": "map missing in replay"}
+            maps[t["map"]] = verify_map(runner.jload(rp), t, counts) if os.path.exists(rp) else {"result": "map missing in replay"}
         report["maps"] = maps
         report["maps_excluded"] = {"reason": "outside the game's map roots %s: demo/showcase levels shipped inside store packs, "
                                              "not built by the game's creator" % cfg.get("map_roots", []), "maps": excluded}
@@ -251,15 +367,31 @@ def cmd_verify(cfg, a):
         if os.path.exists(os.path.join(ctx.work, "windows.jsonl")) else []
     for w in report["windows"]:
         w.pop("detail", None)
+    report["verdict"] = verdict(report, ctx, counts)
     runner.jdump(os.path.join(vdir, "report.json"), report)
     md = render_md(report, ctx)
     with open(os.path.join(vdir, "report.md"), "w", encoding="utf-8", newline="\n") as f:
         f.write(md)
     print(md[:6000])
+    print("VERDICT: %s" % ("PASS" if report["verdict"]["pass"] else "FAIL"))
+    return 0 if report["verdict"]["pass"] else 1
 
 
 def render_md(r, ctx):
     L = ["# Replay verification: %s at %s" % (r["game"], r["final_commit"][:10]), ""]
+    v = r.get("verdict")
+    if v:
+        L += ["## Verdict: %s" % ("PASS" if v["pass"] else "FAIL"), "", "| criterion | result | pass |", "|---|---|---|"]
+        for c in v["criteria"]:
+            L.append("| %s | %s | %s |" % (c["text"], c["result"], "yes" if c["pass"] else "**no**"))
+        L += ["", "Known differences that are not content (normalised or not compared):", ""]
+        for k, e in v["exclusions"].items():
+            if isinstance(e, dict):
+                L.append("- %s: %s%s" % (k, e.get("what", ""), (" (%d)" % e["count"]) if "count" in e else
+                                         (" (%d maps: %s)" % (len(e.get("maps", [])), ", ".join(m.rsplit("/", 1)[-1] for m in e.get("maps", []))))))
+            else:
+                L.append("- %s: %d file(s)" % (k, len(e)))
+        L.append("")
     f = r["files"]
     L += ["## Files against the final commit", "",
           "| | identical | differs | missing |", "|---|---:|---:|---:|",

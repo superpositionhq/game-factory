@@ -65,7 +65,7 @@ Rules:
   .recording rows and docs may name things freely.
 - Deliverable copies are scrubbed of user paths, the user name, and Claude/Anthropic/Opus mentions; builds are
   leak-scanned for the same (and the leak scan stays warn-only here; the packager blocks).
-- Datasets follow layout v1 (docs/dataset-layout-v1.json): README.md, git.log, workflow.jsonl, replay.mp4, UEProject/,
+- Datasets follow layout v1.1 (docs/dataset-layout-v1.json): README.md, git.log, workflow.jsonl, UEProject/,
   ReplayScripts/, Gameplay/<game>_S<n>.mp4, Screenshots/, Build/, manifest.json; each game repo's Dataset/ folder is
   the same minus UEProject/ and Build/. Your outputs feed Gameplay/ (gameplay.mp4 per ok/warn run) and Screenshots/
   (stills): keep them in that shape.

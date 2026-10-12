@@ -1,13 +1,12 @@
 # Dataset
 
-The built data for __TITLE__ (dataset layout v1), regenerated and committed with each release.
+The built data for __TITLE__ (dataset layout v1.1), regenerated and committed with each release.
 
 | Path | What |
 |---|---|
 | `README.md` | what the game is, how it was made, how to open and play it, what each file is |
 | `git.log` | every commit: message, author, date, full diff (binary files as path + sha256) |
 | `workflow.jsonl` | every editor/code operation, recorded as it happened |
-| `replay.mp4` | editor timelapse of the game being built, replayed from `ReplayScripts/` |
 | `ReplayScripts/` | scripts that rebuild the project step by step, plus their verification report |
 | `Gameplay/__SLUG___S<n>.mp4` | one gameplay video per scenario, release version |
 | `Screenshots/` | the README images |

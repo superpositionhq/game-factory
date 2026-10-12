@@ -3,12 +3,13 @@
 Output: <root>/deliverables/_replay/<game>/<final sha8>/
   ReplayScripts/            the replay tooling (unchanged; it runs outside the game-factory checkout), the game's
                             settings, ledger, world ops, initial-assets manifest, reconstructed script texts, verification
-  replay.mp4                the editor timelapse (work/video/replay.mp4)
-  verification.json         summary: windows, verify report, video verification
-  READY                     written last, only when every part is present (the packager waits for it)
+  verification.json         summary: windows, verify report
+  READY                     written last, only when every window was replayed and the verification verdict is PASS
+                            (verify.py pass criteria; the packager waits for it)
 
-Unscrubbed: tools/package-dataset.ps1 -ReplayScripts <...>/ReplayScripts -ReplayVideo <...>/replay.mp4 copies and scrubs it
-(package-game.ps1 -ScrubDir). --force assembles an incomplete copy without READY (for checks only).
+There is no video: the dataset carries the replay scripts only (layout v1.1). Unscrubbed: tools/package-dataset.ps1
+-ReplayScripts <...>/ReplayScripts copies and scrubs it (package-game.ps1 -ScrubDir). --force assembles an incomplete
+copy without READY (for checks only).
 """
 import datetime
 import hashlib
@@ -19,8 +20,9 @@ import shutil
 import runner
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-TOOLS = ["ue_replay.py", "runner.py", "ledger.py", "derive.py", "verify.py", "record.py", "shellfx.py", "package.py"]
-EDITOR = ["ue_dump.py", "ue_world_replay.py"]
+# record.py / editor/ue_world_replay.py (the optional editor timelapse) are not part of the dataset
+TOOLS = ["ue_replay.py", "runner.py", "ledger.py", "derive.py", "verify.py", "shellfx.py", "package.py"]
+EDITOR = ["ue_dump.py"]
 
 
 def sha256(path):
@@ -60,7 +62,7 @@ def readme(cfg, led, state, parts, report):
         "  (rebuilt from the recorded writes and edits, `Blobs/`), the editor-script runs in their original order with",
         "  their workflow rows, and the store packs copied in (`initial-assets.manifest.json`).",
         "- Derived: `workflow.replay.jsonl`, one op per actor (`ue.level.create`, `ue.actor.spawn`, `ue.actor.update`,",
-        "  `ue.actor.remove`, `ue.level.save`), from map exports after each replayed run; it drives `replay.mp4`.", "",
+        "  `ue.actor.remove`, `ue.level.save`), from map exports after each replayed run (included when derived).", "",
         "## How to replay", "",
         "Requirements: Windows, Unreal Engine 5.3, Visual Studio 2022 (C++), Python 3.11+, git with Git LFS, and the game",
         "repository. Set the machine root (`GF_ROOT`) and point `game.json` at the repository, then:", "",
@@ -69,8 +71,7 @@ def readme(cfg, led, state, parts, report):
         "python ue_replay.py prepare --game game.json   # isolated project at the first commit + truth project",
         "python ue_replay.py run     --game game.json   # every window headless; resumable",
         "python ue_replay.py verify  --game game.json   # final state vs the final commit",
-        "python ue_replay.py derive  --game game.json   # world ops for the video",
-        "python ue_replay.py record  --game game.json   # visible editor timelapse (GPU)",
+        "python ue_replay.py derive  --game game.json   # world-building ops from the map exports",
         "```", "",
         "## Results", "",
         "- Windows replayed: %d of %d (first commit `%s`, final `%s`)." % (state.get("window", 0), win_total,
@@ -97,11 +98,9 @@ def cmd_package(cfg, a):
     src = {
         "windows complete": ctx.state.get("window", 0) >= total_windows(led) > 0,
         "Verification/report.json": os.path.isfile(os.path.join(work, "Verification", "report.json")),
-        "workflow.replay.jsonl (world ops)": os.path.isfile(os.path.join(work, "world-ops.jsonl")),
-        "replay.mp4": os.path.isfile(os.path.join(work, "video", "replay.mp4")),
-        "video-verification.json": os.path.isfile(os.path.join(work, "video", "video-verification.json")),
+        "verification PASS": bool((runner.jload(os.path.join(work, "Verification", "report.json"), {}) or {}).get("verdict", {}).get("pass")),
     }
-    complete = all(src.values())
+    complete = all(src.values())   # the world ops (derive) are included when present, but not required
     for k, v in src.items():
         print("  %-36s %s" % (k, "ok" if v else "MISSING"))
     if not complete and not a.force:
@@ -130,21 +129,15 @@ def cmd_package(cfg, a):
     for d in ("dump-replay", "dump-truth"):
         if os.path.isdir(os.path.join(work, d)):
             copytree(os.path.join(work, d), os.path.join(vdir, d))
-    vv = os.path.join(work, "video", "video-verification.json")
-    if os.path.isfile(vv):
-        shutil.copy2(vv, os.path.join(vdir, "video-verification.json"))
     report = runner.jload(os.path.join(work, "Verification", "report.json"), None)
     with open(os.path.join(rs, "README.md"), "w", encoding="utf-8", newline="\n") as f:
         f.write(readme(cfg, led, ctx.state, src, report))
-    mp4 = os.path.join(work, "video", "replay.mp4")
-    if os.path.isfile(mp4):
-        shutil.copy2(mp4, os.path.join(out, "replay.mp4"))
     summary = {
         "schema": "ue-replay.package/v1", "game": cfg["game"], "first_commit": led.get("first"), "final_commit": final,
         "created": datetime.datetime.now().astimezone().isoformat(timespec="seconds"), "complete": complete, "parts": src,
         "windows": {"done": ctx.state.get("window", 0), "total": total_windows(led)}, "blobs": nblobs,
-        "verify": report, "video": runner.jload(vv, None),
-        "replay_mp4_sha256": sha256(os.path.join(out, "replay.mp4")) if os.path.isfile(os.path.join(out, "replay.mp4")) else None,
+        "world_ops": os.path.isfile(os.path.join(rs, "workflow.replay.jsonl")),
+        "verdict": (report or {}).get("verdict"), "verify": report,
     }
     runner.jdump(os.path.join(out, "verification.json"), summary)
     if complete:
