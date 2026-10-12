@@ -80,7 +80,7 @@ RUN_PATTERNS = [
     re.compile(r"-run=pythonscript\s+['\"]?-script=(?P<script>[^'\"\s]+)(?P<args>[^'\"]*)['\"]?"),
 ]
 # "exit code N (S s)" (Scripts/ue.ps1) or "exit=N seconds=S" (a game's shell wrapper)
-EXIT_RE = re.compile(r"exit code (-?\d+) \((\d+) s\)|exit=(-?\d+)(?: seconds=(\d+))?|\bexit (-?\d+) log ue-")
+EXIT_RE = re.compile(r"exit code (-?\d+)(?: \((\d+) s\))?|exit=(-?\d+)(?: seconds=(\d+))?|\bexit (-?\d+)(?: log ue-| seconds (\d+))")
 
 
 # a shell command that exited non-zero still ran: its file edits and editor runs happened
@@ -109,12 +109,17 @@ def expand_loops(cmd, pats=None, spans=False):
     """`for v in a "b c" d; do ... $v ...; done` (on one line or several) around an editor run: one run per value
     (${v}, ${v%%pat} and ${v##pat} forms included)."""
     m = re.search(r"\bfor (\w+) in ([^;\n]+?)\s*(?:;|\n)\s*do\b(.*?)(?:;|\n)\s*done\b", cmd, re.S)
-    if not m:
-        return [cmd]
-    try:
-        values = shlex.split(m.group(2), posix=True)
-    except ValueError:
-        values = m.group(2).split()
+    if m:
+        try:
+            values = shlex.split(m.group(2), posix=True)
+        except ValueError:
+            values = m.group(2).split()
+    else:
+        # PowerShell: foreach ($v in "a", "b") { ... $v ... }
+        m = re.search(r"\bforeach\s*\(\s*\$(\w+)\s+in\s+([^)]+)\)\s*\{(.*?)\}", cmd, re.S | re.I)
+        if not m:
+            return [cmd]
+        values = [v.strip().strip("'\"") for v in m.group(2).split(",") if v.strip()]
     var, body = m.group(1), m.group(3)
     out = [cmd[:m.start()] + subst_var(body, var, v) + cmd[m.end():] for v in values]
     if not any(p.search(subst_var(body, var, v)) for v in values for p in (pats or RUN_PATTERNS)):
@@ -173,7 +178,7 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
         resp = a.get("response") or ""
         if not isinstance(resp, str):
             resp = json.dumps(resp)
-        exits = [(x[0] or x[2] or x[4], x[1] or x[3] or None) for x in EXIT_RE.findall(resp)]
+        exits = [(x[0] or x[2] or x[4], x[1] or x[3] or x[5] or None) for x in EXIT_RE.findall(resp)]
         found = []
         for k, (c, lo_k, hi_k) in enumerate(expanded):
             for pi, pat in enumerate(pats):
@@ -188,12 +193,24 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
                         g["mode"] = tp.get("mode", g.get("mode") or "commandlet")
                     g = {k2: (v if v != "" else None) for k2, v in g.items()}
                     reason = g.get("reason") if g.get("reason") is not None else g.get("reason_sq")
+                    env = run_env(c, m.start())
+                    if g.get("env_args"):
+                        # a wrapper that takes "--env K=V" pairs and hands them to the script (stealth's ue_run*.py)
+                        try:
+                            toks = shlex.split(subst_assigned(c, m.start(), g["env_args"]), posix=True)
+                        except ValueError:
+                            toks = g["env_args"].split()
+                        for ti, tok in enumerate(toks):
+                            kv = toks[ti + 1] if tok == "--env" and ti + 1 < len(toks) else tok[6:] if tok.startswith("--env=") else None
+                            if kv and "=" in kv:
+                                ek, ev = kv.split("=", 1)
+                                env[ek] = ev
                     found.append(((k, m.start()), subst_assigned(c, m.start(), g["script"]),
-                                  subst_assigned(c, m.start(), (g.get("args") or "").strip()), run_env(c, m.start()),
+                                  subst_assigned(c, m.start(), (g.get("args") or "").strip()), env,
                                   reason if reason is not None else run_reason(c, m.start()), g.get("mode") or "commandlet",
                                   pi >= len(RUN_PATTERNS)))
         found.sort()
-        for i, (_, script, args, env, reason, mode, via_wrapper) in enumerate(found):
+        for i, ((_, pos), script, args, env, reason, mode, via_wrapper) in enumerate(found):
             ex = exits[i] if i < len(exits) and len(exits) == len(found) else None
             s = script.replace("\\", "/")
             if re.match(r"^[A-Za-z]:/", s) and s.lower().startswith(repo_abs.lower().rstrip("/") + "/"):
@@ -204,7 +221,7 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
                 # started in the background: by the tool, or with a shell `&` (rows then arrive after the call ends)
                 "background": bool(re.search(r'"backgroundTaskId"', resp)) or bool(re.search(r"[^&]&[ \t]*(?:\n|$|;|echo\b|wait\b|disown\b)", c)),
                 "after": prev,
-                "env": env, "reason": reason, "mode": mode, "via_wrapper": via_wrapper,
+                "env": env, "reason": reason, "mode": mode, "via_wrapper": via_wrapper, "pos": pos,
                 "command": cmd[:2000],
             })
     return runs
@@ -212,7 +229,16 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
 
 def run_env(cmd, pos):
     """VAR=value assignments in front of the simple command that holds position pos (and earlier `export`s)."""
-    start = max(cmd.rfind(t, 0, pos) for t in ("&&", ";", "|", "\n"))
+    start, q = -1, None   # last command separator before pos, outside quotes
+    for i in range(pos):
+        ch = cmd[i]
+        if q:
+            if ch == q:
+                q = None
+        elif ch in "'\"":
+            q = ch
+        elif ch in ";|\n" or cmd.startswith("&&", i):
+            start = i
     env = {}
     for m in re.finditer(r"(?:^|\s)(?:export\s+)?([A-Z][A-Z0-9_]+)=(\"[^\"]*\"|'[^']*'|[^\s;&|]+)", cmd[:pos]):
         if m.group(1) in ("MSYS_NO_PATHCONV", "PATH", "PY", "W", "L", "D", "S", "T"):
@@ -424,7 +450,7 @@ def build(cfg):
             for s in shells:
                 if s["match"] in cmd and ("shell", s["match"]) not in seen_tool:
                     seen_tool.add(("shell", s["match"]))
-                    w["shell"].append(dict(s, time=a["time"]))
+                    w["shell"].append(dict(s, time=a["time"], pos=shellfx.protect_heredocs(cmd)[0].find(s["match"])))
             # runs in this command, at the command's position in time (texts as of before the command's own writes)
             for r in run_by_tool.get(a.get("tool_use_id"), []):
                 run_seq += 1
@@ -484,6 +510,10 @@ def build(cfg):
         hi = parse_time(nxt["start"]) if nxt else parse_time(r["time"]) + datetime.timedelta(hours=2)
         hi = min(hi, parse_time(r["time"]) + datetime.timedelta(seconds=5)) if not r["background"] else hi
         r["rows"] = [x["id"] for x in by_script.get(r["script"], []) if lo <= parse_time(x["time"]) <= hi]
+        for nr in cfg.get("not_run", []):
+            # runs the records show never happened (a loop stopped, a refused start, a withdrawn GPU wait)
+            if nr.get("tool_use_id") == r.get("action_tool_use_id") and (not nr.get("script") or nr["script"] in r["script"]):
+                r["not_run"] = nr.get("reason", "listed in settings not_run")
         if wrapper_ops and r.get("via_wrapper"):
             # the game's run wrapper logs a row before every run it starts: none means the command never got there
             # (an earlier step of the same command failed), so the run did not happen

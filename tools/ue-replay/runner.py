@@ -213,6 +213,10 @@ def initial_assets_manifest(cfg, ctx):
                     files.append({"role": "store_pack", "drop": d["id"], "pack": it.get("pack"), "path": fp, "bytes": size,
                                   "sha256": sha, "source": "commit %s (git/LFS)" % ref[:10]})
                 continue
+            if os.path.isfile(it["from"]):
+                files.append({"role": "store_pack", "drop": d["id"], "pack": it.get("pack"), "path": it["to"],
+                              "bytes": os.path.getsize(it["from"]), "sha256": sha256_file(it["from"])})
+                continue
             for dp, _, fns in os.walk(it["from"]):
                 for fn in fns:
                     fp = os.path.join(dp, fn)
@@ -310,7 +314,7 @@ def run_editor_script(ctx, run):
     env.update(run.get("env") or {})
     if run.get("reason") and cfg.get("reason_env"):
         env[cfg["reason_env"]] = run["reason"]
-    if cfg.get("args_env"):
+    if cfg.get("args_env") and run.get("via_wrapper"):
         # the game's wrapper hands its extra arguments to the script in an environment variable (rally: RR_ARGS)
         env[cfg["args_env"]] = run.get("args") or ""
         run = dict(run, args="")
@@ -346,6 +350,25 @@ def dump_maps(ctx, maps, out, assets=False, t3d=True, label="dump", project=None
         "1" if assets else "0", "1" if t3d else "0", ctx.cfg.get("module", os.path.splitext(ctx.cfg["uproject"])[0]))
     argv = [ctx.editor_cmd, up, "-run=pythonscript", sarg] + ctx.cfg.get("editor_args", []) + ["-abslog=" + log]
     return heavy("ue-replay %s %s" % (ctx.cfg["game"], label), argv)
+
+
+def host_python(ctx, step):
+    """shell step 'host-python script args...': a builder's host-side Python script (not an editor script) run in the
+    replay project with the engine's Python, cwd under the project (e.g. stealth's prune_apply.py deleting pack files).
+    The script must address the project relative to itself or its cwd; one that names the live game repo is refused."""
+    cwd = ctx.p(step.get("cwd", ""))
+    script = os.path.join(cwd, step["argv"][1])
+    text = open(script, encoding="utf-8", errors="replace").read()
+    live = ctx.cfg["repo"].replace("\\", "/").lower()
+    if live in text.replace("\\\\", "/").replace("\\", "/").lower():
+        raise SystemExit("host-python %s names the live game repo; refusing" % step["argv"][1])
+    py = os.path.join(ctx.engine, "Engine", "Binaries", "ThirdParty", "Python3", "Win64", "python.exe")
+    r = subprocess.run([py, script] + list(step["argv"][2:]), cwd=cwd, capture_output=True, text=True, errors="replace")
+    with open(os.path.join(ctx.logs, "host_%s.log" % os.path.splitext(os.path.basename(script))[0]), "a", encoding="utf-8") as f:
+        f.write(r.stdout + r.stderr)
+    if r.returncode:
+        print("   host-python %s exit %s" % (step["argv"][1], r.returncode), flush=True)
+    return r.returncode
 
 
 def delete_paths(ctx, step):
@@ -418,6 +441,11 @@ def drop_assets(ctx, d):
             n += len(git(ctx.proj, "ls-tree", "-r", "--name-only", ref, "--", it["from_git"]).splitlines())
             continue
         dst = ctx.p(it["to"])
+        if os.path.isfile(it["from"]):
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(it["from"], dst)
+            n += 1
+            continue
         for dp, _, fns in os.walk(it["from"]):
             for fn in fns:
                 s = os.path.join(dp, fn)
@@ -504,8 +532,9 @@ def cmd_run(cfg, a):
             ctx.save()
         # order of the recorded tool calls (each call's end time), then position inside the call; estimated start
         # times can invert two runs of one command (a duration is printed for one and not the other)
-        steps = [("run", (r["time"], k), r) for k, r in enumerate(w["runs"])] + \
-                [("drop", (d["time"], -1), d) for d in w["drops"]] + [("shell", (s["time"], -1), s) for s in w["shell"]]
+        steps = [("run", (r["time"], r.get("pos", -1), k), r) for k, r in enumerate(w["runs"])] + \
+                [("drop", (d["time"], -2, 0), d) for d in w["drops"]] + \
+                [("shell", (s["time"], s.get("pos", -1) if s.get("pos", -1) >= 0 else -1, 0), s) for s in w["shell"]]
         steps.sort(key=lambda s: s[1])
         wf_path = ctx.p("workflow.jsonl")
         for kind, t, s in steps:
@@ -525,15 +554,17 @@ def cmd_run(cfg, a):
                 rec["outputs"] = {k: len(v) for k, v in rec["outputs"].items()}
             elif kind == "shell":
                 rec["files"] = (move_merge(ctx, s) if s["argv"][0] == "move-merge" else
-                                delete_paths(ctx, s) if s["argv"][0] == "delete" else 0)
+                                delete_paths(ctx, s) if s["argv"][0] == "delete" else
+                                host_python(ctx, s) if s["argv"][0] == "host-python" else 0)
                 rec["outputs"] = {k: len(v) for k, v in note_outputs(ctx, before, scan(ctx.proj), "shell:" + sid).items()}
             else:
                 r = s
                 rec.update({"run": r["id"], "script": r["script"], "readonly": r["readonly"], "exit_code_original": r["exit_code"],
                             "rows_original": r["rows"]})
                 # (an exit code, even 127, means the run happened: the wrapper printed it after the editor exited)
-                not_run = ("no wrapper row and no exit code: the original command stopped before this run"
-                           if r.get("wrapper_rows") == 0 and r.get("exit_code") is None else None)
+                not_run = (r.get("not_run") or
+                           ("no wrapper row and no exit code: the original command stopped before this run"
+                            if r.get("wrapper_rows") == 0 and r.get("exit_code") is None else None))
                 if not_run and not a.force:
                     rec["skipped"] = not_run
                     print("   %s %-38s skipped: %s" % (r["id"], os.path.basename(r["script"]), not_run), flush=True)

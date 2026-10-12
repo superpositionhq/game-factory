@@ -346,6 +346,25 @@ def apply_command(action, states, sandbox, tracked, log, aux=None):
             elif a2 and aux is not None and _abs(a2[0]) in aux:
                 run_python(aux[_abs(a2[0])], "python_helper", helper=_abs(a2[0]))
             continue
+        if exe == "perl" and any(re.match(r"^-\w*i", a_) for a_ in argv[1:]):
+            # perl -pi / -0pi edits are not reproduced: their files become unknown, so runs use the commit's text
+            files_ = []
+            skip = False
+            for a_ in argv[1:]:
+                if skip:
+                    skip = False
+                    continue
+                if a_ in ("-e", "-E"):
+                    skip = True
+                    continue
+                if not a_.startswith("-"):
+                    files_.append(a_)
+            for f_ in files_:
+                p_ = repo_path(f_, cwd_rel, repo_abs)
+                if p_:
+                    states.put(p_, None, "perl_edit_unknown")
+            log.append(("perl_edit_unknown", files_))
+            continue
         if exe == "sed":
             redirect = re.search(r"\s>\s*(\"[^\"]+\"|'[^']+'|[^\s;&|]+)\s*$", plain)
             sargs = argv[1:]
