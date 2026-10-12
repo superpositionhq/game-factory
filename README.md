@@ -7,6 +7,25 @@ timestamps, screen video, inputs, code commits and a playtest with inputs.
 
 **Priorities (user decision).** What ships is what matters, in this order: the game plays; the game builds (editor and packaged Shipping); the dataset holds the replay scripts and the git log. The AutoPlay bot should still play like a human (human-like input, aim and camera), but bot work never blocks a release: one recording per scenario that shows the game running is enough, whatever the result (win/lose/timeout is metadata). No tuning for win rates, seed sweeps or "clean" runs, and no re-runs or re-recordings to improve how the bot plays. No retest loops: every GPU or editor run costs about 30 minutes of the shared machine and holds up delivery, so run the minimum once and report; re-run only when the user asks. Game-session work never blocks dataset packaging or sharing.
 
+## How a game goes from idea to dataset
+
+1. **Story bible and design doc**: `docs/games/<slug>.md` (pitch, systems, maps, scenarios, art and story), after a
+   duplicate check against the games already made.
+2. **New project**: `templates/new-game.ps1` creates `%GF_ROOT%\games\<slug>` from the UE 5.3 template: hooks that
+   record every action and commit, `ReplayConfig.json` (`"live": true`), `Scripts/ue.ps1`, a private GitHub repo.
+3. **Build**: the session follows the `commit-always` and `game-session` skills; every action is recorded
+   (`workflow.jsonl`, the action hooks, git history).
+4. **Creation replay in the background**: after every commit, the post-commit hook starts the live replay
+   (`tools/ue-replay`, `ue_replay.py live`). It replays the new commits into an isolated copy of the project at low
+   priority and checks them against the commit. Anything that keeps the history from replaying comes back to the
+   session at its next commit ([docs/ue-replay.md](docs/ue-replay.md), section 3).
+5. **Framing check, then the recording queue**: AutoPlay contract v1.4, one gameplay mp4 per scenario
+   ([docs/ue-pipeline.md](docs/ue-pipeline.md)).
+6. **Scrub and privacy**: no user names, machine paths or tool names in anything that ships (`tools/package-game.ps1`
+   scrub rules, leak scan).
+7. **Dataset v1.1**: `ue_replay.py release` (the replay is already verified, so only the last windows, a full final
+   verify and the package remain: minutes), then `tools/package-dataset.ps1` writes `games\<slug>\Dataset.zip`.
+
 ## Dataset format (layout v1.1, all games)
 
 Every game is delivered in **dataset layout v1.1**, our standard delivery: the creation record (`git.log`,
@@ -48,6 +67,7 @@ Each game repo keeps the same delivery in `Dataset/`, minus `UEProject/` and `Bu
 ```
 tools/ue-pipeline/                  UE build, package and gameplay recording pipeline; AutoPlay drop-in
 tools/package-game.ps1, package-dataset.ps1   per-game deliverables and dataset layout v1.1
+tools/ue-replay/                    creation replay: per-commit (live) and at release; ReplayScripts/ of the dataset
 machine/                            machine setup: bootstrap/check, ue-heavy limiter, recording hooks, ffmpeg, asset-scout
 templates/                          UE 5.3 game skeleton + new-game.ps1
 .claude/skills/                     commit-always, game-session

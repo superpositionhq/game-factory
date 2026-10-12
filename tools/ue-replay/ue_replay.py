@@ -9,6 +9,10 @@
   python ue_replay.py record  --game ...                             visible world replay + capture (GPU job)
   python ue_replay.py status  --game ...
   python ue_replay.py package --game ... [--force]                     deliverables/_replay/<game>/<sha8>/ (READY when complete)
+  python ue_replay.py live    --game ... [--log <file>]               per-commit replay of a live game (background job)
+  python ue_replay.py live-status                                     every live game: HEAD, replayed windows, last result
+  python ue_replay.py truth   --game ...                              truth project at the final commit, editor built
+  python ue_replay.py release --game ...                              catch up, truth, dumps, verify, package
 
 See docs/ue-replay.md. Every engine process runs through <root>/tools/ue-heavy.ps1 (machine root: machine/lib/gfroot.py).
 --game is a game slug (its settings are <root>/games/<slug>/ReplayConfig.json, kept in the game's own repo) or a path to a
@@ -64,8 +68,20 @@ def check_free(path, what):
 RECORDED_KEYS = ("match", "recorded")
 
 
+def machine_engine():
+    """UE 5.3 root: "engine" in the machine config (machine/lib/gf-root.ps1), else the default install folder."""
+    try:
+        import gfroot
+        e = gfroot.config().get("engine")
+    except ImportError:
+        e = None
+    return (e or "C:/Program Files/Epic Games/UE_5.3").replace("\\", "/").rstrip("/")
+
+
 def expand(v, root):
     if isinstance(v, str):
+        if "{engine}" in v:
+            v = v.replace("{engine}", machine_engine())
         return v.replace("{root}", root).replace("{home}", os.path.expanduser("~").replace("\\", "/"))
     if isinstance(v, list):
         return [expand(x, root) for x in v]
@@ -214,9 +230,7 @@ def write_json(path, obj):
         f.write("\n")
 
 
-def cmd_ledger(cfg, a):
-    import ledger
-    led, blobs = ledger.build(cfg)
+def save_ledger(cfg, led, blobs):
     bd = os.path.join(cfg["work_dir"], "blobs")
     os.makedirs(bd, exist_ok=True)
     for h, b in blobs.items():
@@ -225,6 +239,12 @@ def cmd_ledger(cfg, a):
             with open(p, "wb") as f:
                 f.write(b)
     write_json(os.path.join(cfg["work_dir"], "ledger.json"), led)
+
+
+def cmd_ledger(cfg, a):
+    import ledger
+    led, blobs = ledger.build(cfg)
+    save_ledger(cfg, led, blobs)
     print(json.dumps(led["counts"], indent=1))
     if a.verbose:
         for w in led["windows"][1:]:
@@ -245,7 +265,8 @@ def cmd_ledger(cfg, a):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command")
-    ap.add_argument("--game", required=True)
+    ap.add_argument("--game", default=None)
+    ap.add_argument("--log", default=None)
     ap.add_argument("--verbose", "-v", action="store_true")
     ap.add_argument("--until", type=int, default=None)
     ap.add_argument("--which", default="replay")
@@ -255,18 +276,23 @@ def main():
     ap.add_argument("--speed", type=float, default=1.0)
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
+    if a.command == "live-status":
+        import live
+        return live.cmd_live_status(machine_root())
+    if not a.game:
+        ap.error("--game is required for " + a.command)
     cfg = load_cfg(a.game)
     fn = globals().get("cmd_" + a.command)
     if fn is None:
         import importlib
-        for mod in ("runner", "verify", "derive", "record", "package"):
+        for mod in ("runner", "verify", "derive", "record", "package", "live"):
             fn = getattr(importlib.import_module(mod), "cmd_" + a.command, None)
             if fn:
                 break
     if fn is None:
         ap.error("unknown command " + a.command)
     # disk-heavy steps refuse to start on a nearly full drive (a disk that filled mid-run corrupted a replay once)
-    if a.command in ("prepare", "run", "dump"):
+    if a.command in ("prepare", "run", "dump", "live", "truth", "release"):
         check_free(cfg["work_root"], "ue_replay " + a.command)
     elif a.command == "package":
         check_free(out_root(), "ue_replay package")

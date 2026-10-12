@@ -71,6 +71,14 @@ which rewrites history and changes every sha that recordings and briefs refer to
   scripts, docs). The user's absolute profile path where avoidable (run `tools/ue-pipeline/scrub-import-paths.py`
   before a commit that will be recorded or packaged; the coordinator asks for it).
 
+## The replay after every commit (game repos)
+
+A game whose `ReplayConfig.json` has `"live": true` is replayed in the background after each commit (docs/ue-replay.md,
+section 3). The post-commit hook prints `[replay] ...` lines when the last replay found something: read them, fix
+what they name in your next commits (they are about how you work, not about the game), and keep `ReplayConfig.json`
+current (new wrapper -> `run_patterns`; store pack copied in -> `asset_drops`). Never amend or rebase a commit you
+already made: the replay has to go back and redo everything after it.
+
 ## Push policy
 
 - **Never push unless the coordinator says so** (or the user, in your own session). The coordinator reviews first

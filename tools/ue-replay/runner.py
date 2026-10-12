@@ -63,9 +63,24 @@ def ps_quote(s):
     return "'" + str(s).replace("'", "''") + "'"
 
 
+def heavy_script():
+    """ue-heavy.ps1 and its extra switches. GF_HEAVY_LOW=1 (the live per-commit replay): low priority, -Low, which the
+    installed copy may not know yet; this checkout's machine/tools copy shares its machine-wide slots."""
+    if os.environ.get("GF_HEAVY_LOW") != "1":
+        return HEAVY, ""
+    for p in (HEAVY, os.path.join(HERE, "..", "..", "machine", "tools", "ue-heavy.ps1")):
+        try:
+            if "[switch]$Low" in open(p, encoding="utf-8-sig").read():
+                return os.path.abspath(p), " -Low"
+        except OSError:
+            pass
+    return HEAVY, ""
+
+
 def heavy(label, argv, log_path=None, env=None):
     """Run one engine process through ue-heavy.ps1 (machine-wide slots); returns (exit code, seconds)."""
-    cmd = "& %s -Label %s -- %s; exit $LASTEXITCODE" % (ps_quote(HEAVY), ps_quote(label), " ".join(ps_quote(a) for a in argv))
+    script, extra = heavy_script()
+    cmd = "& %s -Label %s%s -- %s; exit $LASTEXITCODE" % (ps_quote(script), ps_quote(label), extra, " ".join(ps_quote(a) for a in argv))
     e = dict(os.environ)
     if env:
         e.update(env)
@@ -499,14 +514,21 @@ def wf_rows(path):
         return [l for l in f.read().splitlines() if l.strip()]
 
 
-def dump_maps(ctx, maps, out, assets=False, t3d=True, label="dump", project=None):
+def dump_maps(ctx, maps, out, assets=False, t3d=True, label="dump", project=None, packages=None):
+    """Structure dump through the editor; packages: only these assets (a list of package names), maps: a list or "all"."""
     proj = project or ctx.proj
     up = os.path.join(proj, ctx.cfg["uproject"])
     log = os.path.join(ctx.logs, "%s.log" % label)
     sarg = "-script=%s --out %s --roots %s --map-roots %s --maps %s --assets %s --t3d %s --module %s" % (
         DUMP, out.replace("\\", "/"), ",".join(ctx.cfg.get("content_roots", ["/Game"])),
-        ",".join(ctx.cfg.get("map_roots", ctx.cfg.get("content_roots", ["/Game"]))), ",".join(maps) if isinstance(maps, list) else maps,
+        ",".join(ctx.cfg.get("map_roots", ctx.cfg.get("content_roots", ["/Game"]))), (",".join(maps) or "none") if isinstance(maps, list) else maps,
         "1" if assets else "0", "1" if t3d else "0", ctx.cfg.get("module", os.path.splitext(ctx.cfg["uproject"])[0]))
+    if packages is not None:
+        lst = out.rstrip("/\\") + ".packages.txt"
+        os.makedirs(os.path.dirname(lst), exist_ok=True)
+        with open(lst, "w", encoding="utf-8", newline="\n") as f:
+            f.write("".join(p + "\n" for p in packages))
+        sarg += " --packages %s" % lst.replace("\\", "/")
     argv = [ctx.editor_cmd, up, "-run=pythonscript", sarg] + ctx.cfg.get("editor_args", []) + ["-abslog=" + log]
     return heavy("ue-replay %s %s" % (ctx.cfg["game"], label), argv)
 

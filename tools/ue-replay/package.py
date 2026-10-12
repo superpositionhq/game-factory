@@ -22,7 +22,7 @@ import ue_replay
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # record.py / editor/ue_world_replay.py (the optional editor timelapse) are not part of the dataset
-TOOLS = ["ue_replay.py", "runner.py", "ledger.py", "derive.py", "verify.py", "shellfx.py", "package.py"]
+TOOLS = ["ue_replay.py", "runner.py", "ledger.py", "derive.py", "verify.py", "shellfx.py", "package.py", "live.py"]
 EDITOR = ["ue_dump.py"]
 
 

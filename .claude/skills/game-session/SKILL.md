@@ -85,6 +85,30 @@ refuse them). Recording traces are fine: `workflow.jsonl` stays in the repo, row
 - The machine hooks record every tool call to `<GF_ROOT>\.recording\<slug>\actions.jsonl` and every commit to
   `commits.jsonl`; leftover changes are auto-committed as `WIP` at the end of a turn (commit properly instead).
 
+## Replay-friendly work
+
+The dataset's `ReplayScripts/` rebuilds your game from its history: every commit is replayed in an isolated copy of
+the project, in the background, right after you make it (`ReplayConfig.json` `"live": true`; docs/ue-replay.md,
+section 3). What it cannot replay costs a manual workaround at release, so:
+
+- **Every editor script committed** under `Scripts/` and run by that project-relative path, through
+  `Scripts/ue.ps1 script -Script Scripts/<name>.py -Reason "..."` (or a wrapper of yours whose call is in
+  `ReplayConfig.json` `run_patterns`). Never run a script from a scratch or temp folder.
+- **Relative paths only**: scripts reach files through the project (`unreal.Paths.project_dir()`,
+  `Path(__file__).resolve().parents[1]`), never an absolute path to `games\<slug>` or an `os.chdir` into it.
+- **Read-only scripts by name**: probes and checks are `inspect_*`, `measure_*`, `check_*`, `analyze_*`, `scan_*` or
+  contain `probe`; the replay skips them. One that writes something a later step reads goes in `not_readonly`.
+- **One workflow row per run at least**, written by the script.
+- **Edit scripts with Write/Edit**, or write `name_v2.py`; a `sed -i`/`perl -i`/Python rewrite of a script hides its text
+  at run time from the replay.
+- **No custom commandlets** (`-run=<Name>`) and no GUI-only edits for content: do it in an editor script.
+- **`ReplayConfig.json` in the repo from day one** (the template has it) and kept current: a store pack you copy into
+  `Content/` gets an `asset_drops` entry (the copy command as `match`, `from_git` the pack's folder), a new wrapper a
+  `run_patterns` entry.
+- **Never amend or rebase** a commit you made.
+
+After a commit, the hook prints `[replay] ...` when the last replay found something; fix those in your next commits.
+
 ## AutoPlay and recordings
 
 - Once the first scenario is playable end to end, implement `docs/autoplay-contract.md` (v1.4): the drop-in

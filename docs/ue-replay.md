@@ -74,7 +74,7 @@ accumulate visibly instead of being reset. Files the commit deletes are deleted.
   (`lfs.storage`; nothing downloaded), checked out at the **first commit** (for liaozhai-night: the UE 5.3 Third
   Person C++ template). The game repo itself is only read.
 - `work/`: ledger, plan, blobs (reconstructed script texts), logs, dumps, results.
-- `truth/`: the same clone at the final commit, built, used to dump the reference state.
+- `truth/`: the same clone at the final commit, built, used to dump the reference state (`ue_replay.py truth`).
 
 `initial-assets.manifest.json` lists what the replay gets from outside the game's history, with sha256 per file:
 the store packs (from `asset-library\fab-ue\<pack>\Content\<Folder>`) and external source trees the scripts read
@@ -177,7 +177,7 @@ The optional video is a GPU job with recording priority; it is not run for datas
 ```
 ReplayScripts/
   README.md                       how to replay, what is observed vs derived, results
-  ue_replay.py, runner.py, ledger.py, derive.py, verify.py, shellfx.py, package.py
+  ue_replay.py, runner.py, ledger.py, derive.py, verify.py, shellfx.py, package.py, live.py
                                   the tooling as it ran (it works outside the game-factory checkout: GF_ROOT or ~/Work)
   editor/ue_dump.py
   game.json                       the game's replay settings ({root} placeholders, no machine paths)
@@ -198,6 +198,63 @@ Disk: `prepare`, `run` and `dump` refuse to start when the work drive has less t
 free, `package` likewise for `<out>` (a disk that filled mid-run once corrupted a replay). Once `READY` exists,
 `ue_replay.py clean --game <game>` lists the replay project, truth project and bulky work files (dumps, blobs, rows,
 logs; ~20 GB a game) and removes them with `--yes`; the ledger, state and report stay.
+
+### 2.7 Code as it stood when each script ran
+
+The window's inputs are the commit's, but a run that happened before a mid-window code change ran with the earlier
+C++ (stealth L02: built with the window's later code, the level got duplicate actors). The ledger records, per run,
+every code file (`Source/`, `Plugins/` C++ and C#, `.uproject`, `.uplugin`) whose text at the run's start differs
+from the commit (`code`). The runner writes those texts and rebuilds the editor before the run, and puts the commit's
+code back at the boundary. If the earlier code does not compile here, the run gets the commit's code (listed). A run
+whose code text the recording cannot rebuild (a shell edit the ledger does not follow) also gets the commit's code
+(`code_unknown`). Deviations: `code_at_run_time`, `code_at_run_time_not_buildable`, `code_at_run_time_unknown`.
+Settings `"code_at_run_time": false` turns it off.
+
+## 3. Live replay (per commit, during development)
+
+A game whose `ReplayConfig.json` has `"live": true` (the template's default) is replayed while it is being built, so
+its `ReplayScripts/` is verified commit by commit and release only adds the last windows.
+
+**Trigger.** The game repo's post-commit hook (`machine/install-git-hook.ps1`, installed by `templates/new-game.ps1`)
+runs `tools/ue-replay/live-hook.ps1`. It returns at once: it prints the last job's findings once, then starts
+`ue_replay.py live --game <settings>` detached at below-normal priority unless a job for the game runs (one per game,
+`work/live/lock`; the running job picks up new commits before it exits).
+
+**The job** (`live.py`):
+
+1. Builds the ledger up to `HEAD` and compares it window by window with the ledger already replayed (commit, runs,
+   script and code texts, drops, shell steps). If history was rewritten (an amend, a rebase) or the settings changed
+   what a replayed window does, the replay project goes back to the last unchanged commit's tree and replays from
+   there (`work/live/events.jsonl`, `replay_restarted_from_commit`).
+2. Replays the new windows into the persistent replay project (section 2.3). Every engine process goes through
+   `ue-heavy.ps1 -Low`: one low-priority job machine-wide, which takes a general slot only while no other job waits
+   for one and another slot stays free, below-normal process priority. `work/STOP` pauses it as usual.
+3. Checks the new windows: each run against its original (exit code, workflow rows), each window's Content against
+   its commit (fallbacks, extras), and the assets and maps the new commits touched against the truth project at
+   `HEAD` (`truth/`, built when code changed; `ue_dump.py --packages` dumps only the touched packages).
+4. Reads the recording for work the replay cannot redo: an editor started without a run the ledger recognises (a
+   wrapper missing from `run_patterns`, a script given by an absolute or variable path), custom commandlets
+   (`-run=<Name>`), scripts outside the repo, script texts naming the live project folder or an `os.chdir`, runs
+   that logged no workflow row, script texts the recording cannot rebuild.
+5. Writes `work/live/reports/<sha8>.md/.json`, `work/live/status.json` and, when something needs the builder,
+   `work/live/feedback.md`; the hook prints it at the session's next commit.
+
+`ue_replay.py live-status` lists every live game (HEAD, replayed window, last result, findings, job running).
+
+**Rules for game sessions** (game-session skill, "Replay-friendly work"): every editor script committed and run by its
+project-relative path through `Scripts/ue.ps1 script -Script Scripts/<name>.py` or a wrapper in `run_patterns`;
+relative paths only, never an absolute path to or `os.chdir` into `games\<slug>`; probes named by `readonly_patterns`
+(`not_readonly` for one that writes something later work reads); one workflow row per run at least; scripts edited
+with Write/Edit or written as `name_v2.py`; no custom commandlets; `ReplayConfig.json` from day one, with an
+`asset_drops` entry for every store pack copied in; no amend or rebase.
+
+**Release** (`ue_replay.py release --game <slug>`, normal priority): catches the replay up to the settings' `final`
+(`HEAD` by default), checks out and builds `truth/` there, dumps both projects in full, runs `verify` and `package`.
+With the live replay current, that is the last windows plus a full final verify: minutes. Then
+`tools/package-dataset.ps1` as before. `ue_replay.py truth --game <slug>` alone prepares the truth project.
+
+The games built before the live replay existed (liaozhai-night, siege-catapult, tower-defense, rally-racer,
+horror-escape, island-survival, stealth) keep the end-of-game replay of sections 2.2-2.6.
 
 ## Packager integration
 

@@ -34,7 +34,10 @@ embedded in play, gentle camera; never the names Superposition or game-factory a
 workflow.jsonl row per operation at the moment you act; commit after every meaningful step and never end a turn with
 uncommitted work; LFS for every binary; never enqueue recordings yourself (send me the commit + framing screenshots);
 push only when I say. Your game's full dataset is {{GF_ROOT}}\games\{{SLUG}}\Dataset.zip, made by the packager:
-keep /Dataset.zip, /Dataset.pending.zip and /.dataset/ in your .gitignore and never commit them; Dataset/ you commit. Blockers: write them in your design doc, message me once, carry on.
+keep /Dataset.zip, /Dataset.pending.zip and /.dataset/ in your .gitignore and never commit them; Dataset/ you commit.
+Your commits are replayed in the background (ReplayConfig.json "live": true, game-session skill "Replay-friendly
+work"): fix what the hook's [replay] lines report in your next commits. Blockers: write them in your design doc,
+message me once, carry on.
 
 Task:
 Build "{{GAME_TITLE}}", {{GENRE_LINE}}, in Unreal Engine 5.3, recording its creation as you go.

@@ -8,6 +8,7 @@ param(
   [string]$Label = 'ue job',
   [int]$Slots = 0,   # 0: "heavy_slots" in the machine config, else one per 3 physical cores (8 cores -> 3), 1..6
   [switch]$Gpu,   # force the GPU slot (auto-detected for editor GUI, -game, packaged games)
+  [switch]$Low,   # background work (the live per-commit replay): yields to every other job, one at a time, below-normal priority
   [Parameter(ValueFromRemainingArguments = $true)][string[]]$Command
 )
 $ErrorActionPreference = 'Continue'
@@ -57,7 +58,7 @@ $isGpu = $Gpu -or ($Command[0] -match '(?i)UnrealEditor\.exe$|-Shipping\.exe$') 
 if ($cmdText -match '(?i)-nullrhi|-nographics') { $isGpu = $false }
 $gpuSem = if ($isGpu) { New-Object Threading.Semaphore(1, 1, 'Global\ue-gpu-jobs') } else { $null }
 $t0 = Get-Date
-Log 'wait' @{ command = $cmdText; gpu = [bool]$isGpu }
+Log 'wait' @{ command = $cmdText; gpu = [bool]$isGpu; low = [bool]$Low }
 # GPU jobs get the GPU slot FIRST and only then a general slot, so a job queued behind a recording doesn't sit on
 # one of the general (compile) slots the whole time.
 if ($gpuSem) {
@@ -81,8 +82,39 @@ if ($gpuSem) {
     break
   }
 }
-while (-not $sem.WaitOne(60000)) { Write-Host "[ue-heavy] waiting for a free slot ($Slots max) since $($t0.ToString('HH:mm:ss'))..." }
-Log 'start' @{ waited_s = [int]((Get-Date) - $t0).TotalSeconds; gpu = [bool]$isGpu }
+function Test-OthersWaiting {
+  # jobs whose last logged event is 'wait' and whose process still runs (any copy of this script logs the same events)
+  $last = @{}
+  try { $lines = Get-Content -LiteralPath $log -Tail 400 -ErrorAction Stop } catch { return $false }
+  foreach ($l in $lines) {
+    try { $r = $l | ConvertFrom-Json } catch { continue }
+    # (other low-priority jobs wait for this one, and GPU jobs wait for the GPU slot, not a general one: neither counts;
+    # a GPU job that gets the GPU still finds the general slot a low job always leaves free)
+    if ($r.pid -and $r.pid -ne $PID) { $last[[int]$r.pid] = if ($r.low -or ($r.event -eq 'wait' -and $r.gpu)) { 'other' } else { $r.event } }
+  }
+  foreach ($p in $last.Keys) {
+    if ($last[$p] -eq 'wait' -and (Get-Process -Id $p -ErrorAction SilentlyContinue)) { return $true }
+  }
+  return $false
+}
+$lowSem = $null
+if ($Low) {
+  # Low-priority work never makes another job wait: one low job machine-wide, and it takes a slot only while nobody
+  # else is waiting and another slot would still be free for the next normal job.
+  $lowSem = New-Object Threading.Semaphore(1, 1, 'Global\ue-heavy-low')
+  while (-not $lowSem.WaitOne(60000)) { Write-Host "[ue-heavy] low priority: another low-priority job runs; waiting..." }
+  while ($true) {
+    if (-not (Test-OthersWaiting) -and $sem.WaitOne(0)) {
+      if ($Slots -lt 2) { break }
+      if ($sem.WaitOne(0)) { [void]$sem.Release(); break }
+      [void]$sem.Release()
+    }
+    Start-Sleep -Seconds 20
+  }
+} else {
+  while (-not $sem.WaitOne(60000)) { Write-Host "[ue-heavy] waiting for a free slot ($Slots max) since $($t0.ToString('HH:mm:ss'))..." }
+}
+Log 'start' @{ waited_s = [int]((Get-Date) - $t0).TotalSeconds; gpu = [bool]$isGpu; low = [bool]$Low }
 $t1 = Get-Date
 # Start the process directly and wait for it: `& exe` returns at once for GUI-subsystem programs
 # (UnrealEditor.exe -game), which would release the slot while the job still runs. Arguments are
@@ -103,11 +135,13 @@ try {
   $psi = New-Object Diagnostics.ProcessStartInfo $exe, $argLine
   $psi.UseShellExecute = $false
   $proc = [Diagnostics.Process]::Start($psi)
+  if ($Low) { try { $proc.PriorityClass = [Diagnostics.ProcessPriorityClass]::BelowNormal } catch { } }
   $proc.WaitForExit()
   $code = $proc.ExitCode
 } finally {
   if ($gpuSem) { [void]$gpuSem.Release() }
   [void]$sem.Release()
+  if ($lowSem) { [void]$lowSem.Release() }
   Log 'end' @{ exit_code = $code; duration_s = [int]((Get-Date) - $t1).TotalSeconds }
 }
 exit $code

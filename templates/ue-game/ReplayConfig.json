@@ -1,0 +1,24 @@
+{
+  "game": "__SLUG__",
+  "live": true,
+  "repo": "{root}/games/__SLUG__",
+  "recording": "{root}/.recording/__SLUG__",
+  "final": "HEAD",
+  "uproject": "__PROJECT__.uproject",
+  "editor_target": "__PROJECT__Editor",
+  "engine": "{engine}",
+  "module": "__PROJECT__",
+  "work_root": "{root}/ue-replay/__SLUG__",
+  "script_env": {
+    "UE_PYTHONPATH": "{project}/Scripts"
+  },
+  "reason_env": "UE_RUN_REASON",
+  "editor_args": ["-unattended", "-nop4", "-nosplash", "-nullrhi", "-NoSound"],
+  "readonly_patterns": ["inspect_*", "measure_*", "*probe*", "check_*", "analyze_*", "scan_*"],
+  "not_readonly": [],
+  "content_roots": ["/Game"],
+  "map_roots": ["/Game/Maps"],
+  "run_patterns": [],
+  "asset_drops": [],
+  "shell_replay": []
+}

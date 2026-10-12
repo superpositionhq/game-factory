@@ -1,7 +1,9 @@
 <#
 .SYNOPSIS
-  Create a new UE 5.3 game repo from templates\ue-game: project skeleton, AutoPlay drop-in, first workflow.jsonl row,
-  git + LFS, the commit recorder, first commit, and the private GitHub repo <Org>/game-<slug> (not pushed).
+  Create a new UE 5.3 game repo from templates\ue-game: project skeleton, AutoPlay drop-in, Scripts\ue.ps1 (builds and
+  editor-script runs through the heavy-job limiter), ReplayConfig.json ("live": true: the creation replay runs after
+  every commit, docs/ue-replay.md section 3), first workflow.jsonl row, git + LFS, the post-commit hook (commit
+  recorder + live replay), first commit, and the private GitHub repo <Org>/game-<slug> (not pushed).
 .DESCRIPTION
   Placeholders replaced in file names and contents: __PROJECT__ (module/project name), __SLUG__, __TITLE__,
   __DESCRIPTION__, __PROJECT_GUID__. tools\ue-pipeline\autoplay\AutoPlaySubsystem.h/.cpp are copied unchanged into

@@ -35,6 +35,7 @@ def args():
     ap.add_argument("--assets", default="1")
     ap.add_argument("--t3d", default="1")
     ap.add_argument("--module", default="")
+    ap.add_argument("--packages", default="")   # a file with one package per line: only these assets (live replay checks)
     return ap.parse_args(raw)
 
 
@@ -195,12 +196,14 @@ def digest(asset):
     return d
 
 
-def dump_assets(roots, out):
+def dump_assets(roots, out, only=None):
     rows = []
     t0 = time.time()
     for root in roots:
         for ad in AR.get_assets_by_path(root, recursive=True):
             pkg = str(ad.package_name)
+            if only is not None and pkg not in only:
+                continue
             row = {"package": pkg, "name": str(ad.asset_name), "class": str(ad.asset_class_path.asset_name) if hasattr(ad, "asset_class_path") else str(ad.asset_class)}
             if row["class"] in ("World", "MapBuildDataRegistry"):
                 rows.append(row)
@@ -388,8 +391,12 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     roots = a.roots.split(",")
     t0 = time.time()
+    only = None
+    if a.packages:
+        with open(a.packages, encoding="utf-8") as f:
+            only = set(l.strip() for l in f if l.strip())
     if a.assets == "1":
-        dump_assets(roots, a.out)
+        dump_assets(roots, a.out, only)
     dump_maps(a.map_roots.split(",") if a.map_roots else roots, a.maps, a.out, a.t3d == "1", a.module)
     with open(os.path.join(a.out, "done.json"), "w", encoding="utf-8") as f:
         json.dump({"seconds": round(time.time() - t0, 1), "engine": unreal.SystemLibrary.get_engine_version(),
