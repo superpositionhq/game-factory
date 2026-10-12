@@ -49,7 +49,7 @@ rounds, frame data, guard, parry, posture.
 
 | Fighter | Seat | Blade | Who they are | Why they duel |
 |---|---|---|---|---|
-| **Ishen Mor**, "the Terrace Blade" | Merrow | **moonedge**: a single-edged curved sword, drawn from a lacquered scabbard (the katana role) | a salt farmer's son, self-taught on the ferry posts; quiet, exact, polite to everyone he beats | the farmers chose him because he has never lost a wager on the posts; if he loses, Merrow's terraces die |
+| **Ishen Mor**, "the Terrace Blade" | Merrow | **moonedge**: a long single-edged sword (the katana role), with his father's round ferry shield on the off arm | a salt farmer's son, self-taught on the ferry posts; quiet, exact, polite to everyone he beats | the farmers chose him because he has never lost a wager on the posts; if he loses, Merrow's terraces die |
 | **Ser Odric Hale**, "the Lamp of Highcourt" | Highcourt | **greatsword** *Vow*, two-handed (the longsword role) | the oldest knight of the Lamp-Guard, scarred, courteous, privately thinks the dam is wrong | duty: his oath binds him to defend Highcourt's claim even when he disagrees with it |
 | **Kesh Sarrow**, "Debt and Due" | Calder (the Stair) | **twin sabres** she calls Debt and Due | a Stair duellist who learned in alleys and pays her rent in wagers; fast, funny, furious | to wake Calder's Seat: if a Stair champion wins the Open Rite, the Concord must hear Calder again |
 | **Hessa Rime**, "Thawmoon" | Rimeshelf | **crescent glaive** *Thawmoon*, with a blue cord on the shaft | a young ice-shelf ferrier, tall, patient, keeps distance like weather | publicly: land for her sinking village. Privately: her grandmother **Aud Rime** won the last Open Rite and never came home. Hessa wants to know why |
@@ -429,23 +429,15 @@ script run gets a workflow row with the script's sha256. Pack content copied unc
 
 ## 14. Status
 
-- 2026-10-12: story bible and design drafted; repo created with new-game.ps1. **Approved by the coordinator**
-  (942d5fe). Build/GPU slots on hold until the dataset replays finish: offline work only until released.
-- Offline C++ written (not compiled yet): duel sim (`FBDDuelSim`), brain (`FBDDuelBrain`), fighter actor + native
-  anim instance, blade trails, camera, game instance (Rite ladders, scenario table), duel and menu game modes,
-  controller with per-player actions, AutoPlay bot, canvas HUD and menus, settings.
-- Data: frame-data CSVs for Ishen, Hessa, the Warden (Data/Moves_*.csv), all subtitle lines (Data/Lines.csv),
-  arena cards, fighter spec (Data/Fighters.json). Odric and Kesh wait for their packs.
-- Editor scripts ready to run once released: make_input.py, make_data.py, p01_probe_fighters.py,
-  p02_probe_maps.py, make_presentation.py, make_fighters.py, retarget_hessa.py (full editor), make_portraits.py
-  (full editor, GPU); run tooling (Scripts/run_ue.sh, run_ue_gui.sh through ue-heavy.ps1, stage_packs.sh).
-- Done offline: 12 synthesized sounds (Scripts/gen_audio.py), 23 HUD/menu kit textures from the HONETi GUI sources
-  (Scripts/gen_ui.py, gen_ui_v2.py; mock HUD reviewed), Root guard as a procedural crouch in the anim proxy,
-  headless brain-vs-brain automation test, startup map / cook config.
-- Release plan (in order): compile; stage Feng Mao, Aurora, Sevarog, KCISA, sword SFX, music, sparks, Soul Cave,
-  castle packs; make_input, make_data, probes; retarget Hessa; make_presentation, make_fighters, portraits; arena
-  maps from the Soul Cave and castle demo maps (+ Saltpans, Stair built from scans); headless sim test; S1 by hand,
-  validate-run, framing screenshots, then ask for a recording.
-- Asset requests: Paragon Greystone + Paragon Kallari (free) asked of the asset scout 2026-10-12.
-- Disk: C: has about 74 GB free (97 % used); packs are staged only when needed and pruned to the used assets
-  before commit.
+- 2026-10-12: design approved by the coordinator (942d5fe). Build/GPU slots released in the afternoon.
+- Built and running: all C++ (sim, brain, fighters with native anim, choreographed KCISA glaive, camera, flow, HUD,
+  menus, AutoPlay bot), 5 fighters (Ishen = Feng Mao with his round shield, Odric = Greystone Tough, Kesh = Kallari
+  Rogue, Hessa = Aurora with the Woldo glaive, the Warden = Sevarog Chronos), move tables fitted to the clips' strikes,
+  presentation (synth + pack sounds, kit textures, runtime fonts), arenas: Merrow Saltpans (built from scans, dawn),
+  the Stair (castle wall-top garden at dusk), the Whetstone (Soul Cave + Field of Hilts), Dam-Crown, menu map.
+- AutoPlay v1.4: S1 First Rite, S2 The Stair, S3 The Whetstone each pass validate-run (one run each; results are
+  metadata). Framing reviewed from timed shots; fixes made for dark/blown arenas, spark clouds, blocked camera, the
+  glaive grip, and a Slate font crash (runtime-font glyph height on first use).
+- Store packs pruned to the used dependency closure and committed (about 6.9 GB, LFS); scrub-import-paths verify 0.
+- Not yet: portraits (script ready), Rimeshelf arena (Hessa/Ishen ladder duels fall back to other arenas until it
+  exists), S4 versus recording (stretch), packaged Shipping build (pipeline).
