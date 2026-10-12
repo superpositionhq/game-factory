@@ -54,7 +54,7 @@ param(
     [ValidateSet('auto', 'repo', 'stills')][string]$Screenshots = 'auto',   # auto: the project's docs/screenshots/, else stills of the packaged runs        # only runs played on a build of the packaged commit itself (not of earlier commits)
     [string[]]$ExcludeSessions = @(), # session ids whose actions.jsonl rows are not creation work (packager sessions are left out anyway)
     [string]$RepoPath,              # package this clone (e.g. a scrubbed copy) instead of games\<game>
-    [string]$OutRoot,               # default <root>\deliverables (root: machine/lib/gf-root.ps1)
+    [string]$OutRoot,               # default GF_OUT, else <root>\deliverables (machine/lib/gf-root.ps1 Get-GFOut)
     [ValidateSet('Fastest', 'Optimal', 'NoCompression')][string]$ZipLevel = 'Fastest',
     [switch]$NoZip,
     [switch]$Force,
@@ -67,7 +67,8 @@ param(
 )
 
 . (Join-Path $PSScriptRoot 'ue-pipeline\common.ps1')
-if (-not $OutRoot) { $OutRoot = Join-Path $WorkRoot 'deliverables' }
+if (-not $OutRoot) { $OutRoot = Get-GFOut }   # GF_OUT / config "out", else <root>\deliverables
+if (-not $ScrubDir) { [void](Assert-GFFreeSpace $OutRoot 'package-game') }
 $ToolVersion = 1
 $t0 = Get-Date
 

@@ -17,7 +17,9 @@ All machine paths hang off one root, the "Work" folder that holds `game-factory\
 The config also holds `ueb` (default `C:\UEB`: private build clones and build temp, outside the user profile so the
 user name is not compiled into Shipping exes), `engine` (default `C:\Program Files\Epic Games\UE_5.3`) and
 `record_extra_projects` (default `[]`: extra top-level folders the recording hooks treat as projects besides
-`games\<slug>`).
+`games\<slug>`). Optional: `out` (env `GF_OUT`; default `<root>\deliverables`: packages, dataset zips and replay
+packages, tens of GB per game, so point it at a roomy drive) and `min_free_gb` (env `GF_MIN_FREE_GB`, default 50:
+packaging and creation replay refuse to start on a drive with less free).
 
 ```json
 { "root": "C:\\Users\\<name>\\Work", "ueb": "C:\\UEB", "engine": "C:\\Program Files\\Epic Games\\UE_5.3", "record_extra_projects": [] }

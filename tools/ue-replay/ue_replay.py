@@ -33,6 +33,31 @@ def machine_root():
     return r.replace("\\", "/")
 
 
+def out_root():
+    """Where packages go: machine/lib/gfroot.out() (env GF_OUT, config "out", else <root>/deliverables)."""
+    try:
+        import gfroot
+        return gfroot.out().replace("\\", "/")
+    except ImportError:
+        return (os.environ.get("GF_OUT") or machine_root() + "/deliverables").replace("\\", "/")
+
+
+def check_free(path, what):
+    """Stop before a disk-heavy step when the drive is below the free-space floor (env GF_MIN_FREE_GB, default 50 GB)."""
+    try:
+        import gfroot
+        return gfroot.check_free(path, what)
+    except ImportError:
+        import shutil
+        p = os.path.abspath(path)
+        while not os.path.exists(p) and os.path.dirname(p) != p:
+            p = os.path.dirname(p)
+        free, floor = shutil.disk_usage(p).free / 2 ** 30, float(os.environ.get("GF_MIN_FREE_GB") or 50)
+        if free < floor:
+            sys.exit("%s: only %.1f GB free (floor %.0f GB, GF_MIN_FREE_GB)" % (what, free, floor))
+        return free
+
+
 def expand(v, root):
     if isinstance(v, str):
         return v.replace("{root}", root)
@@ -113,6 +138,7 @@ def main():
     ap.add_argument("--which", default="replay")
     ap.add_argument("--only", default=None)
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--yes", action="store_true")
     ap.add_argument("--speed", type=float, default=1.0)
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
@@ -126,6 +152,11 @@ def main():
                 break
     if fn is None:
         ap.error("unknown command " + a.command)
+    # disk-heavy steps refuse to start on a nearly full drive (a disk that filled mid-run corrupted a replay once)
+    if a.command in ("prepare", "run", "dump"):
+        check_free(cfg["work_root"], "ue_replay " + a.command)
+    elif a.command == "package":
+        check_free(out_root(), "ue_replay package")
     return fn(cfg, a)
 
 

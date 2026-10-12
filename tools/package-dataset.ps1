@@ -21,14 +21,15 @@ param(
     [Parameter(Mandatory = $true)][string]$Package,      # the full package folder (with store content)
     [string]$Version,
     [string]$ReplayScripts,
-    [string]$OutRoot,               # default <root>\deliverables\dataset (root: machine/lib/gf-root.ps1)
+    [string]$OutRoot,               # default <GF_OUT>\dataset, else <root>\deliverables\dataset (machine/lib/gf-root.ps1)
     [switch]$NoDataset,
     [switch]$NoZip,
     [switch]$RebuildVideos
 )
 
 . (Join-Path $PSScriptRoot 'ue-pipeline\common.ps1')
-if (-not $OutRoot) { $OutRoot = Join-Path $WorkRoot 'deliverables\dataset' }
+if (-not $OutRoot) { $OutRoot = Join-Path (Get-GFOut) 'dataset' }   # GF_OUT / config "out", else <root>\deliverables
+[void](Assert-GFFreeSpace $OutRoot 'package-dataset')
 $t0 = Get-Date
 $tool = Join-Path $PSScriptRoot 'package-game.ps1'
 $validator = Join-Path $PSScriptRoot 'validate-dataset.ps1'

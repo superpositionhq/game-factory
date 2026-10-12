@@ -39,6 +39,31 @@ function Get-GFConfig {
 
 function Get-GFRoot { return (Get-GFConfig).root }
 
+# Output root for packages, dataset zips and their staging folders: $env:GF_OUT, else "out" in the config file, else
+# <root>\deliverables. Point it at a roomy drive (packages and zips run to tens of GB per game).
+function Get-GFOut {
+    if ($env:GF_OUT) { return [IO.Path]::GetFullPath($env:GF_OUT.TrimEnd('\', '/')) }
+    $cfg = Get-GFConfig
+    if ($cfg.PSObject.Properties['out'] -and $cfg.out) { return [IO.Path]::GetFullPath(([string]$cfg.out).TrimEnd('\', '/')) }
+    return (Join-Path $cfg.root 'deliverables')
+}
+
+# Refuse to start a disk-heavy job (packaging, creation replay) when the drive holding $Path has less than the floor
+# free: $env:GF_MIN_FREE_GB, else "min_free_gb" in the config file, else 50. A full disk mid-job corrupts the result.
+function Assert-GFFreeSpace([string]$Path, [string]$What = 'this job') {
+    $min = 50
+    $cfg = Get-GFConfig
+    if ($cfg.PSObject.Properties['min_free_gb'] -and $cfg.min_free_gb) { $min = [double]$cfg.min_free_gb }
+    if ($env:GF_MIN_FREE_GB) { $min = [double]$env:GF_MIN_FREE_GB }
+    $full = [IO.Path]::GetFullPath($Path)
+    $drive = New-Object IO.DriveInfo ([IO.Path]::GetPathRoot($full))
+    $free = [math]::Round($drive.AvailableFreeSpace / 1GB, 1)
+    if ($free -lt $min) {
+        throw ("{0}: only {1} GB free on {2} (floor {3} GB; GF_MIN_FREE_GB / min_free_gb). Free space or point GF_OUT / work_root at another drive." -f $What, $free, $drive.Name, $min)
+    }
+    return $free
+}
+
 # Regex matching a path under the root in the spellings tool calls use: C:\a\b, C:/a/b, /c/a/b (Git Bash), /mnt/c/a/b.
 # Append the part after the root yourself, e.g. (Get-GFRootPattern) + '[\\/]+games[\\/]+([A-Za-z0-9_-]+)'.
 function Get-GFRootPattern([string]$Root = (Get-GFRoot)) {

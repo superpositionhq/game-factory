@@ -16,7 +16,9 @@ import subprocess
 import sys
 import time
 
-HEAVY = os.path.join(os.environ.get("GF_ROOT") or os.path.join(os.path.expanduser("~"), "Work"), "tools", "ue-heavy.ps1")
+import ue_replay
+
+HEAVY = os.path.join(ue_replay.machine_root(), "tools", "ue-heavy.ps1")   # GF_ROOT, the machine config, else ~/Work
 HERE = os.path.dirname(os.path.abspath(__file__))
 DUMP = os.path.join(HERE, "editor", "ue_dump.py").replace("\\", "/")
 

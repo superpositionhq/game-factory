@@ -18,6 +18,7 @@ import os
 import shutil
 
 import runner
+import ue_replay
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # record.py / editor/ue_world_replay.py (the optional editor timelapse) are not part of the dataset
@@ -94,7 +95,7 @@ def cmd_package(cfg, a):
         raise SystemExit("no ledger: run `ue_replay.py ledger` first")
     work = ctx.work
     final = led["final"]
-    out = os.path.join(cfg["root"], "deliverables", "_replay", cfg["game"], final[:8]).replace("/", os.sep)
+    out = os.path.join(ue_replay.out_root(), "_replay", cfg["game"], final[:8]).replace("/", os.sep)
     rs = os.path.join(out, "ReplayScripts")
     src = {
         "windows complete": ctx.state.get("window", 0) >= total_windows(led) > 0,
@@ -146,3 +147,28 @@ def cmd_package(cfg, a):
             f.write(summary["created"] + "\n")
     print("%s %s -> %s" % ("READY" if complete else "INCOMPLETE (no READY)", cfg["game"], out))
     return 0 if complete else 1
+
+
+def cmd_clean(cfg, a):
+    """Free the disk a finished replay holds: the replay project, the truth project and the work files the package
+    copied (dumps, blobs, rows, logs). Only after `package` wrote READY for the settings' final commit; lists what it
+    would remove unless --yes is given. The ledger, state and verification report stay in work/."""
+    final = runner.Ctx(cfg).ledger["final"]
+    out = os.path.join(ue_replay.out_root(), "_replay", cfg["game"], final[:8])
+    if not os.path.exists(os.path.join(out, "READY")):
+        raise SystemExit("no READY replay package at %s: nothing removed" % out)
+    work = cfg["work_dir"]
+    targets = [cfg["project_dir"], cfg["truth_dir"]] + [os.path.join(work, d) for d in
+                                                         ("blobs", "rows", "logs", "mapdumps", "dump-replay", "dump-truth")]
+    targets = [t for t in targets if os.path.exists(t)]
+    total = 0
+    for t in targets:
+        size = sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(t) for f in fs)
+        total += size
+        print("  %-8s %7.2f GB  %s" % ("remove" if a.yes else "would rm", size / 1e9, t))
+        if a.yes:
+            def writable(fn, p, _exc):   # git objects are read-only on Windows
+                os.chmod(p, 0o666)
+                fn(p)
+            shutil.rmtree(t, onerror=writable)
+    print("%s %.2f GB for %s" % ("freed" if a.yes else "would free (add --yes)", total / 1e9, cfg["game"]))

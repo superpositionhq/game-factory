@@ -152,7 +152,7 @@ The optional video is a GPU job with recording priority; it is not run for datas
 ### 2.6 Deliverable layout
 
 `ue_replay.py package --game <game>` assembles it in
-`%GF_ROOT%\deliverables\_replay\<game>\<final sha8>\` (unscrubbed; `tools/package-dataset.ps1 -ReplayScripts
+`<out>\_replay\<game>\<final sha8>\` (`<out>`: env `GF_OUT`, config `out`, else `%GF_ROOT%\deliverables`) (unscrubbed; `tools/package-dataset.ps1 -ReplayScripts
 <dir>\ReplayScripts` copies it into the dataset and scrubs the copy):
 
 ```
@@ -174,6 +174,11 @@ READY                             written last, only when every window was repla
 ```
 
 `--force` assembles an incomplete copy without `READY` (for checks only).
+
+Disk: `prepare`, `run` and `dump` refuse to start when the work drive has less than `GF_MIN_FREE_GB` (default 50 GB)
+free, `package` likewise for `<out>` (a disk that filled mid-run once corrupted a replay). Once `READY` exists,
+`ue_replay.py clean --game <game>` lists the replay project, truth project and bulky work files (dumps, blobs, rows,
+logs; ~20 GB a game) and removes them with `--yes`; the ledger, state and report stay.
 
 ## Packager integration
 

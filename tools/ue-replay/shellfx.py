@@ -26,7 +26,29 @@ import subprocess
 import sys
 import tempfile
 
-SED = r"C:\Program Files\Git\usr\bin\sed.exe"
+def _git_tool(name):
+    """A Git for Windows tool: on PATH (Git Bash), else beside git.exe, else the default install folder."""
+    hit = shutil.which(name)
+    if hit:
+        return hit
+    git_exe = shutil.which("git")
+    roots = [os.path.dirname(os.path.dirname(os.path.realpath(git_exe)))] if git_exe else []
+    roots.append(os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Git"))
+    for r in roots:
+        cand = os.path.join(r, "usr", "bin", name + ".exe")
+        if os.path.exists(cand):
+            return cand
+    return name
+
+
+SED = _git_tool("sed")
+
+
+def win_path(p):
+    """An MSYS path (/c/..., /d/...) as a Windows path (C:/..., D:/...); other paths unchanged."""
+    if len(p) >= 3 and p[0] == "/" and p[1].isalpha() and p[2] == "/":
+        return p[1].upper() + ":/" + p[3:]
+    return p
 
 HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1[^\n]*\n")
 
@@ -99,8 +121,8 @@ def _map(f, write):
     if isinstance(p, bytes):
         p = p.decode()
     q = p.replace("\\", "/")
-    if q.startswith("/c/"):
-        q = "C:/" + q[3:]
+    if len(q) >= 3 and q[0] == "/" and q[1].isalpha() and q[2] == "/":   # MSYS drive path (/c/, /d/, ...)
+        q = q[1].upper() + ":/" + q[3:]
     for r in _ROOTS:
         if q.lower().startswith(r.lower() + "/") or q.lower() == r.lower():
             q = _SB + q[len(r):]
@@ -174,7 +196,7 @@ class Sandbox:
             args = []
             for x in payload:
                 q = x.replace("\\", "/")
-                q = "C:/" + q[3:] if q.startswith("/c/") else q
+                q = win_path(q)
                 if q.lower().startswith(self.repo_abs.lower() + "/"):
                     x = self.dir + q[len(self.repo_abs):]
                 elif re.match(r"^(?:[A-Za-z]:/|/)", q) and not q.lower().startswith(self.dir.lower() + "/") and not x.startswith("-"):
@@ -198,7 +220,7 @@ class Sandbox:
 
 def _abs(p):
     p = p.strip("'\"").replace("\\", "/")
-    return "C:/" + p[3:] if p.startswith("/c/") else p
+    return win_path(p)
 
 
 def cwd_of(action, repo_abs):
