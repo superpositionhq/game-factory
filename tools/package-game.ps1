@@ -898,7 +898,7 @@ $RulesHead = @(
 # (git-identity rules are added once git.log has numbered the identities)
 $RulesTail = @(
     @{ id = 'username'; scope = 'all'; match = "(?i)$([regex]::Escape($MachineName))"; replace = 'dev-pc' },   # the machine name contains it
-    @{ id = 'username'; scope = 'all'; match = "(?i)(?<=users[\\/:]{0,4})$([regex]::Escape($UserName))"; replace = 'dev' },   # paths that lost their separators (C:UsersNameWork...)
+    @{ id = 'username'; scope = 'all'; match = "(?i)(?<=users[\\/:0-9]{0,6})$([regex]::Escape($UserName))"; replace = 'dev' },   # paths that lost their separators (C:UsersNameWork...) or use a regex backreference (Users\1Name\1Work)
     @{ id = 'username'; scope = 'all'; match = "(?i)$UserRx"; replace = 'dev' },
     @{ id = 'email'; scope = 'all'; match = $EmailRx; replace = '<redacted-email>' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bclaude[-_ ]code\b'; replace = 'agent-tool' },
@@ -906,9 +906,9 @@ $RulesTail = @(
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bopus[-_ ]?[0-9]+(?:\.[0-9]+)*\b'; replace = 'agent-model' },
     # the word opus on its own in prose, any case (quoted policy text "Agent/Provider/Opus", "agent or opus or ..."; also
     # "the Opus audio codec", which the rescan would block too); codec identifiers (libopus, opus_*, AudioFormatOPUS) stay
-    @{ id = 'agent-mention'; scope = 'all'; match = '(?<![\w.-])(?<!audio/)OPUS(?![\w.-]|/\d)'; replace = 'MODEL' },
-    @{ id = 'agent-mention'; scope = 'all'; match = '(?<![\w.-])(?<!audio/)Opus(?![\w.-]|/\d)'; replace = 'Model' },
-    @{ id = 'agent-mention'; scope = 'all'; match = '(?i)(?<![\w.-])(?<!audio/)opus(?![\w.-]|/\d)'; replace = 'model' },
+    @{ id = 'agent-mention'; scope = 'all'; match = '(?:(?<=\\u00[0-9a-fA-F]{2})|(?<![\w.-]))(?<!audio/)OPUS(?![\w.-]|/\d)'; replace = 'MODEL' },
+    @{ id = 'agent-mention'; scope = 'all'; match = '(?:(?<=\\u00[0-9a-fA-F]{2})|(?<![\w.-]))(?<!audio/)Opus(?![\w.-]|/\d)'; replace = 'Model' },
+    @{ id = 'agent-mention'; scope = 'all'; match = '(?i)(?:(?<=\\u00[0-9a-fA-F]{2})|(?<![\w.-]))(?<!audio/)opus(?![\w.-]|/\d)'; replace = 'model' },
     @{ id = 'agent-mention'; scope = 'all'; match = 'CLAUDE'; replace = 'AGENT' }, @{ id = 'agent-mention'; scope = 'all'; match = 'Claude'; replace = 'Agent' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)claude'; replace = 'agent' },
     @{ id = 'agent-mention'; scope = 'all'; match = 'ANTHROPIC'; replace = 'PROVIDER' }, @{ id = 'agent-mention'; scope = 'all'; match = 'Anthropic'; replace = 'Provider' },

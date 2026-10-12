@@ -259,7 +259,7 @@ reads, so this text and the checks cannot drift apart. Nothing in it is per game
   workflow.jsonl                 the editor operations, one row each, written when the operation happened
   UEProject/                     the project at the release commit                            (not in the repo Dataset/)
   ReplayScripts/                 scripts that replay the creation, with their verification    (tools/ue-replay)
-  Gameplay/<game>_S<n>.mp4       one video per scenario of the release version, n = 1..N, nothing else in the folder
+  Gameplay/<game>_S<n>.mp4       one video per recorded scenario of the release version (a subset is fine), nothing else in the folder
   Screenshots/                   the README hero and gallery images, linked from README.md by relative path
   Build/                         the packaged Windows Shipping build, no .pdb                  (not in the repo Dataset/)
   manifest.json                  release metadata + path, bytes, sha256 of every other file
