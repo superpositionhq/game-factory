@@ -1,7 +1,7 @@
 # EMBERWAKE: story bible and game design
 
 Third-person grapple action, Unreal Engine 5.3, C++ module `GiantFall`. Slug `giant-fall`.
-Status: **approved 2026-10-12 (565b883); offline production during the shared-slot hold** (see section 13).
+Status: **approved 2026-10-12 (565b883); offline production during the shared-slot hold** (see sections 13 and 14).
 
 ## 1. The game in one paragraph
 
@@ -81,7 +81,7 @@ question about what keeps the lanterns lit.
 - **Optional details:** *kite cords*, knotted message cords tied to masts (3 per scenario), each a single line
   on pickup: "Grandfather says they used to walk past us. Not toward us." Collected cords show in the pause
   ledger. The S3 temple murals (founders hauling a glowing stone down from the pass, a giant kneeling without one)
-  are visible from the air while fighting the boss.
+  are visible from the air while fighting the boss (planned; first build tells this through the S3 kite cords and lines instead).
 - **Late payoff (S3):** when the Last Pilgrim's stone mantle finally cracks open, its neck seam is **empty and
   dark**: its heart was taken long ago. It ignores the player and reaches for the Hearth Bell, which pulses with
   the same rhythm as every jar on every resupply tower the player has used. The final strike fells it with its
@@ -186,7 +186,7 @@ attack choice ties, bot decisions. One map per scenario.
 |---|---|---|---|---|---|
 | 1 | **First Thaw** (training yard) | `L_TrainingYard` | Misty morning in the Kite Ward's gorge yard below the Ringwall: kite masts, rope bridges, a kiln tower, Guild carts. Full breath, 5 edges, 3 knots. **Old Nine-Autumns**, a chained Stoneback, walks a slow ring (60 % speed, swat only, long telegraphs) | Three beats: hook through the 3 lit practice rings on the masts, resupply at the kiln tower once, then fell Old Nine-Autumns | none but time: downs restart at the yard gate; 8 min timeout |
 | 2 | **Lantern Night** (town defence) | `L_LanternWard` | Dusk turning to night in the Lower Ward, lanterns lit for the festival. The Ringwall's north sluice is broken; **4 Cairns** (2 Stonebacks, 1 Cinderback, 1 Lantern Warden) arrive in two pairs, walking toward the Bell Gate. **4 people stranded** (a roof, a broken bell tower, a mill wheel, a runner hanging from a snapped line). 2 kiln towers, 3 flares | All 4 Cairns felled (rescues add score and the result tier) | the Bell Gate breached (gate integrity 0; Cairns at the gate hammer it), or 3 flares spent; 12 min timeout |
-| 3 | **The Last Pilgrim** (boss) | `L_PilgrimPass` | Dawn, first snow on the switchback road from the pass down to the Hearth Temple; spruce forest, cliffs, temple terraces, bell towers. The Last Pilgrim (33 m) climbs the road; 1 escort Stoneback in the first minute. 2 kiln towers, 3 flares | Fell the Last Pilgrim: cut its 3 **tether seams** (back of each knee, small of the back) to make it kneel and crack its mantle, then strike the open nape within 20 s; three nape strikes (the mantle re-forms after each, the tethers re-light) | it reaches the Hearth Bell (road progress 100 %), or 3 flares spent; 15 min timeout |
+| 3 | **The Last Pilgrim** (boss) | `L_PilgrimPass` | Dawn, first frost on the switchback road from the pass down to the Hearth Temple; spruce forest, cliffs, temple terraces, bell towers. The Last Pilgrim (33 m) climbs the road; 1 escort Stoneback in the first minute. 2 kiln towers, 3 flares | Fell the Last Pilgrim: cut its 3 **tether seams** (back of each knee, small of the back) to make it kneel and crack its mantle, then strike the open nape within 20 s; three nape strikes (the mantle re-forms after each, the tethers re-light) | it reaches the Hearth Bell (road progress 100 %), or 3 flares spent; 15 min timeout |
 
 Score: Stoneback 500, Cinderback 650, Warden 800, Pilgrim nape strike 1,000 each; strike quality bonus (deep +100,
 sever +250); rescue 400; kite cord 100; S1 time bonus; S2 gate integrity bonus. `ExtraJson`: giants_felled,
@@ -359,9 +359,51 @@ march for the Pilgrim.
    `milestone/autoplay-3`.
 5. Polish: menus, settings, save, audio, ambient runners, cords, Shipping package, status.
 
-## 13. Status
+
+## 13. Production notes (offline phase, 2026-10-12)
+
+Written while the shared build/GPU slots were on hold; nothing below has been compiled or run yet.
+
+- **C++ (Source/GiantFall):** `GFKiteRig` (lines, rope constraint, reel/boost, breath, aim with assist cone + anchor
+  hints), `GFHero` (camera, cleaver, knots, grab, lock, interaction), `GFCairn` (state machine, attacks, weak points,
+  stagger/shrug/kneel/siege/fall), `GFAnim` (C++ anim proxies for giants and hero, no Anim Blueprints),
+  `GFWorldActors` (anchors, paths, gate, rock, ember cloud, kiln towers, people, cords, rings, story triggers, director,
+  runners, pulse light), `GFGameMode`, `GFPlayerController` (12 Enhanced Input actions built in code),
+  `GiantFallGameInstance` (settings, save, volumes), `GFWidgets` (painted HUD, code-built menus, menu game mode),
+  `GFBotComponent`, `GFFx` (Niagara or Cascade effects: the VFX packs are mostly Cascade).
+- **Wind streaks** are a camera-attached mesh with a panning translucent material (`M_GFWindStreak`, scalar
+  Intensity from speed), not Niagara.
+- **Weak points** sit on real bones read from the Paragon skeletons (`neck_01` seam; Pilgrim tethers on `calf_l`,
+  `calf_r`, `spine_01`); offsets are in the giant's own frame. The seam is an ember shard cluster (Paragon rock
+  shard + `M_GFSeam`, the Pilgrim's is the dark `MI_GFSeam_Dark`).
+- **Giant look:** `M_GFStoneSkin` keeps each slot's own diffuse/normal, desaturates toward grey stone, blends tiling
+  mossy rock, glows ember in the dark cracks (EmberGlow on telegraphs), Petrify turns it to plain stone on the fall.
+- **Hero:** Rogue Character Model (`SK_Rogue_Main`, UE5 mannequin) with 14 clips from the Paragon-to-Manny set
+  (Kallari runner set, Feng Mao air cut, Serath apex/glide, Countess idle); cleaver = KCISA Joseon sword; bellows =
+  survival-tools bottle recoloured brass; barb = KCISA mace head.
+- **UI kit** composed from HONETi sources (lacquer leather panel with brass corners, ink brush banner, lacquer buttons,
+  bellows gauge, compass strip, speed-streak overlay, rank seal) + game-icons silhouettes; fonts Song Myung, Gowun
+  Batang, Barlow Condensed.
+- **Sound:** 27 synthesized effects (no voices); music from the Fantasy Music Starter Pack v2 (CC BY, Cinematsic).
+- **Levels** are built by `Scripts/build_level_S1.py`, `_S2.py`, `_S3.py`, `_Menu.py` with `Scripts/gflevel.py`
+  (pieces placed from measured bounds; kite masts and kiln towers kitbashed from the walled town's timber). Ringwall
+  and gates from the Gwanghwamun pack (stereobate blocks + gate pavilion); houses are the walled town's whole-house
+  blueprints; cliffs/rocks are Megascans scans (Nanite, complex collision so hooks bite on the rock).
+- **Disk plan:** C: is nearly full, so packs are not copied whole. `stage_packs_v1.py` junctions the packs into a
+  staging project (no disk), `list_pack_deps_v1.py` (editor, staging) lists every referenced package plus hard
+  dependencies, `copy_pack_deps_v1.py` copies only those into `Content/<PackFolder>/` with paths unchanged.
+- **Run order once the slots open:** compile → `stage_packs_v1.py` → `ue.sh list_pack_deps_v1.py` (staging) →
+  `copy_pack_deps_v1.py` → `ue.sh import_raw_v1.py` → `make_level_assets_v1.py` → `make_cairn_materials_v1.py` →
+  `make_data_v1.py` → `build_level_S1.py` … `_Menu.py` → look-dev (scale, telegraphs, camera) → AutoPlay S1.
+- **Open:** period townsfolk (S2 rescues use Adventure Character stand-ins until the scout's list is decided), scout
+  answers on rope material and watchtower kit.
+
+## 14. Status
 
 - 2026-10-12: story bible and design draft v1 written during the shared-slot hold; title EMBERWAKE chosen; repo
   created; sent to the coordinator for approval.
 - 2026-10-12: approved by the coordinator (565b883) with notes on Lanthorn's distinct look, lock-speed cap,
   scripted asset work; asset requests sent to the scout. Writing C++ and editor scripts offline (no engine runs).
+- 2026-10-12: offline phase done (section 13): all gameplay C++, the AutoPlay bot, data/material/import scripts, the
+  three level scripts and the menu, UI kit, synthesized sound, manifest and notices. Waiting for the slots (compile,
+  trimmed pack copy, first look-dev). Disk: C: under 50 GB free, flagged to the coordinator.
