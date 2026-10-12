@@ -322,6 +322,10 @@ in file-name order (the coordinator reorders by renaming; a request being proces
 powershell -ExecutionPolicy Bypass -File %GF_ROOT%\game-factory\tools\ue-pipeline\enqueue.ps1 <game> -Scenarios 1,2 -Runs 1 -RequestedBy coordinator
 ```
 
+**Recordings and results.** Gameplay recordings capture real play. The result (win/lose/timeout) is metadata, never a
+quality gate. Never re-record or exclude a run because the bot lost. Package the first valid run per scenario. Bots
+should play like a competent human, which doesn't mean they must win.
+
 AutoPlay time limit: 600 s per run by default (the game gets `-MaxSeconds`, the recorder kills it 90 s later).
 `-MaxSeconds "1=300,2=600,3=900"` sets it per scenario (unlisted ones keep 600; `*=700` changes the rest), a plain
 `-MaxSeconds 900` sets it for every scenario; values 30..7200. The request stores it as `max_seconds`, and the job's

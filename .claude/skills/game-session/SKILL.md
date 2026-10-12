@@ -102,6 +102,12 @@ refuse them). Recording traces are fine: `workflow.jsonl` stays in the repo, row
 - Before a commit that will be recorded or packaged, run `tools/ue-pipeline/scrub-import-paths.py` (`--apply`,
   `--patch-remaining`, `--verify` = 0 hits; see docs/ue-pipeline.md) so the user's profile path is not in the project.
 
+## Recordings and results
+
+Gameplay recordings capture real play. The result (win/lose/timeout) is metadata, never a quality gate. Never
+re-record or exclude a run because the bot lost. Package the first valid run per scenario. Bots should play like a
+competent human, which doesn't mean they must win.
+
 ## Dataset (layout v1.1)
 
 A finished game ships as: `README.md, git.log, workflow.jsonl, UEProject/, ReplayScripts/,

@@ -268,7 +268,7 @@ reads, so this text and the checks cannot drift apart. Nothing in it is per game
 | `workflow.jsonl` | the repo's `workflow.jsonl` at the release commit | scrubbed copy |
 | `ReplayScripts/` | the creation replay (`tools/ue-replay/`, `ue_replay.py package`, READY) | `ReplayScripts/` scrubbed with the package rules (`package-game.ps1 -ScrubDir`) |
 | `UEProject/` | the repo tree at the release commit + its Git LFS objects; store packs kept out of git come from the game's working tree | always with store content |
-| `Gameplay/<game>_S<n>.mp4` | the release version's validated runs, one per scenario: an `ok` run before a `warn` run, then the latest. Taken as is from the run's `recordings\<game>\<run>\gameplay.mp4` (written by record.ps1; no re-encode); runs without one are encoded from `video.mkv` + `system_audio.mka` | 1920x1080 60 fps H.264 (the recording's NVENC stream, stream-copied; fallback: libx264 High CRF 20) + AAC 192 kbit/s stereo; the run's game audio delayed by its own `system_audio.start_offset_ns - video_start_offset_ns`; faststart; nothing added to the picture |
+| `Gameplay/<game>_S<n>.mp4` | the release version's validated runs, one per scenario: the first valid run (validation `ok` or `warn`), whatever its result. Taken as is from the run's `recordings\<game>\<run>\gameplay.mp4` (written by record.ps1; no re-encode); runs without one are encoded from `video.mkv` + `system_audio.mka` | 1920x1080 60 fps H.264 (the recording's NVENC stream, stream-copied; fallback: libx264 High CRF 20) + AAC 192 kbit/s stereo; the run's game audio delayed by its own `system_audio.start_offset_ns - video_start_offset_ns`; faststart; nothing added to the picture |
 | `Screenshots/` | the project's `docs/screenshots/`, else stills of the release runs (`recordings\<game>\_stills\`) | every image is shown in the README |
 | `Build/` | the pipeline's Shipping build of the release commit (store art cooked in, account name not compiled in) | `.pdb` left out |
 | `manifest.json` | generated | schema below |
@@ -332,6 +332,8 @@ file's size and sha256, the README's sections and links, and each video's codecs
 is `package-game.ps1 -Rescan`; run both before a review.
 
 **Decisions.**
+
+- Gameplay recordings capture real play. The result (win/lose/timeout) is metadata, never a quality gate. Never re-record or exclude a run because the bot lost. Package the first valid run per scenario. Bots should play like a competent human, which doesn't mean they must win.
 
 - Gameplay holds mp4s only, one per scenario of the release version: no per-run bundles (inputs, telemetry, json), no
   version subfolders, no index file; the README lists the videos.

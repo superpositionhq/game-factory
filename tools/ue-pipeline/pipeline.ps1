@@ -137,6 +137,8 @@ if ($DrainQueue) {
     try {
         while ($true) {
             if ((($codeFiles | ForEach-Object { (Get-Item $_).LastWriteTimeUtc } | Measure-Object -Maximum).Maximum) -gt $codeStamp) { $handOver = $true; break }
+            # Paused (builds\_queue\_paused.txt, e.g. "stop recording" from the user): start no job; queued requests wait.
+            if (Test-Path (Join-Path $QueueDir '_paused.txt')) { Write-Step "queue paused ($((Get-Content (Join-Path $QueueDir '_paused.txt') -TotalCount 1)))"; break }
             $next = Get-ChildItem $QueueDir -Filter *.json -File | Where-Object { $_.Name -notlike '_*' } | Sort-Object Name | Select-Object -First 1
             if (-not $next) {
                 # Queue empty: an idle-wait override (_idle-override.txt) stays (the user's standing "record now" is one),

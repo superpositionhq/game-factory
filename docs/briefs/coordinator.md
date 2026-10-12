@@ -48,6 +48,7 @@ Standing user decisions (keep applying them):
 - AutoPlay runs play "scenarios" (not levels); contract changes go through you.
 - Every repo README shows screenshots (from recording stills).
 - Dataset layout v1.1 as above, no extra structure without asking.
+- Gameplay recordings capture real play. The result (win/lose/timeout) is metadata, never a quality gate. Never re-record or exclude a run because the bot lost. Package the first valid run per scenario. Bots should play like a competent human, which doesn't mean they must win.
 
 First steps on a new machine: run machine/check.ps1 and fix what the user must do by hand (docs/new-machine.md); start
 the ue-pipeline helper to prove build + record on this machine, and the asset-scout to rebuild the asset library; then

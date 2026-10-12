@@ -53,6 +53,8 @@ Pitch:
 Brief:
 {{BRIEF}}
 
+Gameplay recordings capture real play. The result (win/lose/timeout) is metadata, never a quality gate. Never re-record or exclude a run because the bot lost. Package the first valid run per scenario. Bots should play like a competent human, which doesn't mean they must win.
+
 Scenarios (AutoPlay contract; numbered start state + win/lose):
 {{SCENARIOS}}
 

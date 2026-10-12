@@ -38,6 +38,10 @@ $req = [ordered]@{ game = $Game; commit = $sha; runs = $Runs; scenarios = @($Sce
 if ($MaxSeconds) { $req.max_seconds = $maxMap }
 Write-JsonFile (Join-Path $queue $name) $req
 
+if (Test-Path (Join-Path $queue '_paused.txt')) {
+    Write-Step "queued $name, but the queue is PAUSED ($((Get-Content (Join-Path $queue '_paused.txt') -TotalCount 1))); it starts when _paused.txt is removed and a drainer runs"
+    exit 0
+}
 Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
     "`"$(Join-Path $PSScriptRoot 'pipeline.ps1')`"", '-DrainQueue')
 Write-Step "queued $name (builds\_queue); results: .recording\$Game\pipeline.jsonl and builds\_queue\done\$name"

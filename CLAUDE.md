@@ -16,5 +16,9 @@ Skills (in `.claude/skills/`, installed to `~\.claude\skills\` by `machine/boots
 Rules for working in this repo: [AGENTS.md](AGENTS.md). Session briefs: [docs/briefs/](docs/briefs/README.md).
 New machine: [docs/new-machine.md](docs/new-machine.md). Pipeline: [docs/ue-pipeline.md](docs/ue-pipeline.md).
 
+**Recordings and results.** Gameplay recordings capture real play. The result (win/lose/timeout) is metadata, never a
+quality gate. Never re-record or exclude a run because the bot lost. Package the first valid run per scenario. Bots
+should play like a competent human, which doesn't mean they must win.
+
 This checkout is shared by several sessions at once: stage explicit paths only and never commit another session's
 changes.

@@ -5,6 +5,10 @@ Game-**creation** data: how a game gets made, step by step, with the finished pr
 We build new 3D games in Unreal Engine 5 and record the creation as it happens: real editor operations with
 timestamps, screen video, inputs, code commits and a playtest with inputs.
 
+**Recordings and results.** Gameplay recordings capture real play. The result (win/lose/timeout) is metadata, never a
+quality gate. Never re-record or exclude a run because the bot lost. Package the first valid run per scenario. Bots
+should play like a competent human, which doesn't mean they must win.
+
 ## Dataset format (layout v1.1, all games)
 
 Every game is delivered in **dataset layout v1.1**, our standard delivery: the creation record (`git.log`,

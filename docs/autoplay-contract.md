@@ -17,6 +17,10 @@ game. It may be a level (tower-defense "Meadow"), a chapter (stealth "Warehouse"
 dirt"), a castle (siege-catapult "Twin Towers") or an open-world start setup (island-survival "First Night",
 "Toolmaker"). A run plays exactly one scenario from its start state until it is won, lost or times out.
 
+**Recordings and results.** Gameplay recordings capture real play. The result (win/lose/timeout) is metadata, never a
+quality gate. Never re-record or exclude a run because the bot lost. Package the first valid run per scenario. Bots
+should play like a competent human, which doesn't mean they must win.
+
 Every game (tower-defense, siege-catapult, stealth, rally-racer) implements this once its first scenario is
 playable. The shared pipeline (`tools/ue-pipeline/`, [ue-pipeline.md](ue-pipeline.md)) then packages the game,
 launches it with the flags below, captures the window with ffmpeg and turns each run into a gameplay bundle
@@ -78,7 +82,7 @@ The pipeline marks such runs `gpu_crash` (not a generic failure) and retries the
 | `-AutoPlay` | enable AutoPlay (ignored in the editor/PIE; works with `UnrealEditor.exe <uproject> -game`) | off |
 | `-Scenario=<n>` (alias `-Level`) | scenario number, 1-based, as listed in your game's design doc | 1 |
 | `-Seed=<s>` | integer seed for the bot's RNG and for game randomness (seed your `FRandomStream`s from it; `FMath::RandInit`/`SRandInit` are seeded for you). Determinism is not required | 0 |
-| `-Skill=<0..1>` | bot skill: 0 = clumsy novice (slow reactions, noisy aim, poor choices, still trying), 1 = best the bot can do (should usually win scenario 1). Interpolate reaction time, aim/steering noise, decision quality. Document what it does in your design doc | 1 |
+| `-Skill=<0..1>` | bot skill: 0 = clumsy novice (slow reactions, noisy aim, poor choices, still trying), 1 = best the bot can do (a competent human; it need not win). Interpolate reaction time, aim/steering noise, decision quality. Document what it does in your design doc | 1 |
 | `-OutputDir=<dir>` (alias `-RecordDir`, the v1 name) | absolute directory for the run's files (created if missing) | `Saved/AutoPlay/<timestamp>` |
 | `-MaxSeconds=<n>` | hard limit from "go"; the run ends with result `timeout` | 600 |
 | `-BuildCommit=<sha>` | echoed into outcome.json | empty |

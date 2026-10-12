@@ -136,8 +136,8 @@ $pending = if ($haveReplay) { @() } else { @('ReplayScripts/') }
 Write-Step "dataset v1: $Game @ $short ($status)  from $pkg"
 
 # ---- Gameplay/<game>_S<n>.mp4: one video per scenario of the release version, game audio muxed ------------------------
-# The package's runs are those of the packaged commit (package-game.ps1 -OnlyCommitRuns). One per scenario: an ok run
-# before a warn run, then the latest.
+# The package's runs are those of the packaged commit (package-game.ps1 -OnlyCommitRuns). One per scenario: the FIRST
+# valid run (validation ok or warn), by time. The result (win/lose/timeout) is metadata, never a selection criterion.
 $runs = @(Get-ChildItem (Join-Path $pkg 'Gameplay') -Directory | ForEach-Object {
         $m = Get-Content (Join-Path $_.FullName 'metadata.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         $v = Get-Content (Join-Path $_.FullName 'validation.json') -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -149,7 +149,7 @@ if ($runs.Count -eq 0) { throw "no gameplay runs in $pkg" }
 $other = @($runs | Where-Object { $_.build -ne $sha })
 if ($other.Count) { throw "the package has runs of other commits ($(@($other | ForEach-Object name) -join ', ')): package it with -OnlyCommitRuns" }
 $scen = @($runs | Group-Object scenario | Sort-Object { [int]$_.Name } | ForEach-Object {
-        $_.Group | Sort-Object @{ e = { if ($_.status -eq 'ok') { 0 } else { 1 } } }, @{ e = { $_.name }; Descending = $true } | Select-Object -First 1 })
+        $_.Group | Sort-Object name | Select-Object -First 1 })   # run names start with the scenario and the start time
 $vidDir = Join-Path $outDir '_videos'; New-Item -ItemType Directory -Force $vidDir | Out-Null
 $ff = Find-FFmpeg
 # Preferred source: the run's own gameplay.mp4 (record.ps1 / gameplay-mp4.ps1: video.mkv's H.264 stream copied + the

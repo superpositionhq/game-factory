@@ -77,6 +77,9 @@ game-factory follows the **commit-always** skill. Your brief: `docs/briefs/coord
   e-mails and Claude/Anthropic mentions; Superposition, game-factory, Claude, Opus and Anthropic are **blocking**
   (the package is refused if any survives; only the Opus audio codec is allowlisted). Reviewed binary exceptions:
   `tools/package-reviewed-hits.tsv`.
+- **Recordings and results.** Gameplay recordings capture real play. The result (win/lose/timeout) is metadata, never a
+  quality gate. Never re-record or exclude a run because the bot lost. Package the first valid run per scenario. Bots
+  should play like a competent human, which doesn't mean they must win.
 - **Dataset layout v1.1** (user-approved; one standard for all games; no replay video): `README.md, git.log, workflow.jsonl,
   UEProject/, ReplayScripts/, Gameplay/<game>_S<n>.mp4` (mp4 only, release version), `Screenshots/, Build/`
   (Shipping, no .pdb), `manifest.json`. No play.mp4, no History/, no per-run bundles. The repo's `Dataset/` = same
