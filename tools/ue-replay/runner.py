@@ -221,18 +221,52 @@ def build_externals(ctx):
         print("external source %s rebuilt: %d files -> %s" % (e["id"], n, d))
 
 
+def external_target(ctx, e):
+    """Where an external source is on this machine: its rebuilt folder, else its settings path."""
+    return (external_dir(ctx, e) if e.get("rebuild") else e.get("path") or "").replace("\\", "/")
+
+
 def map_external_env(ctx, env):
-    """Env values naming a rebuilt external source's recorded folder point at the rebuilt one."""
+    """Env values naming an external source's recorded location (settings "recorded": a template with {home}/{root}/*,
+    as the recording has it on the machine the game was built on) point at the source on this machine."""
     for e in ctx.cfg.get("external_sources", []):
-        if not e.get("rebuild") or not e.get("path"):
+        if not e.get("recorded"):
             continue
-        rec = os.path.normpath(e["path"]).replace("\\", "/").rstrip("/")
-        loc = external_dir(ctx, e).replace("\\", "/")
+        rx = ue_replay.recorded_path_regex(e["recorded"])
+        loc = external_target(ctx, e)
         for k, v in env.items():
-            vv = v.replace("\\", "/")
-            if vv.lower().startswith(rec.lower()):
-                env[k] = loc + vv[len(rec):]
+            m = rx.match(v)
+            if m:
+                env[k] = loc + v[m.end():].replace("\\", "/")
     return env
+
+
+def remap_script_paths(ctx):
+    """External sources with "remap_scripts": recorded scripts that open the recorded location by an absolute path
+    (island: import_art_v1.py reads the scout's path map from a notes folder) get this machine's location for the run.
+    Returns [(file, original bytes)] to put back after the run (files outside Content are compared byte for byte)."""
+    srcs = [(ue_replay.recorded_path_regex(e["recorded"]), external_target(ctx, e))
+            for e in ctx.cfg.get("external_sources", []) if e.get("remap_scripts") and e.get("recorded")]
+    if not srcs:
+        return []
+    changed = []
+    for dp, dns, fns in os.walk(ctx.p("Scripts")):
+        dns[:] = [d for d in dns if d != "__pycache__"]
+        for fn in fns:
+            if not fn.endswith(".py"):
+                continue
+            fp = os.path.join(dp, fn)
+            with open(fp, "rb") as f:
+                b = f.read()
+            t = b.decode("utf-8", "replace")
+            t2 = t
+            for rx, loc in srcs:
+                t2 = rx.sub(lambda m: loc, t2)
+            if t2 != t:
+                with open(fp, "wb") as f:
+                    f.write(t2.encode("utf-8"))
+                changed.append((fp, b))
+    return changed
 
 
 def cmd_prepare(cfg, a):
@@ -717,8 +751,16 @@ def cmd_run(cfg, a):
                     ctx.state["code_dirty"] = False
                     ctx.save()
                 rec["materialized"] = materialize_scripts(ctx, dict(r, window_sha=w["sha"]))
+                remapped = remap_script_paths(ctx)
+                if remapped:
+                    rec["script_paths_remapped"] = sorted(os.path.relpath(p, ctx.proj).replace("\\", "/") for p, _ in remapped)
                 rows_before = wf_rows(wf_path)
-                code, secs, log, version = run_editor_script(ctx, r)
+                try:
+                    code, secs, log, version = run_editor_script(ctx, r)
+                finally:
+                    for fp, b in remapped:   # the scripts as recorded again
+                        with open(fp, "wb") as f:
+                            f.write(b)
                 rows_after = wf_rows(wf_path)
                 new_rows = rows_after[len(rows_before):] if rows_after[:len(rows_before)] == rows_before else rows_after
                 retried = 0
@@ -731,7 +773,13 @@ def cmd_run(cfg, a):
                     print("   %s engine crashed after %d/%d rows: retry %d" % (r["id"], len(new_rows), len(r["rows"]), retried), flush=True)
                     with open(wf_path, "w", encoding="utf-8", newline="\n") as f:
                         f.write("".join(l + "\n" for l in rows_before))
-                    code, secs2, log, version = run_editor_script(ctx, r)
+                    remapped = remap_script_paths(ctx)
+                    try:
+                        code, secs2, log, version = run_editor_script(ctx, r)
+                    finally:
+                        for fp, b in remapped:
+                            with open(fp, "wb") as f:
+                                f.write(b)
                     secs += secs2
                     rows_after = wf_rows(wf_path)
                     new_rows = rows_after[len(rows_before):] if rows_after[:len(rows_before)] == rows_before else rows_after

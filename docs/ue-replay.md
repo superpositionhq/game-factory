@@ -84,8 +84,15 @@ installed; the C++ toolchain is the one the game compiled with.
 An external source the builder unpacked into a scratch folder that no longer exists takes a `rebuild` recipe in
 `external_sources`: `{"unzip": [{"zip": "{root}/asset-library/...*.zip", "to": "<subdir>", "exclude": ["*Cavity*"]}]}`,
 the builder's own unpack command in data. `prepare` rebuilds it under `work/external/<id>/` (listed with sha256 in the
-manifest), and a run whose recorded env names the old folder (`path`) gets the rebuilt one. Without it the import
-script finds nothing and the replay silently diverges (horror: three scanned surfaces, 11 material instances).
+manifest), and a run whose recorded env names the old folder gets the rebuilt one. Without it the import script finds
+nothing and the replay silently diverges (horror: three scanned surfaces, 11 material instances).
+
+Settings never hold a machine's user name or tool folders. What the recording says (commands in `match`, the old
+location of an external source in `recorded`) is written as a template and matched on any machine: `{home}` = any user
+profile, `{root}` = any path prefix, `*` = one path component (in `recorded`), `/` = any slash. `path` is where the
+source is on this machine (`{root}`, `{home}` expanded); copies of files that lived outside the project on the build
+machine go under `{root}/ue-replay/_sources/<game>/`. `"remap_scripts": true` points absolute paths inside the
+builder's scripts at that copy for each run and puts the scripts back afterwards (listed under the report's deviations).
 
 ### 2.3 Running
 

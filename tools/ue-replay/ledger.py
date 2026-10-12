@@ -21,6 +21,7 @@ import shlex
 import subprocess
 
 import shellfx
+import ue_replay
 
 SCHEMA = "ue-replay.ledger/v1"
 
@@ -474,13 +475,14 @@ def build(cfg):
         elif tool in ("Bash", "PowerShell"):
             cmd = inp.get("command", "")
             for d in drops.values():
-                if d.get("match") and d["match"] in cmd and d["id"] not in seen_tool:
+                # match strings may hold {root}/{home}: the recording's own paths, on whatever machine it was made
+                if d.get("match") and ue_replay.has_recorded(d["match"], cmd) >= 0 and d["id"] not in seen_tool:
                     seen_tool.add(d["id"])
                     w["drops"].append(dict(d, time=a["time"]))
             for s in shells:
-                if s["match"] in cmd and ("shell", s["match"]) not in seen_tool:
+                if ue_replay.has_recorded(s["match"], cmd) >= 0 and ("shell", s["match"]) not in seen_tool:
                     seen_tool.add(("shell", s["match"]))
-                    w["shell"].append(dict(s, time=a["time"], pos=shellfx.protect_heredocs(cmd)[0].find(s["match"])))
+                    w["shell"].append(dict(s, time=a["time"], pos=ue_replay.has_recorded(s["match"], shellfx.protect_heredocs(cmd)[0])))
             # runs in this command, at the command's position in time (texts as of before the command's own writes)
             for r in run_by_tool.get(a.get("tool_use_id"), []):
                 run_seq += 1

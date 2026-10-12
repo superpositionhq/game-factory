@@ -17,6 +17,7 @@ settings file (e.g. a delivered ReplayScripts/game.json). Settings may use {root
 import argparse
 import json
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -58,14 +59,69 @@ def check_free(path, what):
         return free
 
 
+# Settings keys that describe what the RECORDING says (commands and paths of the machine the game was built on), not
+# places on this machine: they stay templates and are matched with recorded_regex().
+RECORDED_KEYS = ("match", "recorded")
+
+
 def expand(v, root):
     if isinstance(v, str):
-        return v.replace("{root}", root)
+        return v.replace("{root}", root).replace("{home}", os.path.expanduser("~").replace("\\", "/"))
     if isinstance(v, list):
         return [expand(x, root) for x in v]
     if isinstance(v, dict):
-        return {k: expand(x, root) for k, x in v.items()}
+        return {k: (x if k in RECORDED_KEYS else expand(x, root)) for k, x in v.items()}
     return v
+
+
+def recorded_regex(template):
+    """A settings template for text in the recording, as a regex that matches it on any machine: {home} = any user
+    profile (C:/Users/<name>, C:\\Users\\<name>, /c/Users/<name>), {root} = any path prefix, * = one path component (in
+    "recorded" paths only), "/" = either slash; everything else literal."""
+    out, i = [], 0
+    while i < len(template):
+        if template.startswith("{home}", i):
+            out.append(r"(?:[A-Za-z]:|/[A-Za-z])[\\/]+Users[\\/]+[^\\/\s'\"]+")
+            i += 6
+        elif template.startswith("{root}", i):
+            out.append(r"(?:[A-Za-z]:|/[A-Za-z])(?:[\\/]+[^\\/\s'\"]+)*?")
+            i += 6
+        else:
+            out.append(re.escape(template[i]))
+            i += 1
+    return re.compile("".join(out), re.I)
+
+
+def recorded_path_regex(template):
+    """recorded_regex for a path: also * = one path component and / = any separator (/, \\, or an escaped \\\\)."""
+    sep = r"(?:/|\\{1,2})+"
+    out, i = [], 0
+    while i < len(template):
+        if template.startswith("{home}", i):
+            out.append(r"(?:[A-Za-z]:|/[A-Za-z])%sUsers%s[^\\/\s'\"]+" % (sep, sep))
+            i += 6
+        elif template.startswith("{root}", i):
+            out.append(r"(?:[A-Za-z]:|/[A-Za-z])(?:%s[^\\/\s'\"]+)*?" % sep)
+            i += 6
+        elif template[i] == "/":
+            out.append(sep)
+            i += 1
+        elif template[i] == "*":
+            out.append(r"[^\\/\s'\"]*")
+            i += 1
+        else:
+            out.append(re.escape(template[i]))
+            i += 1
+    return re.compile("".join(out), re.I)
+
+
+def has_recorded(match, text):
+    """Where the settings' match string occurs in a recorded command: a plain substring, or with {home}/{root} any
+    machine's path. Returns the start index or -1."""
+    if "{home}" not in match and "{root}" not in match:
+        return text.find(match)
+    m = recorded_regex(match).search(text)
+    return m.start() if m else -1
 
 
 def resolve_cfg(game):
