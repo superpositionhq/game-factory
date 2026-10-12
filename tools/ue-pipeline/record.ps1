@@ -344,11 +344,11 @@ for ($i = 0; $i -lt $Runs; $i++) {
     $gameExit = $null; $killed = $false; $windowMoved = $false; $captureMode = $null; $privacyStop = $null
     $coverFirst = $null; $coverWhat = ''; $coverCount = 0
     $tStart = Get-Date
-    # Display refresh: at 159 Hz a 60 fps capture repeats/skips game frames; the user switches to 120 Hz (or 60) for recording.
+    # Display refresh: a 60 fps capture repeats/skips game frames unless the refresh is a multiple of 60 (60, 120, 240 Hz).
     $vc = Get-CimInstance Win32_VideoController | Where-Object { $_.CurrentRefreshRate -gt 1 -and $_.CurrentHorizontalResolution -gt 0 } | Select-Object -First 1
     $refreshHz = if ($vc) { [int]$vc.CurrentRefreshRate } else { $null }
     $displayMode = if ($vc) { "$($vc.CurrentHorizontalResolution)x$($vc.CurrentVerticalResolution) @ $refreshHz Hz ($($vc.Name))" } else { $null }
-    if ($refreshHz -notin @(60, 120)) { [void]$warnings.Add("display refresh is $refreshHz Hz, expected 60 or 120 (60 fps capture will repeat/skip game frames)") }
+    if (-not $refreshHz -or $refreshHz % 60 -ne 0) { [void]$warnings.Add("display refresh is $refreshHz Hz, not a multiple of 60 (60 fps capture will repeat/skip game frames)") }
     if ($contentCheck.status -eq 'much_smaller') { [void]$warnings.Add("cooked content $($contentCheck.build_mb) MB is only $([math]::Round($contentCheck.ratio * 100)) % of the game's own build ($($contentCheck.reference_mb) MB): store content may be missing") }
 
     # Screen capture needs the window untouched for minutes: wait until the user is away (and the session unlocked).
@@ -408,11 +408,13 @@ for ($i = 0; $i -lt $Runs; $i++) {
         if ($hwnd -eq [IntPtr]::Zero) { $hwnd = [UePipeline.Win]::FindWindowOfPid([uint32]$ready.pid, $null) }
         if ($hwnd -eq [IntPtr]::Zero) { throw "no visible window for pid $($ready.pid)" }
         $title = [UePipeline.Win]::Title($hwnd)
-        # Games re-center their window; put it at a fixed spot near the top-left of the primary screen.
-        [void][UePipeline.Win]::MoveClientTo($hwnd, 40, 80)
+        # Games re-center their window; centre the 1920x1080 client on the primary screen ourselves (any screen size
+        # that holds it, title bar may sit off-screen on an exactly-1080p display).
+        $screen = [UePipeline.Win]::PrimaryScreenSize()
+        if ($screen[0] -lt 1920 -or $screen[1] -lt 1080) { throw "primary screen is $($screen -join 'x'); recording needs room for a 1920x1080 client (check.ps1: Primary display)" }
+        [void][UePipeline.Win]::MoveClientTo($hwnd, [int][math]::Floor(($screen[0] - 1920) / 2), [int][math]::Floor(($screen[1] - 1080) / 2))
         Start-Sleep -Milliseconds 300
         $rect = [UePipeline.Win]::ClientRectOnScreen($hwnd)
-        $screen = [UePipeline.Win]::PrimaryScreenSize()
         Write-Step "window '$title' client $($rect -join ',') on screen $($screen -join 'x')"
         if ($rect[2] -ne 1920 -or $rect[3] -ne 1080) { throw "client area is $($rect[2])x$($rect[3]), expected 1920x1080" }
         if ($rect[0] -lt 0 -or $rect[1] -lt 0 -or $rect[0] + 1920 -gt $screen[0] -or $rect[1] + 1080 -gt $screen[1]) { throw "window not fully on the primary screen: $($rect -join ',')" }
@@ -742,7 +744,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
         video_start_offset_definition = 't_ns of video frame 0 on the QPC ns clock of inputs.jsonl / telemetry.jsonl: video_time_s = (t_ns - video_start_offset_ns) / 1e9'
         system_audio = [ordered]@{ file = 'system_audio.mka'; codec = 'flac'; source = $(if ($audioClockInfo) { 'UE master submix (AutoPlay buffer listener, v1.4)' } else { 'UE master submix (StartRecordingOutput)' }); start_offset_ns = $audioStartNs; start_anchor = $audioAnchor; aligned = $audioAligned; clock = $audioClockInfo; stats = $audio }
         microphone = $null
-        machine = [ordered]@{ cpu = 'AMD Ryzen 7 7700X'; gpu = 'NVIDIA GeForce RTX 4080'; display = $displayMode; display_refresh_hz = $refreshHz; os = [Environment]::OSVersion.VersionString }
+        machine = [ordered]@{ cpu = (@(Get-CimInstance Win32_Processor | ForEach-Object { $_.Name.Trim() }) -join '; '); gpu = (@(Get-CimInstance Win32_VideoController | Where-Object { $_.CurrentHorizontalResolution -gt 0 } | ForEach-Object { $_.Name }) -join '; '); display = $displayMode; display_refresh_hz = $refreshHz; os = [Environment]::OSVersion.VersionString }
         created_utc = (Get-Date).ToUniversalTime().ToString('o')
         status = $status
         stills = $stills

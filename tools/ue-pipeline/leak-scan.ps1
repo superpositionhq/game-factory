@@ -4,7 +4,7 @@
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File leak-scan.ps1 %GF_ROOT%\builds\tower-defense\52a6f2a1-shipping
-  powershell -ExecutionPolicy Bypass -File leak-scan.ps1 <dir> -Patterns xiang,superposition,game-factory
+  powershell -ExecutionPolicy Bypass -File leak-scan.ps1 <dir> -Patterns <user-name>,superposition,game-factory
 
   Default patterns: the Windows user name inside paths (\<name>\ and /<name>/: source, PDB and temp paths compiled in;
   a bare-name search also hits the engine's 'zh_XIANG'/'zh-xiang' locale ids) and the names that must not ship ($ForbiddenNamePatterns in common.ps1). Prints hits per file with a short ASCII context; exit 1 if anything is found. build.ps1 runs the same

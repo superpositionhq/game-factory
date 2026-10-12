@@ -858,11 +858,12 @@ function Find-ManifestStore($Node, [string]$Where) {
 # ---- deliverable scrub: applied to the package copy only, in this order; then everything is rescanned ----------------
 # Scopes: all | json (.json/.jsonl, JSON-escaped forms) | lines (other text files except git.log, whose commit-message
 # trailers WriteGitLog drops). Rule ids are what scrub-report.json counts; descriptions never quote the original values.
-$UserName = if ($env:USERNAME) { $env:USERNAME } else { 'xiang' }
+$UserName = if ($env:USERNAME) { $env:USERNAME } else { [Environment]::UserName }
+if (-not $UserName) { throw 'cannot tell the Windows user name (USERNAME unset): the scrub needs it' }
 # start of a word, also right after a JSON escape such as \n (whose letter would otherwise hide the boundary)
 $WordStart = '(?:(?<=\\[nrtfb])|(?<=\\u[0-9a-fA-F]{4})|(?<![A-Za-z0-9_]))'
 $UserRx = "$WordStart$([regex]::Escape($UserName))(?![A-Za-z0-9_])"
-$MachineName = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { "$UserName-PC" }
+$MachineName = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { [Environment]::MachineName }
 # enforcement: the account name as any substring (only the allowlisted exact tokens pass)
 $UserAnyRx = [regex]::Escape($UserName)
 $EmailRx = '(?:(?<=\\u[0-9a-fA-F]{4})|(?<=\\[nrtfb"/])|(?<![A-Za-z0-9._%+\\-]))(?!(?:git@(?:github|gitlab|bitbucket)\.(?:com|org)|noreply@github\.com)\b)' +

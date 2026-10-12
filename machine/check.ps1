@@ -18,7 +18,7 @@ param(
     [string]$ConfigPath,
     [string]$Org = 'superpositionhq',
     [int]$MinFreeGB = 300,          # WARN below this, FAIL below a third of it
-    [int]$MinDriver = 617,
+    [int]$MinDriver = 610,
     [string]$Json
 )
 $ErrorActionPreference = 'Stop'
@@ -106,19 +106,25 @@ Try-Check 'Python' {
 # --- recording hardware / display ------------------------------------------------------------------------------------
 Try-Check "NVIDIA driver >= $MinDriver" {
     $smi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
-    if (-not $smi) { Add-Result FAIL "NVIDIA driver >= $MinDriver" 'nvidia-smi not found (no NVIDIA GPU/driver)' 'recording uses NVENC; install an NVIDIA GPU driver'; return }
+    if (-not $smi) { Add-Result WARN "NVIDIA driver >= $MinDriver" 'nvidia-smi not found (no NVIDIA GPU/driver)' 'recording prefers NVENC; without it record.ps1 falls back to AMF, then libx264 on the CPU (slower)'; return }
     $r = Run $smi.Source @('--query-gpu=name,driver_version,memory.total', '--format=csv,noheader')
     $first = ($r.out -split "`n")[0]
     $parts = $first -split ',\s*'
     $drv = [double]($parts[1] -replace '[^\d.]', '')
     if ($drv -ge $MinDriver) { Add-Result PASS "NVIDIA driver >= $MinDriver" $first }
-    else { Add-Result FAIL "NVIDIA driver >= $MinDriver" $first "update the driver (ffmpeg 8.1.2 NVENC needs >= 610; the pipeline was verified on 617.42)" }
+    else { Add-Result FAIL "NVIDIA driver >= $MinDriver" $first "update the driver (the pinned ffmpeg 8.1.2 NVENC needs >= 610)" }
+}
+Try-Check 'Primary display' {
+    Add-Type -Namespace GfCheck -Name Metrics -MemberDefinition '[DllImport("user32.dll")] public static extern int GetSystemMetrics(int i);'
+    $w = [GfCheck.Metrics]::GetSystemMetrics(0); $h = [GfCheck.Metrics]::GetSystemMetrics(1)
+    if ($w -ge 1920 -and $h -ge 1080) { Add-Result PASS 'Primary display' "${w}x${h} (holds the 1920x1080 recording client)" }
+    else { Add-Result FAIL 'Primary display' "${w}x${h}" 'recording centres a 1920x1080 game client on the primary display: use a display (and scaling) of at least 1920x1080' }
 }
 Try-Check 'Display refresh rate' {
     $rates = @(Get-CimInstance Win32_VideoController | Where-Object { $_.CurrentRefreshRate } | ForEach-Object { "$($_.Name): $($_.CurrentHorizontalResolution)x$($_.CurrentVerticalResolution) @ $($_.CurrentRefreshRate) Hz" })
     $max = (@(Get-CimInstance Win32_VideoController | ForEach-Object { [int]$_.CurrentRefreshRate }) | Measure-Object -Maximum).Maximum
-    if ($max -ge 120) { Add-Result PASS 'Display refresh rate' ($rates -join '; ') }
-    elseif ($max -ge 60) { Add-Result WARN 'Display refresh rate' ($rates -join '; ') 'recordings are 60 fps CFR; the pipeline was tuned on a 120 Hz display (Settings > Display > Advanced display)' }
+    if ($max -ge 60 -and $max % 60 -eq 0) { Add-Result PASS 'Display refresh rate' ($rates -join '; ') }
+    elseif ($max -ge 60) { Add-Result WARN 'Display refresh rate' ($rates -join '; ') 'recordings are 60 fps CFR: pick a multiple of 60 (60/120/240 Hz) for recording, or frames repeat/skip (Settings > Display > Advanced display)' }
     else { Add-Result FAIL 'Display refresh rate' $(if ($rates) { $rates -join '; ' } else { 'no active display' }) 'recording captures the desktop at 60 fps: needs a display at >= 60 Hz' }
 }
 function Get-PowerAc([string]$Sub, [string]$Setting) {

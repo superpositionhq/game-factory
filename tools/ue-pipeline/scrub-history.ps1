@@ -50,8 +50,12 @@ $archive = if ($ArchiveDir) { $ArchiveDir } else { Join-Path $info.LogDir 'origi
 $work = Join-Path $archive "$Game-$stamp-scrub"
 New-Item -ItemType Directory -Force $work | Out-Null
 $problems = New-Object System.Collections.ArrayList
-$perl = 'C:\Program Files\Git\usr\bin\perl.exe'
-$bash = 'C:\Program Files\Git\bin\bash.exe'
+# Git for Windows' own perl and bash: <git root>\usr\bin\perl.exe, <git root>\bin\bash.exe (git root = two levels above git.exe)
+$gitRoot = Split-Path (Split-Path (Get-Command git -ErrorAction Stop).Source)
+if (-not (Test-Path (Join-Path $gitRoot 'usr\bin\perl.exe'))) { $gitRoot = Join-Path $env:ProgramFiles 'Git' }
+$perl = Join-Path $gitRoot 'usr\bin\perl.exe'
+$bash = Join-Path $gitRoot 'bin\bash.exe'
+foreach ($t in $perl, $bash) { if (-not (Test-Path $t)) { throw "Git for Windows tool not found: $t" } }
 function Note([string]$s) { Write-Host "  $s" }
 function ToSh([string]$p) { '/' + $p.Substring(0, 1).ToLower() + $p.Substring(2).Replace('\', '/') }
 
