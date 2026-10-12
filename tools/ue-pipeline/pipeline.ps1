@@ -18,7 +18,7 @@ param(
     [int]$Runs = 3,
     [Alias('Levels')][string[]]$Scenarios,   # "1,2" from powershell -File arrives as one string; split below
     [string]$Commit = 'HEAD',
-    [int]$MaxSeconds = 600,
+    [string]$MaxSeconds = '600',   # AutoPlay time limit per run (s): "900" for every scenario, or "1=300,3=900" (others 600)
     [switch]$Force,
     [switch]$Nightly,
     [switch]$DrainQueue
@@ -62,7 +62,7 @@ function Test-SessionLocked {
     return [bool](Get-Process LogonUI -ErrorAction SilentlyContinue)
 }
 
-function Invoke-GamePipeline([string]$GameSlug, [int]$RunCount, [int[]]$ScenarioList, [string]$Rev, [string]$Trigger) {
+function Invoke-GamePipeline([string]$GameSlug, [int]$RunCount, [int[]]$ScenarioList, [string]$Rev, [string]$Trigger, $MaxMap = (ConvertTo-MaxSecondsMap $MaxSeconds)) {
     $info = Get-GameInfo $GameSlug
     $t0 = Get-Date
     $summary = [ordered]@{
@@ -78,6 +78,7 @@ function Invoke-GamePipeline([string]$GameSlug, [int]$RunCount, [int[]]$Scenario
             $ScenarioList = $m.Scenarios; $summary.milestone = $m.Tag
         }
         $summary.scenarios = $ScenarioList
+        $summary.max_seconds = [ordered]@{}; foreach ($l in $ScenarioList) { $summary.max_seconds["$l"] = Get-MaxSeconds $MaxMap $l }
         $todo = @(foreach ($l in $ScenarioList) {
             $have = if ($Force) { 0 } else { Get-GoodRunCount $GameSlug $sha $l }
             if ($have -lt $RunCount) { [pscustomobject]@{ Scenario = $l; Runs = $RunCount - $have } }
@@ -104,7 +105,7 @@ function Invoke-GamePipeline([string]$GameSlug, [int]$RunCount, [int[]]$Scenario
         foreach ($t in $todo) {
             if (Test-SessionLocked) { $summary.status = 'failed'; $summary.note = 'session locked: capture impossible'; break }
             Write-Step "== $GameSlug scenario $($t.Scenario): $($t.Runs) runs"
-            $rows = & (Join-Path $PSScriptRoot 'record.ps1') $GameSlug -Build $build.output_path -Scenario $t.Scenario -Runs $t.Runs -MaxSeconds $MaxSeconds
+            $rows = & (Join-Path $PSScriptRoot 'record.ps1') $GameSlug -Build $build.output_path -Scenario $t.Scenario -Runs $t.Runs -MaxSeconds (Get-MaxSeconds $MaxMap $t.Scenario)
             foreach ($r in @($rows | Where-Object { $_ -and $_.Contains('run_id') })) {
                 $summary.runs += [ordered]@{ run_id = $r.run_id; scenario = $r.scenario; status = $r.status; result = $r.result }
             }
@@ -153,7 +154,8 @@ if ($DrainQueue) {
             Start-RecordingWantsGpuHold "queue job $($next.Name)"
             $names = $req.PSObject.Properties.Name
             $levelsReq = if ($names -contains 'scenarios' -and $req.scenarios) { [int[]]$req.scenarios } elseif ($names -contains 'levels' -and $req.levels) { [int[]]$req.levels } else { $null }
-            $res = Invoke-GamePipeline $req.game ([int]$req.runs) $levelsReq $req.commit "queue:$($req.requested_by)"
+            $maxReq = if ($names -contains 'max_seconds' -and $req.max_seconds) { ConvertTo-MaxSecondsMap $req.max_seconds } else { ConvertTo-MaxSecondsMap '' }
+            $res = Invoke-GamePipeline $req.game ([int]$req.runs) $levelsReq $req.commit "queue:$($req.requested_by)" $maxReq
             $req | Add-Member -NotePropertyName result -NotePropertyValue $res -Force
             Write-JsonFile (Join-Path (Join-Path $QueueDir 'done') $next.Name) $req
             Remove-Item $next.FullName

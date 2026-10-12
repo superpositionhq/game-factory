@@ -192,6 +192,27 @@ namespace UePipeline {
 }
 '@
 }
+# Per-scenario AutoPlay time limits. Spec: "" (default 600 s for all), "900" (all), "1=300,3=900" (listed scenarios; the
+# rest 600, or "*=700" for the rest), or the {"1":300,"*":700} object a queue job stores. Returns a hashtable keyed "1","*".
+function ConvertTo-MaxSecondsMap($Spec) {
+    $map = @{ '*' = 600 }
+    $pairs = @()
+    if ($Spec -is [string] -or $null -eq $Spec) {
+        foreach ($part in @("$Spec" -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+            if ($part -match '^\d+$') { $pairs += , @('*', $part) }
+            elseif ($part -match '^(\d+|\*)\s*=\s*(\d+)$') { $pairs += , @($matches[1], $matches[2]) }
+            else { throw "bad -MaxSeconds part '$part' (use 900 or 1=300,3=900)" }
+        }
+    } else { foreach ($p in $Spec.PSObject.Properties) { $pairs += , @([string]$p.Name, [string]$p.Value) } }
+    foreach ($kv in $pairs) {
+        $s = [int]$kv[1]
+        if ($s -lt 30 -or $s -gt 7200) { throw "MaxSeconds $s for scenario $($kv[0]) is outside 30..7200" }
+        $map[[string]$kv[0]] = $s
+    }
+    return $map
+}
+function Get-MaxSeconds($Map, $Scenario) { if ($Map.ContainsKey("$Scenario")) { return [int]$Map["$Scenario"] } else { return [int]$Map['*'] } }
+
 function Start-RecordingWantsGpuHold([string]$Label) { [UePipeline.FlagKeeper]::Start($RecordingWantsGpuFlag, "pid $PID $Label") }
 # Also removes a flag this process did not write: a drainer that took over after a code change (hand-over) and found
 # the queue empty would otherwise leave the old drainer's flag, holding session GPU jobs back for 20 min.

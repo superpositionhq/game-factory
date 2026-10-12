@@ -9,7 +9,7 @@ through Enhanced Input, see [autoplay-contract.md](autoplay-contract.md)) as gam
 | `record.ps1 <game> -Build <dir\|latest> -Scenario n -Runs k [-Skill s] [-Seed s]` | launch, capture, validate, bundle; row per run in `runs.jsonl` |
 | `pipeline.ps1 <game> [-Runs k] [-Scenarios 1,2] [-Commit rev]` | build → package → smoke → record k runs per scenario; row in `pipeline.jsonl` |
 | `pipeline.ps1 -Nightly` / `-DrainQueue` | all games with a milestone tag / requests from `enqueue.ps1` |
-| `enqueue.ps1 <game> [-Runs k] [-Scenarios ..]` | queue a pipeline run and return at once (for game sessions) |
+| `enqueue.ps1 <game> [-Runs k] [-Scenarios ..] [-MaxSeconds "1=300,3=900"]` | queue a pipeline run and return at once (for game sessions) |
 | `validate-run.ps1 <OutputDir>` | contract check of one raw run directory (for game sessions testing by hand) |
 | `scrub-history.ps1 <game> [-Apply]` | archive, then remove the names Superposition/game-factory from a finished game's history; dry run by default |
 | `mark-invalid.ps1 <game> -Commit sha \| -RunId id -Reason text` | exclude bundles from the dataset (INVALID file, validation status `invalid`); files kept |
@@ -321,6 +321,11 @@ in file-name order (the coordinator reorders by renaming; a request being proces
 ```
 powershell -ExecutionPolicy Bypass -File %GF_ROOT%\game-factory\tools\ue-pipeline\enqueue.ps1 <game> -Scenarios 1,2 -Runs 1 -RequestedBy coordinator
 ```
+
+AutoPlay time limit: 600 s per run by default (the game gets `-MaxSeconds`, the recorder kills it 90 s later).
+`-MaxSeconds "1=300,2=600,3=900"` sets it per scenario (unlisted ones keep 600; `*=700` changes the rest), a plain
+`-MaxSeconds 900` sets it for every scenario; values 30..7200. The request stores it as `max_seconds`, and the job's
+`pipeline.jsonl` row lists the limit used per scenario. `pipeline.ps1 -MaxSeconds` takes the same forms.
 
 Dropping a queued request: move it to `builds\_queue\done\` with a `result` note (status `dropped`).
 
