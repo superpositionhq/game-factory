@@ -93,6 +93,11 @@ this engine install. The recorded game itself is the packaged exe, which has no 
 3. `Engine\Build\BatchFiles\Build.bat <Project>Editor Win64 Development -Project=<uproject> -WaitMutex -NoHotReloadFromIDE`
 4. With `-Package`: `RunUAT.bat -WaitForUATMutex BuildCookRun -project=<uproject> -target=<Project> -noP4 -platform=Win64
    -clientconfig=<Shipping|Development> -build -cook -stage -pak -archive -archivedirectory=<out> -nocompileeditor -unattended -utf8output`
+
+   Before steps 3 and 4 build.ps1 reads the machine's free commit; under 30 GB it adds `-MaxParallelActions=4` (Build.bat)
+   / `-ubtargs="-MaxParallelActions=4"` (BuildCookRun). Each parallel cl.exe with a PCH reserves a large block of commit,
+   and with little left they fail with C3859 "Failed to create virtual memory for PCH" / C1076. `free_commit_gb` and
+   `max_parallel_actions` go to builds.jsonl.
 5. With `-Smoke`: if the game's Source contains an automation test named `<Project>.Smoke…`,
    `UnrealEditor-Cmd.exe <uproject> -ExecCmds="Automation RunTests <Project>.Smoke; Quit" -TestExit="Automation Test Queue Empty"
    -ReportExportPath=<logs> -nullrhi -unattended -nopause -nosplash -nosound`; pass = report has ≥ 1 success and 0

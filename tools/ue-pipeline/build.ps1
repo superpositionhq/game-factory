@@ -70,6 +70,8 @@ $missingByPipeline = New-Object System.Collections.ArrayList
 $missingInGame = New-Object System.Collections.ArrayList
 $cookedBytes = $null
 $leakScan = $null
+$freeCommitGB = $null
+$maxParallelActions = $null
 $status = 'ok'
 $smokeResult = [ordered]@{ status = 'not_run'; note = '' }
 $stamp = $start.ToString('yyyyMMdd-HHmmss')
@@ -162,16 +164,29 @@ try {
     $gameTarget = Find-Target $src 'Game'
     if (-not $editorTarget -or -not $gameTarget) { throw "Editor/Game Target.cs not found under $src\Source" }
 
+    # Compile parallelism: every cl.exe with a PCH reserves a large block of commit. When the machine's free commit is
+    # low (other sessions' editors and games, a leaking service), parallel compiles fail with C3859 "Failed to create
+    # virtual memory for PCH" / C1076 (liaozhai-night, 2026-10-11 20:44, 117.7 of 127 GB committed): cap UBT's actions.
+    function Get-UbtParallelArg {
+        $freeGB = [math]::Round((Get-CimInstance Win32_OperatingSystem).FreeVirtualMemory / 1MB, 1)   # KB -> GB
+        $script:freeCommitGB = $freeGB
+        if ($freeGB -lt 30) { $script:maxParallelActions = 4; Write-Step "free commit $freeGB GB (< 30): UBT -MaxParallelActions=4"; return ' -MaxParallelActions=4' }
+        return ''
+    }
+
     # ---- 1. editor target ----
+    $par = Get-UbtParallelArg
     $r = Invoke-Step 'build-editor' (Join-Path $EngineRoot 'Engine\Build\BatchFiles\Build.bat') `
-        "$editorTarget Win64 Development -Project=`"$uproject`" -WaitMutex -NoHotReloadFromIDE"
+        "$editorTarget Win64 Development -Project=`"$uproject`" -WaitMutex -NoHotReloadFromIDE$par"
     if ($r.exit_code -ne 0) { throw 'editor build failed' }
 
     # ---- 2. package ----
     if ($Package) {
+        $par = Get-UbtParallelArg
+        $ubtArgs = if ($par) { " -ubtargs=`"$($par.Trim())`"" } else { '' }
         $r = Invoke-Step 'package' (Join-Path $EngineRoot 'Engine\Build\BatchFiles\RunUAT.bat') `
             ("-WaitForUATMutex BuildCookRun -project=`"$uproject`" -target=$gameTarget -noP4 -platform=Win64 -clientconfig=$Config " +
-             "-build -cook -stage -pak -archive -archivedirectory=`"$outDir`" -nocompileeditor -unattended -utf8output")
+             "-build -cook -stage -pak -archive -archivedirectory=`"$outDir`" -nocompileeditor -unattended -utf8output$ubtArgs")
         if ($r.exit_code -ne 0) { throw 'package failed' }
         if (-not (Test-Path $exePath)) { throw "package succeeded but $exePath is missing" }
         # Missing game assets in the cook (e.g. store content not present) must fail the build, not ship an empty game.
@@ -260,6 +275,8 @@ $row = [ordered]@{
     missing_assets_in_game = @($missingInGame)
     cooked_content_mb = $(if ($null -ne $cookedBytes) { [math]::Round($cookedBytes / 1MB, 1) } else { $null })
     leak_scan = $leakScan
+    free_commit_gb = $freeCommitGB
+    max_parallel_actions = $maxParallelActions
     engine = $EngineRoot
     config = $Config
     steps = @($steps)
