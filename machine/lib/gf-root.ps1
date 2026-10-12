@@ -20,7 +20,7 @@ function Get-GFConfig {
         root                  = (Join-Path $env:USERPROFILE 'Work')
         ueb                   = 'C:\UEB'
         engine                = 'C:\Program Files\Epic Games\UE_5.3'
-        record_extra_projects = @('liaozhai-replay')
+        record_extra_projects = @()
     }
     $path = Get-GFConfigPath
     if (Test-Path -LiteralPath $path) {

@@ -1,11 +1,11 @@
-"""derive: world-building ops from the map exports taken after each replayed script run (docs/ue-replay.md, 3.5).
+"""derive: world-building ops from the map exports taken after each replayed script run (docs/ue-replay.md, 2.5).
 
 For every run that changed a map, its export (work/mapdumps/<run>/maps/<map>.json + .t3d) is compared with the map's
 previous export:
   - the run created the map anew (it logged level.create / level.build for it, or no actor survived by name):
     ue.level.create, then ue.actor.spawn for every actor in the order the script spawned them, then ue.level.save
   - otherwise: ue.actor.spawn for new actors, ue.actor.remove for gone ones, ue.actor.update for changed ones
-Each actor op carries the actor's T3D block (the editor's copy/paste text). Ops are written in the vendor field set
+Each actor op carries the actor's T3D block (the editor's copy/paste text). Ops are written in the workflow field set
 (id, chapter, op, target, params, reason, depends_on, source, expected, presentation) with
 status "derived_from_replayed_script_run"; reasons are the builder's own workflow rows of that run.
 """

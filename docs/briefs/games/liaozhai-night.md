@@ -8,7 +8,6 @@ Fill-in for [../game-session.md](../game-session.md). Original prompt: [../origi
 | `{{SLUG}}` | liaozhai-night |
 | `{{PROJECT}}` | LiaozhaiNight (`LiaozhaiNight.uproject`, modules `LiaozhaiNight` + editor `LiaozhaiNightEditor`, prefix `LN`) |
 | `{{GENRE_LINE}}` | a Chinese-folklore ACTION game with melee and talisman combat, seen through a fixed tilted HD-2D camera |
-| `{{VENDOR_BEAT}}` | none (it pairs with the LiaoZhaiRL Unity game: same theme and content, built in Unreal) |
 
 ## {{PITCH}}
 
@@ -19,10 +18,11 @@ misty, ink-wash beautiful, never gore.
 
 ## {{BRIEF}}
 
-- Reuse rule (user, replaces the original "copy nothing"): reuse as much of LiaoZhaiRL as possible (characters and
-  clips, painted textures, sprite cards, VFX sprites, UI art, font, title music) from the read-only snapshot
-  `liaozhai-replay/end` (git d8adc87262). Code, levels, kit layout, materials, most audio and gameplay are built here.
-- Camera (user pivot to HD-2D): LiaoZhaiRL's framing, fixed yaw, tilted ~30 deg down, perspective 36 deg FOV from
+- 2D and character art is reused from an earlier licensed project with the same theme.
+- Reuse rule (user, replaces the original "copy nothing"): reuse as much of that project's art as possible
+  (characters and clips, painted textures, sprite cards, VFX sprites, UI art, font, title music) from its read-only
+  snapshot. Code, levels, kit layout, materials, most audio and gameplay are built here.
+- Camera (user pivot to HD-2D): the earlier project's framing, fixed yaw, tilted ~30 deg down, perspective 36 deg FOV from
   ~23 m (so Lumen, fog, DOF and parallax still work); free ground movement, no side-scroller plane; camera zones
   (`ALNCameraZone`) reframe areas; scenery between camera and hero is cut away. Stages are left-to-right strips with a
   far backdrop facing the camera and low foreground pieces.
@@ -39,13 +39,13 @@ misty, ink-wash beautiful, never gore.
 - 3 levels: 兰若寺·前院 courtyard (tutorial + first fights), 竹林·乱葬岗 bamboo and burial ground (stream stepping
   stones, waves), 内殿 inner hall (boss, dawn ending). Shrines (土地龛) heal and set the respawn; death = retry from
   the last shrine. Level complete: time, deaths, damage, talismans, grade 甲 / 乙 / 丙, bests saved.
-- HUD and menus entirely on LiaoZhaiRL's battle UI art: brush HP plate, jade spirit stroke, talisman skill rings with
+- HUD and menus entirely on the reused battle UI art: brush HP plate, jade spirit stroke, talisman skill rings with
   cooldown shade, ornate boss bar, lock-on marker, chapter scroll plaque, death and victory strips. Chinese by default
   with an English toggle; all text in LXGW WenKai. Main menu (calligraphy title, level select with locks + best grade),
   settings (master / music / SFX volume, resolution, fullscreen, mouse sensitivity, invert Y), pause.
 - Look: palette of ink black, rice paper, moon silver-blue, vermilion, jade spirit fire; ink-wash post-process
   (`M_PP_InkWash`), rim light, height fog + drifting mist cards, light shafts, 31 Niagara systems (spirit fire,
-  talismans, petals, fireflies, ink hit splashes, death dissolve). Music: LiaoZhaiRL title theme and boss cues plus
+  talismans, petals, fireflies, ink hit splashes, death dissolve). Music: the reused title theme and boss cues plus
   synthesized pentatonic guqin / xiao; synthesized SFX.
 
 ## {{SCENARIOS}}
@@ -73,12 +73,12 @@ souls rise and the figure bows and becomes petals: 花落天明.
 - `fab-ue\japanese-forest-grave\` (bought): tombstones, roots, dead trees, stone steps; the great dead tree is
   姥姥's body. Its Japanese-only pieces (torii, gohei) are not used.
 - Store packs live under `Content/Fab/<Pack>/` and are listed in `assets.manifest.json`.
-- LiaoZhaiRL snapshot: hero 青砚 with 102 converted clips, 女侠 dodge, 树妖, 狐妖, 鬼火 wisp, 葛巾 phase-1 body as the
+- Reused art: hero 青砚 with 102 converted clips, 女侠 dodge, 树妖, 狐妖, 鬼火 wisp, 葛巾 phase-1 body as the
   boss avatar, painted cards and ground tiles, VFX sprites, 40 UI art files, LXGW WenKai font (OFL), title theme.
 - Quaternius Universal Animation Library (CC0): walk, jump, land, light flinch retargeted onto the hero.
 - On disk if needed: `fab-ue\khs-king-tomb-of-silla\` and other KHS / KCISA scans (Chinese-looking tombs to replace
   the Japanese ones; CC BY, credit "Korea Heritage Service"), `fab\chinese-game-music-v10\`, `fab\wafu-vol35-mountain-temple\`.
-- Ignore the asset-library notes about Spine / PaperZD 2D sprites: the characters are LiaoZhaiRL's 3D models.
+- Ignore the asset-library notes about Spine / PaperZD 2D sprites: the characters are the reused 3D models.
 
 ## {{GAME_NOTES}}
 
@@ -86,8 +86,8 @@ souls rise and the figure bows and becomes petals: 花落天明.
   Python cannot author, while components keep rules in C++ diffs and numbers in data assets the bot can read.
 - Enemy Behavior Trees / Blackboards are built in C++ at startup (`LNEnemyBehavior.cpp`); Niagara systems are
   assembled through a `LiaozhaiNightEditor` helper that Python calls.
-- Unity `.anim` clips are converted by `Scripts/lzanim.py` (error ~1e-6 vs FBX); the reuse mapping is in the game
-  repo's `docs/liaozhai-reuse.md`. LiaoZhaiRL textures carry painted lighting: use the toon material `M_LN_Toon`.
+- The source `.anim` clips are converted by `Scripts/lzanim.py` (error ~1e-6 vs FBX); the reuse mapping is in the game
+  repo's `docs/liaozhai-reuse.md`. The reused textures carry painted lighting: use the toon material `M_LN_Toon`.
 - Feel: hit windows come from the frame where each clip's hand peaks (`Scripts/analyze_qy_clips.py`); clips play at
   fixed rates; locomotion shares one stride phase advanced by distance; the body turns toward where it runs.
 - Animation polish (1.1): no momentum sliding into attacks/casts, action clips stop when a character moves, the fox no
@@ -96,7 +96,7 @@ souls rise and the figure bows and becomes petals: 花落天明.
 - Tutorial hints sit in a top band: the tilted camera keeps the hero in the lower half of the frame.
 - Fixed bugs to keep fixed: a boss retry locked the player out of the arena; ch2 needed a landing stone at the far bank.
 - Known: under warm lantern light the ink-wash post turns ghost lanterns and thralls almost paper-white; spirit
-  barriers read as glassy slabs; no book-chest meshes yet; exploration/combat music still synthesized (LiaoZhaiRL's
-  Wwise banks need vgmstream). `SK_LaoLao` is an unused legacy import; the boss uses `SK_LaoLaoBody`.
+  barriers read as glassy slabs; no book-chest meshes yet; exploration/combat music still synthesized (the earlier
+  project's Wwise banks need vgmstream). `SK_LaoLao` is an unused legacy import; the boss uses `SK_LaoLaoBody`.
 - State: version 1.1.2, all three chapters win under AutoPlay at skill 1, the user called it ready to ship. Keep
   `r.RDG.AsyncCompute=0`. Workflow row ids are `op-NNNNN`.

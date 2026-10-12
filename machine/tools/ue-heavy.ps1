@@ -7,7 +7,7 @@
 param(
   [string]$Label = 'ue job',
   [int]$Slots = 3,
-  [switch]$Gpu,   # force the GPU slot (auto-detected for editor GUI, -game, packaged games, Unity)
+  [switch]$Gpu,   # force the GPU slot (auto-detected for editor GUI, -game, packaged games)
   [Parameter(ValueFromRemainingArguments = $true)][string[]]$Command
 )
 $ErrorActionPreference = 'Continue'
@@ -45,7 +45,7 @@ $sem = New-Object Threading.Semaphore($Slots, $Slots, 'Global\ue-heavy-jobs')
 # GPU jobs (a rendering editor, -game runs, packaged games) also take the single machine-wide GPU slot, which
 # the recording pipeline holds for the whole of a recording: 16 GB of VRAM does not fit several at once.
 $cmdText = $Command -join ' '
-$isGpu = $Gpu -or ($Command[0] -match '(?i)UnrealEditor\.exe$|-Shipping\.exe$|Unity\.exe$') -or
+$isGpu = $Gpu -or ($Command[0] -match '(?i)UnrealEditor\.exe$|-Shipping\.exe$') -or
   ($cmdText -match '(?i)(^|\s)-game(\s|$)|-AllowCommandletRendering') -or
   ($Command[0] -match '(?i)\\Packaged\\.*\.exe$')
 if ($cmdText -match '(?i)-nullrhi|-nographics') { $isGpu = $false }

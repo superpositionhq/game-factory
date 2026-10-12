@@ -43,7 +43,7 @@ dataset's Gameplay/<game>_S<n>.mp4.
 The pipeline already exists in the repo: tools/ue-pipeline/ (build.ps1, record.ps1, pipeline.ps1, enqueue.ps1,
 validate-run.ps1, mark-invalid.ps1, gameplay-mp4.ps1, stills.ps1, leak-scan.ps1, scrub-import-paths.py,
 scrub-history.ps1, sync-check.ps1, common.ps1). Read README.md, AGENTS.md, CLAUDE.md (if present), docs/ue-pipeline.md (all of it),
-docs/autoplay-contract.md, docs/creation-vs-gameplay.md, docs/dataset-layout-v1.json, and the shared notes
+docs/autoplay-contract.md, docs/dataset-layout-v1.json, and the shared notes
 (ue-pipeline-findings.md, autoplay-v1.4-rollout.md, live-coding-blocks-builds.md, ue53-msvc1444-fix.md).
 Machine: {{MACHINE}}. UE 5.3 at {{ENGINE_DIR}}; MSVC 14.44 + .NET 4.8.1 SDK; pinned ffmpeg 8.1.2 under
 {{GF_ROOT}}\tools\ffmpeg-8.1.2 (machine/ fetches and checksum-verifies it); Python 3.12. Private build clones live under
@@ -55,7 +55,7 @@ Rules:
 - Use the commit-always skill: commit to game-factory main after every meaningful step with a descriptive message,
   never end a turn with uncommitted work, never push unless the coordinator says so. Other sessions share this
   checkout: stage only the paths you changed (git add <paths>), never git add -A.
-- Every GPU launch (editor GUI, -game, packaged game, Unity) goes through {{GF_ROOT}}\tools\ue-heavy.ps1; headless
+- Every GPU launch (editor GUI, -game, packaged game) goes through {{GF_ROOT}}\tools\ue-heavy.ps1; headless
   UBT/RunUAT/UnrealEditor-Cmd work takes a CPU slot (build.ps1 takes the semaphore itself). Only the coordinator
   enqueues recordings (enqueue.ps1 refuses without -RequestedBy coordinator): never queue, start or retry a recording
   yourself, and never create the nightly Task Scheduler entry; ask the coordinator, who also reviews framing

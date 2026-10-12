@@ -1,15 +1,13 @@
 # Game #3 (Unreal): LANTERN KEY — third-person island survival (UE 5.3)
 
-Track B game: a complete third-person island-survival game with gathering, crafting and a building flow, built in
+A complete third-person island-survival game with gathering, crafting and a building flow, built in
 Unreal Engine 5.3 by an agent (Claude), with every real editor, code and build operation recorded at the moment it
 happens in `workflow.jsonl` (schema `superposition.ue-workflow/v0`, ids `is-NNNNN`).
 Project: `%GF_ROOT%\games\island-survival` (own git repo, git-lfs). Module `IslandSurvival`.
 Started 2026-10-11 02:41 -04:00.
 
-The vendor's `island_explore` is the bar to beat: a marketplace demo map with fixes on top, a Paragon character,
-a "building" that places one foundation, debug resource counters and no record of how it was made. Lantern Key is
-built here (landscape, layout, systems, building set, UI, story) with every step observed, and its survival loop is
-real: needs, weather, night, threats, tool tiers, crafting, a socketed building set, and an escape arc.
+Lantern Key is built here (landscape, layout, systems, building set, UI, story) with every step observed. Its
+survival loop: needs, weather, night, threats, tool tiers, crafting, a socketed building set, and an escape arc.
 
 ## 1. Game in one paragraph
 
@@ -354,7 +352,7 @@ Procedural Sea Waves and Animal Sound Effect Pack were saved by a newer engine (
 - [ ] Four areas (beach, jungle, highland, cave) with gates; story lines, details, frieze payoff, feeding the pack
 - [ ] Signal fire + raft → escape ending
 - [x] HUD: needs, hotbar, prompt, compass, clock, toasts (styled survival UI: burlap/plank skin, painted craft icons, key-cap prompts; review shots)
-- [ ] Look: Water plugin ocean, scanned materials, foliage, sky/clouds, Lumen, weather VFX — clearly beyond `island_explore`
+- [ ] Look: Water plugin ocean, scanned materials, foliage, sky/clouds, Lumen, weather VFX
 - [ ] Audio: ambience per area/time, weather, gathering, footsteps, creatures, UI, music cues (all slots wired 2026-10-11 11:00 after finding the first Forest Sounds import was never saved; mix peaks at -1 dBFS in AutoPlay recordings; not yet listened to by a human)
 - [x] AutoPlay scenario 1 (First Night) passes `validate-run.ps1`; tag `milestone/autoplay-1`; recording queued (scenario 2 too: `milestone/autoplay-2`; v1.3 migration re-tagged)
 - [x] Packaged Win64 build (`Packaged/Windows/IslandSurvival.exe`, 3.0 GB; AutoPlay scenario 2 wins in it, validate-run PASS)

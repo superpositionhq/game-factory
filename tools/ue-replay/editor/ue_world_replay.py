@@ -1,4 +1,4 @@
-"""World ops replayed through the editor's own copy/paste, one actor at a time (docs/ue-replay.md, 3.5).
+"""World ops replayed through the editor's own copy/paste, one actor at a time (docs/ue-replay.md, 2.5).
 
   UnrealEditor[-Cmd] <uproject> -run=pythonscript -script="ue_world_replay.py --ops <ops.jsonl> --mode check|play
                      [--prefix /Game/_Replay] [--handshake <dir>] [--log <steps.jsonl>] [--speed 1.0]"

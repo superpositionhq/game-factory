@@ -166,7 +166,7 @@ try {
 
     # Compile parallelism: every cl.exe with a PCH reserves a large block of commit. When the machine's free commit is
     # low (other sessions' editors and games, a leaking service), parallel compiles fail with C3859 "Failed to create
-    # virtual memory for PCH" / C1076 (liaozhai-night, 2026-10-11 20:44, 117.7 of 127 GB committed): cap UBT's actions.
+    # virtual memory for PCH" / C1076 (2026-10-11 20:44, 117.7 of 127 GB committed): cap UBT's actions.
     function Get-UbtParallelArg {
         $freeGB = [math]::Round((Get-CimInstance Win32_OperatingSystem).FreeVirtualMemory / 1MB, 1)   # KB -> GB
         $script:freeCommitGB = $freeGB

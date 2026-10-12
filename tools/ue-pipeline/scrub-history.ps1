@@ -166,9 +166,9 @@ $leftRows = @($textRows | Where-Object left -eq '1')
 if ($leftRows.Count) { Note "text blobs where a name survives the rules (adjust -ReplaceMap): $(@($leftRows | Select-Object -Expand path -Unique) -join ', ')" }
 if ($binRows.Count) { Note "binary blobs containing a name (not edited): $(@($binRows | Select-Object -Expand path -Unique) -join ', ')" }
 
-# Samples of the replacement in context (current tree).
-$samples = @(Invoke-Git $repo @('grep', '-I', '-n', '-i', '-E', 'superposition|game[-_]?factory', 'HEAD', '--') -AllowFail | Where-Object { $_ } | Select-Object -First 8)
-foreach ($s in $samples) {
+# Examples of the replacement in context (current tree).
+$examples = @(Invoke-Git $repo @('grep', '-I', '-n', '-i', '-E', 'superposition|game[-_]?factory', 'HEAD', '--') -AllowFail | Where-Object { $_ } | Select-Object -First 8)
+foreach ($s in $examples) {
     $after = $s; foreach ($r in $rules) { $after = [regex]::Replace($after, $r.match, $r.replace) }
     Note "    $($s.Substring(0, [Math]::Min(150, $s.Length)))"
     Note "     -> $($after.Substring(0, [Math]::Min(150, $after.Length)))"

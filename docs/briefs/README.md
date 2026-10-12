@@ -8,7 +8,7 @@ follows are in the skills (`.claude/skills/`: commit-always, game-session, coord
 | [coordinator.md](coordinator.md) | the coordinator (parent) session: role and the user's standing decisions |
 | [game-session.md](game-session.md) | template for a game-building session (placeholders) |
 | [games/](games/) | one fill-in per game: title, project name, pitch, brief, scenarios, story, art packs, known facts |
-| [helpers/](helpers/README.md) | ue-pipeline, asset-scout, packager, creation-replay, liaozhai-replay |
+| [helpers/](helpers/README.md) | ue-pipeline, asset-scout, packager, creation-replay |
 | [original/](original/) | the prompts as first sent on the first machine, verbatim (user path, name and GitHub handle scrubbed) |
 
 ## Spawning a game session

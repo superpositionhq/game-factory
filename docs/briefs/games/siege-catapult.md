@@ -8,7 +8,6 @@ Fill-in for [../game-session.md](../game-session.md). Original prompt: [../origi
 | `{{SLUG}}` | siege-catapult |
 | `{{PROJECT}}` | SiegeCatapult (`SiegeCatapult.uproject`, modules `SiegeCatapult` + editor `SiegeCatapultEditor`, prefix `SC`) |
 | `{{GENRE_LINE}}` | a SIEGE CATAPULT physics game: aim a catapult and bring down Chaos-destructible castles |
-| `{{VENDOR_BEAT}}` | none |
 
 ## {{PITCH}}
 

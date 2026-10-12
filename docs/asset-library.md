@@ -1,6 +1,6 @@
-# Asset library (Track B games)
+# Asset library
 
-Curated 3D, texture, audio, UI and font resources for the seven UE 5.3 Track B games, gathered by the
+Curated 3D, texture, audio, UI and font resources for the seven UE 5.3 games, gathered by the
 asset-scout session (2026-10-11). Machine-readable catalogue and logs live outside this repo:
 
 | File | What |
@@ -84,7 +84,7 @@ manifest; `fabue_batch.py` runs the batch and scans every `.uasset`/`.umap` head
 | SIL OFL 1.1 (fonts) | https://openfontlicense.org | Ship OFL.txt with the font; don't sell the font alone |
 
 Note for packaging: Fab Standard assets may ship inside a built game but not as raw files; this matters
-for any package that redistributes `Content/` (see plan.md B4). CC0/CC-BY/OFL items have no such limit.
+for any package that redistributes `Content/` (see plan.md, "Game briefs and assets"). CC0/CC-BY/OFL items have no such limit.
 
 ## Common import notes (UE 5.3)
 
@@ -166,7 +166,7 @@ scale ~1 for a top-down camera means they read small: scale 1.5-2x). Paragon FX 
 ## liaozhai-night
 
 **Pivot (2026-10-11): 2.5D side-view (HD-2D style).** Characters, enemies, boss and most VFX come from
-LiaoZhaiRL's own 2D sprites and Spine animations, so no 3D characters/animations are sourced any more
+2D sprites and Spine animations reused from an earlier licensed project, so no 3D characters/animations are sourced any more
 (Paragon Feng Mao and KCISA Martial Arts stay in the library but are no longer recommended). The 3D sets below
 now serve as **lit side-view backdrops and midgrounds**: build the temple, bamboo and graveyard as layered
 3D sets viewed from the side, with height fog, volumetric god rays and the ink-wash post-process.
@@ -175,7 +175,7 @@ now serve as **lit side-view backdrops and midgrounds**: build the temple, bambo
 
 | Item | Licence | UE 5.3 | Notes |
 |---|---|---|---|
-| **Spine runtime for Unreal** (`spine-ue`, [docs](https://esotericsoftware.com/spine-ue4), [repo](https://github.com/EsotericSoftware/spine-runtimes)) | [Spine Runtimes License](https://esotericsoftware.com/spine-runtimes-license): free to integrate, but distributing software containing the runtime needs a Spine Editor licence at integration time, and each user of the runtime needs their own Spine licence (Essential $69, Professional $379, Enterprise required at $500k+ revenue; per named person) | Branch **4.2**: UE 4.27-5.4, reads data exported from **Spine 4.2.xx** only. C++ project required; plugin copied into `Plugins/` with spine-cpp sources | **Blocker: LiaoZhaiRL's Spine data is version 3.8.75** (154 `.skel.bytes`, checked `Dialog_对话/Spine`, `"spine":"3.8.75"`). The 3.8 runtime (`spine-ue4` branch 3.8) targets UE 4.21-4.25+ and would need porting to 5.3. Options: (a) re-export the source `.spine` projects with Spine Editor 4.2 (needs the source projects + a licence; meshes need Professional), (b) port spine-ue4 3.8 to UE 5.3, (c) bake Spine animations to PNG sequences (in LiaoZhaiRL's Unity project, which has the 3.8 runtime) and play them as Paper2D flipbooks via PaperZD. Also from 5.3 on, `.skel`/`.json` and `.atlas` must not share a name prefix. Default materials are unlit: lit sprites need custom materials (`SpriteTexture` parameter) |
+| **Spine runtime for Unreal** (`spine-ue`, [docs](https://esotericsoftware.com/spine-ue4), [repo](https://github.com/EsotericSoftware/spine-runtimes)) | [Spine Runtimes License](https://esotericsoftware.com/spine-runtimes-license): free to integrate, but distributing software containing the runtime needs a Spine Editor licence at integration time, and each user of the runtime needs their own Spine licence (Essential $69, Professional $379, Enterprise required at $500k+ revenue; per named person) | Branch **4.2**: UE 4.27-5.4, reads data exported from **Spine 4.2.xx** only. C++ project required; plugin copied into `Plugins/` with spine-cpp sources | **Blocker: the reused Spine data is version 3.8.75** (154 `.skel.bytes`, checked `Dialog_对话/Spine`, `"spine":"3.8.75"`). The 3.8 runtime (`spine-ue4` branch 3.8) targets UE 4.21-4.25+ and would need porting to 5.3. Options: (a) re-export the source `.spine` projects with Spine Editor 4.2 (needs the source projects + a licence; meshes need Professional), (b) port spine-ue4 3.8 to UE 5.3, (c) bake Spine animations to PNG sequences (in the source project, which has the 3.8 runtime) and play them as Paper2D flipbooks via PaperZD. Also from 5.3 on, `.skel`/`.json` and `.atlas` must not share a name prefix. Default materials are unlit: lit sprites need custom materials (`SpriteTexture` parameter) |
 | **PaperZD** (Critical Failure Studio), [Fab](https://www.fab.com/listings/6664e3b5-e376-47aa-a0dd-f7bbbd5b93c0) | Fab Standard (Pro $0), in the library | Yes (4.26-5.8), rated 4.9 (581) | 2D animation blueprints, state machines, notifies on Paper2D flipbooks. Needs a C++-capable build environment to package. Use with option (c) above |
 | UI Effect Function Library, [Fab](https://www.fab.com/listings/00621b21-3d59-422e-8bf0-cac99bb01f2b) | Fab Standard (Pro $0), in the library | Yes | UMG/Sequencer helpers for animated ink-brush UI |
 

@@ -8,7 +8,6 @@ Fill-in for [../game-session.md](../game-session.md). Original prompt: [../origi
 | `{{SLUG}}` | horror-escape |
 | `{{PROJECT}}` | HorrorEscape (`HorrorEscape.uproject`, modules `HorrorEscape` + editor `HorrorEscapeEditor`, from the First Person C++ template) |
 | `{{GENRE_LINE}}` | a first-person HORROR ESCAPE / puzzle game in an old house at night |
-| `{{VENDOR_BEAT}}` | none |
 
 ## {{PITCH}}
 

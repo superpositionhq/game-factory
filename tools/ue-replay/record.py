@@ -1,4 +1,4 @@
-"""record: the world-building video (docs/ue-replay.md, 3.5).
+"""record: the world-building video (docs/ue-replay.md, 2.5).
 
 A visible editor on the replayed project plays work/world-ops.jsonl one op per Slate tick (editor/ue_world_replay.py,
 mode play): every map is created empty and its actors come in through the editor's Import into Level in the order the

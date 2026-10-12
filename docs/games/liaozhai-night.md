@@ -1,17 +1,16 @@
 # Unreal game 2: Liaozhai Night (聊斋·兰若夜)
 
-Track B game (batch 2): a small, complete third-person Chinese-folklore **action** game in Unreal Engine 5.3, built by
+A batch 2 game: a small, complete third-person Chinese-folklore **action** game in Unreal Engine 5.3, built by
 an agent (Claude) with every real editor and code operation recorded when it happens in `workflow.jsonl`
 (schema `superposition.ue-workflow/v0`). Project: `%GF_ROOT%\games\liaozhai-night`
 (`LiaozhaiNight.uproject`, C++ module `LiaozhaiNight`, own git repo with LFS).
 
-It shares the theme of LiaoZhaiRL (the shipped Unity game in Track A) on purpose, so the dataset has the same kind of
-content built in Unity and in Unreal. **Reuse pivot (user, 2026-10-11 ~03:00):** "reuse as much resource from liaozhai
-as possible, that's the whole purpose". From then on LiaoZhaiRL's art is brought across from a read-only snapshot
-(`liaozhai-replay/end`, git d8adc87262): characters and their clips (Unity `.anim` converted to Unreal), painted
+Its 2D and character art is reused from an earlier licensed project with the same theme. **Reuse pivot (user,
+2026-10-11 ~03:00):** reuse as much of that project's art as possible. From then on its art is brought across from a
+read-only snapshot: characters and their clips (converted to Unreal), painted
 textures, temple/bamboo/grave sprites as cut-out cards, ground tiles, VFX sprites, the UI font. Code, levels, kit
 meshes, materials, audio and gameplay are built here. Every reused file is listed in `assets.manifest.json`; the
-mapping is in `docs/liaozhai-reuse.md` in the game repo. Locomotion clips LiaoZhaiRL (a 2.5D game) never had (walk,
+mapping is in `docs/liaozhai-reuse.md` in the game repo. Locomotion clips the earlier project (a 2.5D game) never had (walk,
 jump, land, light flinch) come from the CC0 Quaternius Universal Animation Library, retargeted onto the hero (user's
 choice, chat 2026-10-11).
 
@@ -26,12 +25,12 @@ the ancient tree demon whose roots hold the whole temple. Armed with a peach-woo
 exorcist's weapon) and three kinds of paper talismans (符咒), the scholar fights through three levels until dawn.
 Tone: moonlit, misty, eerie and beautiful, ink-wash inspired; spirits dissolve into ink and petals, never gore.
 
-**Presentation pivot (user, 2026-10-11 ~08:20): 2.5D / HD-2D.** LiaoZhaiRL's own `MainCamera.prefab` is
+**Presentation pivot (user, 2026-10-11 ~08:20): 2.5D / HD-2D.** The earlier project's own main camera is
 orthographic, tilted 30° down at a fixed yaw, with 3D heroes moving freely on the ground, so the game now uses that
 framing: a fixed tilted camera (perspective, 36° FOV from ~23 m, so Lumen, fog, depth of field and parallax between
-depth layers still work), free ground movement (no side-scroller plane: LiaoZhaiRL has none and the fights need
+depth layers still work), free ground movement (no side-scroller plane: the earlier project has none and the fights need
 depth), camera zones (`ALNCameraZone`) that reframe areas, and a cut-away that hides scenery between camera and hero.
-Characters stay 3D (LiaoZhaiRL's are 3D models). Stages are restaged as left-to-right strips with a far-side
+Characters stay 3D (the reused ones are 3D models). Stages are restaged as left-to-right strips with a far-side
 backdrop (halls, walls, bamboo) facing the camera and low foreground pieces, built from store kits (China Modular
 Temple, Photorealistic Bamboo Forest, Japanese Forest Grave, Korea Heritage Service scans) plus LiaoZhai's sprite cards.
 
@@ -49,12 +48,12 @@ at the edge of the lantern light and follow. Each scholar she takes becomes a li
 lanterns) or wood in her roots (the tree thralls); the foxes are her house servants.
 
 **Characters.**
-- **青砚 (Qingyan)**, the player: a wandering ink-talisman exorcist (LiaoZhaiRL's ink-brush fighter). She is not a
+- **青砚 (Qingyan)**, the player: a wandering ink-talisman exorcist (the reused ink-brush fighter). She is not a
   scholar; she came because of the missing ones. Never speaks.
 - **The white figure / 葛巾 (Gejin)**, the spirit ally: glimpsed, never met. A pale woman in white at the far edge
   of a scene, gone in white peony petals when 青砚 comes close. White peonies and drifting petals mark the right way.
-  (Model: LiaoZhaiRL's 葛巾 body in a pale spirit material; portrait: LiaoZhaiRL's 温柔版葛巾 dialogue art.)
-- **姥姥 (Lao Lao)**, the boss: the tree. Phase 1 she fights through 葛巾's body (LiaoZhaiRL's crazed 疯狂版葛巾
+  (Model: the reused 葛巾 body in a pale spirit material; portrait: the reused 温柔版葛巾 dialogue art.)
+- **姥姥 (Lao Lao)**, the boss: the tree. Phase 1 she fights through 葛巾's body (the reused crazed 疯狂版葛巾
   look: the face the player has been following, now wrong); phase 2 the tree itself tears through (roots, crimson).
 - **The missing scholars**: never seen alive. Their book chests, umbrellas, letters, a brush case, names on graves.
 
@@ -69,11 +68,11 @@ behind.
 |---|---|---|---|
 | 1 前院 | 夜宿兰若，莫应人声 / "Sleep at Lanruo; answer no voice." | 青砚 enters the abandoned temple. Lanterns drift where no one lit them. After the first fight, the white figure stands on the far side of the courtyard, then dissolves into petals; the petals drift toward the inner gate. | Book chests and an open umbrella by the side halls (people came and did not leave); yellow sealing talismans on the hall doors, torn (someone fought here); couplet on the main hall; stele 「兰若寺记」 (optional); thin roots cracking the paving. |
 | 2 竹林·乱葬岗 | 竹深无路，花自引人 / "No path in the bamboo; the petals lead." | Through bamboo and a stream to the burial ground. Petals settle on the safe stepping stones (the figure helps). In the graveyard the figure kneels at one grave, then is gone. | Graves of scholars (inscriptions: 赴试书生 "scholar on the way to the examinations"); offerings no one has tended; roots wrapped around tombstones; stele on the grave she knelt at (optional). |
-| 3 内殿 | 一树千灯，皆是故人 / "A thousand lamps on one tree: all who came before." | The inner hall, roots everywhere, the tree through the roof hung with lanterns. The figure stands at the tree with her back turned; as 青砚 approaches she turns, and 姥姥 rises in her body. Doubt: was the ally the lure? | A faded mural of a woman among peonies (LiaoZhaiRL's 葛巾 background art) on the hall wall; a pile of book chests at the roots. |
+| 3 内殿 | 一树千灯，皆是故人 / "A thousand lamps on one tree: all who came before." | The inner hall, roots everywhere, the tree through the roof hung with lanterns. The figure stands at the tree with her back turned; as 青砚 approaches she turns, and 姥姥 rises in her body. Doubt: was the ally the lure? | A faded mural of a woman among peonies (the reused 葛巾 background art) on the hall wall; a pile of book chests at the roots. |
 | Boss phase 2 | (none) | At half health the tree's real face breaks through: crimson light, root walls; the lanterns she summons now drift into her and are swallowed (they are the scholars). White petals flicker through the crimson storm and she falters once (葛巾 holding her back: a stagger window). | The recolouring: the lanterns were people; the white figure was a prisoner, not the lure. |
 | Ending | 花落天明 / "Petals fall; the dawn." | The tree withers into ink. Dawn. Every lantern light rises out of the branches into the sky. The white figure stands close for the first time, bows, and becomes white peony petals. Completion card. | Resolution without words. |
 
-**Music.** Menu: LiaoZhaiRL's title theme. Chapters 1-2: sparse guqin/xiao exploration, a combat layer in fights.
+**Music.** Menu: the reused title theme. Chapters 1-2: sparse guqin/xiao exploration, a combat layer in fights.
 A three-note music-box/guqin motif plays only when the white figure appears (and once more at the ending). Boss:
 drums; phase 2 adds the dissonant drone. Ending: the calm temple piece.
 
@@ -222,20 +221,20 @@ Level complete screen: time, deaths, damage taken, talismans used, a grade (甲 
   fireflies, mist motes, hit sparks (ink splashes), enemy death (ink + petals). Built from Niagara's template
   emitters by a small editor module (`LiaozhaiNightEditor`) that Python calls, with our own materials and
   parameters.
-- **Characters (after the reuse pivot)**: the hero is LiaoZhaiRL's ink-brush fighter **青砚** with her own clips
-  (light/heavy combo, 飞墨惊云 finisher, dash, casts, hits, death; 102 Unity clips converted by `Scripts/lzanim.py`,
-  error ~1e-6 against FBX ground truth) plus the LiaoZhai 女侠 dodge and CC0 walk/jump/land/flinch retargets. Enemies:
+- **Characters (after the reuse pivot)**: the hero is the reused ink-brush fighter **青砚** with her own clips
+  (light/heavy combo, 飞墨惊云 finisher, dash, casts, hits, death; 102 source clips converted by `Scripts/lzanim.py`,
+  error ~1e-6 against FBX ground truth) plus the reused 女侠 dodge and CC0 walk/jump/land/flinch retargets. Enemies:
   树妖 (tree thrall, FBX clips), 狐妖 (fox spirit), 鬼火 wisp inside a kit paper lantern (ghost lantern). Boss 姥姥's
   avatar is 葛巾's phase-1 peony-demon body with its v19a clips (rise, attacks synced to their strike frames,
   ground-spike cast, death), standing before a 1400 cm kit tree. All on a toon material (`M_LN_Toon`) because
-  LiaoZhai textures carry painted lighting. (The first plan, a kitbashed Manny scholar, was replaced.)
-- **UI art (2026-10-11 ~09:00)**: LiaoZhaiRL's own battle UI: brush plate, red health bar in a gold frame, jade spirit
+  the reused textures carry painted lighting. (The first plan, a kitbashed Manny scholar, was replaced.)
+- **UI art (2026-10-11 ~09:00)**: the reused battle UI: brush plate, red health bar in a gold frame, jade spirit
   stroke, skill rings around the talisman papers with a round cooldown shade, the ornate boss bar with cloud ornaments,
   monster bar over the lock target, the chapter scroll plaque, 魂飞墨散 death strip and seal, victory strip and seal,
   prompt bars, pause / settings panels, slider art, gold-edged buttons, the hero portrait 青砚 on the title screen
   (`Art/LZ/ui.json`, 39 files, sha256 per file).
-- **UI**: Chinese by default with an English toggle; all text in LiaoZhaiRL's LXGW WenKai 楷体 (SIL OFL; the
-  project's other fonts are commercial and not used); health/spirit bars as ink brush strokes; talisman icons drawn by code
+- **UI**: Chinese by default with an English toggle; all text in LXGW WenKai 楷体 (SIL OFL; the
+  earlier project's other fonts are commercial and not used); health/spirit bars as ink brush strokes; talisman icons drawn by code
   (flame, chain seal, wind swirl on yellow talisman paper).
 
 ## 7. Audio (offline synthesis, `Scripts/synth_audio.py`)
@@ -319,20 +318,20 @@ the main menu; `ScenarioStarted` reports the chapter's Chinese name.
 
 ## 12. Status
 
-_2026-10-11 10:20 -04:00: second pass done (HD-2D camera, store kits, LiaoZhaiRL UI, story). All three chapters
+_2026-10-11 10:20 -04:00: second pass done (HD-2D camera, store kits, reused UI, story). All three chapters
 pass AutoPlay; packaged Win64 build rebuilt. (First pass, 08:15: third-person version, all chapters passing.)_
 
 **Works**
-- LiaoZhaiRL's framing: fixed camera tilted 30°, free ground movement, camera zones, cut-away of scenery between
+- The earlier project's framing: fixed camera tilted 30°, free ground movement, camera zones, cut-away of scenery between
   camera and hero, a camera lead so the backdrop fills the frame.
 - Chapters restaged as left-to-right stages with the store kits: ch. 1 China Modular Temple halls, paving, grave-pack
   stone walls, lanterns, fire bowls, creeping roots; ch. 2 Photorealistic Bamboo grove, a dark reflective stream with
   stepping stones, a burial ground of grave-pack tombstones wrapped in roots; ch. 3 the inner hall's veranda and the
-  grave pack's great dead tree as 姥姥's body with nine soul lanterns in it. LiaoZhaiRL's painted cards between.
-  Title screen: the main hall under the moon with LiaoZhaiRL's 青砚 portrait.
-- UI entirely on LiaoZhaiRL's art (40 files): brush HP plate and bars, skill rings, boss bar, chapter plaque, brush
+  grave pack's great dead tree as 姥姥's body with nine soul lanterns in it. Reused painted cards between.
+  Title screen: the main hall under the moon with the reused 青砚 portrait.
+- UI entirely on reused art (40 files): brush HP plate and bars, skill rings, boss bar, chapter plaque, brush
   line bars for every message, 魂飞墨散 death strip, victory strip, panels, sliders, dark gold buttons.
-- Story (§1b) in play: one verse per chapter, readable steles / couplet / mural (LiaoZhaiRL 葛巾 art, faded), the white
+- Story (§1b) in play: one verse per chapter, readable steles / couplet / mural (reused 葛巾 art, faded), the white
   figure in each chapter (telemetry `story_glimpse`), petals on the safe stones, souls rising from destroyed
   lanterns, the boss faltering at 30 % (`story_falter`), the dawn ending (souls rise, the figure, 花落天明).
 - AutoPlay Skill 1 (editor, latest maps): ch1 win 53.2 s, ch2 win 124.7 s (1 death, 1 fall), ch3 win 81.3 s;
@@ -344,17 +343,17 @@ pass AutoPlay; packaged Win64 build rebuilt. (First pass, 08:15: third-person ve
 - Under warm lantern light the ink-wash post turns some enemies (ghost lanterns, thralls) almost paper-white.
 - Spirit barriers are smaller but still read as glassy slabs.
 - The grave pack's tombstones are Japanese in form; the Korea Heritage Service tomb pack (on disk) could replace
-  them. No book-chest / belongings meshes yet (the story bible mentions them; none in the packs or LiaoZhaiRL sprites).
-- Exploration / combat / boss music still synthesized (LiaoZhaiRL's Wwise banks need vgmstream); the title loop, two
+  them. No book-chest / belongings meshes yet (the story bible mentions them; none in the packs or the reused sprites).
+- Exploration / combat / boss music still synthesized (the earlier project's Wwise banks need vgmstream); the title loop, two
   boss cues and the new ally motif are in.
-- LiaoZhaiRL reused content lives under `Content/LN/...` (each file named in the manifest), not a separate
+- Reused content lives under `Content/LN/...` (each file named in the manifest), not a separate
   `Content/LiaoZhai/` folder.
 - The AutoPlay drop-in still carries the old schema strings; waiting for the neutral v1.2 drop-in.
 
 **Built here vs. reused**
 - Built: C++ gameplay and UI (~11.5k lines), 130+ editor/tool scripts, materials (ink-wash post, spirit, soul glow,
   stream water), 31 Niagara systems, synthesized audio, 4 maps, the mural composite.
-- Reused (`assets.manifest.json`): 170 LiaoZhaiRL assets (snapshot git d8adc87262, sha256 per file for the new ones),
+- Reused (`assets.manifest.json`): 170 reused assets (from the earlier project, sha256 per file for the new ones),
   6 CC0 Quaternius clips, 3 Fab packs (China Modular Temple, Photorealistic Bamboo Forest Foliage, Japanese Forest
   Grave; Fab Standard, kept out of git under `Content/Fab/`).
 

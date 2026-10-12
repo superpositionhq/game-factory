@@ -1,8 +1,7 @@
 # UE build and gameplay recording pipeline
 
-Builds, packages and smoke-tests the Track B Unreal games, then records AutoPlay runs (an in-game bot playing
-through Enhanced Input, see [autoplay-contract.md](autoplay-contract.md)) as gameplay bundles shaped like the Lab's
-`game_recording` bundle (schema 3). Scripts: `tools/ue-pipeline/` (Windows PowerShell 5.1, no Python).
+Builds, packages and smoke-tests our Unreal games, then records AutoPlay runs (an in-game bot playing
+through Enhanced Input, see [autoplay-contract.md](autoplay-contract.md)) as gameplay bundles ([Bundle](#bundle)). Scripts: `tools/ue-pipeline/` (Windows PowerShell 5.1, no Python).
 
 | Script | Does |
 |---|---|
@@ -62,7 +61,7 @@ re-quotes arguments through PowerShell and would split `-ExecCmds="Automation Ru
 
 **GPU slot (user's decision: not enough VRAM for parallel GPU work).** Every step that renders holds the single
 machine-wide GPU slot, the named semaphore `Global\ue-gpu-jobs` (count 1) that `Work\tools\ue-heavy.ps1` also takes for
-editor GUI, `-game`, packaged games and Unity jobs (`-nullrhi`/`-nographics` excluded): record.ps1 for the whole run
+editor GUI, `-game` and packaged games (`-nullrhi`/`-nographics` excluded): record.ps1 for the whole run
 (acquired after the idle wait, released in `finally`) and the Firewall pre-flight launch. The smoke test runs with
 `-nullrhi` and cooks/compiles keep using the 3 CPU slots (`Global\ue-heavy-jobs`). Before launching, record.ps1 also
 waits while more than `-MaxVramInUseMB` (default 4096) MB of VRAM is in use (nvidia-smi total; per-process numbers are
@@ -290,10 +289,9 @@ recordings\<game>\<game>_S<scenario>_<yyyyMMdd-HHmmss>_s<seed>\   (runs before v
   raw\                the game's RecordDir: audio.wav, clock.json, ready.json, go, game.log, ffmpeg.log, ffmpeg_progress.txt
 ```
 
-Lab schema 3 overlap: `video.mkv` (H.264, 60 fps, no audio), `system_audio.mka`, `inputs.jsonl` with ns QPC
-timestamps, `metadata.json` with clock samples and `video_start_offset_ns`, `manifest.json` with sha256. No
-`microphone.mka` (a bot has no voice). Our `inputs.jsonl` rows are action-level (`action`, `value`, `key`, `edge`)
-rather than raw `key_down`/`mouse_move`; `edge` down/up maps onto key down/up when a converter is needed.
+`video.mkv` is H.264, 60 fps, no audio; `inputs.jsonl` has ns QPC timestamps; there is no microphone track (a bot
+has no voice). `inputs.jsonl` rows are action-level (`action`, `value`, `key`, `edge`) rather than raw
+`key_down`/`mouse_move`; `edge` down/up maps onto key down/up when a converter is needed.
 
 ### Validation (per run)
 

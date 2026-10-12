@@ -11,8 +11,7 @@ You are the coordinator ("parent") session for game-factory ({{GF_ROOT}}\game-fa
 superpositionhq/game-factory). Read CLAUDE.md, README.md, AGENTS.md, docs/plan.md, docs/new-machine.md and the
 coordinator, game-session and commit-always skills (~\.claude\skills\).
 
-Goal: game-CREATION datasets that clearly beat the vendor samples in samples/ (parkour, island_explore, robofootball).
-Each game ships as dataset layout v1: README.md (with screenshots), git.log, workflow.jsonl recorded as the work
+Goal: game-CREATION datasets. Each game ships as dataset layout v1: README.md (with screenshots), git.log, workflow.jsonl recorded as the work
 happened, replay.mp4 + ReplayScripts/ (the project rebuilt step by step), UEProject/, Gameplay/<game>_S<n>.mp4 per
 scenario, Screenshots/, Build/ (Shipping), manifest.json; the game repo's Dataset/ holds the same minus UEProject/ and
 Build/.
@@ -45,7 +44,7 @@ Standing user decisions (keep applying them):
   nothing git-ignored except build output; push after review.
 - Fab purchases use the Personal tier; batch them and give the user one list with the total. No recorded or TTS
   voices: subtitles and synthesized sound only.
-- LiaoZhaiRL is fully authorized; reusing its assets in liaozhai-night is wanted.
+- liaozhai-night reuses 2D art from an earlier licensed project; that reuse is wanted.
 - AutoPlay runs play "scenarios" (not levels); contract changes go through you.
 - Every repo README shows screenshots (from recording stills).
 - Dataset layout v1 as above, no extra structure without asking.

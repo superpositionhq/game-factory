@@ -155,7 +155,7 @@ function Invoke-Logged([string]$Exe, [string]$Arguments, [string]$LogPath, [stri
 }
 
 # ---- the machine-wide GPU slot (one GPU job at a time: not enough VRAM for two) ----------------------------------------
-# Same semaphore Work\tools\ue-heavy.ps1 takes for every rendering job (editor GUI, -game, packaged games, Unity).
+# Same semaphore Work\tools\ue-heavy.ps1 takes for every rendering job (editor GUI, -game, packaged games).
 
 # Recordings get priority: while a recording waits, builds\_queue\_recording-wants-gpu exists (refreshed every minute)
 # and ue-heavy.ps1 holds back new session GPU jobs while it is under 20 min old. Removed once the slot is held.
@@ -235,7 +235,7 @@ function Wait-VramFree([string]$Label, [int]$MaxUsedMB = 4096, [int]$MaxMinutes 
             return $true
         }
         if ((Get-Date) -ge $next) {
-            $heavy = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match '(?i)^UnrealEditor|-Shipping$|^Unity$|^ffmpeg$' -or $_.Path -match '(?i)\\Binaries\\Win64\\' } | ForEach-Object { "$($_.ProcessName)($($_.Id))" } | Select-Object -First 8)
+            $heavy = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match '(?i)^UnrealEditor|-Shipping$|^ffmpeg$' -or $_.Path -match '(?i)\\Binaries\\Win64\\' } | ForEach-Object { "$($_.ProcessName)($($_.Id))" } | Select-Object -First 8)
             Write-Step "[gpu] $used MB VRAM in use (limit $MaxUsedMB MB before launch): waiting. GPU-heavy processes: $(if ($heavy.Count) { $heavy -join ', ' } else { 'none recognised' })"
             Write-HeavyLog 'vram_wait' $Label @{ gpu = $true; vram_used_mb = $used; limit_mb = $MaxUsedMB; processes = ($heavy -join ', ') }
             $next = (Get-Date).AddMinutes(5)

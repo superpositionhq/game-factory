@@ -5,8 +5,8 @@
   Dataset\ folder. Usually run through package-game.ps1 -Dataset; nothing here is per game except the data.
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File tools\package-dataset.ps1 liaozhai-night `
-      -Package %GF_ROOT%\deliverables\liaozhai-night\liaozhai-night_2cf1aa21 -Version 1.1.2
+  powershell -ExecutionPolicy Bypass -File tools\package-dataset.ps1 <game> `
+      -Package %GF_ROOT%\deliverables\<game>\<game>_<sha8> -Version <version>
   ... -ReplayVideo <file>\replay.mp4 -ReplayScripts <dir>\ReplayScripts      # once the replay session delivers them
 
   Output: deliverables\dataset\<game>\<game>\ + <game>.zip and <game>_nostore\ + <game>_nostore.zip (from the

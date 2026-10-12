@@ -65,7 +65,7 @@ which rewrites history and changes every sha that recordings and briefs refer to
 - Build output and caches: `Binaries/ Intermediate/ Saved/ DerivedDataCache/ Build/ Packaged/`, `.vs/`, `*.sln`.
 - Anything under `%GF_ROOT%\.recording\` (hook-owned; never edit it either), `recordings\`, `builds\`, `deliverables\`.
 - Secrets: tokens, cookies, signed download URLs, `.env` files, credentials of any kind.
-- In game-factory: packages, project snapshots, vendor zips, `git.log` exports with asset diffs, ffmpeg or other
+- In game-factory: packages, project snapshots, package zips, `git.log` exports with asset diffs, ffmpeg or other
   downloaded binaries (`machine/get-ffmpeg.ps1` fetches them), GPU recordings.
 - In game repos: the names Superposition / game-factory anywhere (code, comments, configs such as `CompanyName`,
   scripts, docs). The user's absolute profile path where avoidable (run `tools/ue-pipeline/scrub-import-paths.py`

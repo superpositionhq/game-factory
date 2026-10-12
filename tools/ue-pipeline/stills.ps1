@@ -4,7 +4,7 @@
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File stills.ps1 tower-defense                       # every valid run without stills
-  powershell -ExecutionPolicy Bypass -File stills.ps1 tower-defense -RunId tower-defense_S1_20261011-185719_s300082845 -Force
+  powershell -ExecutionPolicy Bypass -File stills.ps1 <game> -RunId <run id> -Force
 
   Valid = validation.json status ok, warn or ok_video_only and no INVALID file. Writes <run>\stills\NN.jpg and
   recordings\<game>\_stills\<run_id>_NN.jpg, adds `stills` to metadata.json and the files to manifest.json.

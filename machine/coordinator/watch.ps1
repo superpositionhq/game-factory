@@ -17,7 +17,7 @@ function Snap {
     # zips are rebuilt often; only a refusal (leak scan) is worth waking for
     $s['deliverables_refused'] = ((Get-ChildItem "$W\deliverables" -Recurse -Include *.refused -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -gt (Get-Date).AddHours(-2) } | ForEach-Object Name | Sort-Object) -join ';')
     $s['tags'] = ((Get-ChildItem "$W\games" -Directory | Where-Object { Test-Path "$($_.FullName)\.git" } | ForEach-Object { "$($_.Name):" + ((git -C $_.FullName tag -l 'milestone/*') -join ',') }) -join ';')
-    $s['gpu_procs'] = ((Get-Process *Shipping*, UnrealEditor, Unity -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch 'EOSOverlay' } | ForEach-Object Name | Sort-Object) -join ',')
+    $s['gpu_procs'] = ((Get-Process *Shipping*, UnrealEditor -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch 'EOSOverlay' } | ForEach-Object Name | Sort-Object) -join ',')
     return $s
 }
 $a = Snap; $t0 = Get-Date

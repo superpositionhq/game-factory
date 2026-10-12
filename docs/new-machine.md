@@ -63,9 +63,7 @@ winget install --id Microsoft.VisualStudio.2022.BuildTools -e --override "--pass
    `docs/fab-shopping-list.md`; the user bought them on the Personal tier). Purchases and licence choices stay with the
    user. For the asset-scout session, sign in to fab.com **in the Claude browser pane** too: its tools download owned
    packs with that session (`fabdl.py`, `fabue.py`) and never see or store credentials.
-4. **Unity** (optional, LiaoZhai Unity replay only): Unity Hub, sign in, Installs > Install Editor > Archive >
-   **2022.3.10f1**, with a Personal licence activated in the Hub.
-5. **Claude**: install Claude desktop (Code tab) or Claude Code, sign in. Sessions run in the root folder (below).
+4. **Claude**: install Claude desktop (Code tab) or Claude Code, sign in. Sessions run in the root folder (below).
 
 ## 4. Clone and bootstrap
 
@@ -79,8 +77,9 @@ powershell -ExecutionPolicy Bypass -File C:/Users/<you>/Work/game-factory/machin
 The root defaults to `%USERPROFILE%\Work` (the original layout); pass `-Root D:\Work` for another one, and clone the
 repo into `<root>\game-factory`. Bootstrap:
 
-- writes `%USERPROFILE%\.game-factory\config.json` (`root`, `ueb` = `C:\UEB` for the private build clones, `engine`)
-  and creates the layout: `games\ builds\_queue\ builds\_logs\ recordings\ .recording\ deliverables\ asset-library\
+- writes `%USERPROFILE%\.game-factory\config.json` (`root`, `ueb` = `C:\UEB` for the private build clones, `engine`,
+  `record_extra_projects` = `[]`: extra project folders under the root that the recording hooks also log, none by
+  default) and creates the layout: `games\ builds\_queue\ builds\_logs\ recordings\ .recording\ deliverables\ asset-library\
   tools\` and `C:\UEB\src`, `C:\UEB\tmp`;
 - installs `tools\ue-heavy.ps1` (machine-wide job limiter), `tools\asset-scout\`, and the pinned ffmpeg 8.1.2
   (downloaded from gyan.dev or its GitHub mirror and SHA-256 verified; nothing is committed);
@@ -99,7 +98,7 @@ powershell -ExecutionPolicy Bypass -File C:/Users/<you>/Work/game-factory/machin
 PASS / WARN / FAIL for UE 5.3, MSVC 14.44, Windows SDK, .NET 4.8.1 SDK, git, Git LFS, gh + superpositionhq access,
 Python, NVIDIA driver, refresh rate, display and system sleep, free disk, memory, long paths, pinned ffmpeg (NVENC
 test), config, layout, ue-heavy, hooks, skills, root CLAUDE.md, game repo hooks, the asset library against
-`docs/asset-library.md` + `docs/asset-library-fab-ue.tsv`, and Unity (optional). Exit code = number of FAILs. Fix
+`docs/asset-library.md` + `docs/asset-library-fab-ue.tsv`. Exit code = number of FAILs. Fix
 until no FAIL is left; the asset library may stay WARN until the asset-scout has rebuilt it.
 
 ## 6. First sessions

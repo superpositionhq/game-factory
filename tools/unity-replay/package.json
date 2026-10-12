@@ -1,7 +1,0 @@
-{
-  "name": "ai.superposition.liaozhai-replay",
-  "version": "0.1.0",
-  "displayName": "LiaoZhai Replay",
-  "description": "Replays a game-factory feature package (liaozhai.unity-workflow/v1) inside the Unity editor: file-level per commit and step-level through editor APIs, verified by SHA-256 against the real commits.",
-  "unity": "2022.3"
-}

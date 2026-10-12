@@ -16,7 +16,7 @@ lives under each game's `Content/Fab/<Pack>/` so packages can ship with or witho
 | siege-catapult | pending | | | |
 | rally-racer | pending | | | |
 | horror-escape | pending | | | |
-| liaozhai-night | pending | | | 2.5D pivot: mostly LiaoZhaiRL 2D art; Spine runtime / PaperZD to check |
+| liaozhai-night | pending | | | 2.5D pivot: mostly reused 2D art from an earlier licensed project; Spine runtime / PaperZD to check |
 | island-survival | pending | | | |
 | asset scout (paid shortlist) | [asset-library.md](asset-library.md), section below | **21 items, $750.79, already bought** (user approved the cart on 2026-10-11, Personal tier) | ~215 free Fab listings already in the library (`asset-library/fab-library.psv`) | Sign-in done; Unreal-format packs are downloaded by the scout directly (no Launcher clicks), see `asset-library/fab-ue/` |
 

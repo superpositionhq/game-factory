@@ -1,8 +1,8 @@
-# Siege Catapult (Track B game #1)
+# Siege Catapult (game #1)
 
 A small physics game built in Unreal Engine 5.3 by an agent (Claude), recorded as it is made
-(`workflow.jsonl`, schema `superposition.ue-workflow/v0`). Part of the four-game Track B batch
-(tower defense, siege catapult, stealth, rally racer); see [../plan.md](../plan.md) "Track B".
+(`workflow.jsonl`, schema `superposition.ue-workflow/v0`). Part of the first four-game batch
+(tower defense, siege catapult, stealth, rally racer); see [../plan.md](../plan.md).
 
 - Project: `%GF_ROOT%\games\siege-catapult` (`SiegeCatapult.uproject`, its own git repo with LFS)
 - Engine: UE 5.3 (`C:\Program Files\Epic Games\UE_5.3`), Win64
@@ -293,7 +293,7 @@ Stats: `workflow.jsonl` 4,626 observed rows (38 op kinds, 00:56 → 03:07, 2.2 h
 (5 failed, each failure logged), 23 compiles (6 failed, logged), 53 `code.change`. 11 commits in the game repo.
 140 assets in `assets.manifest.json` (135 generated, 5 engine basic shapes). Content 26 MB.
 
-Before this becomes a vendor-style package: `workflow.jsonl` has 2 rows with absolute user paths (build error
+Before this becomes a dataset package: `workflow.jsonl` has 2 rows with absolute user paths (build error
 text) and git authorship is the machine's git user; run the anonymization/leak scan from AGENTS.md first.
 
 What works: everything in the checklist above. Art (after the user's "this art is ass" feedback): all meshes and

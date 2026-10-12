@@ -4,7 +4,7 @@
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File mark-invalid.ps1 tower-defense -Commit 52a6f2a1 -Reason 'built without store content'
-  powershell -ExecutionPolicy Bypass -File mark-invalid.ps1 tower-defense -RunId tower-defense_S1_20261011-171323_s1806390391 -Reason '...'
+  powershell -ExecutionPolicy Bypass -File mark-invalid.ps1 <game> -RunId <run id> -Reason '...'
 
   Writes INVALID (the reason) into each bundle, sets validation.json status to "invalid" (previous status kept in
   status_before_invalid) and appends an "invalidated" row to .recording\<game>\runs.jsonl. Files are kept.

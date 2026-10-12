@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  Assemble one Track B game into a vendor-style deliverable folder + zip under %GF_ROOT%\deliverables\<game>\.
+  Assemble one game into a deliverable folder + zip under %GF_ROOT%\deliverables\<game>\.
   Read-only on the game repo, its .recording logs, recordings and builds. Format: docs/game-deliverable.md.
 
 .EXAMPLE
@@ -29,7 +29,7 @@
   Scrub (package copy only; the repo, .recording and recordings are never written): every text file gets, in order,
   agent trailer lines removed, the agent identity -> dev, the names Superposition / game-factory replaced (scrub-history
   defaults), git author names/handles -> dev_NN, the account user name (incl. in user paths) -> dev, e-mail addresses ->
-  <redacted-email>, other agent/vendor mentions -> agent/provider. Then every file is rescanned: it refuses (exit 2,
+  <redacted-email>, other agent/provider mentions -> agent/provider. Then every file is rescanned: it refuses (exit 2,
   nothing published, hits in deliverables\<game>\<name>.refused-hits.tsv) on any remaining hit in a path or text file,
   or the two names in a binary (ASCII or UTF-16). Binaries are never edited; user name / agent findings in binaries
   are listed in scrub-report.json. Other user-folder paths are reported in deliverables\<game>\<name>.leaks.tsv.
@@ -726,7 +726,7 @@ $RuleText = [ordered]@{
     'git-identity'   = 'git author/committer names and handles replaced by dev_NN'
     'username'       = 'account user name, including inside user paths, replaced by dev'
     'email'          = 'e-mail addresses (other than example/placeholder ones) replaced by <redacted-email>'
-    'agent-mention'  = 'remaining agent/vendor mentions neutralised (agent, provider)'
+    'agent-mention'  = 'remaining agent/provider mentions neutralised (agent, provider)'
 }
 $RulesHead = @(
     @{ id = 'agent-trailer'; scope = 'lines'; match = '(?im)^[ \t]*Co-Authored-By:[ \t]*Claude[^\r\n]*\r?\n?'; replace = '' },
@@ -759,7 +759,7 @@ $RulesTail = @(
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)anthropic'; replace = 'provider' }
 )
 $BannedPattern = 'superposition|game[-_]?factory'
-# Binary needles (ASCII + UTF-16LE, case-insensitive). The agent/vendor names block like the two names (user rule);
+# Binary needles (ASCII + UTF-16LE, case-insensitive). The agent/provider names block like the two names (user rule);
 # the account name in binaries is reported (and blocks inside Build/, checked separately).
 $BinNeedles = @('superposition', 'game-factory', 'game_factory', 'gamefactory', $UserName, 'claude', 'anthropic', 'opus')
 $BinRefuse = @($true, $true, $true, $true, $true, $true, $true, $true)   # the account name blocks anywhere too (user rule)
@@ -776,7 +776,7 @@ $OpusCodec = @(
     'opus/\d+(?:/\d+)?', 'audio/opus', 'A_OPUS'
 )
 $Locale = @('zh[-_]xiang',                                           # UE's Xiang Chinese locale ids
-    'wuxiangshan[\w.]*')                                              # 无相山 (WuXiangShan), a Liaozhai place name, and its asset names (WuXiangShanBoss1, ...)
+    'wuxiangshan[\w.]*')                                              # 无相山 (WuXiangShan), a place name in game content, and asset names built on it (WuXiangShanBoss1, ...)
 # the word may carry other segments joined by : or / (C++ scopes, paths): one segment must be an allowed form
 $OpusAllowText = '(?i)^(?:[\w./:-]*?[:/])?(?:' + (($OpusCodec + $Locale) -join '|') + ')(?:[:/.][\w./:-]*)?$'
 $OpusAllowBin = $OpusAllowText + '|(?i)^(?:[\w./:-]*?/)?opus$'   # binaries: also the bare codec name, exactly
@@ -806,7 +806,7 @@ $Banned = New-Object System.Text.RegularExpressions.Regex($BannedPattern, 'Ignor
 $info = Get-GameInfo $Game
 $repo = if ($RepoPath) { (Resolve-Path $RepoPath).Path } else { $info.Dir }
 
-# -Rescan <package dir>: check an existing package against the current rules (names, agent/vendor names with the
+# -Rescan <package dir>: check an existing package against the current rules (names, agent/provider names with the
 # Opus-codec allowlist, account name, e-mail addresses, git identity names) without changing it.
 if ($Rescan) {
     $pkg = (Resolve-Path $Rescan).Path
@@ -893,7 +893,7 @@ $warnings = New-Object System.Collections.ArrayList
 Write-Step "package $Game @ $short ($variant)  repo $repo  ->  $final$(if ($DryRun) { '  (dry run)' })"
 
 # Store packs kept out of git: folders under Content/ that are git-ignored in the game's working tree and not tracked
-# at the commit (tower-defense Content/<Pack>/, liaozhai-night Content/Fab/). The full variant copies them from the
+# at the commit (tower-defense Content/<Pack>/, another game's Content/Fab/). The full variant copies them from the
 # working tree, and the build must have been cooked with them: a pipeline build from a clean clone has none.
 $matcher = New-Object GameDeliverable.StoreMatcher
 $manifestText = [GameDeliverable.Tools]::ReadBlobText($repo, "${sha}:assets.manifest.json")

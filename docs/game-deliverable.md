@@ -1,10 +1,9 @@
-# Game deliverable (Track B)
+# Game deliverable
 
-One Track B game packaged for a buyer: the finished Unreal project plus the observed record of how it was made and
+One game packaged for a buyer: the finished Unreal project plus the observed record of how it was made and
 played. Built by `tools/package-game.ps1` (Windows PowerShell 5.1, no Python) from the game repo, its machine logs
 (`.recording\<game>\`), its gameplay bundles (`recordings\<game>\`) and its packaged build. The tool only reads those;
-it writes to `%GF_ROOT%\deliverables\<game>\`. Plan context: [plan.md](plan.md) B5; the vendor format this
-follows: [vendor-packages.md](vendor-packages.md).
+it writes to `%GF_ROOT%\deliverables\<game>\`. Plan context: [plan.md](plan.md), "Deliverable per game".
 
 What goes to buyers is the **dataset layout v1** delivery built from this package (section
 [Dataset layout v1](#dataset-layout-v1-the-delivery-approved-2026-10-12) at the end); the package described
@@ -142,7 +141,7 @@ import-source paths, which must be rewritten in the project (the pipeline's `scr
 It is enforced as any substring, in text as in binaries
 (paths that lost their separators, such as a compiler error's `C:Users<name>Work…`, and the machine name
 `<NAME>-PC` are scrubbed by their own rules first). Exact tokens that merely contain it are allowed: UE's `zh_XIANG` /
-`zh-xiang` locale ids (also when glued into a locale table, recognised by the `zh_`/`zh-` prefix) and the Liaozhai
+`zh-xiang` locale ids (also when glued into a locale table, recognised by the `zh_`/`zh-` prefix) and liaozhai-night's
 place name `WuXiangShan…` (无相山) with its asset names. `-PendingCleanBuild` tolerates it inside `Build/` only, producing a
 package marked "pending clean build" (README banner, manifest `status`).
 
@@ -234,9 +233,9 @@ import source path and the Shipping exe (build paths), by category only.
 
 ## Dataset layout v1 (the delivery; approved 2026-10-12)
 
-The standard delivery of every Track B game, the same for all seven: the vendor samples' top level
-(`samples/island_explore`, `parkour`, `robofootball`) plus per-scenario gameplay videos, the README's screenshots and
-the packaged build. Machine-readable copy: [dataset-layout-v1.json](dataset-layout-v1.json), which the validator
+Our standard delivery of every game, the same for all seven: the creation record (`git.log`,
+`workflow.jsonl`, `replay.mp4`, `ReplayScripts/`), the project, per-scenario gameplay videos, the README's screenshots
+and the packaged build. Machine-readable copy: [dataset-layout-v1.json](dataset-layout-v1.json), which the validator
 reads, so this text and the checks cannot drift apart. Nothing in it is per game except the data.
 
 ```
@@ -319,7 +318,7 @@ is `package-game.ps1 -Rescan`; run both before a review.
 - Gameplay holds mp4s only, one per scenario of the release version: no per-run bundles (inputs, telemetry, json), no
   version subfolders, no index file; the README lists the videos.
 - No `play.mp4`: the per-scenario videos replace it.
-- No `History/`: `git.log` and `workflow.jsonl` carry the history, as in the samples.
+- No `History/`: `git.log` and `workflow.jsonl` carry the history.
 - `Build/` is kept (buyers can play without Unreal), without `.pdb`.
 - `Screenshots/` is kept for the README's hero and gallery.
 

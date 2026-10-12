@@ -1,7 +1,7 @@
 {
   "schema": "dataset-layout/v1",
   "approved": "2026-10-12",
-  "description": "Delivery layout for every Track B game: the vendor samples' top level plus per-scenario gameplay videos, README screenshots and the packaged build. docs/game-deliverable.md, section 'Dataset layout v1', is the prose version of this file; tools/validate-dataset.ps1 checks against this file.",
+  "description": "Our standard delivery layout for every game: the creation record (git.log, workflow.jsonl, replay.mp4, ReplayScripts/), the project, per-scenario gameplay videos, README screenshots and the packaged build. docs/game-deliverable.md, section 'Dataset layout v1', is the prose version of this file; tools/validate-dataset.ps1 checks against this file.",
   "names": {
     "zip": "<game>.zip",
     "zip_without_store_content": "<game>_nostore.zip",

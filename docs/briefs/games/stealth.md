@@ -8,7 +8,6 @@ Fill-in for [../game-session.md](../game-session.md). Original prompt: [../origi
 | `{{SLUG}}` | stealth |
 | `{{PROJECT}}` | Stealth (`Stealth.uproject`, C++ module `Stealth`, from the UE 5.3 Third Person template) |
 | `{{GENRE_LINE}}` | a third-person STEALTH game: steal one item per level past perception-driven guards and reach the exit |
-| `{{VENDOR_BEAT}}` | none |
 
 ## {{PITCH}}
 

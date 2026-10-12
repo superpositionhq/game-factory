@@ -1,3 +1,5 @@
+> Edited 2026-10-12: references to external sample material and to another project were removed from this original prompt.
+
 <!-- The coordinator session had no written brief: its first turn was "setup github for me u are on windows" and the
      role grew from the user's messages. These are all of the user's own messages to it, verbatim and in order
      (scrubbed as above; the automatic context-compaction summary is left out). The reusable brief is ../coordinator.md. -->
@@ -21,53 +23,14 @@ clone the game factory repo from superposition hq
 ### [2026-10-11T04:26:31.821Z]
 check the repo understand it and report back to me
 
-### [2026-10-11T04:27:11.561Z]
-@"C:\Users\<user>\Downloads\island_explore.zip" @"C:\Users\<user>\Downloads\parkour.zip" @"C:\Users\<user>\Downloads\robofootball.zip"
-move these 3 into samples for this repo
-
-### [2026-10-11T04:27:36.571Z]
-the liaozhai prohect is fully authroized, remove that instruction, its ignoantr and unhelpful
-
-### [2026-10-11T04:29:20.591Z]
-unzip the 3 files and study their format and schema
-
-then clone the liaozhai project in work too, it s a large project so it may take alonger
-
 ### [2026-10-11T04:36:30.554Z]
 中文解释一下每一个project里都有什么 那个replay又是什么
-
-### [2026-10-11T04:38:46.835Z]
-liaozhai使用的什么engine
-
-### [2026-10-11T04:39:22.629Z]
-unity能有replay吗
-
-### [2026-10-11T04:40:15.096Z]
-ok
-
-### [2026-10-11T04:42:14.325Z]
-u cam open tyhey pagre i down
-
-### [2026-10-11T04:47:42.282Z]
-新的版本能用吗
-
-### [2026-10-11T04:48:15.468Z]
-装国际版 2022.3.10f1：Unity Hub 的 Archive 页面能找到，在 Hub 里就能装，差别很小。
 
 ### [2026-10-11T04:50:09.204Z]
 现在想发出来几个idea -- 我要做几个great unreal game out
 
 ### [2026-10-11T04:51:21.172Z]
 3 1 6 2 do these in parallel create 4 agents run them in paralle
-
-### [2026-10-11T04:54:19.832Z]
-next the main pushed example built from the liaozhai check it out
-
-### [2026-10-11T04:59:16.242Z]
-yes
-
-### [2026-10-11T05:02:44.239Z]
-whatelse for building replay for liaozhai -- also move that to a subagent
 
 ### [2026-10-11T05:05:00.221Z]
 tell all unreal thread -- make sure they build the resouces as much as possible while using community samples
@@ -114,9 +77,6 @@ you should also do the research to find 3d resources for each agent, lets forl u
 ### [2026-10-11T06:46:55.559Z]
 i also want a island suvirval game with basic resource gathering and building flow, make that the third unreal game build
 
-### [2026-10-11T06:50:29.359Z]
-is unreal good at making 2d games? liaozhai is a 2d game and the assets are mostly 2d
-
 ### [2026-10-11T08:53:31.986Z]
 continue messagfe them util not fail
 
@@ -144,10 +104,7 @@ tell the recordeer sub agent to change level to scenrios, and then nce it finish
 THE FIRREWALL PRMOPT ARE GONE
 
 ### [2026-10-11T19:52:20.615Z]
-can u tell me where wqe are in terms of thre 7 games, how far are we from the zip files we cheked at there beginings?
-
-### [2026-10-11T19:57:35.782Z]
-how about the liaozhai unity one
+can u tell me where wqe are in terms of thre 7 games
 
 ### [2026-10-11T20:54:16.646Z]
 progress?
@@ -246,7 +203,7 @@ do they all have replay script?
 so can we recreate the replay scripts with the data we currnyl have?
 
 ### [2026-10-12T04:42:03.056Z]
-create liaozhai racing stealth  as poilt dataset create 3 zips with the similar layout from the examples once done tell me to review
+create liaozhai racing stealth  as poilt dataset create 3 zips once done tell me to review
 
 basically each game repo should have one folder for the built data
 

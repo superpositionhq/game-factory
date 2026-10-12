@@ -8,7 +8,6 @@ Fill-in for [../game-session.md](../game-session.md). Original prompt: [../origi
 | `{{SLUG}}` | tower-defense |
 | `{{PROJECT}}` | TowerDefense (`TowerDefense.uproject`, C++ module `TowerDefense`, class prefix `TD`) |
 | `{{GENRE_LINE}}` | a top-down TOWER DEFENSE game on a grid, with enemies walking a spline road to the base and upgradable towers |
-| `{{VENDOR_BEAT}}` | none |
 
 ## {{PITCH}}
 

@@ -6,7 +6,7 @@
   org's repos), Python. Recording: NVIDIA driver >= 617 (NVENC with the pinned ffmpeg), refresh rate, display sleep
   off, the pinned ffmpeg. Space: free disk on the root's drive. Content: the asset library against
   docs/asset-library.md and docs/asset-library-fab-ue.tsv. Setup done by bootstrap.ps1: config, ue-heavy.ps1, hooks
-  in settings.json, skills, root CLAUDE.md. Optional: Unity 2022.3.10f1 (LiaoZhai replay only).
+  in settings.json, skills, root CLAUDE.md.
   Exit code = number of FAILs. -Json writes the report as JSON too.
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File machine\check.ps1
@@ -264,13 +264,6 @@ Try-Check 'Asset library (Fab packs)' {
     if ($missing.Count -eq 0) { Add-Result PASS 'Asset library (Fab packs)' $detail }
     elseif ($have -ge $all.Count / 2) { Add-Result WARN 'Asset library (Fab packs)' "$detail; missing e.g. $(($missing | Select-Object -First 6) -join ', ')" 'asset-scout session re-downloads them (Fab sign-in in the browser pane first); game repos already carry the packs they use' }
     else { Add-Result FAIL 'Asset library (Fab packs)' "$detail; missing e.g. $(($missing | Select-Object -First 6) -join ', ')" 'sign in to fab.com with the account that owns the packs, then spawn the asset-scout helper (docs/briefs/helpers/asset-scout.md)' }
-}
-
-# --- optional ---------------------------------------------------------------------------------------------------------
-Try-Check 'Unity 2022.3.10f1 (optional)' {
-    $u = "$env:ProgramFiles\Unity\Hub\Editor\2022.3.10f1\Editor\Unity.exe"
-    if (Test-Path $u) { Add-Result PASS 'Unity 2022.3.10f1 (optional)' $u }
-    else { Add-Result WARN 'Unity 2022.3.10f1 (optional)' 'not installed (only the LiaoZhai Unity replay needs it)' 'Unity Hub > Installs > Install Editor > Archive > 2022.3.10f1' }
 }
 
 # --- report ------------------------------------------------------------------------------------------------------------

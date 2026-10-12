@@ -2,7 +2,7 @@
 
 ## ue-game/ + new-game.ps1
 
-Skeleton of a Track B game repo for Unreal Engine 5.3. `new-game.ps1` instantiates it:
+Skeleton of a game repo for Unreal Engine 5.3. `new-game.ps1` instantiates it:
 
 ```bash
 powershell -ExecutionPolicy Bypass -File templates/new-game.ps1 -Slug island-survival -Path C:/Users/<you>/Work/games/island-survival -Title "Island Survival" -Description "Stranded on a tropical island..."

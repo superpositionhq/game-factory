@@ -8,7 +8,6 @@ Fill-in for [../game-session.md](../game-session.md). Original prompt: [../origi
 | `{{SLUG}}` | rally-racer |
 | `{{PROJECT}}` | RallyRacer (`RallyRacer.uproject`, modules `RallyRacer` + editor `RallyRacerEditor`) |
 | `{{GENRE_LINE}}` | an off-road RALLY RACER with Chaos Vehicles, AI rivals and a time-trial ghost |
-| `{{VENDOR_BEAT}}` | none |
 
 ## {{PITCH}}
 

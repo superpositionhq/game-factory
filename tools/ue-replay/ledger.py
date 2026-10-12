@@ -1,4 +1,4 @@
-"""Ledger: what the builder of a Track B game ran, window by window, from three records.
+"""Ledger: what the builder of a game ran, window by window, from three records.
 
   git history          the commits on the first-parent chain up to the final commit (the windows' boundaries)
   actions.jsonl        the agent's tool calls: editor-script runs (command lines), Write/Edit of files, shell commands

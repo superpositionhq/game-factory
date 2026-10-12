@@ -1,4 +1,4 @@
-"""package: assemble the replay deliverable (docs/ue-replay.md, 3.6) for the dataset packager.
+"""package: assemble the replay deliverable (docs/ue-replay.md, 2.6) for the dataset packager.
 
 Output: <root>/deliverables/_replay/<game>/<final sha8>/
   ReplayScripts/            the replay tooling (unchanged; it runs outside the game-factory checkout), the game's

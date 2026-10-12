@@ -1,6 +1,6 @@
 # Game #6: GHOSTLINE (third-person stealth, UE 5.3)
 
-Track B game: a small, complete third-person stealth game built in Unreal Engine 5.3 by an agent (Claude),
+A small, complete third-person stealth game built in Unreal Engine 5.3 by an agent (Claude),
 with every real editor and code operation recorded at the moment it happens in `workflow.jsonl`
 (schema `superposition.ue-workflow/v0`). Project: `%GF_ROOT%\games\stealth` (own git repo, git-lfs).
 
@@ -301,7 +301,7 @@ Commits: ad13940 (L1), 1d01aab (L3), 67c3972 (UI, L2, audio), ee08731 (guards, m
   gameplay debugger at runtime).
 - Shadow zones are authored volumes, not computed from actual light levels.
 - Recording covers editor/code/build operations made through scripts; there is no screen video or input log
-  (Track B rig not used here).
+  (the editor capture rig in plan.md is not used here).
 
 ### Stats
 

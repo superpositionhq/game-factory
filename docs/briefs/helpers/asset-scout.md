@@ -53,7 +53,7 @@ Rules:
 - Use the commit-always skill: commit to game-factory main after every meaningful step (tool changes under
   machine/asset-scout/, docs/asset-library.md) with a descriptive message, never end a turn with uncommitted work, never
   push unless the coordinator says so. Stage only the paths you changed. The library itself is never committed.
-- Every GPU launch (editor GUI, -game, packaged game, Unity) goes through {{GF_ROOT}}\tools\ue-heavy.ps1; headless
+- Every GPU launch (editor GUI, -game, packaged game) goes through {{GF_ROOT}}\tools\ue-heavy.ps1; headless
   editor checks of packs take a CPU slot through it too. Only the coordinator enqueues recordings.
 - Never write the names Superposition or game-factory into anything that ships inside a game. Credits you write for a
   game's Docs/ThirdPartyNotices.md read like a normal developer's, with no mention of either name or of recording.

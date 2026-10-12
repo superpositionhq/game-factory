@@ -1,7 +1,8 @@
 # Helper brief: Unreal creation replay (incl. 3D world building)
 
 **Role.** Runs and extends the Unreal creation replay (`tools/ue-replay/`: host driver `ue_replay.py`, `ledger.py`,
-`shellfx.py`, editor scripts in `editor/`, per-game settings in `games/<game>.json`; design in `docs/ue-replay.md`).
+`shellfx.py`, editor scripts in `editor/`; design in `docs/ue-replay.md`). Per-game settings live in the game's repo as
+`<root>/games/<game>/ReplayConfig.json`.
 It rebuilds a game from its first commit by re-running, in order, what its builder actually ran (code, scripts,
 store-pack drops, the editor-Python scripts that create the maps and place every actor), verifies the result against
 the release commit (files, content set, level/actor structure, optionally cooked content), and records an editor
@@ -12,12 +13,12 @@ is on this machine. Without it, dataset zips stay `.pending`. One session can ta
 the coordinator may run more than one only if the headless work fits the CPU slots (the video is a GPU job either way).
 
 **Produces.** `{{GF_ROOT}}\ue-replay\<game>\` (`project/`, `truth/`, `work/`), `ReplayScripts/` in the layout of
-`docs/ue-replay.md` section 3.6 (with `Verification/`) and `replay.mp4` handed to the packager, `tools/ue-replay/games/<game>.json`,
-fixes to the tool, results in `docs/ue-replay.md`.
+`docs/ue-replay.md` section 2.6 (with `Verification/`) and `replay.mp4` handed to the packager, the game's
+`ReplayConfig.json`, fixes to the tool, results in the game's docs.
 
 **Original prompt:** [../original/helper-creation-replay.md](../original/helper-creation-replay.md) (it designed the
-replay and piloted liaozhai-night `2cf1aa2`; for a from-scratch variant, reuse its steps 1-2: study the vendor
-`ReplayScripts/` and write the design before coding).
+replay and piloted liaozhai-night `2cf1aa2`; for a from-scratch variant, write the design before coding,
+as it did).
 
 ## Placeholders
 
@@ -43,13 +44,13 @@ through committed code: C++ in Source/, editor-Python scripts in Scripts/ run he
 materials and Blueprints, create the maps from empty levels and place every actor, logging workflow.jsonl rows), and
 shell steps (generators, config edits, copies of store packs from {{GF_ROOT}}\asset-library). Three records cover this:
 git history, workflow.jsonl, and the hook log {{GF_ROOT}}\.recording\<game>\actions.jsonl (every script run with its
-command line, every Write/Edit, every shell copy). The vendor samples (game-factory/samples/island_explore, parkour,
-robofootball) ship ReplayScripts/ + replay.mp4, but none of them builds a world from an empty level; ours do, so world
+command line, every Write/Edit, every shell copy). The scripts build every world from an empty level, so world
 building is first-class here.
 The replay exists: tools/ue-replay/ (ue_replay.py ledger | prepare | run | dump | verify [--cook] | derive | record |
-status; editor/ue_dump.py, editor/ue_world_replay.py; games/<game>.json per game). Read README.md, AGENTS.md,
+status, each with --game <game>; editor/ue_dump.py, editor/ue_world_replay.py; per-game settings in
+{{GF_ROOT}}\games\<game>\ReplayConfig.json, kept in the game's repo). Read README.md, AGENTS.md,
 CLAUDE.md (if present), docs/ue-replay.md (all of it: replay unit, isolated project, checks, world ops and video,
-deliverable layout, pilot results), docs/vendor-packages.md, docs/unity-replay.md (the capture method), docs/ue-pipeline.md
+deliverable layout, packager integration), docs/ue-pipeline.md
 (scrub-import-paths, names rule), docs/dataset-layout-v1.json, docs/game-deliverable.md, and the shared notes.
 Targets, in order: {{TARGET_GAMES}}. Game sessions: {{GAME_SESSION_IDS}}. Packager: {{PACKAGER_ID}}.
 Machine: Windows 11, UE 5.3 at C:\Program Files\Epic Games\UE_5.3, MSVC 14.44 + .NET 4.8.1 SDK, Python 3.12 (standard
@@ -58,7 +59,7 @@ library only for the host driver), pinned ffmpeg under {{GF_ROOT}}\tools. The ma
 
 Rules:
 - Use the commit-always skill: commit to game-factory main after every meaningful step (tools/ue-replay/,
-  games/<game>.json, docs/ue-replay.md) with a descriptive message, never end a turn with uncommitted work, never push
+  docs/ue-replay.md) with a descriptive message, never end a turn with uncommitted work, never push
   unless the coordinator says so. Stage only the paths you changed. Replay projects, videos and ReplayScripts/ outputs
   are never committed here.
 - Every engine process goes through {{GF_ROOT}}\tools\ue-heavy.ps1: headless runs (-unattended, CPU slot) for
@@ -72,10 +73,11 @@ Rules:
 - Datasets follow layout v1: README.md, git.log, workflow.jsonl, replay.mp4, UEProject/, ReplayScripts/,
   Gameplay/<game>_S<n>.mp4, Screenshots/, Build/, manifest.json; a repo's Dataset/ = the same minus UEProject/ and
   Build/. Your replay.mp4 and ReplayScripts/ turn a game's .pending zips complete.
-- Never modify a game repo, its LFS store or its .recording files: the replay project is a `git clone --shared` with
-  lfs.storage pointing at the game's own object store (nothing downloaded). Never copy content from a commit when the
-  replay produced it; fallbacks are logged with their reason, so errors stay visible. The project's workflow.jsonl is
-  restored after every editor run (it is an input).
+- Never commit in a game repo, and never modify its LFS store or its .recording files (ReplayConfig.json is written
+  into its working tree; the game's session commits it). The replay
+  project is a `git clone --shared` with lfs.storage pointing at the game's own object store (nothing downloaded).
+  Never copy content from a commit when the replay produced it; fallbacks are logged with their reason, so errors
+  stay visible. The project's workflow.jsonl is restored after every editor run (it is an input).
 - Hard-won requirements: -unattended on every editor process (Live Coding blocks UBT engine-wide); forward slashes
   inside -script="..."; MSYS_NO_PATHCONV=1 for /Game/... arguments from Git Bash; in 5.3, AssetImportTask texture
   imports go through Interchange asynchronously unless the factory is set to TextureFactory; Unreal writes random
@@ -84,23 +86,23 @@ Rules:
   video-verification.json aligning every op id with video time.
 
 Task:
-1. Read the docs and the pilot results in docs/ue-replay.md; note what is finished, what is a plan, and the open
+1. Read the docs and each target game's docs; note what is finished, what is a plan, and the open
    gaps. If the pilot (liaozhai-night) is not complete on this machine, finish it first.
 2. Per target game: check its records are here ({{GF_ROOT}}\.recording\<game>\actions.jsonl, the asset-library packs
-   its scripts copied, external sources it reads; liaozhai-night needs {{GF_ROOT}}\liaozhai-replay\end from the
-   LiaoZhai replay helper). Write tools/ue-replay/games/<game>.json (repo, final commit, release tag, uproject, editor
-   target, readonly patterns, content roots, asset drops, shell replays, external sources) and commit it.
+   its scripts copied, external source trees it reads). Write the game's ReplayConfig.json (repo, final commit,
+   release tag, uproject, editor target, readonly patterns, content roots, asset drops, shell replays, external
+   sources) into the game repo's working tree, and ask the game's session (through the coordinator) to commit it.
 3. ledger: check script reconstruction matches the commits; list windows that cannot be replayed and why. prepare,
    then run (resumable), then verify (files, content set, structure dump against truth/, --cook when the CPU allows).
    Fix tool bugs in tools/ue-replay (generic, not per game) and rerun what they affect.
 4. derive the world ops, then ask the coordinator for the GPU slot and record: the maps are built actor group by
    group in a visible editor, with the caption track; check video-verification.json alignment.
-5. Assemble ReplayScripts/ (section 3.6 layout: README, replay.py, prepare_project.py, editor/, game.json,
+5. Assemble ReplayScripts/ (section 2.6 layout: README, replay.py, prepare_project.py, editor/, game.json,
    ledger.json, workflow.replay.jsonl, initial-assets.manifest.json, Blobs/, Verification/) and replay.mp4 in one
    folder under {{GF_ROOT}}\ue-replay\<game>\, and hand the paths to the packager (package-dataset.ps1 -ReplayVideo
    -ReplayScripts) through the coordinator or directly to {{PACKAGER_ID}}.
-6. Record results per game in docs/ue-replay.md (counts per window, fallbacks with reasons, structure diff summary,
-   video length and alignment) and keep the packager integration section current.
+6. Record results in the game's docs (counts per window, fallbacks with reasons, structure diff summary, video
+   length and alignment); keep docs/ue-replay.md (design, packager integration) current.
 
 Done = each target game has ReplayScripts/ with a verification report (replayed project matches the release commit
 in files and level/actor structure, every difference explained), a replay.mp4 in which the 3D world is visibly built

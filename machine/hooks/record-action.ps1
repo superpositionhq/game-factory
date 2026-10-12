@@ -1,7 +1,7 @@
 # Claude Code hook (PostToolUse / PostToolUseFailure / Stop): append every tool call of a
 # game-building or replay session to <root>\.recording\<project>\actions.jsonl.
 # A session is tied to a project the first time one of its tool calls names a path under
-# <root>\games\<slug> or <root>\<extra project> (config "record_extra_projects", default liaozhai-replay);
+# <root>\games\<slug> or <root>\<extra project> (config "record_extra_projects", default none);
 # after that, all its calls are recorded there.
 # On Stop, leftover changes in a game repo are committed ("WIP") so no work stays uncommitted.
 # <root> = the machine root (gf-root.ps1 next to this file; machine/lib/gf-root.ps1 in the repo).

@@ -4,7 +4,7 @@
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File gameplay-mp4.ps1 tower-defense -Commit ff5f1ee
-  powershell -ExecutionPolicy Bypass -File gameplay-mp4.ps1 liaozhai-night -RunId liaozhai-night_S1_20261012-010203_s42 -Force
+  powershell -ExecutionPolicy Bypass -File gameplay-mp4.ps1 <game> -RunId <run id> -Force
 
   Valid = validation.json status ok or warn and no INVALID file (ok_video_only runs have no aligned audio: skipped).
   -Commit takes one or more build-commit prefixes (metadata.json build.commit). Video is stream-copied from video.mkv,

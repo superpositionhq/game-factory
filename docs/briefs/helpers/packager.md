@@ -46,7 +46,7 @@ git.log with dev_NN authors, Gameplay/, Build/, README.md, Screenshots/, StoreCo
 manifest.json; -WithoutStoreContent, -DryRun, -Rescan, -ScrubDir, -Version, -ExcludeRuns, -OnlyCommitRuns, -Force)
 and tools/package-dataset.ps1 (layout v1 delivery from a finished package and its _nostore twin, zips, repo Dataset/).
 Read README.md, AGENTS.md, CLAUDE.md (if present), docs/game-deliverable.md, docs/dataset-layout-v1.json (the
-authoritative layout), docs/vendor-packages.md, docs/ue-pipeline.md ("Names that must not reach the games",
+authoritative layout), docs/ue-pipeline.md ("Names that must not reach the games",
 scrub-import-paths.py), docs/ue-replay.md (deliverable layout), docs/asset-library.md (licences), and the shared note
 game-deliverables.md. Ready to package now: {{READY_GAMES}}.
 
@@ -54,7 +54,7 @@ Rules:
 - Use the commit-always skill: commit to game-factory main after every meaningful step (tool fixes, reviewed
   exceptions, docs) with a descriptive message, never end a turn with uncommitted work, never push unless the
   coordinator says so. Stage only the paths you changed. Packages, zips and reports are never committed here.
-- Every GPU launch (editor GUI, -game, packaged game, Unity) goes through {{GF_ROOT}}\tools\ue-heavy.ps1; you should
+- Every GPU launch (editor GUI, -game, packaged game) goes through {{GF_ROOT}}\tools\ue-heavy.ps1; you should
   need none (packaging is CPU and disk; ffmpeg muxing is CPU only). Only the coordinator enqueues recordings or
   rebuilds: when a game lacks a clean Shipping build or a scenario run, ask the coordinator.
 - Never write the names Superposition or game-factory into anything that ships inside a game or a deliverable.

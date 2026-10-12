@@ -1,4 +1,4 @@
-"""Remove the user name and the agent / vendor names from a UE 5.3 project's assets (the packager's blocking terms).
+"""Remove the user name and the agent / provider names from a UE 5.3 project's assets (the packager's blocking terms).
 
 Assets remember where they were imported from and who made them: AssetImportData (textures, static/skeletal meshes,
 sounds, animations, data tables, ...), FontFace.SourceFilename, Interchange node ids, a Level Sequence's
@@ -59,7 +59,7 @@ def user_profile():
 
 # ---- what must not stay in a project's assets (the packager's blocking terms that occur in asset data) ----------------
 # The user name as a substring anywhere (allowlist: the engine's zh_XIANG / zh-xiang locale ids and the place name
-# wuxiangshan, as in the packager), and the agent / vendor names. Each is matched case-insensitively in ASCII and
+# wuxiangshan, as in the packager), and the agent / provider names. Each is matched case-insensitively in ASCII and
 # UTF-16LE. A match is rewritten (same length, see patch_remaining) only in a safe context: a path segment (/x/, \x\,
 # -x-: import paths, Interchange node ids, temp paths) or a whole serialized FString (an author field); anything else,
 # e.g. the name inside story text, is reported as UNHANDLED for a person to fix.
@@ -75,7 +75,7 @@ def terms():
     if name:
         out.append(Term('username', name, placeholder(len(name)), ('zh_', 'zh-', 'wu')))
     out += [Term('agent-name', 'Claude (agent)', 'Developer team'), Term('agent-name', 'claude', 'helper'),
-            Term('vendor-name', 'anthropic', 'assistant')]
+            Term('provider-name', 'anthropic', 'assistant')]
     return out
 
 

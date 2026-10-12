@@ -1,7 +1,9 @@
+> Edited 2026-10-12: references to external sample material were removed from this original prompt.
+
 <!-- Verbatim first user turn of the session "Unreal game: siege catapult" (local_4c641a18-6f57-4365-9d7e-878217686bcf), scrubbed: user profile path -> %USERPROFILE%, user name -> <user>, GitHub handle -> <github-user>. -->
 
 Background (from the session that started this one):
-Superposition's game-factory repo (C:\Users\<user>\Work\game-factory, read README.md, AGENTS.md, docs/plan.md "Track B", docs/vendor-packages.md) produces game-CREATION data: how a game is built step by step. A vendor sold us Unreal packages (samples/parkour, island_explore, robofootball, extracted locally) whose step lists were reconstructed after the fact with no timestamps. Track B fixes that: build new small Unreal games and record every real operation as it happens. The user chose four games to build in parallel, one session each: tower defense, siege catapult, stealth, rally racer. This session is one of the four; the others run at the same time on the same Windows PC (Ryzen 7 7700X, 32 GB RAM).
+Superposition's game-factory repo (C:\Users\<user>\Work\game-factory, read README.md, AGENTS.md, docs/plan.md "Track B") produces game-CREATION data: how a game is built step by step. Track B: build new small Unreal games and record every real operation as it happens. The user chose four games to build in parallel, one session each: tower defense, siege catapult, stealth, rally racer. This session is one of the four; the others run at the same time on the same Windows PC (Ryzen 7 7700X, 32 GB RAM).
 
 Machine facts: Unreal Engine 5.3 at C:\Program Files\Epic Games\UE_5.3 (use UnrealEditor-Cmd.exe for headless runs, and its bundled Python for editor scripting). Visual Studio 2022 C++ Build Tools are being installed right now in a terminal tab (winget, may need the user's UAC click); check for MSVC (vswhere / cl) before any C++ build and, until it is there, do design, project setup, content and Blueprint-side work. No system Python; git 2.43 and git-lfs are installed; gh is logged in as <github-user>. Shell: PowerShell (Bash tool also available).
 

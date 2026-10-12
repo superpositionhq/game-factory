@@ -1,6 +1,6 @@
 # Game #7: ASHGROVE (first-person horror escape, UE 5.3)
 
-Track B game: a small, complete first-person horror escape / puzzle game built in Unreal Engine 5.3 by an agent
+A small, complete first-person horror escape / puzzle game built in Unreal Engine 5.3 by an agent
 (Claude), with every real editor and code operation recorded at the moment it happens in `workflow.jsonl`
 (schema `ue-workflow/v0`; rows before hx-02469 carry the old schema name). Project: `%GF_ROOT%\games\horror-escape` (own git repo,
 git-lfs). Started 2026-10-11 01:40 -04:00.

@@ -17,10 +17,11 @@ game. It may be a level (tower-defense "Meadow"), a chapter (stealth "Warehouse"
 dirt"), a castle (siege-catapult "Twin Towers") or an open-world start setup (island-survival "First Night",
 "Toolmaker"). A run plays exactly one scenario from its start state until it is won, lost or times out.
 
-Every Track B game (tower-defense, siege-catapult, stealth, rally-racer) implements this once its first scenario is
+Every game (tower-defense, siege-catapult, stealth, rally-racer) implements this once its first scenario is
 playable. The shared pipeline (`tools/ue-pipeline/`, [ue-pipeline.md](ue-pipeline.md)) then packages the game,
-launches it with the flags below, captures the window with ffmpeg and turns each run into a gameplay bundle shaped
-like the Lab's `game_recording` bundle (schema 3, see [creation-vs-gameplay.md](creation-vs-gameplay.md)).
+launches it with the flags below, captures the window with ffmpeg and turns each run into a gameplay bundle
+(`video.mkv`, `system_audio.mka`, `inputs.jsonl`, `telemetry.jsonl`, `outcome.json`, `metadata.json`, `validation.json`,
+`manifest.json`, `stills/`, `gameplay.mp4`; see [ue-pipeline.md, Bundle](ue-pipeline.md#bundle)).
 
 The game plays itself: an in-game **bot** reads game state and acts **only by injecting input through Enhanced
 Input**, and the game logs every injected input. Nothing uses OS-level input (`SendInput`), and hardware input is

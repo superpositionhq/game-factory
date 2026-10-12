@@ -1,4 +1,4 @@
-"""verify: the replayed project against the final commit (docs/ue-replay.md, 3.4).
+"""verify: the replayed project against the final commit (docs/ue-replay.md, 2.4).
 
   files      every tracked file: identical bytes (sha256 for LFS objects, git blob id otherwise), differs, missing; extras
   assets     dump-replay/assets.json vs dump-truth/assets.json: class and per-class digest per package

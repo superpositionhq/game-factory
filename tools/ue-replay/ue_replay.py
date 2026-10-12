@@ -1,6 +1,6 @@
-"""Unreal creation replay: rebuild a Track B game from its first commit by re-running what its builder ran.
+"""Unreal creation replay: rebuild a game from its first commit by re-running what its builder ran.
 
-  python ue_replay.py ledger  --game games/liaozhai-night.json        windows, runs, script texts -> work/ledger.json
+  python ue_replay.py ledger  --game <game>                           windows, runs, script texts -> work/ledger.json
   python ue_replay.py prepare --game ...                             isolated project at the first commit (+ truth)
   python ue_replay.py run     --game ... [--until <window>]          execute the plan (resumable)
   python ue_replay.py dump    --game ... --which replay|truth        structure dump (maps, assets) through the editor
@@ -11,7 +11,8 @@
   python ue_replay.py package --game ... [--force]                     deliverables/_replay/<game>/<sha8>/ (READY when complete)
 
 See docs/ue-replay.md. Every engine process runs through <root>/tools/ue-heavy.ps1 (machine root: machine/lib/gfroot.py).
-Game settings may use {root} for the machine root.
+--game is a game slug (its settings are <root>/games/<slug>/ReplayConfig.json, kept in the game's own repo) or a path to a
+settings file (e.g. a delivered ReplayScripts/game.json). Settings may use {root} for the machine root.
 """
 import argparse
 import json
@@ -42,8 +43,20 @@ def expand(v, root):
     return v
 
 
+def resolve_cfg(game):
+    """The settings file for --game: an existing path (absolute, or relative to the cwd or to this folder), else the
+    game repo's ReplayConfig.json under the machine root."""
+    for cand in (game, os.path.join(HERE, game)):
+        if os.path.isfile(cand):
+            return os.path.abspath(cand)
+    p = os.path.join(machine_root(), "games", game, "ReplayConfig.json")
+    if os.path.isfile(p):
+        return p
+    raise SystemExit("no replay settings for %r: expected %s (in the game's repo) or a path to a settings file" % (game, p))
+
+
 def load_cfg(path):
-    p = path if os.path.isabs(path) else os.path.join(HERE, path)
+    p = resolve_cfg(path)
     with open(p, encoding="utf-8") as f:
         cfg = expand(json.load(f), machine_root())
     cfg["root"] = machine_root()

@@ -16,11 +16,11 @@ All machine paths hang off one root, the "Work" folder that holds `game-factory\
 
 The config also holds `ueb` (default `C:\UEB`: private build clones and build temp, outside the user profile so the
 user name is not compiled into Shipping exes), `engine` (default `C:\Program Files\Epic Games\UE_5.3`) and
-`record_extra_projects` (default `["liaozhai-replay"]`: top-level folders the recording hooks treat as projects
-besides `games\<slug>`).
+`record_extra_projects` (default `[]`: extra top-level folders the recording hooks treat as projects besides
+`games\<slug>`).
 
 ```json
-{ "root": "C:\\Users\\<name>\\Work", "ueb": "C:\\UEB", "engine": "C:\\Program Files\\Epic Games\\UE_5.3", "record_extra_projects": ["liaozhai-replay"] }
+{ "root": "C:\\Users\\<name>\\Work", "ueb": "C:\\UEB", "engine": "C:\\Program Files\\Epic Games\\UE_5.3", "record_extra_projects": [] }
 ```
 
 ## Files
@@ -28,7 +28,7 @@ besides `games\<slug>`).
 | Path | Installed to | What |
 |---|---|---|
 | `bootstrap.ps1` | | idempotent setup: config + layout, tools, ffmpeg, hooks + settings merge, skills, root CLAUDE.md, LFS, gh, game repo hooks (`-CloneGames`) |
-| `check.ps1` | | read-only PASS/WARN/FAIL report (toolchain, GPU/display, disk, setup, asset library, Unity) |
+| `check.ps1` | | read-only PASS/WARN/FAIL report (toolchain, GPU/display, disk, setup, asset library) |
 | `get-ffmpeg.ps1` | `<root>\tools\ffmpeg-8.1.2\` | downloads gyan.dev ffmpeg 8.1.2 full_build .7z, verifies SHA-256 `0fff1889…7059`, unpacks |
 | `lib/gf-root.ps1` | `<root>\tools\`, `~\.claude\hooks\` | root/config resolver, dot-sourced by every script |
 | `tools/ue-heavy.ps1` | `<root>\tools\ue-heavy.ps1` | machine-wide job limiter: 3 general slots (`Global\ue-heavy-jobs`) + 1 GPU slot (`Global\ue-gpu-jobs`), yields to `builds\_queue\_recording-wants-gpu`, log `.recording\_heavy-jobs.jsonl` |

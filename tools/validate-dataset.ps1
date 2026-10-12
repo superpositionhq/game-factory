@@ -4,8 +4,8 @@
   spec in docs/game-deliverable.md): a delivery folder, a game repo's Dataset\ folder, or a <game>.zip.
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File tools\validate-dataset.ps1 %GF_ROOT%\deliverables\dataset\liaozhai-night\liaozhai-night.pending.zip
-  powershell -ExecutionPolicy Bypass -File tools\validate-dataset.ps1 %GF_ROOT%\games\liaozhai-night\Dataset
+  powershell -ExecutionPolicy Bypass -File tools\validate-dataset.ps1 %GF_ROOT%\deliverables\dataset\<game>\<game>.pending.zip
+  powershell -ExecutionPolicy Bypass -File tools\validate-dataset.ps1 %GF_ROOT%\games\<game>\Dataset
   ... -NoHash      # skip the sha256 check of every file (sizes are still checked)
 
   Prints one verdict line, then the findings ("  x" = error, "  !" = note):

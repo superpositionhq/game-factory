@@ -8,7 +8,6 @@ Fill-in for [../game-session.md](../game-session.md). Original prompt: [../origi
 | `{{SLUG}}` | island-survival |
 | `{{PROJECT}}` | IslandSurvival (`IslandSurvival.uproject`, C++ module `IslandSurvival`, from the Third Person C++ template) |
 | `{{GENRE_LINE}}` | a third-person ISLAND SURVIVAL game with resource gathering, crafting and a building flow |
-| `{{VENDOR_BEAT}}` | samples/island_explore (a marketplace demo map, one placeable foundation, debug counters, no record of how it was made) |
 
 ## {{PITCH}}
 
