@@ -260,6 +260,26 @@ screenshot inspected, **input** = `-scinput` run injecting real key/mouse events
 
 ## Status
 
+**Recorded and delivered (2026-10-12).** Commit 577814b (art polish + AutoPlay v1.4 + import-path scrub) is recorded:
+scenarios 1-6 all ok and won on drop-in version 4; framing approved by the coordinator from 12 hand-test screenshots.
+Repo: private `superpositionhq/game-siege-catapult` (LFS; history migrated so the UI kit's PSDs are LFS). README
+hero + gallery from the 577814b recordings. Hand test S1: validate-run PASS, drop-in version 4, audio_clock 504
+buffers, 0 render stalls, max drift 10 ms. Leak scans: Shipping exe has no banned names and no user paths; the 19
+assets with editor import paths scrubbed (verify 0 hits). Stats at wrap-up: `workflow.jsonl` 7,061 rows (32 failed,
+8 log.gap), 47 commits after the LFS rewrite.
+
+Art polish after the coordinator's frame review: the kit's round wall / battlement pieces are quarter arcs, so towers
+and cap rings now close from four quarters (before, one stretched quarter per course); tower caps are destructible kit
+pieces (round floor + crenellated ring) instead of a generated slab with cube merlons; yard discs hidden (kept as
+physics floors) under soft scanned-dirt decals with kit rock / fern / rubble clusters; a crown marker floats over each
+standing figure; control hints are kit key caps shown for the first 8 s. Earlier the same night: pieces had no convex
+hull data (balls passed through walls, user report), fixed at build; kit-surface material sampled RMA as Masks (grey
+blocks), fixed.
+
+Still open: no human has played it or listened to the audio (par shot counts assume near-perfect aim); some story
+props are still generated (sealed-room huts, crate stacks, crown, banners, keystones); seasonal oak leaves only checked
+in recorded stills.
+
 **Fab pass (2026-10-11 07:35).** All visible art is now Fab / CC BY / CC0 content (castle kit fractured, animated
 catapult, mocap-animated kings with ragdoll falls, kit dressing, particle effects, kit UI with period fonts). AutoPlay L3
 PASS after the swap; all six levels still won by the autopilot in screenshot runs (L1 1 shot, L3 2, L5 3, L6 5).
@@ -326,4 +346,8 @@ Known gaps / left to do:
   fractured pieces lost every module but the first (collapsing the module level dropped module transforms: now
   root > module > chunk); menu diorama hidden behind the panel by the bigger catapult. Validator copy lacked
   `common.ps1` → one false FAIL, invalidated and re-validated (PASS).
+- 2026-10-11 13:30 - 2026-10-12 00:30: wall collision fix (convex hulls), flat chunk hierarchy, kit surfaces fixed,
+  AutoPlay v1.3 then v1.4, private GitHub repo with LFS history migration, leak checks + import-path scrub, art polish
+  (quarter-arc towers, kit caps, yard decals, crown markers, key-cap hints), README screenshots, recordings on 33fcf667
+  and 577814b (all six won each time).
 

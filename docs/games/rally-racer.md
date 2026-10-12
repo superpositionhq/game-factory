@@ -179,9 +179,9 @@ the next (speed x 2 s) of track with a per-driver skill factor; throttle/brake t
 car is close ahead, shift lateral offset to the side with more room; rubber band: target speed x 0.9 to
 1.08 based on distance to the player; reset to last checkpoint if stuck for 3 s or upside down.
 
-## 6b. AutoPlay (QA self-play, contract v1.3)
+## 6b. AutoPlay (QA self-play, contract v1.4)
 
-- Drop-in `Source/RallyRacer/AutoPlay/AutoPlaySubsystem.h/.cpp`, copied unchanged (ContractVersion 3). Shipping
+- Drop-in `Source/RallyRacer/AutoPlay/AutoPlaySubsystem.h/.cpp`, copied unchanged (v1.4, ContractVersion 4: audio clock, render stalls filled with silence). Shipping
   recording builds are enabled: `bAllowHighDPIInGameMode=True` in `DefaultEngine.ini`, `bUseLoggingInShipping`.
 - **Scenarios** (`-Scenario=<n>`; `milestone/autoplay-<n>` = scenarios 1..n work):
 
@@ -199,10 +199,10 @@ car is close ahead, shift lateral offset to the side with more room; rubber band
   - It acts only through `AP->Inject` on `IA_Throttle` (W), `IA_Brake` (S), `IA_Steering` (A/D, analog value), `IA_Handbrake` (SpaceBar), `IA_Boost` (LeftShift) and `IA_Reset` (R, one frame when the driver's recovery asks for a reset).
   - Its steering is scaled up to make up for the harder high-speed steering cap on player input.
 - **Skill.**
-  - Corner speed factor: 0.84 at skill 0 to 0.985 at skill 1.
+  - Corner speed factor: 0.84 at skill 0 to 1.09 at skill 1 (rivals rubber-band up to x1.10 against a leading player).
   - Steering wobble: (1 - skill) x 0.7.
   - Control reaction: 4/s to 14/s.
-  - Boost eagerness: 0.2 to 0.8.
+  - Boost eagerness: 0.2 to 0.95. Any driver boosts only when the advised speed 1.2 s and 2.5 s ahead is well above its speed.
   - At skill 0 the bot is a cautious, wobbly novice that still finishes.
 - **Telemetry.**
   - `countdown_end`, `checkpoint` {index, lap}, `lap_complete` {lap, lap_time_s}, `position_changed` {position}.
@@ -211,6 +211,8 @@ car is close ahead, shift lateral offset to the side with more room; rubber band
   - `state` at 10 Hz with location, rotation, velocity, speed_kmh, gear, lap, position, boost and boosting.
 - **Outcome.** `FinishRun` reports `win` (P1) or `lose`. Extra fields: position, racers, total_time_s, best_lap_s, lap_times_s, resets and stage. After finishing, the car coasts (no autopilot) during the 2 s hold.
 - **Hand test.** `Scripts/autoplay_test.py` runs the editor `-game` off-screen with Live Coding off, through the job limiter, then `validate-run.ps1`.
+- **Framing check before recordings.** `--framing N` passes `-FramingShots=N`: N screenshots spread over the race distance plus the first overtake and first handbrake turn, moved to `<run>/framing/`, and one `RR_TEST: framing` line with camera rotation speed (p50/p95/p99/max deg/s) and the car's screen share (mean/max).
+- **Import paths.** `Scripts/scrub_paths.py` runs the pipeline's `scrub-import-paths.py`; the 4 FontFace source paths are project-relative now (verify: 0 hits).
 
 ## 7. Acceptance checklist
 

@@ -54,6 +54,10 @@ so level scripts place Blueprint assets, not raw native classes.
 
 - Visibility `V` = 1.0 standing, ×0.6 crouched, ×1.15 sprinting, ×0.45 in a shadow zone, ×0.2 crouched in
   grass, 0 inside a locker. Shown on the HUD as the eye meter.
+- Visibility also sets how far a guard can make the thief out: `300 + (SightRadius − 300) × V` cm
+  (`AStealthCharacter::CanBeSeenFrom`, since 2026-10-12). For a courtyard patrol (11 m): standing 11 m, crouched
+  7.8 m, crouched in grass or shadow about 5 m. Before this, any line of sight inside the full radius made a guard
+  suspicious, and hiding only slowed the climb to alert.
 - Noise: footstep events every 0.55 s (walk, loudness 0.35, range 600 cm) / 0.33 s (sprint, 1.0, 1400 cm);
   crouch emits none. Throwable impact: loudness 1.0, range 1800 cm. Shown on the HUD as the noise meter.
 

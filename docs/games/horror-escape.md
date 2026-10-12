@@ -371,15 +371,17 @@ the stalker chases it, waits until it leaves, then resumes. Skill: reaction dela
 `pickup`, `puzzle_solved`, `flag`, `stalker_state`, `hide_enter`/`hide_exit`, `noise`, `death`, `restart`,
 `chapter_exit`.
 
-### 9b. AutoPlay scenarios (contract v1.3)
+### 9b. AutoPlay scenarios (contract v1.4)
 
 `-Scenario=<n>` opens chapter n directly (no menu, no intro), saved checkpoint state.
 
-| # | Name | Start state | Win | Lose |
-|---|---|---|---|---|
-| 1 | The house remembers (`L1_GroundFloor`) | Entry hall, front door shut, no items, flashlight on the hall table | Basement door opened with the basement key | — (no threat on the ground floor; timeout only) |
-| 2 | Something is down here (`L2_Basement`) | Stair foot, no items; the stalker sleeps until the wireless plays | Service-stair door opened with the attic key | Stalker or watcher contact; timeout |
-| 3 | Ada (`L3_Attic`) | Hatch landing, no items; lightning glimpse at once, the stalker returns on `beam_solved` | Roof hatch opened with the roof key (ending plays) | Stalker or doll contact; timeout |
+| # | Name | Start state | Win | Lose | Bot win (seed 1) | MaxSeconds |
+|---|---|---|---|---|---|---|
+| 1 | The house remembers (`L1_GroundFloor`) | Entry hall, front door shut, no items, flashlight on the hall table | Basement door opened with the basement key | — (no threat on the ground floor; timeout only) | 55 s | 180 |
+| 2 | Something is down here (`L2_Basement`) | Stair foot, no items; the stalker sleeps until the wireless plays | Service-stair door opened with the attic key | Stalker or watcher contact; timeout | 132 s | 420 |
+| 3 | Ada (`L3_Attic`) | Hatch landing, no items; lightning glimpse at once, the stalker returns on `beam_solved` | Roof hatch opened with the roof key (ending plays) | Stalker or doll contact; timeout | 92 s | 240 |
+
+Chapter 2 gets 420 s because the stalker's hunts vary in length (an earlier build needed 384 s before it was caught).
 
 ## 10. Recording
 
@@ -401,24 +403,31 @@ end to end.
 - [x] Flashlight with battery drain, low-battery flicker, battery pickups (telemetry battery drain; bot flashlight discipline)
 - [x] Interact: pick up, inspect/rotate, doors, drawers, notes; inventory + journal screen (chapter 1 AutoPlay uses all of them)
 - [x] Chapter 1: clocks → dial lock → fuses → power → shadow puzzle → key → exit (AutoPlay **win**, ch1_try13, 110 s, after the art pass)
-- [ ] Chapter 2: radio → chimes → valve → boiler → cellar → lock → key → exit (AutoPlay reaches radio, chime tune and valve handle; dies to the stalker before the boiler)
-- [ ] Chapter 3: mirrors → crank → music box → symbol lock → key → roof hatch (AutoPlay solves the moonbeam; dies before the music box)
+- [x] Chapter 2: radio → chimes → valve → boiler → cellar → lock → key → exit (AutoPlay **win**, ch2_try32, 132 s)
+- [x] Chapter 3: mirrors → crank → music box → symbol lock → key → roof hatch (AutoPlay **win**, ch3_try34, 92 s)
 - [x] Stalker from chapter 2: roam, investigate noise, chase, search; contact = death; hiding works (telemetry: all states, hide_enter/exit, extraction)
 - [x] Scripted scares (Sequencer, flicker, slams), each once (scare events in telemetry, once each)
 - [x] Atmosphere: Lumen, practical lights, volumetric fog, Niagara dust, PBR materials (scanned surfaces + store furniture; screenshots)
 - [x] MetaSounds: ambience, heartbeat, creaks (ours); recorded footsteps by surface; chapter scores
 - [ ] Sequencer intro and ending (intro verified earlier; ending v2 with the creature at the hatch built but not watched in a run)
 - [x] HUD: prompt, battery, item toast on paper slips; death/retry; save at chapter start
-- [x] AutoPlay: chapter 1 solved by the bot (milestone/autoplay-1); [ ] chapters 2 and 3 not yet won
+- [x] AutoPlay v1.4: all three chapters solved by the bot (`milestone/autoplay-1..3` on 97ed7ec); scenario 1 hand test passes validate-run with 0 render stalls
 - [x] Packaged Win64 build (Shipping; packaged AutoPlay chapter 1 win, validate-run PASS)
 
-## 12. Status (2026-10-11 09:45 -04:00)
+## 12. Status (2026-10-12 01:20 -04:00)
 
 **What works**
 - **Chapters:** all three are playable maps with their puzzle chains, the stalker (chapters 2–3), the porcelain-doll
   Watchers, hiding, death/retry, saves at chapter start, chapter cards, pause/settings, menu with chapter select,
   and the intro.
-- **AutoPlay:** wins chapter 1 after the art pass (ch1_try13, 110 s, 3 puzzles; tag `milestone/autoplay-1`).
+- **AutoPlay (drop-in v1.4):** wins all three chapters: ch1 55 s, ch2 132 s, ch3 92 s (tags `milestone/autoplay-1..3`
+  on 97ed7ec). Chapter 2's stalker now gives up on a player hidden 20 s and is gone 45 s, as in the attic; before
+  that the bot shuttled between the boiler-room wardrobe and the cellar until caught.
+- **Fixes found by the framing screenshots:**
+  - the roof hatch sat inside the roof boards (it kept the pre-fix slope), so it could not be used;
+  - both attic gables were upside down under the floor, leaving the attic's ends open to the sky;
+  - the wardrobe's hanging rail ran 1 m out of its side.
+- **Import paths:** the user profile path is scrubbed from the assets' import-source paths (verify: 0 hits).
 - **Art pass:**
   - scanned surfaces on every wall, floor and ceiling (Megascans, Poly Haven);
   - 117 script-built furniture pieces replaced by Victorian House / Old Library pieces fitted in place;
@@ -440,19 +449,13 @@ end to end.
   - movement has weight, bob, sway and breathing (§6c).
 
 **What's left**
-- **AutoPlay wins for chapters 2 and 3.** The bot now solves the radio, the chime tune and takes the valve handle
-  (ch2), and solves the moonbeam (ch3). It then dies to the stalker:
-  - ch2: seen in the lit corridor, run down;
-  - ch3: caught in the second chase after the calm return.
-
-  The puzzles past those points (boiler, cellar, music box, trunk) are built, but no bot run has reached them since
-  the art pass. Next: route planning that waits out a prowling stalker before crossing lit corridors, plus per-chapter
-  flee targets.
-- **Ending v2 is built but not yet watched in a run.** The family photograph's scratch decal placement is approximate
-  and needs a close-up check.
-- **Cellar doors, the hall stairs and the puzzle clocks** are still our script-built meshes, on scanned materials.
-- The radio, valves and fuse box are also script-built. Poly Haven has a wireless, a fuse box and clocks ready to
-  import.
+- **Re-run after the last two fixes.** The gables were flipped and the import paths scrubbed after the last verified
+  wins. Chapter 3 won on the scrubbed content (ch3_try34) but before the gables were upright, and chapter 2's win
+  (ch2_try32) predates both. Runs ch2_try33 and ch3_try35 are queued. Closing the attic ends makes the attic darker.
+- **The packaged Shipping build** (below) is from 2026-10-11 14:21 and predates these fixes; repackage before release.
+- **The ending has still not been watched in a run.** The family photograph's scratch decal placement is approximate.
+- **Cellar doors, the hall stairs and the puzzle clocks** are still our script-built meshes, on scanned materials,
+  as are the radio, the valves, the fuse box and the wardrobes.
 
 **Built vs sampled assets** (per `assets.manifest.json`)
 - **Store (Fab):** Modular Victorian House and Victorian Interior Environment (bought), Whisper, Free Killer Doll,
@@ -470,5 +473,5 @@ end to end.
 Shipping, 871 MB, 4,352 cooked packages). The first attempt failed on an editor-only call (`GetActorLabel`) and was
 fixed. AutoPlay chapter 1 wins in the packaged exe (135 s), and `validate-run.ps1` passes.
 
-**Stats:** 2,964 workflow rows (hx-00001..hx-02964; failures kept, corrections as new rows), 22 commits on the local
-repo (none pushed), 87 scripts, 479 assets under /Game/Horror, about 8 h 05 min (01:40–09:47 -04:00).
+**Stats:** 3,124 workflow rows (hx-00001..hx-03124; failures kept, corrections as new rows), 40 commits on
+github.com (private, Git LFS: 4,013 files), 111 scripts, 486 assets under /Game/Horror.
