@@ -17,6 +17,7 @@ Any other simple command that writes a tracked file (redirect target, tee, Set-C
 Results are checked against the commit at every boundary (ledger.FileStates.boundary).
 """
 import fnmatch
+import json
 import os
 import re
 import shlex
@@ -236,11 +237,41 @@ def apply_command(action, states, sandbox, tracked, log, aux=None):
     def cands(t):
         return set(p for base, ps in names.items() if base in t for p in ps)
 
-    def run_python(prog, how):
+    resp = action.get("response")
+    if isinstance(resp, str) and resp.lstrip().startswith("{"):
+        try:
+            resp = json.loads(resp)
+        except ValueError:
+            pass
+    if isinstance(resp, dict):
+        resp = "%s\n%s" % (resp.get("stdout") or "", resp.get("stderr") or "")
+    elif not isinstance(resp, str):
+        resp = json.dumps(resp, ensure_ascii=False)
+    shell_vars = {}  # NAME=literal assignments made earlier in this command ($NAME in later paths)
+
+    def expand_vars(t):
+        for k in sorted(shell_vars, key=len, reverse=True):
+            t = re.sub(r"\$(?:\{%s\}|%s\b)" % (re.escape(k), re.escape(k)), lambda m: shell_vars[k], t)
+        return t
+
+    def recorded_failure(how, helper=None):
+        """The recorded output shows this Python program raised (a traceback from its own source)."""
+        marker = {"python_heredoc": 'File "<stdin>"', "python_c": 'File "<string>"'}.get(how)
+        if helper:
+            marker = os.path.basename(helper)
+        return bool(marker) and "Traceback (most recent call last)" in resp and marker in resp
+
+    def run_python(prog, how, helper=None):
         c = cands(prog)
         if not c or not re.search(r"\.write\(|open\(|write_text|write_bytes", prog):
             return
         ok, err, changed = sandbox.run(states, c, cwd_rel, "python", prog)
+        if ok and recorded_failure(how, helper):
+            # The sandbox run succeeded where the recorded one raised (e.g. the Bash tool handed the program `\` where
+            # the record shows `\\`, so an assert-replace failed): keep the files as they were. A program that fails
+            # after a first write is still reproduced, because then the sandbox run fails too.
+            log.append((how + "_diverged_discarded", sorted(changed)))
+            return
         for p, b in changed.items():
             if p in tracked:
                 states.put(p, b, how)
@@ -254,8 +285,19 @@ def apply_command(action, states, sandbox, tracked, log, aux=None):
             argv = shlex.split(plain, posix=True)
         except ValueError:
             argv = plain.split()
+        assigns = []
         while argv and re.match(r"^\w+=", argv[0]):  # VAR=value prefixes
+            assigns.append(argv[0])
             argv = argv[1:]
+        if assigns and not argv:  # NAME=value on its own: a shell variable for the rest of the command
+            for a_ in assigns:
+                k, v = a_.split("=", 1)
+                if "$(" not in v and "`" not in v:
+                    shell_vars[k] = expand_vars(v)
+            continue
+        if shell_vars:
+            plain = expand_vars(plain)
+            argv = [expand_vars(x) for x in argv]
         if argv and argv[0] in ("time", "export"):
             argv = argv[1:]
         if not argv:
@@ -302,7 +344,7 @@ def apply_command(action, states, sandbox, tracked, log, aux=None):
             elif a2[:1] == ["-c"] and len(a2) > 1:
                 run_python(a2[1], "python_c")
             elif a2 and aux is not None and _abs(a2[0]) in aux:
-                run_python(aux[_abs(a2[0])], "python_helper")
+                run_python(aux[_abs(a2[0])], "python_helper", helper=_abs(a2[0]))
             continue
         if exe == "sed":
             redirect = re.search(r"\s>\s*(\"[^\"]+\"|'[^']+'|[^\s;&|]+)\s*$", plain)

@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 
 import shellfx
@@ -82,13 +83,58 @@ RUN_PATTERNS = [
 EXIT_RE = re.compile(r"exit code (-?\d+) \((\d+) s\)|exit=(-?\d+) seconds=(\d+)")
 
 
+# a shell command that exited non-zero still ran: its file edits and editor runs happened
+RAN_EVENTS = ("PostToolUse", "PostToolUseFailure")
+
+
+def _param_expand(val, op, pat):
+    """${v%%pat} ${v%pat} ${v##pat} ${v#pat} with glob patterns."""
+    n = len(val)
+    if op == "%%":
+        return next((val[:i] for i in range(0, n + 1) if fnmatch.fnmatchcase(val[i:], pat)), val)
+    if op == "%":
+        return next((val[:i] for i in range(n, -1, -1) if fnmatch.fnmatchcase(val[i:], pat)), val)
+    if op == "##":
+        return next((val[i:] for i in range(n, -1, -1) if fnmatch.fnmatchcase(val[:i], pat)), val)
+    return next((val[i:] for i in range(0, n + 1) if fnmatch.fnmatchcase(val[:i], pat)), val)
+
+
+def subst_var(text, var, val):
+    v = re.escape(var)
+    text = re.sub(r"\$\{" + v + r"(%%|%|##|#)([^}]*)\}", lambda m: _param_expand(val, m.group(1), m.group(2)), text)
+    return re.sub(r"\$(?:\{" + v + r"\}|" + v + r"\b)", lambda m: val, text)
+
+
 def expand_loops(cmd, pats=None):
-    """`for mode in a b c; do ... $mode ...; done` around an editor run: one run per value (only this simple form)."""
-    m = re.search(r"for (\w+) in ([^;]+); do (.*?); done", cmd, re.S)
-    if not m or not any(p.search(m.group(3)) for p in (pats or RUN_PATTERNS)):
+    """`for v in a "b c" d; do ... $v ...; done` (on one line or several) around an editor run: one run per value
+    (${v}, ${v%%pat} and ${v##pat} forms included)."""
+    m = re.search(r"\bfor (\w+) in ([^;\n]+?)\s*(?:;|\n)\s*do\b(.*?)(?:;|\n)\s*done\b", cmd, re.S)
+    if not m:
         return [cmd]
-    var, values, body = m.group(1), m.group(2).split(), m.group(3)
-    return [cmd[:m.start()] + body.replace("$" + var, v).replace("${%s}" % var, v) + cmd[m.end():] for v in values]
+    try:
+        values = shlex.split(m.group(2), posix=True)
+    except ValueError:
+        values = m.group(2).split()
+    var, body = m.group(1), m.group(3)
+    out = [cmd[:m.start()] + subst_var(body, var, v) + cmd[m.end():] for v in values]
+    if not any(p.search(subst_var(body, var, v)) for v in values for p in (pats or RUN_PATTERNS)):
+        return [cmd]
+    return out
+
+
+# NAME=literal at the start of a simple command (not after && / ||: conditional)
+ASSIGN_RE = re.compile(r"(?:^|[;\n(]|\bdo\b|\bthen\b)[ \t]*(?:export[ \t]+)?([A-Za-z_]\w*)="
+                       r"(\"[^\"$`]*\"|'[^']*'|[^\s;&|)$`'\"]*)(?=[\s;&|)]|$)")
+
+
+def subst_assigned(cmd, pos, text):
+    """$NAME in text, for a NAME the command assigned a literal value before pos (the last such assignment)."""
+    vals = {}
+    for m in ASSIGN_RE.finditer(cmd[:pos]):
+        vals[m.group(1)] = m.group(2).strip("\"'")
+    for k in sorted(vals, key=len, reverse=True):
+        text = subst_var(text, k, vals[k])
+    return text
 
 
 def editor_runs(actions, repo_abs, extra_patterns=()):
@@ -99,21 +145,27 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
     prev_time = None
     for a in actions:
         prev, prev_time = prev_time, a["time"]
-        if a.get("tool") not in ("Bash", "PowerShell") or a.get("event") != "PostToolUse":
+        if a.get("tool") not in ("Bash", "PowerShell") or a.get("event") not in RAN_EVENTS:
             continue
         cmd = a.get("input", {}).get("command", "")
-        if not any(p.search(cmd) for p in pats):
+        # heredoc bodies are file contents (e.g. a wrapper script being written), not commands; loops are expanded
+        # first, so a run written as `for s in ...; do wrapper "Scripts/${s%%|*}"; done` is found
+        expanded = expand_loops(shellfx.protect_heredocs(cmd)[0], pats)
+        if not any(p.search(c) for c in expanded for p in pats):
             continue
         resp = a.get("response") or ""
         if not isinstance(resp, str):
             resp = json.dumps(resp)
         exits = [(x[0] or x[2], x[1] or x[3]) for x in EXIT_RE.findall(resp)]
         found = []
-        for k, c in enumerate(expand_loops(cmd, pats)):
+        for k, c in enumerate(expanded):
             for pat in pats:
                 for m in pat.finditer(c):
-                    found.append(((k, m.start()), m.group("script"), (m.groupdict().get("args") or "").strip(), run_env(c, m.start()),
-                                  run_reason(c, m.start()), m.groupdict().get("mode") or "commandlet"))
+                    g = m.groupdict()
+                    reason = g.get("reason") if g.get("reason") is not None else g.get("reason_sq")
+                    found.append(((k, m.start()), subst_assigned(c, m.start(), m.group("script")),
+                                  subst_assigned(c, m.start(), (g.get("args") or "").strip()), run_env(c, m.start()),
+                                  reason if reason is not None else run_reason(c, m.start()), g.get("mode") or "commandlet"))
         found.sort()
         for i, (_, script, args, env, reason, mode) in enumerate(found):
             ex = exits[i] if i < len(exits) and len(exits) == len(found) else None
@@ -310,7 +362,7 @@ def build(cfg):
             break
         w = windows[cur_w]
         tool = a.get("tool")
-        if a.get("event") != "PostToolUse":
+        if a.get("event") != "PostToolUse" and not (tool in ("Bash", "PowerShell") and a.get("event") in RAN_EVENTS):
             continue
         inp = a.get("input") or {}
         if tool in ("Bash", "PowerShell") and inp.get("command"):
@@ -380,7 +432,10 @@ def build(cfg):
             continue
         s = (row.get("source") or {}).get("script")
         if s:
-            by_script[s].append(row)
+            # a script that passed a relative path to the recorder ("Scripts/x.py" resolved against the editor's
+            # working directory) logged "../../…/Engine/Binaries/Win64/Scripts/x.py"
+            m = re.search(r"(?:^|/)(Scripts/[^/]+\.py)$", s.replace("\\", "/"))
+            by_script[m.group(1) if m and s.startswith("..") else s].append(row)
     all_runs = [r for w in windows for r in w["runs"]]
     for k, r in enumerate(all_runs):
         nxt = next((x for x in all_runs[k + 1:] if x["script"] == r["script"]), None)
