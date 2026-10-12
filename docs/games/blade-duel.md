@@ -294,7 +294,7 @@ Exponential Height Fog; each arena has a fixed time of day. Ambience is a loopin
 
 | Arena | Light | Built from (section 9) | Story dressing |
 |---|---|---|---|
-| **Merrow Saltpans** | dawn, low gold sun, mirror brine | Icelandic biome sampler, basalt columns, nordic beach rocks, Poly Haven coast rocks, wooden racks and salt cones | the Highcourt dam on the horizon, cracked dry channels |
+| **Merrow Saltpans** | dawn, low gold sun, dry white crust between stone dikes (the brine is gone: the dam took the water) | Icelandic biome sampler, basalt columns, nordic beach rocks, Poly Haven coast rocks, wooden racks and salt cones | the Highcourt dam on the horizon, cracked dry channels |
 | **Dam-Crown of Highcourt** | late afternoon, warm, long shadows | Medieval Castle Modular Vol 1, castle wall/structure scans | closed sluice gates, carved "THE WATER IS HIGHCOURT'S", Lamp-Guard banners, spillway mist |
 | **The Stair** | dusk into night, lanterns | castle modular stairs and arches, KHS walled-town walls, candles/lanterns, ropes, laundry | drowned Calder towers below the tide, Calder's sigil chalked on doors |
 | **Rimeshelf** | overcast snow-light | Megascans snow and tundra rocks, snow hill, frozen boats from the siege/pirate props | houses sinking into meltwater, the marker post with a cut blue cord |
