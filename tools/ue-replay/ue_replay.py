@@ -128,10 +128,10 @@ SESSION_PATH_RULES = [
     ("session_temp", re.compile(r"(?i)(?P<head>AppData(?P<s>[\\/]{1,2})Local(?P=s)Temp(?P=s))[^\\/\s'\"]+(?P=s)"
                                 r"[^\\/\s'\"]+(?P=s)%s(?P<pad>(?P=s)scratc[h]pad(?![\w-]))?" % _UUID),
      lambda m: m.group("head") + "session" + ((m.group("s") + "scratch") if m.group("pad") else "")),
-    ("session_notes", re.compile(r"(?i)(AppData)%s(Roaming)%s[^\\/\s'\"]+%sside-sessio[n]-notes%slocal_[0-9a-f]{8}-[0-9a-f]{4}-"
+    ("session_notes", re.compile(r"(?i)(AppData)%s(Roaming)%s[^\\/\s'\"]+%sside-sessio[n]-notes%slocal[_][0-9a-f]{8}-[0-9a-f]{4}-"
                                  r"[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" % ((_SEP,) * 4)),
      lambda m: "%s%s%s%ssession%snotes" % (m.group(1), m.group(2), m.group(3), m.group(4), m.group(4))),
-    ("session_id", re.compile(r"\blocal_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b"), lambda m: "local_session"),
+    ("session_id", re.compile(r"\blocal[_]%s\b" % _UUID), lambda m: "session"),
 ]
 
 

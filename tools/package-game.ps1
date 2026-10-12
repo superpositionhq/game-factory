@@ -879,6 +879,7 @@ $RuleText = [ordered]@{
     'email'          = 'e-mail addresses (other than example/placeholder ones) replaced by <redacted-email>'
     'agent-mention'  = 'remaining agent/provider mentions neutralised (agent, provider)'
     'base64-payload' = 'base64 runs of 256+ characters in shipped logs (screenshots, binary payloads in tool responses) replaced by <base64 omitted, N bytes, sha256 ...>'
+    'session-path'   = 'the build machine''s per-session folders (temp scratch/task folders, shared notes folder) and session ids replaced by neutral names (session, session/notes)'
 }
 $RulesHead = @(
     # first: payloads go before any word rule could touch them (a random user-name match inside base64 included)
@@ -898,8 +899,28 @@ $RulesHead = @(
     @{ id = 'banned-name'; scope = 'all'; match = '(?i)game_factory'; replace = 'studio_tools' }, @{ id = 'banned-name'; scope = 'all'; match = 'GameFactory'; replace = 'StudioTools' },
     @{ id = 'banned-name'; scope = 'all'; match = '(?i)gamefactory'; replace = 'studiotools' }, @{ id = 'banned-name'; scope = 'all'; match = '(?i)game-factory'; replace = 'studio-tools' }
 )
+# the session ids of this game's recording wherever they stand alone (other uuids, e.g. Fab listing ids, stay)
+$SessionIdRule = @()
+$sessAct = Join-Path $WorkRoot ".recording\$Game\actions.jsonl"
+if (Test-Path -LiteralPath $sessAct) {
+    $sessIds = @(Select-String -LiteralPath $sessAct -Pattern '"session_id":\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"' -AllMatches |
+        ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value.ToLower() } | Sort-Object -Unique)
+    if ($sessIds.Count) {
+        $SessionIdRule = @(@{ id = 'session-path'; scope = 'all'; replace = 'session'
+            match = '(?i)\b(?:' + (($sessIds | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')\b' })
+    }
+}
 # (git-identity rules are added once git.log has numbered the identities)
 $RulesTail = @(
+    # the build machine's per-session folders and ids (same names as tools/ue-replay SESSION_PATH_RULES): before the
+    # user-name rules, which only rename the profile part of these paths. Separators: / \ or JSON-escaped \\.
+    @{ id = 'session-path'; scope = 'all'; match = '(?i)(AppData[\\/]+Local[\\/]+Temp([\\/]+))[^\\/\s''"]+[\\/]+[^\\/\s''"]+[\\/]+[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:([\\/]+)scratc[h]pad(?![\w-]))?'; replace = '${1}session${3}SCRATCH_DIR' },
+    @{ id = 'session-path'; scope = 'all'; match = '(?<=session[\\/]+)SCRATCH_DIR'; replace = 'scratch' },
+    @{ id = 'session-path'; scope = 'all'; match = 'SCRATCH_DIR'; replace = '' },
+    @{ id = 'session-path'; scope = 'all'; match = '(?i)(AppData([\\/]+)Roaming\2)[^\\/\s''"]+\2side-sessio[n]-notes\2local_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'; replace = '${1}session${2}notes' },
+    @{ id = 'session-path'; scope = 'all'; match = '(?i)\blocal[_][0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b'; replace = 'session' },
+    @{ id = 'session-path'; scope = 'all'; match = '(?i)side-sessio[n]-notes'; replace = 'session-notes' },
+    @{ id = 'session-path'; scope = 'all'; match = '(?i)scratc[h]pad'; replace = 'scratch' },
     @{ id = 'username'; scope = 'all'; match = "(?i)$([regex]::Escape($MachineName))"; replace = 'dev-pc' },   # the machine name contains it
     @{ id = 'username'; scope = 'all'; match = "(?i)(?<=users[\\/:0-9]{0,6})$([regex]::Escape($UserName))"; replace = 'dev' },   # paths that lost their separators (C:UsersNameWork...) or use a regex backreference (Users\1Name\1Work)
     @{ id = 'username'; scope = 'all'; match = "(?i)$UserRx"; replace = 'dev' },
@@ -917,6 +938,8 @@ $RulesTail = @(
     @{ id = 'agent-mention'; scope = 'all'; match = 'ANTHROPIC'; replace = 'PROVIDER' }, @{ id = 'agent-mention'; scope = 'all'; match = 'Anthropic'; replace = 'Provider' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)anthropic'; replace = 'provider' }
 )
+# the recording's session ids right after the session-path rules (which need the uuid inside a path to recognise it)
+$RulesTail = @($RulesTail | Where-Object { $_.id -eq 'session-path' }) + @($SessionIdRule) + @($RulesTail | Where-Object { $_.id -ne 'session-path' })
 $BannedPattern = 'superposition|game[-_]?factory'
 # Binary needles (ASCII + UTF-16LE, case-insensitive). The agent/provider names block like the two names (user rule);
 # the account name in binaries is reported (and blocks inside Build/, checked separately).
