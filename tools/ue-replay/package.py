@@ -85,6 +85,9 @@ def readme(cfg, led, state, parts, report):
     missing = [k for k, v in parts.items() if not v]
     if missing:
         lines.append("- Not included yet: " + ", ".join(missing) + ".")
+    if report:
+        import verify
+        lines += [""] + verify.render_deviations(report.get("deviations") or [])
     return "\n".join(lines) + "\n"
 
 

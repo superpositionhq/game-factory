@@ -169,7 +169,7 @@ def verify_assets(rep, tru, counts=None):
     a = {(x["package"], x["name"]): x for x in rep["assets"]}
     b = {(x["package"], x["name"]): x for x in tru["assets"]}
     by_class = collections.defaultdict(collections.Counter)
-    diffs = []
+    diffs, load_err = [], []
     for k, t in b.items():
         cls = t["class"]
         if k not in a:
@@ -186,6 +186,7 @@ def verify_assets(rep, tru, counts=None):
             dk = [] if r.get("error") == t.get("error") else ["error"]
             if not dk:
                 counts["asset_load_error_both"] += 1
+                load_err.append({"asset": k[0], "class": cls, "error": t.get("error")})
         else:
             dk = tolerant_diff(r.get("digest", {}), t.get("digest", {}), counts)
         if dk:
@@ -200,7 +201,8 @@ def verify_assets(rep, tru, counts=None):
     total = collections.Counter()
     for c in by_class.values():
         total.update(c)
-    return {"total": dict(total), "by_class": {k: dict(v) for k, v in sorted(by_class.items())}, "diffs": diffs}
+    return {"total": dict(total), "by_class": {k: dict(v) for k, v in sorted(by_class.items())}, "diffs": diffs,
+            "load_error_both": load_err}
 
 
 # ------------------------------------------------------------------------------------------------ maps
@@ -383,6 +385,55 @@ def verdict(report, ctx, counts):
 
 
 # ------------------------------------------------------------------------------------------------ report
+def deviations(ctx, report):
+    """Every place the replay departs from the raw recording, for buyers: what, which runs/items, which commit, why."""
+    cfg, led = ctx.cfg, ctx.ledger
+    runs = [dict(r, _w=w) for w in led["windows"] for r in w["runs"]]
+    out = []
+
+    def add(kind, what, items, reason=None):
+        if items:
+            out.append({"kind": kind, "what": what, "items": items, **({"reason": reason} if reason else {})})
+
+    for u in cfg.get("use_commit_text", []):
+        hit = [r for r in runs if r["script"] == u["script"] and r["_w"]["index"] in u.get("windows", [r["_w"]["index"]])]
+        add("commit_text_substituted", "script text taken from the commit instead of the recorded edits",
+            [{"script": u["script"], "window": w, "commit": next(r["_w"]["sha"] for r in hit if r["_w"]["index"] == w),
+              "runs": [r["id"] for r in hit if r["_w"]["index"] == w]} for w in sorted(set(r["_w"]["index"] for r in hit))],
+            u.get("reason"))
+    forced = set((u["script"], wi) for u in cfg.get("use_commit_text", []) for wi in u.get("windows", []))
+    other = [r for r in runs if r.get("script_version") == "unknown_use_commit" and (r["script"], r["_w"]["index"]) not in forced]
+    add("commit_text_unrebuildable", "script text the recording could not rebuild (e.g. perl -i edits, edits outside "
+        "the recording): the window's commit text is used", [{"script": r["script"], "window": r["_w"]["index"],
+                                                              "commit": r["_w"]["sha"], "run": r["id"]} for r in other])
+    ro_scripts = set(cfg.get("not_readonly", []))
+    add("readonly_script_replayed", "scripts a read-only pattern matches, replayed because a later run reads what they write",
+        [{"script": r["script"], "run": r["id"], "reason": next((n.get("reason") for n in cfg.get("not_readonly_runs", [])
+                                                                 if n.get("tool_use_id") == r.get("action_tool_use_id")), "settings not_readonly")}
+         for r in runs if not r.get("readonly") and (os.path.basename(r["script"]) in ro_scripts or
+                                                     any(n.get("tool_use_id") == r.get("action_tool_use_id") for n in cfg.get("not_readonly_runs", [])))])
+    add("runs_not_replayed", "runs listed in the recording that never started (settings not_run, or the wrapper logged no start)",
+        [{"script": r["script"], "run": r["id"], "reason": r.get("not_run") or "no wrapper row and no exit code: the command stopped before it"}
+         for r in runs if r.get("not_run") or (r.get("via_wrapper") and r.get("wrapper_rows") == 0 and r.get("exit_code") is None)])
+    add("readonly_runs_skipped", "probes/checks (settings readonly_patterns) listed but not replayed",
+        [{"script": r["script"], "run": r["id"]} for r in runs if r.get("readonly")])
+    add("shell_steps", "shell commands of the builder replayed from settings (delete, move-merge, host-python), each matched "
+        "to its recorded command", [{"match": s["match"], "argv": s["argv"], "reason": s.get("reason")} for s in cfg.get("shell_replay", [])])
+    add("asset_drops", "store packs and downloads restored into the project where the builder copied them in",
+        [{"id": d["id"], "packs": [it.get("pack") or it.get("to") for it in d["items"]], "reason": d.get("reason")} for d in cfg.get("asset_drops", [])])
+    add("external_sources_rebuilt", "external source folders rebuilt from library archives (the builder's scratch folder is gone)",
+        [{"id": e["id"], "rebuild": e["rebuild"], "reason": e.get("role")} for e in cfg.get("external_sources", []) if e.get("rebuild")])
+    retried = [json.loads(l) for l in open(os.path.join(ctx.work, "runs.jsonl"), encoding="utf-8")] \
+        if os.path.exists(os.path.join(ctx.work, "runs.jsonl")) else []
+    add("runs_retried_after_engine_crash", "runs the engine crashed in before the script finished, run once more",
+        [{"run": x.get("run"), "script": x.get("script"), "retries": x["retried_after_engine_crash"]} for x in retried if x.get("retried_after_engine_crash")])
+    add("structure_dump_excluded", "folders left out of the structure dump (loading them crashes the editor, in the final commit too)",
+        cfg.get("dump_exclusions", []))
+    add("assets_failing_to_load", "assets that fail to load the same way in both projects (compared by class and error only)",
+        (report.get("assets") or {}).get("load_error_both", []))
+    return out
+
+
 def cmd_verify(cfg, a):
     ctx = runner.Ctx(cfg)
     final = ctx.ledger["final"]
@@ -416,6 +467,7 @@ def cmd_verify(cfg, a):
     for w in report["windows"]:
         w.pop("detail", None)
     report["verdict"] = verdict(report, ctx, counts)
+    report["deviations"] = deviations(ctx, report)
     runner.jdump(os.path.join(vdir, "report.json"), report)
     md = render_md(report, ctx)
     with open(os.path.join(vdir, "report.md"), "w", encoding="utf-8", newline="\n") as f:
@@ -423,6 +475,29 @@ def cmd_verify(cfg, a):
     print(md[:6000])
     print("VERDICT: %s" % ("PASS" if report["verdict"]["pass"] else "FAIL"))
     return 0 if report["verdict"]["pass"] else 1
+
+
+def render_deviations(devs):
+    """Markdown: every place the replay departs from the raw recording (also used by package.py's README)."""
+    L = ["## Deviations from the recording", ""]
+    if not devs:
+        return L + ["None: every step was replayed from the recording as recorded.", ""]
+    L += ["Everything below is done from the game's replay settings (`game.json`) rather than straight from the recorded",
+          "actions; each entry says why.", ""]
+    for d in devs:
+        L.append("### %s (%d)" % (d["kind"], len(d["items"])))
+        L += ["", d["what"] + (". Why: " + d["reason"] if d.get("reason") else "."), ""]
+        for it in d["items"][:60]:
+            if isinstance(it, dict):
+                L.append("- " + "; ".join("%s: %s" % (k, ", ".join(map(str, v)) if isinstance(v, list) else
+                                                      (v[:12] if k == "commit" and isinstance(v, str) else v))
+                                          for k, v in it.items() if v not in (None, "", [])))
+            else:
+                L.append("- %s" % it)
+        if len(d["items"]) > 60:
+            L.append("- ... %d more (report.json)" % (len(d["items"]) - 60))
+        L.append("")
+    return L
 
 
 def render_md(r, ctx):
@@ -440,6 +515,7 @@ def render_md(r, ctx):
             else:
                 L.append("- %s: %d file(s)" % (k, len(e)))
         L.append("")
+    L += render_deviations(r.get("deviations") or [])
     f = r["files"]
     L += ["## Files against the final commit", "",
           "| | identical | differs | missing |", "|---|---:|---:|---:|",
