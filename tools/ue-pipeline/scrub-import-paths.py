@@ -63,6 +63,34 @@ def byte_patterns():
     return out
 
 
+CHUNK = 8 * 1024 * 1024   # files are streamed: never read a whole (possibly multi-GB) file into memory
+
+
+def count_in_file(path, pats):
+    """{label: count} of each byte pattern in the file, case-insensitive (ASCII letters), streamed in CHUNK pieces.
+
+    The buffer is the previous chunk's last (longest pattern - 1) bytes plus the new chunk; only matches that end
+    inside the new chunk are counted, so a match is never counted twice and none is lost at a chunk boundary.
+    """
+    keep = max(len(b) for _l, b in pats) - 1
+    counts = dict((label, 0) for label, _b in pats)
+    tail = b''
+    with open(path, 'rb') as f:
+        while True:
+            chunk = f.read(CHUNK)
+            if not chunk:
+                break
+            buf = tail + chunk.lower()   # lower(): ASCII letters only; UTF-16LE NUL bytes are unaffected
+            for label, b in pats:
+                i = buf.find(b)
+                while i != -1:
+                    if i + len(b) > len(tail):
+                        counts[label] += 1
+                    i = buf.find(b, i + 1)
+            tail = buf[-keep:] if keep > 0 else b''
+    return dict((k, v) for k, v in counts.items() if v)
+
+
 def scan(content_dir):
     """Files under content_dir containing the user name in a path; {path: {pattern: count}}."""
     pats = byte_patterns()
@@ -73,12 +101,10 @@ def scan(content_dir):
                 continue
             p = os.path.join(root, fn)
             try:
-                with open(p, 'rb') as f:
-                    data = f.read().lower()   # ASCII letters only; UTF-16LE NUL bytes are unaffected
-            except OSError as e:
-                log('cannot read %s: %s' % (p, e))
+                found = count_in_file(p, pats)
+            except (OSError, MemoryError) as e:
+                log('UNREADABLE %s: %s' % (p, e))
                 continue
-            found = {label: data.count(b) for label, b in pats if b in data}
             if found:
                 hits[p] = found
     return hits
@@ -166,19 +192,37 @@ def patch_remaining(hits, content_dir, project_dir):
                             for c in name.encode('ascii')))
     w_full = re.compile(rb'([\\/]\x00)' + w.pattern + rb'([\\/]\x00)')
     rep_w = b''.join(bytes([c, 0]) for c in rep)
+    keep = 2 * (len(name) + 2) - 1   # longest match (UTF-16 \name\) minus one byte, carried to the next chunk
     patched = []
     for path in sorted(hits):
-        with open(path, 'rb') as f:
-            data = f.read()
-        new, n1 = a.subn(lambda m: m.group(1) + rep + m.group(2), data)
-        new, n2 = w_full.subn(lambda m: m.group(1) + rep_w + m.group(m.lastindex), new)
-        if (n1 or n2) and len(new) == len(data):
-            tmp = path + '.scrubtmp'
-            with open(tmp, 'wb') as f:
-                f.write(new)
+        # Streamed: each buffer is the carried tail plus the next chunk; the last `keep` bytes are held back so a
+        # match across the boundary is found whole next time. Replacements keep the length and no longer match.
+        tmp = path + '.scrubtmp'
+        n1 = n2 = 0
+        size_in = os.path.getsize(path)
+        with open(path, 'rb') as src, open(tmp, 'wb') as dst:
+            pending = b''
+            while True:
+                chunk = src.read(CHUNK)
+                buf = pending + chunk
+                while True:   # repeat: "/name/name/" shares a separator, one pass leaves the second
+                    buf, c1 = a.subn(lambda m: m.group(1) + rep + m.group(2), buf)
+                    buf, c2 = w_full.subn(lambda m: m.group(1) + rep_w + m.group(m.lastindex), buf)
+                    n1 += c1; n2 += c2
+                    if not (c1 or c2):
+                        break
+                if not chunk:
+                    dst.write(buf)
+                    break
+                dst.write(buf[:-keep]); pending = buf[-keep:]
+        if (n1 or n2) and os.path.getsize(tmp) == size_in:
             os.replace(tmp, path)
             patched.append({'file': os.path.relpath(path, project_dir), 'package': package_name(path, content_dir), 'ascii': n1, 'utf16': n2})
             log('PATCHED %s (%d ascii, %d utf-16 occurrences -> /%s/)' % (os.path.relpath(path, project_dir), n1, n2, rep.decode()))
+        else:
+            os.remove(tmp)
+            if n1 or n2:
+                log('UNHANDLED (rewrite would change the size, not patched): %s' % os.path.relpath(path, project_dir))
     return patched
 
 
