@@ -135,8 +135,11 @@ exception is the Opus **audio codec**, allowed by an exact allowlist of codec fo
 listed for review in `<name>.allowlisted.tsv` next to the package (path, kind, offset, word); inside the package `scrub-report.json` (`allowlisted_hits`) carries counts only, since the words would put the terms into its text. The account name blocks
 anywhere in a package as well, binaries included (user rule, 2026-10-11 ~22:15): UE assets keep their editor
 import-source paths, which must be rewritten in the project (the pipeline's `scrub-import-paths.py`) before packaging.
-Exact tokens that merely contain it are allowed: UE's `zh_XIANG` / `zh-xiang` locale ids and the place name
-`wuxiangshan…` in the Liaozhai text and asset names. `-PendingCleanBuild` tolerates it inside `Build/` only, producing a
+It is enforced as any substring, in text as in binaries
+(paths that lost their separators, such as a compiler error's `C:Users<name>Work…`, and the machine name
+`<NAME>-PC` are scrubbed by their own rules first). Exact tokens that merely contain it are allowed: UE's `zh_XIANG` /
+`zh-xiang` locale ids (also when glued into a locale table, recognised by the `zh_`/`zh-` prefix) and the Liaozhai
+place name `WuXiangShan…` (无相山) with its asset names. `-PendingCleanBuild` tolerates it inside `Build/` only, producing a
 package marked "pending clean build" (README banner, manifest `status`).
 
 How "opus" is matched (it is four letters and occurs by chance in compressed bytes and ordinary words such as

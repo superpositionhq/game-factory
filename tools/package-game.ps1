@@ -342,10 +342,19 @@ public static class Tools {
         return run;
     }
     static readonly Regex WordCh = new Regex(@"[A-Za-z0-9_./:\-]");
+    static readonly Regex EscLead = new Regex(@"^(?:u[0-9a-fA-F]{4}|[nrtfb])");
     static string WordAt(string s, int at, int len) {
         int a = at; while (a > 0 && at - a < 40 && WordCh.IsMatch(s[a - 1].ToString())) a--;
         int z = at + len; while (z < s.Length && z - at - len < 40 && WordCh.IsMatch(s[z].ToString())) z++;
-        return s.Substring(a, z - a);
+        string w = s.Substring(a, z - a);
+        if (a > 0 && s[a - 1] == '\\') { var m = EscLead.Match(w); if (m.Success && m.Length < at - a + 1) w = w.Substring(m.Length); }   // after a JSON escape (\n, <)
+        return w;
+    }
+    // UE's locale ids zh_<name> / zh-<name> contain the account name; they stay allowed when glued into a locale table
+    public static string LocaleNeedle = null;
+    static bool LocaleHit(string s, int at, int len) {
+        return LocaleNeedle != null && len == LocaleNeedle.Length && at >= 3 && string.Equals(s.Substring(at, len), LocaleNeedle, StringComparison.OrdinalIgnoreCase)
+            && (s[at - 3] == 'z' || s[at - 3] == 'Z') && (s[at - 2] == 'h' || s[at - 2] == 'H') && (s[at - 1] == '_' || s[at - 1] == '-');
     }
     public static List<Hit> Scan(string root, IList<string> rels, Regex banned, Regex leak, List<Hit> leaks, int maxPerFile,
                                  string[] needles, bool[] refuse, string[] category) {
@@ -370,6 +379,7 @@ public static class Tools {
                         if (m.Length == 4 && string.Equals(m.Value, "opus", StringComparison.OrdinalIgnoreCase)
                             && !OpusToken(m.Index > 0 ? s[m.Index - 1] : -1, s[m.Index], s[m.Index + 1], s[m.Index + 2], s[m.Index + 3],
                                           m.Index + 4 < s.Length ? s[m.Index + 4] : -1)) continue;
+                        if (LocaleHit(s, m.Index, m.Length)) { var lh = new Hit(); lh.Path = rel; lh.Kind = "allowed-text"; lh.Where = line; lh.Text = "zh_" + m.Value; mine.Add(lh); continue; }
                         if (Allow != null) {
                             string w = WordAt(s, m.Index, m.Length);
                             if (Allow.IsMatch(w)) { var ah = new Hit(); ah.Path = rel; ah.Kind = "allowed-text"; ah.Where = line; ah.Text = w; mine.Add(ah); continue; }
@@ -415,6 +425,13 @@ public static class Tools {
                             else { prev = (i >= 2 && buf[i - 1] == 0) ? buf[i - 2] : -1; next = (i + 9 < len && buf[i + 9] == 0) ? buf[i + 8] : -1; }
                             if (!OpusToken(prev, buf[i], buf[i + st], buf[i + 2 * st], buf[i + 3 * st], next)) continue;
                             if (PrintRun(buf, i, a8 ? 4 : 8, len, !a8) < 8) continue;
+                        }
+                        if (LocaleNeedle != null && category[k] == "username") {   // zh_<name> / zh-<name> locale ids, also glued in locale tables
+                            int st2 = a8 ? 1 : 2; int p3 = i - 3 * st2;
+                            if (p3 >= 0 && (buf[p3] | 0x20) == 'z' && (buf[p3 + st2] | 0x20) == 'h' && (buf[p3 + 2 * st2] == '_' || buf[p3 + 2 * st2] == '-')
+                                && (a8 || (buf[p3 + 1] == 0 && buf[p3 + st2 + 1] == 0 && buf[p3 + 2 * st2 + 1] == 0))) {
+                                AddAllowed(hits, rel, (a8 ? "allowed-ascii" : "allowed-utf16"), baseOff + i, category[k] + ":zh_" + LocaleNeedle); continue;
+                            }
                         }
                         // the word around the hit, decoded the same way it was found
                         string w = a8 ? BinWord8(buf, i, asc[k].Length, len) : BinWord16(buf, i, u16[k].Length, len);
@@ -691,6 +708,9 @@ $UserName = if ($env:USERNAME) { $env:USERNAME } else { 'xiang' }
 # start of a word, also right after a JSON escape such as \n (whose letter would otherwise hide the boundary)
 $WordStart = '(?:(?<=\\[nrtfb])|(?<=\\u[0-9a-fA-F]{4})|(?<![A-Za-z0-9_]))'
 $UserRx = "$WordStart$([regex]::Escape($UserName))(?![A-Za-z0-9_])"
+$MachineName = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { "$UserName-PC" }
+# enforcement: the account name as any substring (only the allowlisted exact tokens pass)
+$UserAnyRx = [regex]::Escape($UserName)
 $EmailRx = '(?:(?<=\\u[0-9a-fA-F]{4})|(?<=\\[nrtfb"/])|(?<![A-Za-z0-9._%+\\-]))(?!(?:git@(?:github|gitlab|bitbucket)\.(?:com|org)|noreply@github\.com)\b)' +
     '[A-Za-z0-9._%+-]+@(?!(?:[A-Za-z0-9-]+\.)*(?:example\.(?:com|org|net)|invalid|test|localhost)\b)(?:[A-Za-z0-9-]+\.)+' +
     '(?!(?:png|jpe?g|tga|gif|svg|webp|exr|hdr|bmp|dds|uasset|umap|wav|ogg|mp3|flac|fbx|glb|gltf|obj|json|jsonl|txt|md|ini|py|ps1|sh|cpp|h|cs|bin|zip)\b)[A-Za-z]{2,}\b'
@@ -721,6 +741,8 @@ $RulesHead = @(
 )
 # (git-identity rules are added once git.log has numbered the identities)
 $RulesTail = @(
+    @{ id = 'username'; scope = 'all'; match = "(?i)$([regex]::Escape($MachineName))"; replace = 'dev-pc' },   # the machine name contains it
+    @{ id = 'username'; scope = 'all'; match = "(?i)(?<=users[\\/:]{0,4})$([regex]::Escape($UserName))"; replace = 'dev' },   # paths that lost their separators (C:UsersNameWork...)
     @{ id = 'username'; scope = 'all'; match = "(?i)$UserRx"; replace = 'dev' },
     @{ id = 'email'; scope = 'all'; match = $EmailRx; replace = '<redacted-email>' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bclaude[-_ ]code\b'; replace = 'agent-tool' },
@@ -749,7 +771,7 @@ $OpusCodec = @(
     'opus/\d+(?:/\d+)?', 'audio/opus', 'A_OPUS'
 )
 $Locale = @('zh[-_]xiang',                                           # UE's Xiang Chinese locale ids
-    'wuxiangshan(?:[_.][\w.]*)?')                                     # 五象山, a place name in the Liaozhai text and its asset names
+    'wuxiangshan[\w.]*')                                              # 无相山 (WuXiangShan), a Liaozhai place name, and its asset names (WuXiangShanBoss1, ...)
 # the word may carry other segments joined by : or / (C++ scopes, paths): one segment must be an allowed form
 $OpusAllowText = '(?i)^(?:[\w./:-]*?[:/])?(?:' + (($OpusCodec + $Locale) -join '|') + ')(?:[:/.][\w./:-]*)?$'
 $OpusAllowBin = $OpusAllowText + '|(?i)^(?:[\w./:-]*?/)?opus$'   # binaries: also the bare codec name, exactly
@@ -769,6 +791,7 @@ function Set-ReviewedHits($HitList, [string]$Root) {
     }
 }
 [GameDeliverable.Tools]::Allow = New-Object System.Text.RegularExpressions.Regex($OpusAllowText)
+[GameDeliverable.Tools]::LocaleNeedle = $UserName
 [GameDeliverable.Tools]::AllowBin = New-Object System.Text.RegularExpressions.Regex($OpusAllowBin)
 $Banned = New-Object System.Text.RegularExpressions.Regex($BannedPattern, 'IgnoreCase')
 
@@ -783,7 +806,7 @@ $repo = if ($RepoPath) { (Resolve-Path $RepoPath).Path } else { $info.Dir }
 if ($Rescan) {
     $pkg = (Resolve-Path $Rescan).Path
     $terms = @(Invoke-Git $repo @('log', '--all', '--format=%an%n%cn') | ForEach-Object { "$_".Trim() } | Where-Object { $_ -and $_ -notmatch '(?i)^(claude|agent|dev_\d+)$' } | Sort-Object -Unique)
-    $parts = @($BannedPattern, 'claude', 'anthropic', 'opus', $UserRx, $EmailRx) + @($terms | ForEach-Object { "$WordStart$([regex]::Escape($_))(?![A-Za-z0-9])" })
+    $parts = @($BannedPattern, 'claude', 'anthropic', 'opus', $UserAnyRx, $EmailRx) + @($terms | ForEach-Object { "$WordStart$([regex]::Escape($_))(?![A-Za-z0-9])" })
     $rx = New-Object System.Text.RegularExpressions.Regex(($parts -join '|'), 'IgnoreCase')
     $rels = [string[]]@(Get-ChildItem $pkg -Recurse -File | ForEach-Object { $_.FullName.Substring($pkg.Length + 1).Replace('\', '/') })
     $lk = New-Object 'System.Collections.Generic.List[GameDeliverable.Hit]'
@@ -1375,7 +1398,7 @@ function Get-IdentityRx([string]$t) {
 }
 $idRules = @($identityTerms | Sort-Object { - $_[0].Length } | ForEach-Object { @{ id = 'git-identity'; scope = 'all'; match = (Get-IdentityRx $_[0]); replace = $_[1] } })
 $Rules = @($RulesHead) + $idRules + @($RulesTail)
-$enforcedParts = @($BannedPattern, 'claude', 'anthropic', 'opus', $UserRx, $EmailRx) +
+$enforcedParts = @($BannedPattern, 'claude', 'anthropic', 'opus', $UserAnyRx, $EmailRx) +
     @($identityTerms | ForEach-Object { (Get-IdentityRx $_[0]) -replace '^\(\?i\)', '' })
 $Enforced = New-Object System.Text.RegularExpressions.Regex(($enforcedParts -join '|'), 'IgnoreCase')
 $needles = $BinNeedles; $refuse = $BinRefuse; $cats = $BinCats
