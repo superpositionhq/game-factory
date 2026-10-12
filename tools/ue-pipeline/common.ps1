@@ -193,7 +193,12 @@ namespace UePipeline {
 '@
 }
 function Start-RecordingWantsGpuHold([string]$Label) { [UePipeline.FlagKeeper]::Start($RecordingWantsGpuFlag, "pid $PID $Label") }
-function Stop-RecordingWantsGpuHold { [UePipeline.FlagKeeper]::Stop() }
+# Also removes a flag this process did not write: a drainer that took over after a code change (hand-over) and found
+# the queue empty would otherwise leave the old drainer's flag, holding session GPU jobs back for 20 min.
+function Stop-RecordingWantsGpuHold {
+    [UePipeline.FlagKeeper]::Stop()
+    try { if (Test-Path $RecordingWantsGpuFlag) { Remove-Item -Force $RecordingWantsGpuFlag } } catch { }
+}
 
 function Enter-GpuSlot([string]$Label, [switch]$Recording) {
     $sem = New-Object System.Threading.Semaphore(1, 1, 'Global\ue-gpu-jobs')
