@@ -3,7 +3,12 @@
 Slug `duo-kart`, project/module `DuoKart`, Unreal Engine 5.3, Windows. Genre: local 2-player split-screen arcade
 kart racer with CPU racers, items, a 4-track cup, single versus races and (if time allows) a battle arena.
 
-Status: **design draft, waiting for the coordinator's OK** (2026-10-12). Nothing built yet.
+Status (2026-10-12 17:30): playable and recordable. Editor build OK; all four tracks and the frontend map built by
+committed scripts; AutoPlay S1-S3 run end to end and pass validate-run (tag `milestone/autoplay-3`, a93f2d2); framing
+gate passed (kart in the lower third of each half, ~42 deg vertical FOV, no shake); scrub-import-paths verify 0 hits.
+Recording request sent. Open: driver characters and kart pack (purchase list with the user; karts are kitbashed from
+Fantastic Village props meanwhile), UI kit textures (item badge and minimap frames are plain), music/SFX assets, pack
+trim, Shipping package.
 
 ## 1. The game in one paragraph
 
@@ -41,8 +46,9 @@ the last track, at the Great Vane on top of the valley, they find out what the r
 | Mistcellar | fog cellar | fog | grey lilac |
 
 - **The Turning Cup** is run at the end of each season. Everyone believes the winning guild picks the next season.
-- **The Great Vane**: a huge copper weathervane on the castle hill at the head of the valley, a swift with a long
-  kite tail. It has been stuck pointing at winter for a long time this year; that is why this Turning matters.
+- **The Great Vane**: a huge four-sailed vane on the castle tower at the head of the valley, like a windmill's sails,
+  each sail painted in one season's colours; the sail pointing up is the season. It has been stuck with the winter
+  sail up for a long time this year; that is why this Turning matters.
 - **The truth (late payoff)**: the guilds make the weather, but the **race turns the year**. Every windmill, pinwheel
   and mill wheel along the tracks is belted, roped and kite-lined up the valley to the Great Vane. Every kart that
   passes winds it a notch: the leader and the last kart alike. The winner never chose anything; the seasons always
@@ -86,8 +92,8 @@ keeps the field together. Players read it as kindness; the finale explains it.
    order, whoever won. Observant players notice; the finale confirms it.
 6. **The finale (track 4, the Great Vane)**: the road climbs past the belts and kite lines that come up from every
    mill in the valley into the vane's gearhouse. The lap gate sits under the vane; a ring of notches on the gate
-   lights up each time any kart passes through, all eight, not just the leader. On the last lap the vane creaks off
-   winter. Ada's banter here: "There. Hear it click?" / "Every lap counts. Even the last one."
+   lights up each time any kart passes through, all eight, not just the leader. On the last lap the sails creak round
+   off winter. Ada's banter here: "There. Hear it click?" / "Every lap counts. Even the last one."
 7. **Cup endings** (a short podium scene, then one line):
    - A human wins: their driver rings the vane bell; the vane's banner takes their guild colour; spring blossoms down
      the whole valley in the menu backdrop. Line: "Every kart turned it. Always has." (Ada)
@@ -251,6 +257,10 @@ spline, alternative shortcut splines, a racing line for the AI and respawn point
 
 | # | Track | Season / look | Layout | Shortcut | Hazards | Packs |
 |---|---|---|---|---|---|---|
+Generated layouts (`Scripts/gen_track_layouts_v3.py`): Blossom Lanes 1118 m (tightest R 20 m, barn cut saves 70 m),
+Sunmill Quay 1168 m (R 22 m, quay jump saves 36 m), Emberleaf Wood 952 m (R 20 m, hollow log saves 56 m), The Great
+Vane 1040 m (R 22 m, castle hall saves 70 m, open from lap 2). Laps take about 45-55 s, a 3-lap race about 2.5-3 min.
+
 | 1 | **Blossom Lanes** | spring: Provencal village lanes, lavender fields, orchards; frost thaws into blossom over the race | wide, forgiving figure of flowing bends through the village square and orchards, 1.1 km | hop the hay ramp through the Petal Works barn (cuts a hairpin) | sprinkler arcs from the bellows barns (wet patches that make karts skid), duck-pond splash off-road | Stylized Fantasy Provencal, Stylized Foliage, FANTASTIC Village |
 | 2 | **Sunmill Quay** | summer: canal town, market square, a big watermill; wet spring to bright noon | canal-side loop with two bridges and a market chicane, 1.2 km | ramp off the quay crates over the canal (needs speed) | the watermill sluice: a timed spray that pushes karts sideways; bouncy market awnings (jump) | FANTASTIC Village, Provencal, Good SKY |
 | 3 | **Emberleaf Wood** | autumn: the Rustle Mill in an old wood; green to red-gold, leaves falling | twisting forest road with a long drift valley and a climb to the mill, 1.25 km | the hollow-log tunnel (narrow, fast) | leaf drifts (slow, hide the road edge), swinging paint buckets at the mill (timed) | Stylized Forest Sample, Stylized Nature Pack (tinted), FANTASTIC Village (mill) |
@@ -350,19 +360,30 @@ the item badge a round wicker frame; the drift gauge three little vanes that spi
 **IP**: everything original. No look-alikes of any existing kart series' characters, items (no mystery boxes, shells,
 banana-like peels, leader-hunting item), tracks (no rainbow road), logos, HUD or sounds.
 
-## 12. Fab requests (prices pending from the asset scout; nothing is bought without the user's OK)
+## 12. Fab requests (sent to the coordinator 2026-10-12; nothing is bought without the user's OK)
 
-Asked the asset-scout session (2026-10-12) for listings with Personal prices, UE 5.3 support and ratings:
+From the asset scout's list (`side-session-notes/.../duo-kart-assets.md`), Personal tier:
 
-1. Stylized/cartoon karts (separate wheels, recolourable, 4+ variants). Without one, the fallback is a wooden
-   "workshop kart" kitbashed from FANTASTIC Village wheels, crates and planks (on-theme, but weaker).
-2. 8 cartoon drivers or a modular stylized character kit, retargetable to UE5 Manny.
-3. Stylized Niagara VFX (wind ribbons, puffs, sparkles, splashes, petals/leaves, speed lines).
-4. Stylized winter add-on for track 4 (snowy pines, snow ground).
-5. Upbeat cartoon racing music and cartoon SFX.
-6. Free OFL fonts Lilita One and Fredoka.
+| # | Listing | Price | Replaces / serves |
+|---|---|---|---|
+| 1 | Modular Stylized Character Creator - Adventurer (Polyart Studio) | $49.99 | the 8 guild drivers (Epic skeleton: our in-car loop and emotes retarget) |
+| 1b | alternative: Cartoon Animals Mega Bundle (Quantum Assets) | $39.99 | 9 animal drivers (the cast would become animal guild folk) |
+| 2 | Kart Racing Deluxe Pack (Monqo Studios) | $14.99 | kart chassis; trade dressing added from our packs. Fallback: Fantastic Village wheel/crate/plank workshop karts |
+| 3 | Niagara Wind VFX (Romain Coste) | $14.99 | drift wind ribbons, Crosswind, gust vents |
+| 4 | Niagara Stylized Smoke Vol. 1 (Gabriel Aguiar) | $14.99 | puffs, respawn swirl, Puff Cloud |
+| 5 | Stylized Splashes (VFXmania) | $19.99 | puddles, sprinklers, sluice |
+| 6 | Stylized Winter Forest (Bad Rhino) | $34.99 | world-aligned snow over our castle/forest meshes (The Great Vane) |
+| 7 | Casual Music Pack (Sidearm) | $4.99 | menu and race music |
+| 8 | Cartoon Games - Sound Effects (AD Sounds) | $4.99 | boings, slides, impacts |
+| 9 | BIG Casual Game SFX and Music Pack (cplomedia) | $19.99 | UI, pickups, win/lose stingers |
 
-The list with prices goes to the coordinator when the scout replies.
+| 10 | Low Poly Cartoon Umbrella (chroma3d) + Kite (MrSimple), FBX | $9.98 | the Brolly and Kite Line item props (cheapest pair $5.98: MrSimple Closed Umbrella + Kite) |
+
+Total $189.89 (with 1b instead of 1: $179.89). Fallback for the umbrella and kite: pack cloth/plank pieces. Free, already in the library: Kenney Toy Car / Racing kits
+(CC0), ithappy free characters.
+
+Pack folders: store packs keep their own top folder under `Content/` (e.g. `Content/StylizedProvencal/`) instead of
+`Content/Fab/<Pack>/`, because their internal references are path-based (the same approach rally-racer used).
 
 ## 13. Build order
 
