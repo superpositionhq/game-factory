@@ -440,6 +440,26 @@ def deviations(ctx, report):
     return out
 
 
+def cmd_report(cfg, a):
+    """Refresh an existing verification report without verifying again (the replay project may be gone): recompute
+    the deviations from the current settings and re-render report.md. Verdict, criteria and counts stay as verified."""
+    ctx = runner.Ctx(cfg)
+    vdir = os.path.join(ctx.work, "Verification")
+    report = runner.jload(os.path.join(vdir, "report.json"), None)
+    if not report:
+        raise SystemExit("no Verification/report.json to refresh: run verify")
+    add_project_path_rule(cfg)
+    report["deviations"] = deviations(ctx, report)
+    report["report_refreshed"] = runner.now()
+    runner.jdump(os.path.join(vdir, "report.json"), report)
+    with open(os.path.join(vdir, "report.md"), "w", encoding="utf-8", newline="\n") as f:
+        f.write(render_md(report, ctx))
+    print("report refreshed: %d deviation kinds; verdict %s (as verified %s)" % (
+        len(report["deviations"]), "PASS" if report["verdict"]["pass"] else "FAIL", report.get("time")))
+    print("VERDICT: %s" % ("PASS" if report["verdict"]["pass"] else "FAIL"))
+    return 0 if report["verdict"]["pass"] else 1
+
+
 def cmd_verify(cfg, a):
     ctx = runner.Ctx(cfg)
     final = ctx.ledger["final"]
