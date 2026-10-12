@@ -66,7 +66,7 @@ Rules:
   leak-scanned for the same (and the leak scan stays warn-only here; the packager blocks).
 - Datasets follow layout v1.1 (docs/dataset-layout-v1.json): README.md, git.log, workflow.jsonl, UEProject/,
   ReplayScripts/, Gameplay/<game>_S<n>.mp4, Screenshots/, Build/, manifest.json; each game repo's Dataset/ folder is
-  the same minus UEProject/ and Build/. Your outputs feed Gameplay/ (gameplay.mp4 per ok/warn run) and Screenshots/
+  the same minus UEProject/ and Build/; the full dataset is games\<slug>\Dataset.zip (the same name for every game; Dataset.pending.zip while ReplayScripts/ is missing), made by tools/package-dataset.ps1 and git-ignored (/Dataset.zip, /Dataset.pending.zip, /.dataset/), never committed; the committed Dataset/ is the same minus UEProject/ and Build/. Your outputs feed Gameplay/ (gameplay.mp4 per ok/warn run) and Screenshots/
   (stills): keep them in that shape.
 - Don't edit game repos. Contract or drop-in changes go to the coordinator, who forwards them; version them
   (ContractVersion), keep older drop-ins working, and write a rollout note into the shared notes folder.

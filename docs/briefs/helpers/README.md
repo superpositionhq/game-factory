@@ -12,7 +12,7 @@ not to build it again.
 |---|---|---|---|---|
 | [ue-pipeline.md](ue-pipeline.md) | build, package, smoke test and AutoPlay gameplay recording (`tools/ue-pipeline/`), AutoPlay contract | first, before or alongside the game sessions; prove the pipeline on the machine before any game is playable | Opus, high | verified pipeline (test bundle validates), fixes, contract rollouts, machine measurements in `docs/ue-pipeline.md` |
 | [asset-scout.md](asset-scout.md) | Fab / CC0 art, animation, audio, UI and font resources (`machine/asset-scout/`) | before or alongside the first game sessions; first job on a new machine is rebuilding the asset library | Opus, medium | `asset-library\` packs + `catalog.jsonl` + `scout-log.jsonl`, `docs/asset-library.md`, hand-over per game, paid shortlist for the user |
-| [packager.md](packager.md) | deliverables and dataset layout v1.1 zips (`tools/package-game.ps1`, `tools/package-dataset.ps1`) | once a game has a release commit, a pipeline Shipping build of it and validated runs per scenario | Opus, high | `deliverables\<game>\` packages (full + nostore), `deliverables\dataset\<game>\` zips, the repo's `Dataset/` for the game session to commit, status table |
+| [packager.md](packager.md) | deliverables and dataset layout v1.1 zips (`tools/package-game.ps1`, `tools/package-dataset.ps1`) | once a game has a release commit, a pipeline Shipping build of it and validated runs per scenario | Opus, high | `deliverables\<game>\` packages, `games\<game>\Dataset.zip` (git-ignored), the repo's `Dataset/` for the game session to commit, status table |
 | [creation-replay.md](creation-replay.md) | Unreal creation replay, headless and verified (`tools/ue-replay/`) | once a game has a release commit and its `.recording` logs on the machine | Opus, high (xhigh for a new game's first run) | `ReplayScripts/` with `Verification/`, the game's `ReplayConfig.json`, results in the game's docs |
 
 Not templated: the machine-bootstrap helper ([../original/helper-machine-bootstrap.md](../original/helper-machine-bootstrap.md)),
@@ -39,5 +39,5 @@ Helper-specific placeholders are listed in each file.
   coordinator enqueues recordings and schedules long captures.
 - Never write the names Superposition / game-factory into anything that ships inside a game.
 - Deliverable copies are scrubbed of user paths, the user name, and Claude/Anthropic/Opus mentions.
-- Datasets follow layout v1.1 ([../../dataset-layout-v1.json](../../dataset-layout-v1.json)).
+- Datasets follow layout v1.1 ([../../dataset-layout-v1.json](../../dataset-layout-v1.json)); the full dataset is games\<slug>\Dataset.zip (the same name for every game; Dataset.pending.zip while ReplayScripts/ is missing), made by tools/package-dataset.ps1 and git-ignored (/Dataset.zip, /Dataset.pending.zip, /.dataset/), never committed; the committed Dataset/ is the same minus UEProject/ and Build/.
 - Results go to the coordinator with the commit sha; blockers go to the coordinator and the shared notes.

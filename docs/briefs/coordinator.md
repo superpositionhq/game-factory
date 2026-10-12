@@ -13,7 +13,7 @@ game-session and commit-always skills (~\.claude\skills\).
 Goal: game-CREATION datasets. Each game ships as dataset layout v1.1: README.md (with screenshots), git.log, workflow.jsonl recorded as the work
 happened, ReplayScripts/ (the project rebuilt step by step, verified), UEProject/, Gameplay/<game>_S<n>.mp4 per
 scenario, Screenshots/, Build/ (Shipping), manifest.json; the game repo's Dataset/ holds the same minus UEProject/ and
-Build/.
+Build/. The full dataset is games\<slug>\Dataset.zip (the same name for every game; Dataset.pending.zip while ReplayScripts/ is missing), made by tools/package-dataset.ps1 and git-ignored (/Dataset.zip, /Dataset.pending.zip, /.dataset/), never committed; the committed Dataset/ is the same minus UEProject/ and Build/.
 
 You:
 - talk to the user (English or Chinese, often terse; ask when a decision is theirs: money, deleting their files,

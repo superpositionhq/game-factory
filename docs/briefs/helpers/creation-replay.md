@@ -72,7 +72,8 @@ Rules:
   commit messages, never model-written; derived ops say so (status derived_from_replayed_script_run).
 - Datasets follow layout v1.1: README.md, git.log, workflow.jsonl, UEProject/, ReplayScripts/,
   Gameplay/<game>_S<n>.mp4, Screenshots/, Build/, manifest.json; a repo's Dataset/ = the same minus UEProject/ and
-  Build/. Your ReplayScripts/ turns a game's .pending zips complete.
+  Build/. The full zip is games\<slug>\Dataset.zip (git-ignored); your ReplayScripts/ turns its
+  Dataset.pending.zip into Dataset.zip.
 - Never commit in a game repo, and never modify its LFS store or its .recording files (ReplayConfig.json is written
   into its working tree; the game's session commits it). The replay
   project is a `git clone --shared` with lfs.storage pointing at the game's own object store (nothing downloaded).

@@ -273,10 +273,8 @@ recorded on `937ec12`).
 - Recordings: AutoPlay v1.4, scenarios 1-3 recorded, validated and won (0 audio gaps, ~60 fps); tag
   `milestone/autoplay-3`.
 - Package: `deliverables/tower-defense/tower-defense_ff5f1eea`, complete.
-- Dataset (layout v1.1): `deliverables/dataset/tower-defense/tower-defense.pending.zip` (10.26 GB; the earlier
-  `_nostore` zip is no longer produced), scan PASS; repo `Dataset/` committed (3db154b). **Pending only the
-  creation replay** (`ReplayScripts/`); then rerun `tools/package-dataset.ps1
-  tower-defense -Package <package> -ReplayScripts <d>`.
+- Dataset (layout v1.1): `games\tower-defense\Dataset.zip` (git-ignored), complete with `ReplayScripts/` (creation
+  replay verified); repo `Dataset/` committed.
 - Repo: `superpositionhq/game-tower-defense`, everything tracked (store packs in LFS), README with screenshots.
 - Known: intermittent first-frame GPU hang in editor `-game` launches (mitigated with `r.RDG.AsyncCompute=0`, never seen
   in packaged runs); Good SKY copied but not placed.

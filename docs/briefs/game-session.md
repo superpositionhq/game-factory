@@ -19,7 +19,8 @@ brief stays short and the rules stay in one place. The originals this was distil
 Background (from the session that started this one):
 game-factory ({{GF_ROOT}}\game-factory, private repo superpositionhq/game-factory: read CLAUDE.md, README.md,
 AGENTS.md, docs/plan.md, docs/autoplay-contract.md, docs/ue-pipeline.md) produces game-CREATION data: how
-a game is built step by step, recorded as it happens, packaged as a dataset (layout v1.1). Other sessions are building UE 5.3 games right
+a game is built step by step, recorded as it happens, packaged as a dataset (layout v1.1: Dataset/ committed in the game repo, the full
+Dataset.zip git-ignored next to it). Other sessions are building UE 5.3 games right
 now in {{GF_ROOT}}\games\<slug> ({{SIBLINGS}}); read their docs in game-factory/docs/games/ for conventions and
 solved problems. The asset-scout session ({{ASSET_SCOUT_ID}}) keeps the asset library in {{GF_ROOT}}\asset-library\
 (catalogue: game-factory/docs/asset-library.md) and hands each game its packs. Everything shares one Windows PC
@@ -32,7 +33,8 @@ never on; premium art from the bought/downloaded Fab packs and animation packs, 
 embedded in play, gentle camera; never the names Superposition or game-factory anywhere in the game; one
 workflow.jsonl row per operation at the moment you act; commit after every meaningful step and never end a turn with
 uncommitted work; LFS for every binary; never enqueue recordings yourself (send me the commit + framing screenshots);
-push only when I say. Blockers: write them in your design doc, message me once, carry on.
+push only when I say. Your game's full dataset is {{GF_ROOT}}\games\{{SLUG}}\Dataset.zip, made by the packager:
+keep /Dataset.zip, /Dataset.pending.zip and /.dataset/ in your .gitignore and never commit them; Dataset/ you commit. Blockers: write them in your design doc, message me once, carry on.
 
 Task:
 Build "{{GAME_TITLE}}", {{GENRE_LINE}}, in Unreal Engine 5.3, recording its creation as you go.
