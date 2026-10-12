@@ -1,16 +1,19 @@
-"""Remove the user's profile path from a UE 5.3 project's editor-only import-source paths.
+"""Remove the user name and the agent / vendor names from a UE 5.3 project's assets (the packager's blocking terms).
 
-Assets remember where they were imported from: AssetImportData (textures, static/skeletal meshes, sounds, animations,
-data tables, ...) and FontFace.SourceFilename. Imports made from C:\\Users\\<name>\\... keep that path in the .uasset
-files of the project (the cook strips AssetImportData, but the project/source files we ship keep it; FontFace's
-SourceFilename even reaches the cooked font).
+Assets remember where they were imported from and who made them: AssetImportData (textures, static/skeletal meshes,
+sounds, animations, data tables, ...), FontFace.SourceFilename, Interchange node ids, a Level Sequence's
+MovieSceneMetaData author (the OS user name), a MetaSound's author (e.g. "Claude (agent)" from the script that made
+it). Imports made from C:\\Users\\<name>\\... keep that path in the .uasset files of the project (the cook strips
+AssetImportData, but the project/source files we ship keep it; FontFace's SourceFilename even reaches the cooked font).
 
-Driven by a byte scan: every Content/**/*.uasset|umap|uexp is searched for \\<name>\\ and /<name>/ (case-insensitive,
-ASCII and UTF-16LE). Only packages with hits are loaded. In each, every import-source filename under the user profile
-becomes
-  - a path inside the project, if the file is inside the project (stored package-relative by UE), or
-  - just the file name otherwise.
-Packages are saved only when something changed; anything still matching afterwards is reported as unhandled.
+Driven by a byte scan (terms(): the user name as a substring anywhere except the packager's allowlist, "claude",
+"anthropic"; case-insensitive, ASCII and UTF-16LE, streamed). Only packages with hits are loaded. In each:
+  - every import-source filename under the user profile becomes a path inside the project, if the file is inside the
+    project (stored package-relative by UE), or just the file name otherwise;
+  - a Level Sequence author containing the user name becomes "dev".
+Packages are saved only when something changed; anything still matching afterwards is reported, and --patch-remaining
+rewrites what is left in path segments and author fields (same length); a match anywhere else (e.g. story text) stays
+UNHANDLED for a person.
 
 Run headless (no GPU, no game window; the editor target of the project must be built):
 
@@ -19,8 +22,8 @@ Run headless (no GPU, no game window; the editor target of the project must be b
   modes: (default) dry run: report what would change
          --apply    change and save the assets
          --patch-remaining  after --apply, in a new run: same-length byte rewrite of what no editor API can reach
-                    (Interchange node ids, see patch_remaining), then load-test every patched package
-         --verify   byte scan only: list remaining hits (expect 0; engine ids such as zh_XIANG don't match path patterns)
+                    (Interchange node ids, MetaSound authors; see patch_remaining), then load-test every patched package
+         --verify   byte scan only: list remaining hits (expect 0; the packager's allowlist zh_XIANG / zh-xiang / wuxiangshan is skipped)
   options: --original-project-dir=<dir>  also treat files under <dir> as "inside the project" (when running on a copy
                                           of a project whose assets were imported in its original location)
            --report=<file.json>          write the per-asset report as JSON (default: <Project>/Saved/scrub-import-paths.json)
@@ -54,41 +57,123 @@ def user_profile():
     return os.path.normcase(os.path.normpath(os.environ.get('USERPROFILE') or os.path.join('C:\\Users', os.environ.get('USERNAME', ''))))
 
 
-def byte_patterns():
-    name = os.environ.get('USERNAME', '').lower()
+# ---- what must not stay in a project's assets (the packager's blocking terms that occur in asset data) ----------------
+# The user name as a substring anywhere (allowlist: the engine's zh_XIANG / zh-xiang locale ids and the place name
+# wuxiangshan, as in the packager), and the agent / vendor names. Each is matched case-insensitively in ASCII and
+# UTF-16LE. A match is rewritten (same length, see patch_remaining) only in a safe context: a path segment (/x/, \x\,
+# -x-: import paths, Interchange node ids, temp paths) or a whole serialized FString (an author field); anything else,
+# e.g. the name inside story text, is reported as UNHANDLED for a person to fix.
+
+class Term(object):
+    def __init__(self, label, text, rep, allow_prefixes=()):
+        self.label, self.text, self.rep, self.allow = label, text, rep, allow_prefixes
+
+
+def terms():
+    name = os.environ.get('USERNAME', '')
     out = []
-    for text in ('\\%s\\' % name, '/%s/' % name):
-        out.append((text, text.encode('ascii')))
-        out.append((text + ' (utf-16)', text.encode('utf-16-le')))
+    if name:
+        out.append(Term('username', name, placeholder(len(name)), ('zh_', 'zh-', 'wu')))
+    out += [Term('agent-name', 'Claude (agent)', 'Developer team'), Term('agent-name', 'claude', 'helper'),
+            Term('vendor-name', 'anthropic', 'assistant')]
     return out
 
 
+def byte_patterns():
+    """[(label, width, lower pattern bytes, term)] for both encodings, longest first."""
+    pats = []
+    for tm in terms():
+        for width, enc in ((1, 'ascii'), (2, 'utf-16-le')):
+            pats.append(('%s%s' % (tm.label, ' (utf-16)' if width == 2 else ''), width, tm.text.lower().encode(enc), tm))
+    pats.sort(key=lambda x: -len(x[2]))
+    return pats
+
+
 CHUNK = 8 * 1024 * 1024   # files are streamed: never read a whole (possibly multi-GB) file into memory
+CTX_BEFORE, CTX_AFTER = 4, 2
+
+
+def _seps(width):
+    return [c.encode('ascii' if width == 1 else 'utf-16-le') for c in ('/', '\\', '-')]
+
+
+def _context(low, i, nb, width, n_chars):
+    """'path', 'fstring' or None for a match at low[i:i+nb]."""
+    before, after = low[max(0, i - width):i], low[i + nb:i + nb + width]
+    seps = _seps(width)
+    if before in seps and after in seps:
+        return 'path'
+    if i >= 4:
+        ln = int.from_bytes(low[i - 4:i], 'little', signed=True)
+        if (width == 1 and ln == n_chars + 1 and after == b'\x00') or (width == 2 and ln == -(n_chars + 1) and after == b'\x00\x00'):
+            return 'fstring'
+    return None
+
+
+def _matches(low, lo, hi, pats, claimed):
+    """Matches starting in [lo, hi) of `low`: [(i, nb, label, width, term, context)], longest terms first, skipping
+    allowlisted ones and positions inside an earlier (longer) match of the same buffer (claimed)."""
+    out = []
+    for label, width, b, tm in pats:
+        i = low.find(b, lo)
+        while i != -1 and i < hi:
+            enc = 'ascii' if width == 1 else 'utf-16-le'
+            allow = any(low[max(0, i - len(a) * width):i] == a.encode(enc) for a in tm.allow)
+            if not allow and not any(s <= i < e for s, e in claimed):
+                out.append((i, len(b), label, width, tm, _context(low, i, len(b), width, len(tm.text))))
+                claimed.append((i, i + len(b)))
+            i = low.find(b, i + 1)
+    return out
+
+
+def _stream(path, pats, patch_to=None):
+    """Walk the file in CHUNK pieces; returns ({label: count}, unpatchable count, rewritten count). With patch_to,
+    writes the file with every safe-context match rewritten (same length) to that path. Each buffer is the carried
+    tail plus the next chunk; matches starting before `lo` were handled in the previous buffer, matches starting past
+    `cutoff` wait for the next one (so every match has its context bytes and is handled exactly once)."""
+    maxlen = max(len(b) for _l, _w, b, _t in pats)
+    counts, unpatchable, rewritten = {}, 0, 0
+    dst = open(patch_to, 'wb') if patch_to else None
+    try:
+        with open(path, 'rb') as f:
+            pending = b''
+            lo = 0
+            while True:
+                chunk = f.read(CHUNK)
+                eof = not chunk
+                buf = bytearray(pending + chunk)
+                low = bytes(buf).lower()   # lower(): ASCII letters only; UTF-16LE NUL bytes are unaffected
+                cutoff = len(buf) if eof else max(lo, len(buf) - (maxlen + CTX_AFTER))
+                for i, nb, label, width, tm, ctx in _matches(low, lo, cutoff, pats, []):
+                    counts[label] = counts.get(label, 0) + 1
+                    if ctx is None:
+                        unpatchable += 1
+                        continue
+                    if dst is not None:
+                        rep = tm.rep[:1].upper() + tm.rep[1:] if bytes(buf[i:i + 1]).isupper() else tm.rep
+                        buf[i:i + nb] = rep.encode('ascii' if width == 1 else 'utf-16-le')
+                        rewritten += 1
+                if eof:
+                    if dst is not None:
+                        dst.write(buf)
+                    break
+                cut = max(0, cutoff - CTX_BEFORE)
+                if dst is not None:
+                    dst.write(buf[:cut])
+                pending = bytes(buf[cut:])
+                lo = cutoff - cut
+    finally:
+        if dst is not None:
+            dst.close()
+    return counts, unpatchable, rewritten
 
 
 def count_in_file(path, pats):
-    """{label: count} of each byte pattern in the file, case-insensitive (ASCII letters), streamed in CHUNK pieces.
-
-    The buffer is the previous chunk's last (longest pattern - 1) bytes plus the new chunk; only matches that end
-    inside the new chunk are counted, so a match is never counted twice and none is lost at a chunk boundary.
-    """
-    keep = max(len(b) for _l, b in pats) - 1
-    counts = dict((label, 0) for label, _b in pats)
-    tail = b''
-    with open(path, 'rb') as f:
-        while True:
-            chunk = f.read(CHUNK)
-            if not chunk:
-                break
-            buf = tail + chunk.lower()   # lower(): ASCII letters only; UTF-16LE NUL bytes are unaffected
-            for label, b in pats:
-                i = buf.find(b)
-                while i != -1:
-                    if i + len(b) > len(tail):
-                        counts[label] += 1
-                    i = buf.find(b, i + 1)
-            tail = buf[-keep:] if keep > 0 else b''
-    return dict((k, v) for k, v in counts.items() if v)
+    """{label: count} of blocked terms in the file (streamed); key 'unpatchable' counts matches outside safe contexts."""
+    counts, unpatchable, _ = _stream(path, pats)
+    if unpatchable:
+        counts['unpatchable'] = unpatchable
+    return counts
 
 
 def scan(content_dir):
@@ -159,6 +244,20 @@ def fix_asset(asset, pkg, project_dir, original_dirs, apply):
             changes.append({'kind': 'AssetImportData', 'index': i, 'old': f, 'new': new_path})
             if apply:
                 aid.scripted_add_filename(new_path, i, labels[i] if i < len(labels) else '')
+    # Level Sequences store their creator (the OS user name) as MovieSceneMetaData Author, also as an asset registry tag.
+    if hasattr(unreal, 'LevelSequence') and isinstance(asset, unreal.LevelSequence):
+        try:
+            md = asset.find_meta_data_by_class(unreal.MovieSceneMetaData)
+        except Exception:
+            md = None
+        name = os.environ.get('USERNAME', '').lower()
+        author = str(md.get_author()) if md is not None else ''
+        if md is not None and name and name in author.lower():
+            changes.append({'kind': 'MovieSceneMetaData.Author', 'index': 0, 'old': author, 'new': 'dev'})
+            if apply:
+                asset.modify()
+                md.modify()
+                md.set_author('dev')
     if isinstance(asset, unreal.FontFace):
         sf = str(asset.get_editor_property('source_filename') or '')
         if sf and under(sf, profile):
@@ -176,53 +275,31 @@ def placeholder(n):
 
 
 def patch_remaining(hits, content_dir, project_dir):
-    """Same-length byte rewrite of \\<name>\\ and /<name>/ (ASCII and UTF-16LE) in the files still matching.
+    """Same-length rewrite of the blocked terms in safe contexts (see terms()) in the files still matching.
 
-    For data no editor API can rewrite: Interchange-imported assets (UInterchangeAssetImportData) keep the source path
-    inside node unique ids (NodeUniqueID, a VisibleAnywhere property Python can't set, and the cached node container),
-    e.g. "Factory_C:/Users/<name>/.../T.png". Keeping the length keeps every FString length and package offset valid;
-    UE5 discards the name map's serialized hashes on load. Must run before the packages are loaded in this process.
+    For data no editor API can rewrite: Interchange-imported assets keep the source path inside node unique ids
+    (NodeUniqueID, a VisibleAnywhere property Python can't set, and the cached node container), e.g.
+    "Factory_C:/Users/<name>/.../T.png"; MetaSound documents keep their author ("Claude (agent)") with no script API in
+    5.3. Keeping the length keeps every FString length and package offset valid; UE5 discards the name map's serialized
+    hashes on load. Must run before the packages are loaded in this process.
     """
-    import re
-    name = os.environ.get('USERNAME', '')
-    rep = placeholder(len(name)).encode('ascii')
-    a = re.compile(rb'([\\/])' + re.escape(name.encode('ascii')) + rb'([\\/])', re.IGNORECASE)
-    w = re.compile(b''.join(re.escape(bytes([c, 0])) if not chr(c).isalpha() else
-                            b'[' + bytes([ord(chr(c).lower()), ord(chr(c).upper())]) + b']\x00'
-                            for c in name.encode('ascii')))
-    w_full = re.compile(rb'([\\/]\x00)' + w.pattern + rb'([\\/]\x00)')
-    rep_w = b''.join(bytes([c, 0]) for c in rep)
-    keep = 2 * (len(name) + 2) - 1   # longest match (UTF-16 \name\) minus one byte, carried to the next chunk
+    pats = byte_patterns()
     patched = []
     for path in sorted(hits):
-        # Streamed: each buffer is the carried tail plus the next chunk; the last `keep` bytes are held back so a
-        # match across the boundary is found whole next time. Replacements keep the length and no longer match.
         tmp = path + '.scrubtmp'
-        n1 = n2 = 0
         size_in = os.path.getsize(path)
-        with open(path, 'rb') as src, open(tmp, 'wb') as dst:
-            pending = b''
-            while True:
-                chunk = src.read(CHUNK)
-                buf = pending + chunk
-                while True:   # repeat: "/name/name/" shares a separator, one pass leaves the second
-                    buf, c1 = a.subn(lambda m: m.group(1) + rep + m.group(2), buf)
-                    buf, c2 = w_full.subn(lambda m: m.group(1) + rep_w + m.group(m.lastindex), buf)
-                    n1 += c1; n2 += c2
-                    if not (c1 or c2):
-                        break
-                if not chunk:
-                    dst.write(buf)
-                    break
-                dst.write(buf[:-keep]); pending = buf[-keep:]
-        if (n1 or n2) and os.path.getsize(tmp) == size_in:
+        counts, unpatchable, n = _stream(path, pats, patch_to=tmp)
+        if n and os.path.getsize(tmp) == size_in:
             os.replace(tmp, path)
-            patched.append({'file': os.path.relpath(path, project_dir), 'package': package_name(path, content_dir), 'ascii': n1, 'utf16': n2})
-            log('PATCHED %s (%d ascii, %d utf-16 occurrences -> /%s/)' % (os.path.relpath(path, project_dir), n1, n2, rep.decode()))
+            patched.append({'file': os.path.relpath(path, project_dir), 'package': package_name(path, content_dir),
+                            'rewritten': n, 'left_unpatchable': unpatchable, 'terms': counts})
+            log('PATCHED %s (%d rewritten%s)' % (os.path.relpath(path, project_dir), n,
+                ', %d left: not in a path or author field' % unpatchable if unpatchable else ''))
         else:
             os.remove(tmp)
-            if n1 or n2:
-                log('UNHANDLED (rewrite would change the size, not patched): %s' % os.path.relpath(path, project_dir))
+            if unpatchable:
+                log('UNHANDLED %s: %d matches not in a path or author field (fix by hand): %s' % (
+                    os.path.relpath(path, project_dir), unpatchable, json.dumps(counts)))
     return patched
 
 

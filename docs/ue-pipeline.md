@@ -361,13 +361,15 @@ messages, builds, logs, in-game files, anything passed to the game process). Rec
   in scripts, `workflow.jsonl` and `assets.manifest.json`, `...\game-factory\...` paths, v1 drop-in copies, and the
   author e-mail `dev_02@game-factory.local` (rally-racer).
 
-## scrub-import-paths.py (user path in a project's import data)
+## scrub-import-paths.py (user name and agent names in a project's assets)
 
 Assets remember the file they were imported from. Imports made under `C:\Users\<name>\` leave that path in the
 project's `.uasset` files: in `AssetImportData` (textures, meshes, sounds, animations, data tables), in
 `FontFace.SourceFilename` (which even reaches the cooked font), and in the node ids of Interchange-imported assets
 (`UInterchangeAssetImportData`, e.g. `Factory_C:/Users/<name>/.../T.png`). The cook strips import data, but the
-project files we ship keep it. Run it on a game's working tree (editor target built, editor closed), then commit:
+project files we ship keep it. Assets also keep who made them: a Level Sequence's `MovieSceneMetaData` author (the OS
+user name) and a MetaSound's author (e.g. `Claude (agent)` from the script that created it). The tool removes every
+term the packager blocks in asset data. Run it on a game's working tree (editor target built, editor closed), then commit:
 
 ```
 "C:\Program Files\Epic Games\UE_5.3\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" <Project>.uproject -run=pythonscript -script="%GF_ROOT%/game-factory/tools/ue-pipeline/scrub-import-paths.py --apply" -nullrhi -unattended -nopause -nosplash -stdout -AllowStdOutLogVerbosity
@@ -379,23 +381,27 @@ Use forward slashes inside `-script="..."` (the commandlet un-escapes backslashe
 to LogPython (stdout with `-AllowStdOutLogVerbosity`, always in `Saved/Logs/<Project>.log`), the report to
 `Saved/scrub-import-paths.json` (`--report=<file>` elsewhere). Runs through ue-heavy (CPU slot); no GPU, no window.
 
-- It byte-scans `Content/**/*.uasset|umap|uexp` for `\<name>\` and `/<name>/` (case-insensitive, ASCII and UTF-16LE)
-  and loads only packages with hits. Default is a dry run; `--apply` saves only changed packages.
+- It byte-scans `Content/**/*.uasset|umap|uexp` (streamed in 8 MB chunks) for the user name as a substring anywhere
+  (allowlist as the packager: `zh_XIANG`, `zh-xiang`, `wuxiangshan`), `claude` and `anthropic`, case-insensitive,
+  ASCII and UTF-16LE, and loads only packages with hits. Default is a dry run; `--apply` saves only changed packages.
 - `AssetImportData`: each source file under the user profile becomes a path inside the project if it is there
   (stored package-relative by UE; `--original-project-dir=<dir>` also counts files under the project's original
   location when running on a copy), else just the file name. Written with `ScriptedAddFilename`, which re-reads the
   file's timestamp/MD5 (a bare name has none: reimport then asks for the file).
 - `FontFace.SourceFilename`: same mapping, written with `notify_mode=NEVER` (its `PostEditChangeProperty` flushes Slate's
   font cache and asserts in a commandlet) and saved with `save_loaded_asset`.
-- `--patch-remaining` (opt-in, its own run before anything loads): Interchange node ids can't be set from Python
-  (`NodeUniqueID` is read-only, the node container is a cached byte blob), so the remaining `\<name>\` / `/<name>/`
-  are rewritten in place to the same length (`/user_/`): FString lengths and package offsets stay valid, and UE5
-  discards the name map's stored hashes. Each patched package is then load-tested (`load_failures` in the report).
-- `--verify`: byte scan only. Bare `xiang` also matches the engine's Xiang Chinese locale ids (`zh_XIANG`) in some
-  binaries, never in Content; the path patterns don't.
+- Level Sequence author: `MovieSceneMetaData.SetAuthor("dev")` when it contains the user name.
+- `--patch-remaining` (opt-in, its own run before anything loads): what no editor API reaches (Interchange node ids:
+  `NodeUniqueID` is read-only and the node container a cached byte blob; MetaSound authors: no script API in 5.3) is
+  rewritten in place to the same length, so FString lengths and package offsets stay valid (UE5 discards the name
+  map's stored hashes). Only in a safe context: a path segment (`/x/`, `\x\`, `-x-`, e.g. `C--Users-<name>-Work`,
+  `Temp/claude/`) or a whole serialized FString (an author field). User name -> `user_`, `claude` -> `helper`,
+  `Claude (agent)` -> `Developer team`, `anthropic` -> `assistant`. A match anywhere else (e.g. a name in story text)
+  is reported UNHANDLED for a person. Each patched package is then load-tested (`load_failures` in the report).
+- `--verify`: byte scan only; expect `verify: 0 hits in 0 files`.
 
 Tested on a scratch clone of tower-defense 3309e7b (`C:\UEB\scratch`; the game's tree untouched): 56 hits in 16 files
-â†’ 4 FontFaces fixed by `--apply` (`C:/Users/<name>/Work/games/tower-defense/Saved/Staging/FF_*.ttf` â†’
+→ 4 FontFaces fixed by `--apply` (`C:/Users/<name>/Work/games/tower-defense/Saved/Staging/FF_*.ttf` →
 `Saved/Staging/FF_*.ttf`), 12 Interchange textures by `--patch-remaining` (all 12 load), `--verify` 0. Cook before
 vs after (9319 files): identical except the 4 fonts, whose cooked bytes differ exactly by the removed 40-character path
 prefix and its size field, `Metadata/DevelopmentAssetRegistry.bin` (editor tags, not staged), and the shader archives
