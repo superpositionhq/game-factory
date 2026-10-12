@@ -105,7 +105,8 @@ section 3). What it cannot replay costs a manual workaround at release, so:
 - **No custom commandlets** (`-run=<Name>`) and no GUI-only edits for content: do it in an editor script.
 - **`ReplayConfig.json` in the repo from day one** (the template has it) and kept current: a store pack you copy into
   `Content/` gets an `asset_drops` entry (the copy command as `match`, `from_git` the pack's folder), a new wrapper a
-  `run_patterns` entry.
+  `run_patterns` entry, and a wrapper that logs its own row per run (e.g. `script.run`) lists that op in
+  `wrapper_row_ops` (otherwise the replay counts it as the script's row).
 - **Never amend or rebase** a commit you made.
 
 After a commit, the hook prints `[replay] ...` when the last replay found something; fix those in your next commits.
