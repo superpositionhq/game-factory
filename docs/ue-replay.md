@@ -173,18 +173,19 @@ The video is a GPU job. It runs through `ue-heavy.ps1` in a slot the coordinator
 
 ### 3.6 Deliverable layout
 
-Added to the game package by the packager (`tools/package-game.ps1`, integration notes in
-[Packager integration](#packager-integration)):
+`ue_replay.py package --game games/<game>.json` assembles it in
+`%GF_ROOT%\deliverables\_replay\<game>\<final sha8>\` (unscrubbed; `tools/package-dataset.ps1 -ReplayScripts
+<dir>\ReplayScripts -ReplayVideo <dir>\replay.mp4` copies it into the dataset and scrubs the copy):
 
 ```
 ReplayScripts/
   README.md                       how to replay, what is observed vs derived, results
-  replay.py                       the driver (ue_replay.py, neutral names, relative paths)
-  prepare_project.py              isolated project from the first commit + initial assets
+  ue_replay.py, runner.py, ledger.py, derive.py, verify.py, record.py, shellfx.py, package.py
+                                  the tooling as it ran (it works outside the game-factory checkout: GF_ROOT or ~/Work)
   editor/ue_dump.py, ue_world_replay.py
-  game.json                       the game's replay settings
+  game.json                       the game's replay settings ({root} placeholders, no machine paths)
   ledger.json                     windows, script runs, versions (from history + actions)
-  workflow.replay.jsonl           every replay step, vendor field set, with world ops
+  workflow.replay.jsonl           the derived world ops (vendor field set) that drive replay.mp4
   initial-assets.manifest.json    store packs and external sources, sha256 per file
   Blobs/                          reconstructed script texts by sha256
   Verification/
@@ -193,7 +194,11 @@ ReplayScripts/
     dump-replay/, dump-truth/     structure dumps
     video-verification.json
 replay.mp4
+verification.json                 summary for the packager: parts present, windows, verify report, video verification
+READY                             written last, only when every part is present; the packager waits for it
 ```
+
+`--force` assembles an incomplete copy without `READY` (for checks only).
 
 ## Packager integration
 

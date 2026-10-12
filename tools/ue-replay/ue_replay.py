@@ -8,6 +8,7 @@
   python ue_replay.py derive  --game ...                             world ops from the per-run map exports
   python ue_replay.py record  --game ...                             visible world replay + capture (GPU job)
   python ue_replay.py status  --game ...
+  python ue_replay.py package --game ... [--force]                     deliverables/_replay/<game>/<sha8>/ (READY when complete)
 
 See docs/ue-replay.md. Every engine process runs through <root>/tools/ue-heavy.ps1 (machine root: machine/lib/gfroot.py).
 Game settings may use {root} for the machine root.
@@ -106,7 +107,7 @@ def main():
     fn = globals().get("cmd_" + a.command)
     if fn is None:
         import importlib
-        for mod in ("runner", "verify", "derive", "record"):
+        for mod in ("runner", "verify", "derive", "record", "package"):
             fn = getattr(importlib.import_module(mod), "cmd_" + a.command, None)
             if fn:
                 break
