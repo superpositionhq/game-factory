@@ -735,7 +735,7 @@ $BannedPattern = 'superposition|game[-_]?factory'
 # Binary needles (ASCII + UTF-16LE, case-insensitive). The agent/vendor names block like the two names (user rule);
 # the account name in binaries is reported (and blocks inside Build/, checked separately).
 $BinNeedles = @('superposition', 'game-factory', 'game_factory', 'gamefactory', $UserName, 'claude', 'anthropic', 'opus')
-$BinRefuse = @($true, $true, $true, $true, $false, $true, $true, $true)
+$BinRefuse = @($true, $true, $true, $true, $true, $true, $true, $true)   # the account name blocks anywhere too (user rule)
 $BinCats = @('banned-name', 'banned-name', 'banned-name', 'banned-name', 'username', 'agent-name', 'agent-name', 'agent-name')
 # Exact allowlist, matched against the whole word around a hit (letters, digits, _ . / : -). Only forms seen in the
 # packages' engine binaries (Opus audio codec inside the EOS SDK / WebRTC and the engine) and UE's locale ids.
@@ -748,7 +748,8 @@ $OpusCodec = @(
     '[\w./-]*opus[\w.-]*\.(?:c|cc|cpp|h)',                            # codec source file names
     'opus/\d+(?:/\d+)?', 'audio/opus', 'A_OPUS'
 )
-$Locale = @('zh[-_]xiang')                                            # UE's Xiang Chinese locale ids
+$Locale = @('zh[-_]xiang',                                           # UE's Xiang Chinese locale ids
+    'wuxiangshan(?:[_.][\w.]*)?')                                     # 五象山, a place name in the Liaozhai text and its asset names
 # the word may carry other segments joined by : or / (C++ scopes, paths): one segment must be an allowed form
 $OpusAllowText = '(?i)^(?:[\w./:-]*?[:/])?(?:' + (($OpusCodec + $Locale) -join '|') + ')(?:[:/.][\w./:-]*)?$'
 $OpusAllowBin = $OpusAllowText + '|(?i)^(?:[\w./:-]*?/)?opus$'   # binaries: also the bare codec name, exactly
@@ -789,7 +790,9 @@ if ($Rescan) {
     $all = @([GameDeliverable.Tools]::Scan($pkg, $rels, $rx, $null, $lk, 20, [string[]]$BinNeedles, [bool[]]$BinRefuse, [string[]]$BinCats))
     Set-ReviewedHits $all $pkg
     $block = @($all | Where-Object { $_.Kind -notlike 'binary-info*' -and $_.Kind -notlike 'allowed*' })
-    $buildUser = @($all | Where-Object { $_.Kind -like 'binary-info*' -and $_.Text -like 'username*' -and $_.Path -like 'Build/*' })
+    $buildUser = @()   # (the account name now blocks anywhere; it is part of $block)
+    $byCat = $block | Group-Object { "$(if ($_.Kind -like 'binary-*') { ($_.Text -split ':', 2)[0] } else { $_.Kind }) in $(($_.Path -split '/')[0])" } | Sort-Object Count -Descending
+    Write-Host "  blocking by category/area: $(@($byCat | ForEach-Object { "$($_.Count)x $($_.Name) ($(@($_.Group | ForEach-Object Path | Sort-Object -Unique).Count) files)" }) -join '; ')"
     $allowed = @($all | Where-Object { $_.Kind -like 'allowed*' })
     $out = "$pkg.rescan-hits.tsv"
     $t = New-Object System.Text.StringBuilder; [void]$t.Append("path`tkind`tline_or_offset`ttext`n")
@@ -1051,14 +1054,19 @@ $commitCount = [GameDeliverable.Tools]::WriteGitLog($repo, $sha, (Join-Path $sta
 $histDir = Join-Path $stage 'History'; New-Item -ItemType Directory -Force $histDir | Out-Null
 $commitDto = [DateTimeOffset]::Parse($commitTime)
 $histStats = [ordered]@{}
-# actions.jsonl rows of sessions that are not creation work: any session that ran this packager (its tool calls get
-# logged under the game when their working directory is inside it), plus -ExcludeSessions.
+# actions.jsonl rows of sessions that are not creation work: packaging sessions (their tool calls get logged under the
+# game when their working directory is inside it), i.e. sessions whose rows here are mostly about this packager (over a
+# quarter of them name it; a builder that only reads about it or mentions it keeps its history), plus -ExcludeSessions.
 $skipSessions = @{}; foreach ($x in @($ExcludeSessions | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })) { $skipSessions[$x] = 'given' }
 $actSrc = Join-Path $info.LogDir 'actions.jsonl'
 if (Test-Path $actSrc) {
+    $sesRows = @{}; $sesPkg = @{}
     foreach ($line in [System.IO.File]::ReadAllLines($actSrc, $Utf8NoBom)) {
-        if ($line -match 'package-game\.ps1' -and $line -match '"session_id"\s*:\s*"([^"]+)"' -and -not $skipSessions.ContainsKey($Matches[1])) { $skipSessions[$Matches[1]] = 'ran the packager' }
+        if ($line -notmatch '"session_id"\s*:\s*"([^"]+)"') { continue }
+        $sid = $Matches[1]; $sesRows[$sid] = 1 + [int]$sesRows[$sid]
+        if ($line -match 'package-game\.ps1') { $sesPkg[$sid] = 1 + [int]$sesPkg[$sid] }
     }
+    foreach ($sid in $sesPkg.Keys) { if (-not $skipSessions.ContainsKey($sid) -and $sesPkg[$sid] / $sesRows[$sid] -gt 0.25) { $skipSessions[$sid] = 'packaging session' } }
 }
 foreach ($h in @(
         @{ file = 'commits.jsonl'; rx = '"sha"\s*:\s*"([0-9a-f]{40})"'; kind = 'commit' },
@@ -1428,6 +1436,9 @@ $leaks = New-Object 'System.Collections.Generic.List[GameDeliverable.Hit]'
 $scan = [GameDeliverable.Tools]::Scan($stage, [string[]](Get-Rels), $Enforced, $leakRx, $leaks, 20, [string[]]$needles, [bool[]]$refuse, [string[]]$cats)
 Set-ReviewedHits $scan $stage
 $hits = @($scan | Where-Object { $_.Kind -notlike 'binary-info*' -and $_.Kind -notlike 'allowed*' })
+if ($pendingClean) {   # -PendingCleanBuild tolerates the account name inside Build/ only (marked as pending); elsewhere it blocks
+    $hits = @($hits | Where-Object { -not ($_.Kind -like 'binary-*' -and $_.Text -like 'username:*' -and $_.Path -like 'Build/*') })
+}
 $binInfo = @($scan | Where-Object { $_.Kind -like 'binary-info*' })
 $allowedHits = @($scan | Where-Object { $_.Kind -like 'allowed*' })
 # Counts only inside the package (the words themselves would put the terms into its text); the full list goes next to

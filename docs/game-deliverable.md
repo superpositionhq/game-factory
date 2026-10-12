@@ -132,9 +132,12 @@ JSON-escaped forms; `lines` = other text files except `git.log`):
 **Blocking terms (user rule, 2026-10-11).** Besides the two names, `Claude`, `Opus` and `Anthropic` must never appear in a
 package: any case-insensitive hit left in a path, a text file or a binary (ASCII or UTF-16LE) refuses it. The only
 exception is the Opus **audio codec**, allowed by an exact allowlist of codec forms (see below); each allowed hit is
-listed for review in `<name>.allowlisted.tsv` next to the package (path, kind, offset, word); inside the package `scrub-report.json` (`allowlisted_hits`) carries counts only, since the words would put the terms into its text. The account name inside `Build/`
-blocks too (`-PendingCleanBuild` produces a package marked "pending clean build" instead: README banner, manifest
-`status`); elsewhere in binaries (UE asset import paths) it is reported only.
+listed for review in `<name>.allowlisted.tsv` next to the package (path, kind, offset, word); inside the package `scrub-report.json` (`allowlisted_hits`) carries counts only, since the words would put the terms into its text. The account name blocks
+anywhere in a package as well, binaries included (user rule, 2026-10-11 ~22:15): UE assets keep their editor
+import-source paths, which must be rewritten in the project (the pipeline's `scrub-import-paths.py`) before packaging.
+Exact tokens that merely contain it are allowed: UE's `zh_XIANG` / `zh-xiang` locale ids and the place name
+`wuxiangshan…` in the Liaozhai text and asset names. `-PendingCleanBuild` tolerates it inside `Build/` only, producing a
+package marked "pending clean build" (README banner, manifest `status`).
 
 How "opus" is matched (it is four letters and occurs by chance in compressed bytes and ordinary words such as
 `stopUsing`, `Octopus`, base64): only as a word of its own, i.e. at a non-letter or lower→upper camel boundary, not
