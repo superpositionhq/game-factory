@@ -30,7 +30,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PLAYER = os.path.join(HERE, "editor", "ue_world_replay.py").replace("\\", "/")
 
 
-def gpu_priority_run(label, argv, env, root):
+def gpu_priority_run(label, argv, env, root, holder=None):
     """Run the visible editor with recording priority, as the pipeline recorder does: keep
     builds/_queue/_recording-wants-gpu fresh (ue-heavy holds session GPU jobs back while it is), take the machine's GPU
     slot (Global\\ue-gpu-jobs) directly, run the editor, release. Returns (exit code, seconds)."""
@@ -83,7 +83,10 @@ def gpu_priority_run(label, argv, env, root):
     try:
         e = dict(os.environ)
         e.update(env)
-        code = subprocess.run(argv, env=e).returncode
+        proc = subprocess.Popen(argv, env=e)
+        if holder is not None:
+            holder["proc"] = proc
+        code = proc.wait()
     finally:
         k32.ReleaseSemaphore(sem, 1, None)
         stop.set()
@@ -178,6 +181,22 @@ def write_captions(path, segments, width, height):
 
 
 def cmd_record(cfg, a):
+    """Runs the capture; however it ends (success, sys.exit, error), a still-running editor is closed and the editor
+    thread is joined, so gpu_priority_run's finally releases the GPU slot exactly once (a daemon thread would otherwise
+    be killed at interpreter exit without releasing it)."""
+    holder = {}
+    try:
+        _record(cfg, a, holder)
+    finally:
+        th, proc = holder.get("thread"), holder.get("proc")
+        if th is not None and th.is_alive():
+            if proc is not None and proc.poll() is None:
+                print(runner.now(), "closing the editor so the GPU slot is released", flush=True)
+                proc.terminate()
+            th.join(timeout=300)
+
+
+def _record(cfg, a, holder):
     ctx = runner.Ctx(cfg)
     ff = ffmpeg_exe()
     if not ff:
@@ -210,12 +229,11 @@ def cmd_record(cfg, a):
             "-nosplash", "-NoSound", "-ResX=%d" % width, "-ResY=%d" % height,
             "-ini:EditorPerProjectUserSettings:[/Script/LiveCoding.LiveCodingSettings]:bEnabled=False", "-abslog=" + log]
     t_start = time.time()
-    holder = {}
-
     def run_editor():
-        holder["code"], holder["secs"] = gpu_priority_run("ue-replay %s world-building video" % cfg["game"], argv, env, cfg["root"])
+        holder["code"], holder["secs"] = gpu_priority_run("ue-replay %s world-building video" % cfg["game"], argv, env, cfg["root"], holder)
 
     th = threading.Thread(target=run_editor, daemon=True)
+    holder["thread"] = th
     th.start()
     print(runner.now(), "editor launch requested (recording priority on the GPU slot); waiting for ready", flush=True)
     while not os.path.exists(os.path.join(hs, "ready")):
