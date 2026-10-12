@@ -126,13 +126,13 @@ Hush gauge out of the red; reach the district's end (scenario) or go as far as p
 
 | Parameter | Value |
 |---|---|
-| Lanes | 3, centres at -300, 0, +300 cm (lateral Y) |
-| Lane change | 0.20 s eased (smoothstep); a press during a change queues one more |
+| Lanes | 3, centres at -420, 0, +420 cm (lateral Y; the wagons are 3.7 m wide) |
+| Lane change | 0.22 s at constant lateral speed; a press during a change retargets |
 | Forward speed | per scenario curve (below); ramps with distance |
-| Jump | apex 135 cm, constant airtime 0.70 s at any speed (gravity derived) |
-| Spring Coils jump | apex 340 cm, airtime 1.05 s (reaches wagon roofs) |
+| Jump | apex 135 cm, airtime 0.67 s at any speed (gravity 24 m/s^2) |
+| Spring Coils jump | apex 540 cm, airtime 1.34 s (clears a wagon roof at 505 cm) |
 | Slide / roll | 0.75 s, collision height 90 cm instead of 180 cm; Slide in the air = dive (fast fall) then roll |
-| Ground | line probe down onto track pieces (rail bed 0 cm, wagon roofs 320 cm, ramps in between) |
+| Ground | analytic: rail bed 0 cm, wagon roofs 505 cm, ramps in between (no physics traces) |
 
 ### Obstacles (per district the same function, different meshes)
 
@@ -175,7 +175,7 @@ Hush gauge out of the red; reach the district's end (scenario) or go as far as p
 
 ## 5. Track generation (procedural chunks from modular pieces)
 
-- The track is a sequence of 30 m **chunks**. Each chunk = district dressing (floor, three rail beds, side walls or
+- The track is a sequence of 32 m **chunks** (four 8 m rail pieces). Each chunk = district dressing (floor, three rail beds, side walls or
   verges, ceiling or sky-side props, lights) + an **obstacle pattern** (what stands in each lane over the 30 m) + pickups.
 - `DT_Patterns` (DataTable rows): per row the obstacles per lane with start/end offsets, a difficulty tier 1-5, allowed
   districts, spark lines, power-up slot. Hand-written in a CSV in `Data/` so table changes are diffs.
@@ -202,7 +202,7 @@ Hush gauge out of the red; reach the district's end (scenario) or go as far as p
   noise, spark greed) and is added to nothing else, so recordings of one scenario show the same district layout.
 - Expected run lengths: S1 ~95 s, S2 ~115 s, S3 ~115 s (well under `-MaxSeconds` 600).
 - Not an AutoPlay scenario: **Endless** ("Night Shift", from the menu): Cinder Yard -> Ironside Cut -> Coldwell -> back
-  round, speed 10 -> 26 m/s over 4 km, random seed, best distance saved.
+  round, speed 10 -> 24 m/s over 4 km, random seed, best distance saved.
 - Telemetry (besides the contract's `score`, `state` at 10 Hz, `restart`): `lane_change` {from, to}, `jump`, `slide`,
   `stumble` {obstacle, hush_m}, `crash` {obstacle, shielded}, `pickup` {kind}, `powerup` {kind, on}, `plate` {index},
   `hush_surge`, `district` {name}, `radio` {line_id}; `state` adds distance_m, speed_ms, lane, hush_m, sparks, powerups.
@@ -210,8 +210,8 @@ Hush gauge out of the red; reach the district's end (scenario) or go as far as p
 
 ## 7. Camera (user rule: gentle, no motion sickness)
 
-- Behind and above: 700 cm back, 360 cm above the feet, looking at a point 400 cm ahead of Wren at 100 cm height
-  (about -18 degrees pitch). FOV 70, **constant** (no speed FOV kick), **no shake**, no roll, no camera cuts in play.
+- Behind and above: 1250 cm back, 560 cm above the feet, looking at a point 1000 cm ahead of Wren at 120 cm height
+  (about -11 degrees pitch); Wren is about 1/12 of the frame height. Settings: near (1050/500), far (1450/640). FOV 70, **constant** (no speed FOV kick), **no shake**, no roll, no camera cuts in play.
 - Lateral: follows 70 % of Wren's lane offset with 0.35 s critically damped smoothing, so all three lanes stay in view
   and a lane change is a small slide of the view, not a jerk.
 - Vertical: follows 40 % of a jump, 100 % of standing on a roof, smoothed over 0.4 s.
@@ -322,3 +322,27 @@ is bought.
 ## 14. Status
 
 - 2026-10-12: project created (`mr-00001`), story bible and design written. Next: coordinator OK, then build.
+- 2026-10-12: design approved by the coordinator, with these review notes (now requirements):
+  - Comfort: the Hush darkness and lamp switch-offs fade and creep, never flicker or strobe; the edge darkening stays
+    soft and never covers the lanes the player has to read.
+  - Readability at 24 m/s (S3): obstacles and lanes read at once; oncoming trains are telegraphed early with headlights
+    and a horn; the runner stays small in the lower third.
+  - Footage variety: S1 depot, S2 sunset cutting and S3 night power station must look clearly different; power-up
+    effects visible.
+  - Train scale and the runner's outfit: if the library assets don't fit, a Fab request with prices goes to the
+    coordinator before anything is bought.
+  - Licences: City Sample Crowds and the Game Animation Sample anims are recorded in `assets.manifest.json`.
+- 2026-10-12 (build, first pass):
+  - Built: shared runner simulation + beam-search planner (`MRCore`), chunk generator with a fairness check from
+    every lane (40 ms timing slack), three district kits from the store packs, moving trains with headlights,
+    pickups and power-ups, the Hush (gap, surges, lamps fading behind, edge darkness, relay sounds), Tam's radio and
+    the nine tally plates, painted HUD and C++ menus (main, run select, Route Log, settings, pause, results), save
+    game, native animation blending of 22 clips, synthesized SFX, AutoPlay bot.
+  - Tests: `MetroRunner.Smoke.Fairness` passes (S1-S3 and three Endless seeds, 0 hits for a perfect runner);
+    `MetroRunner.Smoke.Bot` passes (skill 1 wins S1-S3 on 4 seeds each; lower skills lose some runs).
+  - Rendered hand tests (off-screen): S1 win, S2 win (validate-run PASS); S3 was stopped at 1,660 m by the slot hold.
+  - Found and fixed on the way: depot kit paths, ScenarioMaps duplicates collapsing, ramp landing, planner step size
+    and the bot's timing model (side hits), motion blur (off for comfort), washed-out depot, dark Ironside, glaring
+    Coldwell floodlights.
+  - Next: rebuild with the lighting and UI changes, run content_v2 (container colours, lamp glass, window glow, UI
+    icons), screenshots of all three districts and the menu, framing set, recording request.
