@@ -657,7 +657,8 @@ public static class Tools {
                 if (scopes[i] == "logs" && !(json || rel == "git.log" || rel.StartsWith("History/"))) continue;
                 if (!string.IsNullOrEmpty(hints[i]) && s.IndexOf(hints[i], StringComparison.OrdinalIgnoreCase) < 0) continue;
                 int c = 0; string rep = reps[i];
-                s = rx[i].Replace(s, m => { c++; return rep == "<<BASE64>>" ? Base64Placeholder(m.Value) : rep; });
+                // a replacement with group references (${1}) is expanded; others are literal text
+                s = rx[i].Replace(s, m => { c++; return rep == "<<BASE64>>" ? Base64Placeholder(m.Value) : (rep.IndexOf('$') >= 0 ? m.Result(rep) : rep); });
                 counts[i] = c; if (c > 0) any = true;
             }
             if (any) { File.WriteAllBytes(full, enc.GetBytes(s)); var r = new ScrubResult(); r.Path = rel; r.Counts = counts; lock (res) res.Add(r); }
@@ -1660,6 +1661,7 @@ if (-not $NoScrub) {
                 'username' { $UserName }
                 'email' { '@' }
                 'git-identity' { '' }
+                'session-path' { '' }   # no single word marks these files (the profile name may already be gone)
                 default {
                     if ($m -match '(?i)anthropic' -and $m -notmatch '(?i)claude') { 'anthropic' }
                     elseif ($m -match '(?i)opus' -and $m -notmatch '(?i)claude') { 'opus' } else { 'claude' } }
