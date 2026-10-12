@@ -398,6 +398,16 @@ def run_editor_script(ctx, run):
     return code, secs, log, version
 
 
+def engine_crashed(log):
+    """The editor process died on an engine assertion/critical error (not a Python exception in the script)."""
+    try:
+        with open(log, encoding="utf-8", errors="replace") as f:
+            t = f.read()
+    except OSError:
+        return False
+    return "=== Critical error: ===" in t or "appError called" in t
+
+
 def wf_rows(path):
     if not os.path.exists(path):
         return []
@@ -658,6 +668,22 @@ def cmd_run(cfg, a):
                 code, secs, log, version = run_editor_script(ctx, r)
                 rows_after = wf_rows(wf_path)
                 new_rows = rows_after[len(rows_before):] if rows_after[:len(rows_before)] == rows_before else rows_after
+                retried = 0
+                while retried < 1 and len(new_rows) < len(r.get("rows") or []) and engine_crashed(log):
+                    # the engine itself crashed (async loader assertions are not deterministic: horror's dress_props hit
+                    # "Detachment inconsistency" once and ran clean the next time) before the script logged what the
+                    # original did: run it once more, keeping the crash log
+                    retried += 1
+                    os.replace(log, log[:-4] + ".crash%d.log" % retried)
+                    print("   %s engine crashed after %d/%d rows: retry %d" % (r["id"], len(new_rows), len(r["rows"]), retried), flush=True)
+                    with open(wf_path, "w", encoding="utf-8", newline="\n") as f:
+                        f.write("".join(l + "\n" for l in rows_before))
+                    code, secs2, log, version = run_editor_script(ctx, r)
+                    secs += secs2
+                    rows_after = wf_rows(wf_path)
+                    new_rows = rows_after[len(rows_before):] if rows_after[:len(rows_before)] == rows_before else rows_after
+                if retried:
+                    rec["retried_after_engine_crash"] = retried
                 with open(os.path.join(rows_dir, r["id"] + ".jsonl"), "w", encoding="utf-8", newline="\n") as f:
                     f.write("".join(l + "\n" for l in new_rows))
                 with open(wf_path, "w", encoding="utf-8", newline="\n") as f:

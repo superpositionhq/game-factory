@@ -181,7 +181,13 @@ def verify_assets(rep, tru, counts=None):
             by_class[cls]["class_differs"] += 1
             diffs.append({"asset": k[0], "class": cls, "result": "class", "replay_class": r["class"]})
             continue
-        dk = tolerant_diff(r.get("digest", {}), t.get("digest", {}), counts)
+        if r.get("error") or t.get("error"):
+            # an asset that cannot be loaded: equal only when it fails the same way on both sides
+            dk = [] if r.get("error") == t.get("error") else ["error"]
+            if not dk:
+                counts["asset_load_error_both"] += 1
+        else:
+            dk = tolerant_diff(r.get("digest", {}), t.get("digest", {}), counts)
         if dk:
             by_class[cls]["differs"] += 1
             diffs.append({"asset": k[0], "class": cls, "result": "differs", "keys": dk[:20]})
@@ -366,6 +372,10 @@ def verdict(report, ctx, counts):
         exclusions[rid] = {"what": what, "count": counts.get(rid, 0)}
     for k, (rid, what) in DROP_KEYS.items():
         exclusions[rid] = {"what": what + " (key %s)" % k, "count": counts.get(rid, 0)}
+    if counts.get("asset_load_error_both"):
+        exclusions["asset_load_error_both"] = {"what": "assets that fail to load the same way in truth and replay (the "
+                                               "final commit's own content): compared by class and error only",
+                                               "count": counts["asset_load_error_both"]}
     rows = report.get("rows", {}).get("totals", {})
     return {"pass": all(c["pass"] for c in crit), "criteria": crit, "exclusions": exclusions,
             "informational": {"workflow_rows_per_run": rows,

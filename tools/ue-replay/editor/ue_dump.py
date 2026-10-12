@@ -211,11 +211,17 @@ def dump_assets(roots, out):
                 row["digest"] = {"tags": {t: str(ad.get_tag_value(t)) for t in REGISTRY_TAGS if ad.get_tag_value(t) is not None}}
                 rows.append(row)
                 continue
-            a = ad.get_asset()
+            try:
+                a = ad.get_asset()
+            except Exception as e:   # a load that raises (rally: "Could not find graph function data for node")
+                a, row["error"] = None, "load raised: %s" % str(e).splitlines()[0][:200]
             if a is None:
-                row["error"] = "failed to load"
+                row.setdefault("error", "failed to load")
             else:
-                row["digest"] = digest(a)
+                try:
+                    row["digest"] = digest(a)
+                except Exception as e:
+                    row["error"] = "digest raised: %s" % str(e).splitlines()[0][:200]
             rows.append(row)
     rows.sort(key=lambda r: (r["package"], r["name"]))
     with open(os.path.join(out, "assets.json"), "w", encoding="utf-8") as f:
