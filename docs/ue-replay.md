@@ -125,7 +125,7 @@ At the end (`ue_replay.py verify`, against the final commit):
 ### 2.5 World-building ops (and an optional video, not in the dataset)
 
 The headless replay is the reference. A headless script places hundreds of actors inside one call; to show world
-building per actor, every map is also described as **world ops** (included in `ReplayScripts/` when derived):
+building per actor, every map can also be described as **world ops** (optional, for the editor video only; not in `ReplayScripts/`):
 
 - After every replayed run that changed a map, `ue_dump.py` exports the map: a JSON dump, and every actor as T3D
   (the editor's own copy/paste text, every non-default property included).
@@ -163,13 +163,12 @@ ReplayScripts/
   editor/ue_dump.py
   game.json                       the game's replay settings ({root} placeholders, no machine paths)
   ledger.json                     windows, script runs, versions (from history + actions)
-  workflow.replay.jsonl           the derived world ops (workflow field set), when derived
   initial-assets.manifest.json    store packs and external sources, sha256 per file
   Blobs/                          reconstructed script texts by sha256
   Verification/
     report.md, report.json        files, content, structure, (cook) results
     windows.jsonl                 per-window checks
-    dump-replay/, dump-truth/     structure dumps
+    dump-replay/, dump-truth/     JSON structure dumps (no T3D)
 verification.json                 summary for the packager: parts present, windows, verify report
 READY                             written last, only when every window was replayed and verified; the packager waits for it
 ```

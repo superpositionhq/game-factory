@@ -95,9 +95,9 @@ Task:
 3. ledger: check script reconstruction matches the commits; list windows that cannot be replayed and why. prepare,
    then run (resumable), then verify (files, content set, structure dump against truth/, --cook when the CPU allows).
    Fix tool bugs in tools/ue-replay (generic, not per game) and rerun what they affect.
-4. derive the world ops (one op per actor from the map exports; part of ReplayScripts/, no video).
+4. (derive and record are optional and not part of the dataset.)
 5. Assemble ReplayScripts/ (section 2.6 layout: README, replay.py, prepare_project.py, editor/, game.json,
-   ledger.json, workflow.replay.jsonl, initial-assets.manifest.json, Blobs/, Verification/) with `ue_replay.py
+   ledger.json, initial-assets.manifest.json, Blobs/, Verification/) with `ue_replay.py
    package` (READY when verified), and hand the path to the packager (package-dataset.ps1 -ReplayScripts) through the coordinator or directly to {{PACKAGER_ID}}.
 6. Record results in the game's docs (counts per window, fallbacks with reasons, structure diff summary); keep docs/ue-replay.md (design, packager integration) current.
 
