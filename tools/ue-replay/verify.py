@@ -231,14 +231,21 @@ def cmd_verify(cfg, a):
     report["files"] = verify_files(ctx, final)
     if os.path.exists(os.path.join(rep_d, "assets.json")) and os.path.exists(os.path.join(tru_d, "assets.json")):
         report["assets"] = verify_assets(runner.jload(os.path.join(rep_d, "assets.json")), runner.jload(os.path.join(tru_d, "assets.json")))
-        maps = {}
+        maps, excluded = {}, []
+        roots = [r.rstrip("/") + "/" for r in cfg.get("map_roots", [])]
         for fn in sorted(os.listdir(os.path.join(tru_d, "maps"))):
             if not fn.endswith(".json"):
                 continue
             t = runner.jload(os.path.join(tru_d, "maps", fn))
+            # Only the game's own maps: store packs ship demo/showcase levels the builder never made (settings map_roots).
+            if roots and t["map"].startswith("/Game/") and not any(t["map"].startswith(r) for r in roots):
+                excluded.append(t["map"])
+                continue
             rp = os.path.join(rep_d, "maps", fn)
             maps[t["map"]] = verify_map(runner.jload(rp), t) if os.path.exists(rp) else {"result": "map missing in replay"}
         report["maps"] = maps
+        report["maps_excluded"] = {"reason": "outside the game's map roots %s: demo/showcase levels shipped inside store packs, "
+                                             "not built by the game's creator" % cfg.get("map_roots", []), "maps": excluded}
     report["rows"] = verify_rows(ctx, ctx.ledger)
     report["windows"] = [json.loads(l) for l in open(os.path.join(ctx.work, "windows.jsonl"), encoding="utf-8")] \
         if os.path.exists(os.path.join(ctx.work, "windows.jsonl")) else []
@@ -269,6 +276,10 @@ def render_md(r, ctx):
         L += ["", "## Maps (actor structure)", "",
               "| map | actors (truth / replay) | matched | identical | differs | missing | extra | fields that differ |",
               "|---|---|---:|---:|---:|---:|---:|---|"]
+        ex = r.get("maps_excluded") or {}
+        if ex.get("maps"):
+            L.insert(len(L) - 2, "Not compared (%d): %s." % (len(ex["maps"]), ex["reason"]))
+            L.insert(len(L) - 2, "")
         for m, v in r["maps"].items():
             if "truth_actors" not in v:
                 L.append("| %s | %s | | | | | | |" % (m, v.get("result")))
