@@ -38,7 +38,7 @@ are saved to disk.
 | `AStealthMenuGameMode` | main-menu map: shows main menu with level select and settings |
 | `UStealthGameInstance` | settings (master volume, mouse sensitivity, resolution, fullscreen), save/load, level table |
 | `UStealthSaveGame` | settings + per-level best time / fewest spotted / best rating / completed |
-| `AStealthGuard` | guard character (Manny, tinted), vision-cone component, patrol route ref, tuning (sight radius/angle, speeds) |
+| `AStealthGuard` | guard character (Fab "Police Character NPC" officer, `NYC1950_CH04`), vision-cone component, patrol route ref, tuning (sight radius/angle, speeds) |
 | `AStealthGuardAIController` | `UAIPerceptionComponent` (sight + hearing), suspicion meter, alert state machine, Blackboard + Behavior Tree |
 | `UStealthVisionConeComponent` (`UProceduralMeshComponent`) | floor fan mesh, line-traced against walls, colour by alert state |
 | `AStealthPatrolRoute` | waypoint list (edit widgets) + per-point wait, spline preview |
@@ -62,6 +62,11 @@ so level scripts place Blueprint assets, not raw native classes.
   crouch emits none. Throwable impact: loudness 1.0, range 1800 cm. Shown on the HUD as the noise meter.
 
 ### Guard AI
+
+Look: the guards are the Fab "Police Character NPC" officer (`NYC1950_CH04`, with jacket), replacing the UE5 mannequin
+tinted dark red, which read as a superhero suit. The officer's skeleton is marked compatible with the Manny skeleton,
+so the guard clips (MoCap Online, retargeted to Manny) play on it. The pack's sleeve patch reproduced a real police
+department patch and was replaced with an original "SECURITY" shield patch.
 
 Perception: `UAISenseConfig_Sight` (radius 1600, lose 1900, peripheral half-angle 50°, all affiliations) +
 `UAISenseConfig_Hearing` (range 1800). The controller converts raw perception into a **suspicion meter** 0..1:
@@ -114,7 +119,7 @@ yellow when suspicious, red when alert, orange when searching.
 Each level has a start checkpoint plus 1–2 mid checkpoints. Levels are built by editor scripts
 (`Scripts/build_level_*.py`) from engine shapes and template `LevelPrototyping` meshes.
 
-### AutoPlay scenarios (contract v1.3)
+### AutoPlay scenarios (contract v1.4)
 
 `-Scenario=<n>` opens heist n from its start checkpoint. `StealthGameInstance` supplies `StartScenario`, and `StealthGameMode` reports `ScenarioStarted(<display name>)`.
 
@@ -124,7 +129,10 @@ Each level has a start checkpoint plus 1–2 mid checkpoints. Levels are built b
 | 2 | Courtyard at Night | `L02_Courtyard`, gatehouse S, 3 bottles | take the relic (gazebo), reach the west side gate | as 1 |
 | 3 | Office Floor | `L03_Office`, stairwell SE, 3 bottles | take the keycard (server room), reach the elevator | as 1 |
 
-Bot status (2026-10-11): skill 1 wins scenario 1 on seeds 1–3 (103–132 s, 1–4 catches). Scenarios 2 and 3 are not yet tuned for the bot.
+Bot status (2026-10-12): skill 1 wins scenario 1 on seeds 1–8, all GHOST (0 spotted, 0 caught) in 38–40 s. The bot
+forecasts each patrol along its route (waits, facings, view sweeps), waits hidden for a gap, then crosses to the next
+spot where it can hold unseen; it stays crouched within 20 m of a guard and moves out of an investigating guard's way.
+Scenarios 2 and 3 are not reliable yet (the latest scenario 2 seed-1 run timed out with 5 catches).
 
 ## 5. Assets and audio
 
@@ -134,6 +142,10 @@ copied unchanged under `Content/<Pack>/` (first: **Stealth Locomotion Animation 
 to Manny into `Content/Stealth/Animations/Locomotion`). Every asset's source, licence, version and changes goes in
 `assets.manifest.json` (`packs` + per-file sha256). SFX synthesized by `Scripts/synth_sfx.py` (footstep soft / hard, alert sting,
 suspicious blip, pickup, extraction, caught, bottle impact, UI click, ambience hum).
+
+- **police-character-npc** (Fab Standard License, Personal tier, purchased): copied to `Content/NYC1950_CH04` without its
+  sample map, all assets resaved in 5.3, jacket texture edited (the sleeve patch replaced with an original
+  "SECURITY" shield).
 
 ## 6. Recording
 
@@ -245,6 +257,26 @@ Commits: ad13940 (L1), 1d01aab (L3), 67c3972 (UI, L2, audio), ee08731 (guards, m
   - lean into turns;
   - wall-hug moves (the pack has them).
 
+### Camera rework (2026-10-11/12, after the user stopped a recording)
+
+- A new spring-arm class, `UStealthSpringArm`: pivot at upper chest (+62 cm standing, +42 crouched), 40 cm shoulder
+  offset, 15 cm socket height, 380 cm arm.
+- Pitch starts at −20° and is clamped to [−65°, −4°].
+- When blocked, the arm swings up and over by up to 25° extra (never below −50°) before pulling in. It moves in at once,
+  eases back out, and ignores pawns and props smaller than 160 cm.
+- Light position lag, no rotation lag.
+- The thief dithers out (`CameraFade` material parameter, masked materials) when the camera is within 55–130 cm of the
+  pivot.
+
+### Pilot S1 (milestone/autoplay-4)
+
+- AutoPlay v1.4 drop-in.
+- Import paths scrubbed: verify 0 hits.
+- Warehouse vestibule and office walls changed from flat beige to corrugated iron, with Warehouse-pack wall props beside
+  the start.
+- The test director gained `-ShotsDuringTest`.
+- The runner (`Scripts/ue_run5.py`) kills a game that is still running 30 s after a fatal error.
+
 ### What works
 
 | Area | State |
@@ -289,7 +321,7 @@ Commits: ad13940 (L1), 1d01aab (L3), 67c3972 (UI, L2, audio), ee08731 (guards, m
 
 ### Known limits / what's left
 
-- **Art is still the weak point.** Characters are the template mannequins (player = Quinn, guards = Manny tinted red);
+- **Art is still the weak point.** Characters are the template mannequins (player = Quinn; the guards are the Fab police officer since 2026-10-12);
   gazebo, fountain, server racks and cubicle partitions are textured boxes/cylinders; no decals, no foliage
   density, no props with animation. Next sources to consider (all need a download OK): CC0 rigged characters
   (Quaternius), ambientCG textures for fabric/metal, Poly Haven structures; Epic Starter Content (installed) for doors/windows.
