@@ -489,8 +489,11 @@ $fail = $false
 foreach ($r in $results) {
     $o = & powershell -NoProfile -ExecutionPolicy Bypass -File $tool $Game -Rescan $r.dest 2>&1
     $verdict = @($o | Where-Object { $_ -match '^(PASS|FAIL)' })[0]
-    Move-Item -Force "$($r.dest).rescan-hits.tsv" (Join-Path $outDir "$($r.name).rescan-hits.tsv") -ErrorAction SilentlyContinue
-    if (Test-Path -LiteralPath "$($r.dest).rescan-hits.tsv") { throw "could not move $($r.dest).rescan-hits.tsv into $outDir (it would sit in the repo root)" }
+    $rhSrc = "$($r.dest).rescan-hits.tsv"; $rhDst = Join-Path $outDir "$($r.name).rescan-hits.tsv"
+    if ([IO.Path]::GetFullPath($rhSrc) -ne [IO.Path]::GetFullPath($rhDst)) {
+        Move-Item -Force $rhSrc $rhDst -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $rhSrc) { throw "could not move $rhSrc into $outDir (it would sit in the repo root)" }
+    }
     $va = @('-Path', $r.dest); if ($r.repo) { $va += '-RepoDataset' }
     $vo = & powershell -NoProfile -ExecutionPolicy Bypass -File $validator @va 2>&1
     $vv = @($vo | Where-Object { $_ -match '^(VALID|PENDING|INVALID)' })[0]
