@@ -301,6 +301,7 @@ def apply_inputs(ctx, w):
     dl = [x["path"] for x in w["inputs"] if x["status"] == "D"]
     if am:
         git(ctx.proj, "checkout", w["sha"], "--pathspec-from-file=-", inp="\n".join(am).encode("utf-8"))
+        fix_lfs_pointers(ctx, am)
     for p in dl:
         fp = ctx.p(p)
         if os.path.exists(fp):
@@ -505,6 +506,39 @@ def git_tree_files(repo, sha, path):
     return out
 
 
+LFS_PTR = re.compile(rb"version https://git-lfs.github.com/spec/v1\r?\noid sha256:([0-9a-f]{64})\r?\nsize (\d+)")
+
+
+def fix_lfs_pointers(ctx, paths):
+    """Files a checkout/restore left as Git LFS pointer text, replaced by the object from the game's LFS store. Happens when
+    the project's .gitattributes (an earlier commit's) does not yet mark the extension as LFS: island's *.jpeg / *.tga
+    pack sources restored from the final commit stayed pointers, so their texture imports failed."""
+    store = None
+    n = 0
+    for rel in paths:
+        root = ctx.p(rel)
+        files = [root] if os.path.isfile(root) else [os.path.join(dp, f) for dp, _, fs in os.walk(root) for f in fs]
+        for fp in files:
+            try:
+                if os.path.getsize(fp) > 1024:
+                    continue
+                with open(fp, "rb") as f:
+                    m = LFS_PTR.match(f.read())
+            except OSError:
+                continue
+            if not m:
+                continue
+            if store is None:
+                store = (git(ctx.proj, "config", "--get", "lfs.storage").strip() or os.path.join(ctx.proj, ".git", "lfs"))
+            oid = m.group(1).decode()
+            obj = os.path.join(store, "objects", oid[:2], oid[2:4], oid)
+            if not os.path.exists(obj):
+                sys.exit("LFS object %s for %s is not in %s" % (oid, fp, store))
+            shutil.copyfile(obj, fp)
+            n += 1
+    return n
+
+
 def drop_assets(ctx, d):
     n = 0
     for it in d["items"]:
@@ -513,6 +547,7 @@ def drop_assets(ctx, d):
             # final commit into the working tree at the moment the builder copied it in; LFS objects from the game's store
             ref = git(ctx.proj, "rev-parse", it.get("ref") or ctx.ledger["final"]).strip()   # ref: e.g. the commit that first added the pack
             git(ctx.proj, "restore", "--source=" + ref, "--worktree", "--", it["from_git"])
+            fix_lfs_pointers(ctx, [it["from_git"]])
             n += len(git(ctx.proj, "ls-tree", "-r", "--name-only", ref, "--", it["from_git"]).splitlines())
             continue
         dst = ctx.p(it["to"])
@@ -561,6 +596,7 @@ def boundary(ctx, w):
         src = prov.get(p, "")
         if not os.path.exists(fp) or src.startswith(("git:", "fallback:")) or not src:
             git(ctx.proj, "checkout", w["sha"], "--", p)
+            fix_lfs_pointers(ctx, [p])
             prov[p] = "fallback:" + w["sha"][:10]
             res["fallback"].append({"path": p, "reason": "missing" if not src else "not produced by a replayed step (%s)" % src})
             continue
@@ -578,6 +614,7 @@ def boundary(ctx, w):
     am = [p for p in am if p in in_tree and p != "workflow.jsonl"]
     if am:
         git(ctx.proj, "checkout", w["sha"], "--pathspec-from-file=-", inp="\n".join(am).encode("utf-8"))
+        fix_lfs_pointers(ctx, am)
     return res
 
 
