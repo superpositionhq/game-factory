@@ -174,7 +174,9 @@ function Invoke-SessionRescrub([string]$Dir, [string[]]$Ids, [string]$What) {
     $o = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'package-game.ps1') $Game -ScrubDir $Dir 2>&1
     $o | Select-Object -Last 2 | ForEach-Object { Write-Host "  $_" }
     if ($LASTEXITCODE -ne 0) { throw "text scrub of $Dir failed" }
-    $skip = '.mp4;.mkv;.mka;.wav;.flac;.ogg;.mp3;.png;.jpg;.jpeg;.pak;.ucas;.utoc;.zip'
+    # media and packed data are skipped; so are executables and libraries (third-party code may hold such words for its
+    # own reasons; patching them could change behaviour): the patch is for assets' recorded import paths and logs
+    $skip = '.mp4;.mkv;.mka;.wav;.flac;.ogg;.mp3;.png;.jpg;.jpeg;.pak;.ucas;.utoc;.zip;.dll;.exe;.pdb;.sys;.so;.dylib;.lib;.a;.o'
     $p = [DatasetV1.T]::SessionScan($Dir, $Ids, $skip, $true)
     Write-Step "$What`: binary session patches in $($p.Count) file(s)$(if ($p.Count) { ': ' + (($p | Select-Object -First 6 | ForEach-Object { "$($_.Path) ($($_.Uuids)+$($_.Words))" }) -join ', ') })"
     # manifest.json: refresh the entries of every file changed above
@@ -193,7 +195,7 @@ function Invoke-SessionRescrub([string]$Dir, [string[]]$Ids, [string]$What) {
         Write-Step "$What`: manifest entries refreshed: $changed"
     }
     $left = [DatasetV1.T]::SessionScan($Dir, $Ids, $skip, $false)
-    $nl = [int]($left | Measure-Object -Property Uuids -Sum).Sum + [int]($left | Measure-Object -Property Words -Sum).Sum
+    $nl = 0; foreach ($h in @($left)) { if ($h) { $nl += $h.Uuids + $h.Words } }
     Write-Step "$What`: session scan after: $nl"
     if ($nl) { throw "session traces left in $What`: $(($left | ForEach-Object { $_.Path }) -join ', ')" }
 }
