@@ -48,7 +48,9 @@ function Log($event, $extra) {
     }
   } finally { $m.ReleaseMutex() }
 }
-$sem = New-Object Threading.Semaphore($Slots, $Slots, 'Global\ue-heavy-jobs')
+# (v2 since 2026-10-12, when this machine went from 3 to 4 general slots: a semaphore keeps the count it was created
+# with while any process holds it, so a new count needs a new name; jobs on the old Global\ue-heavy-jobs drain on it)
+$sem = New-Object Threading.Semaphore($Slots, $Slots, 'Global\ue-heavy-jobs-v2')
 # GPU jobs (a rendering editor, -game runs, packaged games) also take one of the machine-wide GPU slots
 # (Global\ue-gpu-jobs-v2, "gpu_slots" in the machine config, default 3) and start only while less than half the GPU's
 # VRAM is in use ("gpu_vram_limit_mb" overrides). A recording takes every GPU slot (tools/ue-pipeline/common.ps1

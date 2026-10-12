@@ -128,14 +128,23 @@ function Write-HeavyLog([string]$Event, [string]$Label, $Extra) {
     try { Add-JsonLine (Join-Path $LogRoot '_heavy-jobs.jsonl') $row } catch { }   # shared file; never fail a build over it
 }
 
+# General slots of the machine-wide limiter, as ue-heavy.ps1 counts them: "heavy_slots" in the machine config, else one
+# per 3 physical cores (1..6). The semaphore keeps the count it was created with while any job holds it.
+function Get-HeavySlotCount {
+    if ($GFConfig.PSObject.Properties['heavy_slots'] -and [int]$GFConfig.heavy_slots -gt 0) { return [int]$GFConfig.heavy_slots }
+    $cores = (@(Get-CimInstance Win32_Processor) | Measure-Object -Property NumberOfCores -Sum).Sum
+    return [math]::Max(1, [math]::Min(6, [int][math]::Round($cores / 3)))
+}
+
 function Invoke-Logged([string]$Exe, [string]$Arguments, [string]$LogPath, [string]$WorkDir = $null, [string]$HeavyLabel = $null) {
     # Runs Exe with stdout+stderr to LogPath, returns the exit code. Child inherits our (below-normal) priority.
     # With -HeavyLabel the job holds a slot of the machine-wide limiter every game session uses
-    # (Global\ue-heavy-jobs, 3 slots, Work\tools\ue-heavy.ps1); taken here rather than through that script so the
-    # exact command line survives (its PowerShell re-quoting would split -ExecCmds="...").
+    # (Global\ue-heavy-jobs-v2, Get-HeavySlotCount slots, Work\tools\ue-heavy.ps1); taken here rather than through that
+    # script so the exact command line survives (its PowerShell re-quoting would split -ExecCmds="...").
     $sem = $null
     if ($HeavyLabel) {
-        $sem = New-Object System.Threading.Semaphore(3, 3, 'Global\ue-heavy-jobs')
+        $n = Get-HeavySlotCount
+        $sem = New-Object System.Threading.Semaphore($n, $n, 'Global\ue-heavy-jobs-v2')
         $t0 = Get-Date
         Write-HeavyLog 'wait' $HeavyLabel @{ command = "`"$Exe`" $Arguments" }
         while (-not $sem.WaitOne(60000)) { Write-Step "[ue-heavy] waiting for a free slot since $($t0.ToString('HH:mm:ss'))" }

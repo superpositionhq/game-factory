@@ -33,7 +33,7 @@ started you. Use the **commit-always** skill for every commit.
 
 - **Every heavy job goes through the limiter:** Build.bat/UBT, RunUAT, UnrealEditor-Cmd, any editor launch, any
   `-game` run, packaged game:
-  `& <GF_ROOT>\tools\ue-heavy.ps1 -Label "<slug> <what>" -- <exe> <args...>` (3 CPU slots, plus one of the
+  `& <GF_ROOT>\tools\ue-heavy.ps1 -Label "<slug> <what>" -- <exe> <args...>` (4 CPU slots, plus one of the
   machine-wide GPU slots for anything that renders; waits for GUI programs; returns the job's exit code). From Git Bash:
   `powershell -Command "& '<GF_ROOT>\tools\ue-heavy.ps1' -Label '...' -- '<exe>' args; exit $LASTEXITCODE"`
   (`powershell -File ... --` misparses `--`).

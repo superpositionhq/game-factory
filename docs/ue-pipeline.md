@@ -55,7 +55,10 @@ rebuild of one game can run while another game records (watch the recording's fp
 editors stay responsive; the game and ffmpeg run at above-normal priority during a recording.
 
 Every Build.bat / RunUAT / UnrealEditor-Cmd step also holds a slot of the machine-wide limiter all game sessions use
-(`Global\ue-heavy-jobs`, 3 slots, `Work\tools\ue-heavy.ps1`, rows in `.recording\_heavy-jobs.jsonl`). build.ps1 takes
+(`Global\ue-heavy-jobs-v2`, machine config `heavy_slots`, else one per 3 cores; 4 on the original machine since
+2026-10-12; `Work\tools\ue-heavy.ps1`, rows in `.recording\_heavy-jobs.jsonl`). A GPU job holds one of these as well
+as its GPU slot. A semaphore keeps the count it was created with while any job holds it, so a new count needs a new
+name (the old one drains). build.ps1 takes
 the semaphore itself (common.ps1 `Invoke-Logged -HeavyLabel`) instead of calling ue-heavy.ps1, because that script
 re-quotes arguments through PowerShell and would split `-ExecCmds="Automation RunTests ...; Quit"`.
 
@@ -67,7 +70,7 @@ renderer's VRAM shows only once it has loaded). **A recording takes every GPU sl
 -Recording`, plus the old single slot `Global\ue-gpu-jobs` that jobs started before the change may still hold), so a
 capture still has the GPU to itself: record.ps1 for the whole run (acquired after the idle wait, released in
 `finally`) and the Firewall pre-flight launch. The smoke test runs with
-`-nullrhi` and cooks/compiles keep using the 3 CPU slots (`Global\ue-heavy-jobs`). Before launching, record.ps1 also
+`-nullrhi` and cooks/compiles keep using the general slots (`Global\ue-heavy-jobs-v2`). Before launching, record.ps1 also
 waits while more than `-MaxVramInUseMB` (default 4096) MB of VRAM is in use (nvidia-smi total; per-process numbers are
 N/A under WDDM), logging the GPU-heavy processes every 5 min; after 120 min the run fails. If the user returns while
 it waits for the slot, it gives the slot back and waits for idle again. Waits/starts/ends go to
