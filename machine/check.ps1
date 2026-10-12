@@ -5,7 +5,7 @@
   Toolchain: UE 5.3, MSVC 14.44, Windows SDK, .NET Framework 4.8.1 SDK, git + Git LFS, gh (logged in, can see the
   org's repos), Python. Recording: NVIDIA driver >= 617 (NVENC with the pinned ffmpeg), refresh rate, display sleep
   off, the pinned ffmpeg. Space: free disk on the root's drive. Content: the asset library against
-  docs/asset-library.md and docs/asset-library-fab-ue.tsv. Setup done by bootstrap.ps1: config, ue-heavy.ps1, hooks
+  docs/asset-library.md and docs/asset-library-fab-ue.tsv. Setup done by bootstrap.ps1: config, job slots, ue-heavy.ps1, hooks
   in settings.json, skills, root CLAUDE.md.
   Exit code = number of FAILs. -Json writes the report as JSON too.
 .EXAMPLE
@@ -183,6 +183,18 @@ Try-Check 'Config' {
     if (Test-Path $p) { Add-Result PASS 'Config' "$p (root $Root)" }
     elseif ($Root -eq (Join-Path $env:USERPROFILE 'Work')) { Add-Result WARN 'Config' "no $p; using the default root $Root" 'machine\bootstrap.ps1 writes it' }
     else { Add-Result FAIL 'Config' "no $p" 'machine\bootstrap.ps1' }
+}
+Try-Check 'Job slots' {
+    # the slots ue-heavy.ps1 uses and where each comes from: config (set by hand), config (bootstrap) or computed
+    $sp = Get-GFSlotPlan $cfg
+    $calc = Get-GFComputedSlots
+    $vl = if ($sp.gpu_vram_limit_mb -gt 0) { "$($sp.gpu_vram_limit_mb) MB (config)" } else { 'half the VRAM' }
+    $detail = "heavy_slots $($sp.heavy_slots) [$($sp.heavy_slots_source)], gpu_slots $($sp.gpu_slots) [$($sp.gpu_slots_source)], " +
+        "VRAM limit $vl; formula gives $($calc.heavy_slots)/$($calc.gpu_slots) ($($calc.hardware.logical_cores) threads, " +
+        "$($calc.hardware.ram_gb) GB RAM, $($calc.hardware.vram_mb) MB VRAM)"
+    if ($sp.gpu_slots -ge $sp.heavy_slots) {
+        Add-Result WARN 'Job slots' "$detail; GPU jobs also take a general slot, so gpu_slots >= heavy_slots can leave no slot for compiles" 'lower gpu_slots or raise heavy_slots in the config'
+    } else { Add-Result PASS 'Job slots' $detail }
 }
 Try-Check 'Work layout' {
     $missing = @('games', 'builds\_queue', 'recordings', '.recording', 'deliverables', 'asset-library', 'tools') | Where-Object { -not (Test-Path (Join-Path $Root $_)) }

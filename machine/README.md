@@ -21,8 +21,23 @@ user name is not compiled into Shipping exes), `engine` (default `C:\Program Fil
 packages, tens of GB per game, so point it at a roomy drive) and `min_free_gb` (env `GF_MIN_FREE_GB`, default 50:
 packaging and creation replay refuse to start on a drive with less free).
 
+Job slots (ue-heavy.ps1, docs/ue-pipeline.md "Machine-wide slots"):
+
+| Key | Meaning | Without it |
+|---|---|---|
+| `heavy_slots` | general slots: builds, cooks, headless editor runs (GPU jobs hold one too) | `clamp(1..8, min(floor((RAM GB - 6) / 6), floor(logical cores / 4), floor((commit limit GB - 6) / 8)))` |
+| `gpu_slots` | concurrent rendering jobs; a recording takes all of them | `clamp(1..4, min(floor(VRAM GB of the largest NVIDIA GPU / 4), heavy_slots - 1))`, 1 without nvidia-smi |
+| `gpu_vram_limit_mb` | a GPU job starts only while less VRAM than this is in use | half the GPU's VRAM |
+| `slots_auto` | written by bootstrap.ps1: the computed values and the hardware they came from | |
+
+bootstrap.ps1 writes the computed `heavy_slots` / `gpu_slots` (and `slots_auto`); a value that differs from
+`slots_auto` was set by hand and stays unless `bootstrap.ps1 -Force`. check.ps1 shows the slots in effect and their
+source (config set by hand, config from bootstrap, or computed at run time). The formula lives in
+`lib/gf-root.ps1` (`Get-GFComputedSlots`) and `lib/gfroot.py` (`computed_slots`).
+
 ```json
-{ "root": "C:\\Users\\<name>\\Work", "ueb": "C:\\UEB", "engine": "C:\\Program Files\\Epic Games\\UE_5.3", "record_extra_projects": [] }
+{ "root": "C:\\Users\\<name>\\Work", "ueb": "C:\\UEB", "engine": "C:\\Program Files\\Epic Games\\UE_5.3", "record_extra_projects": [],
+  "heavy_slots": 3, "gpu_slots": 2, "slots_auto": { "heavy_slots": 3, "gpu_slots": 2, "basis": "<hardware>" } }
 ```
 
 ## Files
@@ -33,7 +48,7 @@ packaging and creation replay refuse to start on a drive with less free).
 | `check.ps1` | | read-only PASS/WARN/FAIL report (toolchain, GPU/display, disk, setup, asset library) |
 | `get-ffmpeg.ps1` | `<root>\tools\ffmpeg-8.1.2\` | downloads gyan.dev ffmpeg 8.1.2 full_build .7z, verifies SHA-256 `0fff1889…7059`, unpacks |
 | `lib/gf-root.ps1` | `<root>\tools\`, `~\.claude\hooks\` | root/config resolver, dot-sourced by every script |
-| `tools/ue-heavy.ps1` | `<root>\tools\ue-heavy.ps1` | machine-wide job limiter: `heavy_slots` general slots (default one per 3 cores; `Global\ue-heavy-jobs-v2`) + `gpu_slots` GPU slots (default 3, `Global\ue-gpu-jobs-v2`; start only under half the VRAM in use; a recording takes all), `-Low` for background work, yields to `builds\_queue\_recording-wants-gpu`, log `.recording\_heavy-jobs.jsonl`. Installed next to a copy of `lib\gf-root.ps1` |
+| `tools/ue-heavy.ps1` | `<root>\tools\ue-heavy.ps1` | machine-wide job limiter: `heavy_slots` general slots (`Global\ue-heavy-jobs-v2`) + `gpu_slots` GPU slots (`Global\ue-gpu-jobs-v2`; VRAM guard; a recording takes all), counts from the config or the hardware formula above, `-Low` for background work, yields to `builds\_queue\_recording-wants-gpu`, log `.recording\_heavy-jobs.jsonl`. Installed next to a copy of `lib\gf-root.ps1` |
 | `hooks/record-action.ps1` | `~\.claude\hooks\` | PostToolUse / PostToolUseFailure / Stop hook: every tool call of a game session to `.recording\<project>\actions.jsonl` (earlier calls backfilled from the transcript, see Recording); Stop auto-commits leftovers as `WIP` |
 | `hooks/record-commit.ps1` | `~\.claude\hooks\` | called by each game repo's post-commit hook: `.recording\<repo>\commits.jsonl` |
 | `hooks/settings-hooks.json` | merged into `~\.claude\settings.json` | the three hook entries (`{{HOOKS_DIR}}` filled in) |

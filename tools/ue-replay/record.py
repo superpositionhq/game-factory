@@ -64,11 +64,11 @@ def gpu_priority_run(label, argv, env, root, holder=None):
     k32.CreateSemaphoreW.argtypes = [ctypes.c_void_p, ctypes.c_long, ctypes.c_long, wintypes.LPCWSTR]
     k32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
     k32.ReleaseSemaphore.argtypes = [wintypes.HANDLE, ctypes.c_long, ctypes.c_void_p]
-    # a capture takes every GPU slot (Global\ue-gpu-jobs-v2, "gpu_slots" in the machine config, default 3) and the old
-    # single slot, as the pipeline recorder does (tools/ue-pipeline/common.ps1 Enter-GpuSlot -Recording)
+    # a capture takes every GPU slot (Global\ue-gpu-jobs-v2: "gpu_slots" in the machine config, else the hardware
+    # formula) and the old single slot, as the pipeline recorder does (tools/ue-pipeline/common.ps1 Enter-GpuSlot -Recording)
     try:
         import gfroot
-        n = max(1, min(8, int(gfroot.config().get("gpu_slots") or 3)))
+        n = max(1, min(8, int(gfroot.slot_plan()["gpu_slots"])))
     except (ImportError, ValueError):
         n = 3
     sem = k32.CreateSemaphoreW(None, n, n, "Global\\ue-gpu-jobs-v2")

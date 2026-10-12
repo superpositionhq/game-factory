@@ -2,9 +2,10 @@
 .SYNOPSIS
   Set up a Windows machine for game-factory sessions (idempotent: run it again any time; it only changes what differs).
 .DESCRIPTION
-  1. Machine root and config: writes %USERPROFILE%\.game-factory\config.json (root, ueb, engine) and creates the Work
-     layout under the root (games, builds\_queue, builds\_logs, recordings, .recording, deliverables, asset-library,
-     tools) plus <ueb>\src and <ueb>\tmp.
+  1. Machine root and config: writes %USERPROFILE%\.game-factory\config.json (root, ueb, engine, and the job slots
+     heavy_slots / gpu_slots computed from the hardware by lib\gf-root.ps1 Get-GFComputedSlots, recorded in slots_auto;
+     values set by hand stay unless -Force) and creates the Work layout under the root (games, builds\_queue,
+     builds\_logs, recordings, .recording, deliverables, asset-library, tools) plus <ueb>\src and <ueb>\tmp.
   2. Tools: <root>\tools\ue-heavy.ps1 (+ gf-root.ps1), <root>\tools\asset-scout\, and the pinned ffmpeg
      (machine\get-ffmpeg.ps1, downloaded and SHA-256 verified, never committed).
   3. Claude Code: the recording hooks into <ClaudeDir>\hooks\, their entries merged into <ClaudeDir>\settings.json
@@ -31,7 +32,8 @@ param(
     [string]$FfmpegArchive,                                     # a downloaded ffmpeg-8.1.2-full_build.7z (still verified)
     [switch]$SkipFfmpeg,
     [switch]$CloneGames,
-    [string]$Org = 'superpositionhq'
+    [string]$Org = 'superpositionhq',
+    [switch]$Force                                              # also replace heavy_slots / gpu_slots someone set by hand
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
@@ -107,6 +109,35 @@ else {
     Write-JsonFile $cfgPath $want
     Note $(if ($have) { 'changed' } else { 'added' }) "config $cfgPath" "root=$Root ueb=$Ueb"
 }
+# Job slots from the hardware (lib\gf-root.ps1 Get-GFComputedSlots; ue-heavy.ps1 and the pipeline read the config).
+# The computed values are recorded in slots_auto; a heavy_slots / gpu_slots that differs from it was set by hand and
+# stays unless -Force.
+$hw = Get-GFHardware
+$calc = Get-GFComputedSlots $hw
+$now = [IO.File]::ReadAllText($cfgPath) | ConvertFrom-Json
+$auto = if ($now.PSObject.Properties['slots_auto']) { $now.slots_auto } else { $null }
+$next = [ordered]@{}
+foreach ($p in $now.PSObject.Properties) { $next[$p.Name] = $p.Value }
+$kept = @()
+foreach ($k in 'heavy_slots', 'gpu_slots') {
+    $cur = if ($now.PSObject.Properties[$k]) { [int]$now.$k } else { 0 }
+    $byHand = $cur -gt 0 -and -not ($auto -and $auto.PSObject.Properties[$k] -and [int]$auto.$k -eq $cur)
+    if ($byHand -and -not $Force) { $kept += "$k=$cur (set by hand; computed $($calc.$k))"; continue }
+    $next[$k] = $calc.$k
+}
+$next['slots_auto'] = [ordered]@{
+    heavy_slots = $calc.heavy_slots; gpu_slots = $calc.gpu_slots
+    basis = "logical cores $($hw.logical_cores), RAM $($hw.ram_gb) GB, commit limit $($hw.commit_gb) GB, $($hw.gpu_count) NVIDIA GPU(s), largest $($hw.vram_mb) MB VRAM"
+}
+$before = ($now | ConvertTo-Json -Depth 32 -Compress)
+$after = ([pscustomobject]$next | ConvertTo-Json -Depth 32 -Compress)
+if ($before -ne $after) {
+    Copy-Item -LiteralPath $cfgPath "$cfgPath.bak-$stamp" -Force
+    Write-JsonFile $cfgPath $next
+    Note changed 'job slots' ("heavy_slots={0} gpu_slots={1} ({2})" -f $next['heavy_slots'], $next['gpu_slots'], $next['slots_auto'].basis)
+} else { Note ok 'job slots' ("heavy_slots={0} gpu_slots={1}" -f $next['heavy_slots'], $next['gpu_slots']) }
+if ($kept) { Note warn 'job slots set by hand' (($kept -join '; ') + '; -Force replaces them') }
+
 $dirs = @('games', 'builds', 'builds\_queue', 'builds\_logs', 'recordings', '.recording', 'deliverables', 'asset-library', 'tools') |
     ForEach-Object { Join-Path $Root $_ }
 $dirs += @((Join-Path $Ueb 'src'), (Join-Path $Ueb 'tmp'))

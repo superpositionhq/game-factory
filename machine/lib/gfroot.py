@@ -45,6 +45,50 @@ def check_free(path, what="this job"):
     return free
 
 
+def computed_slots():
+    """The hardware formula of gf-root.ps1 Get-GFComputedSlots (keep the two in step):
+    heavy_slots = clamp(1..8, min((RAM GB - 6) // 6, logical cores // 4, (commit limit GB - 6) // 8)),
+    gpu_slots = clamp(1..4, min(VRAM GB of the largest NVIDIA GPU // 4, heavy_slots - 1)); 1 without nvidia-smi."""
+    import ctypes
+    import subprocess
+
+    class MS(ctypes.Structure):
+        _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong), ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong), ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong), ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong), ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+    ms = MS()
+    ms.dwLength = ctypes.sizeof(MS)
+    ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(ms))
+    ram, commit = ms.ullTotalPhys / 2 ** 30, ms.ullTotalPageFile / 2 ** 30
+    heavy = int(max(1, min(8, (ram - 6) // 6, (os.cpu_count() or 4) // 4, (commit - 6) // 8)))
+    try:
+        out = subprocess.run(["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+                             capture_output=True, text=True).stdout
+        vram = max([int(x) for x in out.split() if x.strip().isdigit()] or [0])
+    except OSError:
+        vram = 0
+    gpu = int(max(1, min(4, vram // 1024 // 4, heavy - 1))) if vram else 1
+    return {"heavy_slots": heavy, "gpu_slots": gpu}
+
+
+def slot_plan():
+    """heavy_slots / gpu_slots in effect: the config's keys, else computed_slots()."""
+    c = config()
+    comp = None
+    out = {}
+    for k in ("heavy_slots", "gpu_slots"):
+        try:
+            v = int(c.get(k) or 0)
+        except (TypeError, ValueError):
+            v = 0
+        if v <= 0:
+            comp = comp or computed_slots()
+            v = comp[k]
+        out[k] = v
+    return out
+
+
 def root():
     if os.environ.get("GF_ROOT"):
         return os.path.abspath(os.environ["GF_ROOT"])

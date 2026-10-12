@@ -74,3 +74,57 @@ function Get-GFRootPattern([string]$Root = (Get-GFRoot)) {
     if ($rest.Count -eq 0) { return "(?i)$head" }
     return "(?i)$head[\\/]+" + ($rest -join '[\\/]+')
 }
+
+# Machine-wide job slots (ue-heavy.ps1, tools/ue-pipeline/common.ps1). Config keys win: heavy_slots (general slots:
+# builds, cooks, headless editor runs; GPU jobs hold one too), gpu_slots (concurrent rendering jobs; a recording takes
+# all of them), gpu_vram_limit_mb (a GPU job starts only while less VRAM than this is in use; default half the VRAM).
+# Without them the slots are computed from the hardware (bootstrap.ps1 writes the computed values to the config):
+#   heavy_slots = clamp(1..8, min(floor((RAM GB - 6) / 6), floor(logical cores / 4), floor((commit limit GB - 6) / 8)))
+#                 (~6 GB per heavy Unreal process, 6 GB kept for the desktop and the sessions)
+#   gpu_slots   = clamp(1..4, min(floor(VRAM GB of the largest NVIDIA GPU / 4), heavy_slots - 1)); 1 without nvidia-smi
+#                 (~4 GB per renderer; one general slot always left for compiles)
+function Get-GFHardware {
+    $cs = Get-CimInstance Win32_ComputerSystem
+    $os = Get-CimInstance Win32_OperatingSystem
+    $vram = @()
+    try {
+        $out = & nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>$null
+        $vram = @($out | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
+    } catch { }
+    [pscustomobject]@{
+        logical_cores = [int]$cs.NumberOfLogicalProcessors
+        ram_gb        = [math]::Round($cs.TotalPhysicalMemory / 1GB, 1)
+        commit_gb     = [math]::Round($os.TotalVirtualMemorySize / 1MB, 1)
+        gpu_count     = $vram.Count
+        vram_mb       = $(if ($vram.Count) { ($vram | Measure-Object -Maximum).Maximum } else { 0 })
+    }
+}
+
+function Get-GFComputedSlots($Hw = (Get-GFHardware)) {
+    $heavy = [math]::Min([math]::Floor(($Hw.ram_gb - 6) / 6), [math]::Floor($Hw.logical_cores / 4))
+    $heavy = [math]::Min($heavy, [math]::Floor(($Hw.commit_gb - 6) / 8))
+    $heavy = [int][math]::Max(1, [math]::Min(8, $heavy))
+    $gpu = if ($Hw.vram_mb -gt 0) { [math]::Min([math]::Floor($Hw.vram_mb / 1024 / 4), $heavy - 1) } else { 1 }
+    $gpu = [int][math]::Max(1, [math]::Min(4, $gpu))
+    [pscustomobject]@{ heavy_slots = $heavy; gpu_slots = $gpu; hardware = $Hw }
+}
+
+# The slots in effect and where each comes from: 'config' (set by hand), 'config (bootstrap)' (written by bootstrap.ps1
+# from the formula, recorded in slots_auto), or 'computed' (no config key: the formula at run time).
+function Get-GFSlotPlan($Cfg = (Get-GFConfig)) {
+    $auto = if ($Cfg.PSObject.Properties['slots_auto']) { $Cfg.slots_auto } else { $null }
+    $computed = $null
+    $plan = [ordered]@{}
+    foreach ($k in 'heavy_slots', 'gpu_slots') {
+        if ($Cfg.PSObject.Properties[$k] -and [int]$Cfg.$k -gt 0) {
+            $plan[$k] = [int]$Cfg.$k
+            $plan["${k}_source"] = if ($auto -and $auto.PSObject.Properties[$k] -and [int]$auto.$k -eq [int]$Cfg.$k) { 'config (bootstrap)' } else { 'config' }
+        } else {
+            if (-not $computed) { $computed = Get-GFComputedSlots }
+            $plan[$k] = $computed.$k
+            $plan["${k}_source"] = 'computed'
+        }
+    }
+    $plan['gpu_vram_limit_mb'] = if ($Cfg.PSObject.Properties['gpu_vram_limit_mb'] -and [int]$Cfg.gpu_vram_limit_mb -gt 0) { [int]$Cfg.gpu_vram_limit_mb } else { 0 }
+    [pscustomobject]$plan
+}

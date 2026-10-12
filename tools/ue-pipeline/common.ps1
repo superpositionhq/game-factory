@@ -128,13 +128,10 @@ function Write-HeavyLog([string]$Event, [string]$Label, $Extra) {
     try { Add-JsonLine (Join-Path $LogRoot '_heavy-jobs.jsonl') $row } catch { }   # shared file; never fail a build over it
 }
 
-# General slots of the machine-wide limiter, as ue-heavy.ps1 counts them: "heavy_slots" in the machine config, else one
-# per 3 physical cores (1..6). The semaphore keeps the count it was created with while any job holds it.
-function Get-HeavySlotCount {
-    if ($GFConfig.PSObject.Properties['heavy_slots'] -and [int]$GFConfig.heavy_slots -gt 0) { return [int]$GFConfig.heavy_slots }
-    $cores = (@(Get-CimInstance Win32_Processor) | Measure-Object -Property NumberOfCores -Sum).Sum
-    return [math]::Max(1, [math]::Min(6, [int][math]::Round($cores / 3)))
-}
+# General slots of the machine-wide limiter, as ue-heavy.ps1 counts them: "heavy_slots" in the machine config, else the
+# hardware formula (machine/lib/gf-root.ps1 Get-GFSlotPlan). The semaphore keeps the count it was created with while any
+# job holds it.
+function Get-HeavySlotCount { return [int](Get-GFSlotPlan $GFConfig).heavy_slots }
 
 function Invoke-Logged([string]$Exe, [string]$Arguments, [string]$LogPath, [string]$WorkDir = $null, [string]$HeavyLabel = $null) {
     # Runs Exe with stdout+stderr to LogPath, returns the exit code. Child inherits our (below-normal) priority.
@@ -230,14 +227,11 @@ function Stop-RecordingWantsGpuHold {
     try { if (Test-Path $RecordingWantsGpuFlag) { Remove-Item -Force $RecordingWantsGpuFlag } } catch { }
 }
 
-# GPU slots: Global\ue-gpu-jobs-v2 with "gpu_slots" in the machine config (default 3), one per session GPU job
-# (ue-heavy.ps1). A recording takes ALL of them, plus the old single slot Global\ue-gpu-jobs that jobs started before
-# the change may still use, so a capture has the GPU to itself. Slots are collected as running GPU jobs end; the
-# recording-wants-gpu flag keeps new session GPU jobs from taking freed ones meanwhile.
-function Get-GpuSlotCount {
-    if ($GFConfig.PSObject.Properties['gpu_slots'] -and [int]$GFConfig.gpu_slots -gt 0) { return [math]::Min(8, [int]$GFConfig.gpu_slots) }
-    return 3
-}
+# GPU slots: Global\ue-gpu-jobs-v2 with "gpu_slots" in the machine config, else the hardware formula (gf-root.ps1
+# Get-GFSlotPlan), one per session GPU job (ue-heavy.ps1). A recording takes ALL of them, plus the old single slot
+# Global\ue-gpu-jobs that jobs started before the change may still use, so a capture has the GPU to itself. Slots are
+# collected as running GPU jobs end; the recording-wants-gpu flag keeps new session GPU jobs from taking freed ones.
+function Get-GpuSlotCount { return [math]::Min(8, [int](Get-GFSlotPlan $GFConfig).gpu_slots) }
 
 function Enter-GpuSlot([string]$Label, [switch]$Recording) {
     $n = Get-GpuSlotCount

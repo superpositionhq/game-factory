@@ -2,11 +2,27 @@
 # machine-wide limit so the parallel game sessions don't exhaust CPU/RAM. Waits for a free slot.
 #   & <root>\tools\ue-heavy.ps1 -Label "TowerDefense editor build" -- "C:\Program Files\Epic Games\UE_5.3\Engine\Build\BatchFiles\Build.bat" TowerDefenseEditor Win64 Development -Project=...
 # Exit code is the job's. Waits/acquire/release are appended to <root>\.recording\_heavy-jobs.jsonl.
-# <root> is the machine root (machine/lib/gf-root.ps1); machine/bootstrap.ps1 installs this file as <root>\tools\ue-heavy.ps1.
+# <root> is the machine root (machine/lib/gf-root.ps1); machine/bootstrap.ps1 installs this file as <root>\tools\ue-heavy.ps1
+# with a copy of gf-root.ps1 next to it.
+#
+# Slot model (docs/ue-pipeline.md, "Machine-wide slots"):
+# - General slots (Global\ue-heavy-jobs-v2): every job takes one. Count: "heavy_slots" in the machine config, else the
+#   hardware formula in gf-root.ps1 Get-GFComputedSlots (bootstrap.ps1 writes it to the config).
+# - GPU slots (Global\ue-gpu-jobs-v2): jobs that render (editor GUI, -game, packaged games; not -nullrhi/-nographics) take
+#   one FIRST, then a general slot. Count: "gpu_slots", else the same formula.
+# - VRAM guard: a GPU job starts only while the GPU's used VRAM is under "gpu_vram_limit_mb" (default half the VRAM) and
+#   no other GPU job started in the last 60 s (a new renderer's VRAM shows only once it has loaded); otherwise it gives
+#   the slot back and looks again every 30 s (logged as vram_wait).
+# - Recordings are exclusive: the recorder takes every GPU slot (tools/ue-pipeline/common.ps1 Enter-GpuSlot -Recording),
+#   and while it waits (builds\_queue\_recording-wants-gpu fresh) new GPU jobs hold back or hand their slot back.
+# - -Low (background work such as the live creation replay): one low job machine-wide; it takes a general slot only
+#   while no other job waits for one and another slot stays free; its process runs below normal priority.
+# A named semaphore keeps the count it was created with while any process holds it: a new count takes effect once every
+# job holding it has ended (or under a new name; the "-v2" names date from such a change).
 [CmdletBinding(PositionalBinding = $false)]
 param(
   [string]$Label = 'ue job',
-  [int]$Slots = 0,   # 0: "heavy_slots" in the machine config, else one per 3 physical cores (8 cores -> 3), 1..6
+  [int]$Slots = 0,   # 0: "heavy_slots" in the machine config, else the hardware formula (gf-root.ps1 Get-GFComputedSlots)
   [switch]$Gpu,   # force the GPU slot (auto-detected for editor GUI, -game, packaged games)
   [switch]$Low,   # background work (the live per-commit replay): yields to every other job, one at a time, below-normal priority
   [Parameter(ValueFromRemainingArguments = $true)][string[]]$Command
@@ -26,12 +42,13 @@ if (-not $Command) { Write-Error 'usage: ue-heavy.ps1 -Label <text> -- <exe> <ar
 # gf-root.ps1 sits next to the installed copy, or in ..\lib in the repo.
 $gfLib = @((Join-Path $PSScriptRoot 'gf-root.ps1'), (Join-Path $PSScriptRoot '..\lib\gf-root.ps1')) | Where-Object { Test-Path $_ } | Select-Object -First 1
 $gfRoot = if ($gfLib) { . $gfLib; Get-GFRoot } elseif ($env:GF_ROOT) { $env:GF_ROOT } else { Join-Path $env:USERPROFILE 'Work' }
+$plan = if ($gfLib -and (Get-Command Get-GFSlotPlan -ErrorAction SilentlyContinue)) { Get-GFSlotPlan } else { $null }
 if ($Slots -le 0) {
-  $cfgSlots = if ($gfLib) { $c = Get-GFConfig; if ($c.PSObject.Properties['heavy_slots']) { [int]$c.heavy_slots } else { 0 } } else { 0 }
-  $cores = (@(Get-CimInstance Win32_Processor) | Measure-Object -Property NumberOfCores -Sum).Sum
-  $Slots = if ($cfgSlots -gt 0) { $cfgSlots } else { [math]::Max(1, [math]::Min(6, [int][math]::Round($cores / 3))) }
+  $Slots = if ($plan) { $plan.heavy_slots } else {
+    $cores = (@(Get-CimInstance Win32_Processor) | Measure-Object -Property NumberOfCores -Sum).Sum
+    [math]::Max(1, [math]::Min(6, [int][math]::Round($cores / 3)))   # an older gf-root.ps1 next to this copy
+  }
 }
-# (the machine-wide semaphore keeps the count it was created with while any job holds it)
 $log = Join-Path $gfRoot '.recording\_heavy-jobs.jsonl'
 New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
 function Log($event, $extra) {
@@ -48,25 +65,14 @@ function Log($event, $extra) {
     }
   } finally { $m.ReleaseMutex() }
 }
-# (v2 since 2026-10-12, when this machine went from 3 to 4 general slots: a semaphore keeps the count it was created
-# with while any process holds it, so a new count needs a new name; jobs on the old Global\ue-heavy-jobs drain on it)
 $sem = New-Object Threading.Semaphore($Slots, $Slots, 'Global\ue-heavy-jobs-v2')
-# GPU jobs (a rendering editor, -game runs, packaged games) also take one of the machine-wide GPU slots
-# (Global\ue-gpu-jobs-v2, "gpu_slots" in the machine config, default 3) and start only while less than half the GPU's
-# VRAM is in use ("gpu_vram_limit_mb" overrides). A recording takes every GPU slot (tools/ue-pipeline/common.ps1
-# Enter-GpuSlot -Recording), so captures still get the GPU to themselves. The old single slot (Global\ue-gpu-jobs)
-# is only drained by jobs that started before the change; recordings take it too.
 $cmdText = $Command -join ' '
 $isGpu = $Gpu -or ($Command[0] -match '(?i)UnrealEditor\.exe$|-Shipping\.exe$') -or
   ($cmdText -match '(?i)(^|\s)-game(\s|$)|-AllowCommandletRendering') -or
   ($Command[0] -match '(?i)\\Packaged\\.*\.exe$')
 if ($cmdText -match '(?i)-nullrhi|-nographics') { $isGpu = $false }
-$gpuSlots = 3; $vramLimit = 0
-if ($gfLib) {
-  $c = Get-GFConfig
-  if ($c.PSObject.Properties['gpu_slots'] -and [int]$c.gpu_slots -gt 0) { $gpuSlots = [math]::Min(8, [int]$c.gpu_slots) }
-  if ($c.PSObject.Properties['gpu_vram_limit_mb'] -and [int]$c.gpu_vram_limit_mb -gt 0) { $vramLimit = [int]$c.gpu_vram_limit_mb }
-}
+$gpuSlots = if ($plan) { [math]::Min(8, [int]$plan.gpu_slots) } else { 1 }
+$vramLimit = if ($plan) { [int]$plan.gpu_vram_limit_mb } else { 0 }
 $gpuSem = if ($isGpu) { New-Object Threading.Semaphore($gpuSlots, $gpuSlots, 'Global\ue-gpu-jobs-v2') } else { $null }
 function Get-VramMB([string]$What) {
   try { $v = & nvidia-smi "--query-gpu=memory.$What" --format=csv,noheader,nounits 2>$null | Select-Object -First 1 } catch { $v = $null }

@@ -47,8 +47,8 @@ docs/autoplay-contract.md, docs/dataset-layout-v1.json, and the shared notes
 Machine: {{MACHINE}}. UE 5.3 at {{ENGINE_DIR}}; MSVC 14.44 + .NET 4.8.1 SDK; pinned ffmpeg 8.1.2 under
 {{GF_ROOT}}\tools\ffmpeg-8.1.2 (machine/ fetches and checksum-verifies it); Python 3.12. Private build clones live under
 {{UEB}} (outside %USERPROFILE%, so the user name is never compiled into an exe). The machine-wide limiter is
-{{GF_ROOT}}\tools\ue-heavy.ps1: general slots (Global\ue-heavy-jobs-v2, config heavy_slots; 4 here) and 3 GPU slots (Global\ue-gpu-jobs-v2, config
-gpu_slots) with a VRAM guard (start only under half the VRAM in use); it holds back new GPU jobs while
+{{GF_ROOT}}\tools\ue-heavy.ps1: general slots (Global\ue-heavy-jobs-v2, config heavy_slots) and GPU slots (Global\ue-gpu-jobs-v2, config
+gpu_slots; both from the hardware formula in docs/ue-pipeline.md, "Machine-wide slots") with a VRAM guard; it holds back new GPU jobs while
 builds\_queue\_recording-wants-gpu is fresh. A recording takes every GPU slot.
 
 Rules:

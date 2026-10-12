@@ -50,27 +50,46 @@ never touches them.
 `build.ps1` and `record.ps1` take an exclusive per-game lock on `builds\_pipeline-<game>.lock` (an open file handle:
 released by the OS if the process dies, visible across sessions and Task Scheduler) for the whole build or the whole run,
 and wait for it otherwise (the holder is printed): a build and a recording of the same game share its clone, build
-folder and `_run` copy. Different games only share the machine, which the CPU slots and the GPU slot below ration, so a
+folder and `_run` copy. Different games only share the machine, which the general and GPU slots below ration, so a
 rebuild of one game can run while another game records (watch the recording's fps warnings). Builds run at below-normal priority so the game sessions' own
 editors stay responsive; the game and ffmpeg run at above-normal priority during a recording.
 
-Every Build.bat / RunUAT / UnrealEditor-Cmd step also holds a slot of the machine-wide limiter all game sessions use
-(`Global\ue-heavy-jobs-v2`, machine config `heavy_slots`, else one per 3 cores; 4 on the original machine since
-2026-10-12; `Work\tools\ue-heavy.ps1`, rows in `.recording\_heavy-jobs.jsonl`). A GPU job holds one of these as well
-as its GPU slot. A semaphore keeps the count it was created with while any job holds it, so a new count needs a new
-name (the old one drains). build.ps1 takes
-the semaphore itself (common.ps1 `Invoke-Logged -HeavyLabel`) instead of calling ue-heavy.ps1, because that script
-re-quotes arguments through PowerShell and would split `-ExecCmds="Automation RunTests ...; Quit"`.
+### Machine-wide slots
 
-**GPU slots (user's decision 2026-10-12: the GPU was underused with one slot).** Session GPU jobs (editor GUI, `-game`
-and packaged games through `Work\tools\ue-heavy.ps1`; `-nullrhi`/`-nographics` excluded) each take one of the GPU slots,
-the named semaphore `Global\ue-gpu-jobs-v2` (machine config `gpu_slots`, default 3), and start only while less than
-half the GPU's VRAM is in use (`gpu_vram_limit_mb` overrides) and no other GPU job started in the last minute (a new
-renderer's VRAM shows only once it has loaded). **A recording takes every GPU slot** (common.ps1 `Enter-GpuSlot
--Recording`, plus the old single slot `Global\ue-gpu-jobs` that jobs started before the change may still hold), so a
-capture still has the GPU to itself: record.ps1 for the whole run (acquired after the idle wait, released in
-`finally`) and the Firewall pre-flight launch. The smoke test runs with
-`-nullrhi` and cooks/compiles keep using the general slots (`Global\ue-heavy-jobs-v2`). Before launching, record.ps1 also
+Every heavy job of every session goes through one limiter, `<root>\tools\ue-heavy.ps1` (rows in
+`.recording\_heavy-jobs.jsonl`); build.ps1 takes the same semaphore itself (common.ps1 `Invoke-Logged -HeavyLabel`)
+instead of calling ue-heavy.ps1, because that script re-quotes arguments through PowerShell and would split
+`-ExecCmds="Automation RunTests ...; Quit"`.
+
+| Slots | Named semaphore | Taken by | Count |
+|---|---|---|---|
+| general | `Global\ue-heavy-jobs-v2` | every job: Build.bat/UBT, RunUAT, UnrealEditor-Cmd, and GPU jobs too | config `heavy_slots`, else the formula |
+| GPU | `Global\ue-gpu-jobs-v2` | jobs that render (editor GUI, `-game`, packaged games; not `-nullrhi`/`-nographics`), taken before the general slot | config `gpu_slots`, else the formula |
+
+The formula (machine/lib/gf-root.ps1 `Get-GFComputedSlots`; bootstrap.ps1 writes its result to the config, and a value
+set by hand stays unless `bootstrap.ps1 -Force`):
+
+- `heavy_slots = clamp(1..8, min(floor((RAM GB - 6) / 6), floor(logical cores / 4), floor((commit limit GB - 6) / 8)))`:
+  a heavy Unreal process needs about 6 GB, and 6 GB stays for the desktop and the sessions themselves.
+- `gpu_slots = clamp(1..4, min(floor(VRAM GB of the largest NVIDIA GPU / 4), heavy_slots - 1))`, 1 without nvidia-smi:
+  about 4 GB per renderer, and one general slot always stays free for compiles.
+
+Dynamic guards on top of the counts:
+
+- **VRAM guard:** a GPU job starts only while the GPU's used VRAM is under `gpu_vram_limit_mb` (default half the
+  VRAM) and no other GPU job started in the last 60 s (a new renderer's VRAM shows only once it has loaded);
+  otherwise it hands its slot back and looks again every 30 s (`vram_wait` rows).
+- **Recordings are exclusive:** a recording takes every GPU slot (common.ps1 `Enter-GpuSlot -Recording`, plus the old
+  single slot `Global\ue-gpu-jobs` jobs from before the change may still hold), so a capture has the GPU to itself:
+  record.ps1 for the whole run (acquired after the idle wait, released in `finally`) and the Firewall pre-flight launch.
+- **`-Low`** (background work such as the live creation replay): one low job machine-wide; it takes a general slot only
+  while no other job waits for one and another slot stays free, at below-normal priority.
+
+A named semaphore keeps the count it was created with while any process holds it: a new count takes effect once
+every job holding it has ended (or under a new name, which is how the `-v2` names came about; jobs on the old name
+drain). `machine/check.ps1` shows the slots in effect and where each comes from.
+
+The smoke test runs with `-nullrhi` and cooks/compiles use the general slots. Before launching, record.ps1 also
 waits while more than `-MaxVramInUseMB` (default 4096) MB of VRAM is in use (nvidia-smi total; per-process numbers are
 N/A under WDDM), logging the GPU-heavy processes every 5 min; after 120 min the run fails. If the user returns while
 it waits for the slot, it gives the slot back and waits for idle again. Waits/starts/ends go to

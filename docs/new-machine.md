@@ -82,6 +82,12 @@ repo into `<root>\game-factory`. Bootstrap:
   `record_extra_projects` = `[]`: extra project folders under the root that the recording hooks also log, none by
   default) and creates the layout: `games\ builds\_queue\ builds\_logs\ recordings\ .recording\ deliverables\ asset-library\
   tools\` and `C:\UEB\src`, `C:\UEB\tmp`;
+- sizes the machine-wide job slots from the hardware (logical cores, RAM, commit limit, GPU count and VRAM): writes
+  `heavy_slots` (concurrent heavy Unreal jobs) and `gpu_slots` (concurrent rendering jobs) to the config, with the
+  computed values and their basis in `slots_auto`. Formula and guards: [ue-pipeline.md](ue-pipeline.md), "Machine-wide
+  slots". To change them, edit `heavy_slots` / `gpu_slots` (and optionally `gpu_vram_limit_mb`) in the config; later
+  bootstrap runs keep values set by hand (`-Force` recomputes them). A new count takes effect once the jobs that hold
+  the old one have ended;
 - installs `tools\ue-heavy.ps1` (machine-wide job limiter), `tools\asset-scout\`, and the pinned ffmpeg 8.1.2
   (downloaded from gyan.dev or its GitHub mirror and SHA-256 verified; nothing is committed);
 - installs the recording hooks into `~\.claude\hooks\`, merges them into `~\.claude\settings.json` (backup first),
@@ -98,7 +104,7 @@ powershell -ExecutionPolicy Bypass -File C:/Users/<you>/Work/game-factory/machin
 
 PASS / WARN / FAIL for UE 5.3, MSVC 14.44, Windows SDK, .NET 4.8.1 SDK, git, Git LFS, gh + superpositionhq access,
 Python, NVIDIA driver, refresh rate, display and system sleep, free disk, memory, long paths, pinned ffmpeg (NVENC
-test), config, layout, ue-heavy, hooks, skills, root CLAUDE.md, game repo hooks, the asset library against
+test), config, job slots (in effect, and from where), layout, ue-heavy, hooks, skills, root CLAUDE.md, game repo hooks, the asset library against
 `docs/asset-library.md` + `docs/asset-library-fab-ue.tsv`. Exit code = number of FAILs. Fix
 until no FAIL is left; the asset library may stay WARN until the asset-scout has rebuilt it.
 
