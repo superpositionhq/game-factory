@@ -182,11 +182,20 @@ try {
 
     # ---- 2. package ----
     if ($Package) {
-        $par = Get-UbtParallelArg
-        $ubtArgs = if ($par) { " -ubtargs=`"$($par.Trim())`"" } else { '' }
-        $r = Invoke-Step 'package' (Join-Path $EngineRoot 'Engine\Build\BatchFiles\RunUAT.bat') `
-            ("-WaitForUATMutex BuildCookRun -project=`"$uproject`" -target=$gameTarget -noP4 -platform=Win64 -clientconfig=$Config " +
-             "-build -cook -stage -pak -archive -archivedirectory=`"$outDir`" -nocompileeditor -unattended -utf8output$ubtArgs")
+        # -WaitMutex: BuildCookRun's own UBT call otherwise fails at once ("A conflicting instance of UnrealBuildTool is
+        # already running") while another session's UBT runs (island 5462fc8, 2026-10-12 01:08). If it still happens
+        # (e.g. a UBT that ignores the mutex), the package step is retried once.
+        foreach ($attempt in 1, 2) {
+            $par = Get-UbtParallelArg
+            $ubtArgs = " -ubtargs=`"-WaitMutex$par`""
+            $r = Invoke-Step $(if ($attempt -eq 1) { 'package' } else { 'package-retry' }) (Join-Path $EngineRoot 'Engine\Build\BatchFiles\RunUAT.bat') `
+                ("-WaitForUATMutex BuildCookRun -project=`"$uproject`" -target=$gameTarget -noP4 -platform=Win64 -clientconfig=$Config " +
+                 "-build -cook -stage -pak -archive -archivedirectory=`"$outDir`" -nocompileeditor -unattended -utf8output$ubtArgs")
+            if ($r.exit_code -eq 0 -or $attempt -eq 2) { break }
+            if (-not (Select-String -Path $r.log_path -SimpleMatch 'A conflicting instance of UnrealBuildTool is already running' -Quiet)) { break }
+            $r['retried'] = $true   # kept in steps[] for the record; not the build's failing step
+            Write-Step 'package: another UnrealBuildTool was running; retrying the package step once'
+        }
         if ($r.exit_code -ne 0) { throw 'package failed' }
         if (-not (Test-Path $exePath)) { throw "package succeeded but $exePath is missing" }
         # Missing game assets in the cook (e.g. store content not present) must fail the build, not ship an empty game.
@@ -250,7 +259,7 @@ try {
 }
 
 $end = Get-Date
-$failedStep = $steps | Where-Object { $_.exit_code -ne 0 } | Select-Object -First 1
+$failedStep = $steps | Where-Object { $_.exit_code -ne 0 -and -not $_.Contains('retried') } | Select-Object -First 1
 $lastStep = $steps | Select-Object -Last 1
 $subject = "$(Invoke-Git $info.Dir @('log', '-1', '--format=%s', $sha) -AllowFail)"
 $commitTime = "$(Invoke-Git $info.Dir @('log', '-1', '--format=%cI', $sha) -AllowFail)"
