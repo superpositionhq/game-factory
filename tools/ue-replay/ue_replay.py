@@ -126,7 +126,8 @@ _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 SESSION_PATH_RULES = [
     # Temp/<tool>/<project-dir>/<session uuid>[/scratch-pad] (scratch, tasks, shell-snapshots ...) -> Temp/session[/scratch]
     ("session_temp", re.compile(r"(?i)(?P<head>AppData(?P<s>[\\/]{1,2})Local(?P=s)Temp(?P=s))[^\\/\s'\"]+(?P=s)"
-                                r"[^\\/\s'\"]+(?P=s)%s(?P<pad>(?P=s)scratc[h]pad(?![\w-]))?" % _UUID),
+                                r"[^\\/\s'\"]+(?P=s)(?:%s|[0-9a-f]{8}(?:-[0-9a-f]{0,12}){0,4}(?=[\"']|\\\"|$))"
+                                r"(?P<pad>(?P=s)scratc[h]pad(?![\w-]))?" % _UUID),   # also a uuid cut by a 2000-character command limit
      lambda m: m.group("head") + "session" + ((m.group("s") + "scratch") if m.group("pad") else "")),
     ("session_notes", re.compile(r"(?i)(AppData)%s(Roaming)%s[^\\/\s'\"]+%sside-sessio[n]-notes%slocal[_][0-9a-f]{8}-[0-9a-f]{4}-"
                                  r"[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" % ((_SEP,) * 4)),

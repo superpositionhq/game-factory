@@ -916,6 +916,8 @@ $RulesTail = @(
     # the build machine's per-session folders and ids (same names as tools/ue-replay SESSION_PATH_RULES): before the
     # user-name rules, which only rename the profile part of these paths. Separators: / \ or JSON-escaped \\.
     @{ id = 'session-path'; scope = 'all'; match = '(?i)(AppData[\\/]+Local[\\/]+Temp([\\/]+))[^\\/\s''"]+[\\/]+[^\\/\s''"]+[\\/]+[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:([\\/]+)scratc[h]pad(?![\w-]))?'; replace = '${1}session${3}SCRATCH_DIR' },
+    # a session folder cut short (recorded commands are kept to 2000 characters): Temp/<tool>/<project>/<uuid start> at a string end
+    @{ id = 'session-path'; scope = 'all'; match = '(?i)(AppData[\\/]+Local[\\/]+Temp[\\/]+)[^\\/\s''"]+[\\/]+[^\\/\s''"]+[\\/]+[0-9a-f]{8}(?:-[0-9a-f]{0,12}){0,4}(?=\\?"|''|$)'; replace = '${1}session' },
     @{ id = 'session-path'; scope = 'all'; match = '(?<=session[\\/]+)SCRATCH_DIR'; replace = 'scratch' },
     @{ id = 'session-path'; scope = 'all'; match = 'SCRATCH_DIR'; replace = '' },
     @{ id = 'session-path'; scope = 'all'; match = '(?i)(AppData([\\/]+)Roaming\2)[^\\/\s''"]+\2side-sessio[n]-notes\2local_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'; replace = '${1}session${2}notes' },
