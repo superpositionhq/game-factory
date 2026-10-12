@@ -142,10 +142,13 @@ hits read through sparks, hit-stop and stagger; no gore, no deaths (round losers
   curve; the move's startup/active/recovery are chosen from that and the montage play rate is set so the clip's
   strike frame lands exactly on the first active frame. Root motion is extracted into a per-move displacement
   curve that the sim applies (no anim-driven movement, so it is deterministic and feet don't slide).
-- **Hit detection**: during active frames the sim sweeps a capsule from the blade's base socket to its tip socket
-  between the previous and the current sim frame (`blade_base`, `blade_tip` sockets on the weapon mesh) against
-  the opponent's three hurt capsules (head, torso, legs). One hit per move per target. Weapon-vs-weapon **clashes**:
-  two active blades crossing within 2 frames → both recoil, sparks, no damage.
+- **Hit detection** (changed while writing the sim, 2026-10-12): during active frames a move hits if the target is
+  within the move's **reach** (cm from the attacker's centre, plus body radius) and inside its **arc** (degrees
+  around the attacker's facing). Analytic reach + arc on the floor plane keeps the fight deterministic and
+  independent of animation playback (a blade sweep against hurt capsules would depend on the pose and frame rate);
+  the blades (base/tip points per weapon) are used for sparks and trails. One hit per move per target.
+  Weapon-vs-weapon **clashes**: both fighters land active frames on each other in the same step → both recoil,
+  sparks, no damage.
 
 ### Universal rules
 
@@ -259,7 +262,9 @@ Moonturn (sidestep+H, Mid tracking spin), Riposte, Yield.
 
 ### The Whetwarden (poleaxe): boss
 
-Body: Paragon **Sevarog** (on disk), masked; a blue cord mesh knotted on the haft. Vigour 1400, poise 170, walk
+Body: Paragon **Sevarog** (on disk) in its **Chronos** skin, not the default body that tower-defense and giant-fall
+use, re-tinted salt-white and verdigris by material instances, with a faded blue cord knotted on the haft (coordinator
+note 2026-10-12: make the Warden visibly distinct). Vigour 1400, poise 170, walk
 280 cm/s, range 300 cm. Delayed overheads (startup 30, with a visible wind-up), a three-hit **Wheel** spin
 (Mid, Mid, Low), a tracking haft thrust, a ground slam (Low, wide), and a **Recall** move per rival style
 (a short move that mirrors each challenger's signature, reusing the timing, not their clips). Playable in Versus
@@ -424,6 +429,23 @@ script run gets a workflow row with the script's sha256. Pack content copied unc
 
 ## 14. Status
 
-- 2026-10-12: story bible and design drafted; repo created with new-game.ps1. Waiting for the coordinator's OK.
-  Build/GPU slots are on hold until the dataset replays finish; offline work only until released.
-- Asset requests: Paragon Greystone + Paragon Kallari (free) to the asset scout via the coordinator.
+- 2026-10-12: story bible and design drafted; repo created with new-game.ps1. **Approved by the coordinator**
+  (942d5fe). Build/GPU slots on hold until the dataset replays finish: offline work only until released.
+- Offline C++ written (not compiled yet): duel sim (`FBDDuelSim`), brain (`FBDDuelBrain`), fighter actor + native
+  anim instance, blade trails, camera, game instance (Rite ladders, scenario table), duel and menu game modes,
+  controller with per-player actions, AutoPlay bot, canvas HUD and menus, settings.
+- Data: frame-data CSVs for Ishen, Hessa, the Warden (Data/Moves_*.csv), all subtitle lines (Data/Lines.csv),
+  arena cards, fighter spec (Data/Fighters.json). Odric and Kesh wait for their packs.
+- Editor scripts ready to run once released: make_input.py, make_data.py, p01_probe_fighters.py,
+  p02_probe_maps.py, make_presentation.py, make_fighters.py, retarget_hessa.py (full editor), make_portraits.py
+  (full editor, GPU); run tooling (Scripts/run_ue.sh, run_ue_gui.sh through ue-heavy.ps1, stage_packs.sh).
+- Done offline: 12 synthesized sounds (Scripts/gen_audio.py), 23 HUD/menu kit textures from the HONETi GUI sources
+  (Scripts/gen_ui.py, gen_ui_v2.py; mock HUD reviewed), Root guard as a procedural crouch in the anim proxy,
+  headless brain-vs-brain automation test, startup map / cook config.
+- Release plan (in order): compile; stage Feng Mao, Aurora, Sevarog, KCISA, sword SFX, music, sparks, Soul Cave,
+  castle packs; make_input, make_data, probes; retarget Hessa; make_presentation, make_fighters, portraits; arena
+  maps from the Soul Cave and castle demo maps (+ Saltpans, Stair built from scans); headless sim test; S1 by hand,
+  validate-run, framing screenshots, then ask for a recording.
+- Asset requests: Paragon Greystone + Paragon Kallari (free) asked of the asset scout 2026-10-12.
+- Disk: C: has about 74 GB free (97 % used); packs are staged only when needed and pruned to the used assets
+  before commit.
