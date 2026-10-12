@@ -1,7 +1,7 @@
 # EMBERWAKE: story bible and game design
 
 Third-person grapple action, Unreal Engine 5.3, C++ module `GiantFall`. Slug `giant-fall`.
-Status: **draft v1, 2026-10-12, waiting for the coordinator's OK** (see section 13).
+Status: **approved 2026-10-12 (565b883); offline production during the shared-slot hold** (see section 13).
 
 ## 1. The game in one paragraph
 
@@ -238,6 +238,8 @@ target, lines attached, giants_alive, gate_integrity / road_progress.
   shortens but never below 260 cm (the hero fades to 40 % opacity if the camera gets closer).
 - **Soft lock:** `IA_Lock` frames the line between hero and seam: the camera's yaw/pitch ease toward a framing
   that keeps both on screen, at most 50°/s, with a 6° dead zone; input still orbits freely inside a ±30° leash.
+  The cap holds in every case, including during grapple chains and when the target changes: there is no snap or
+  catch-up mode, and the lock never engages by itself.
   The seam marker is a soft amber diamond. Lock releases if the seam leaves view for 2 s.
 - **Speed feel without kicks:** wind streak particles (Niagara, camera-attached, alpha and count scale with speed
   above 10 m/s), the mantle and line flutter, a rising wind tone; a faint vignette of streaks at the screen edges
@@ -257,7 +259,7 @@ Guild crates black iron.
 | Hero animation | `fab\paragon-animations-retargeted-to-manny` (air poses, falls, landings, spin slashes), `fab-ue\lyra-starter-game` locomotion, `fab-ue\free-animation-library` | Fab Standard |
 | Cairns | `fab-ue\paragon-rampage` (base, Elemental), `fab-ue\paragon-sevarog` (base, Chronos) with their own anim sets | Fab Standard |
 | Town (Lower Ward, Ringwall) | `fab-ue\khs-naganeupseong-walled-town` (walled town: walls, gates, thatched houses, mills, props), `fab-ue\khs-korean-gwanghwamun-gate` (the Bell Gate pavilion) | Fab Standard (KHS) |
-| Tall halls, towers, temple | `fab-ue\china-modular-temple`, `fab-ue\khs-korean-temples`, `fab-ue\khs-korean-stone-pagoda`, `fab-ue\dongrae-hyanggyo` | Fab Standard / CC BY (KHS) |
+| Tall halls, towers, temple | `fab-ue\khs-korean-temples`, `fab-ue\khs-korean-stone-pagoda`, `fab-ue\dongrae-hyanggyo`; `fab-ue\china-modular-temple` only for background pieces (never a hero shot: liaozhai-night already features it) | Fab Standard / CC BY (KHS) |
 | Kite masts, kiln towers | kitbashed from the town and temple timber pieces + `fab-ue\medieval-castle-modular-vol-1` ironwork and `fab-ue\survival-construction-pack` scaffolding | Fab Standard |
 | Forest, cliffs | `fab-ue\temperate-vegetation-spruce-forest`, `...-foliage-collection`, `...-optimized-grass-library`, `fab\nordic-forest-cliff-large-xibsff1`, `fab\massive-tundra-rock-formation-wcrmbiar`, `fab\mossy-rocks-tjmudcfda` | Fab Standard |
 | Ground, stone | `fab\rocky-forest-path-vbhsfesga`, `fab\mossy-forest-floor-vfylbge`, `fab\fort-stone-wall-tfuebj3n`, Poly Haven `siege-textures` / `liaozhai-textures` | Fab Standard / CC0 |
@@ -266,6 +268,9 @@ Guild crates black iron.
 | UI | `fab-ue\honeti-4k-full-fantasy-gui` frames recoloured to lacquer red / ink / brass, `gameicons\` | Fab Standard / CC BY 3.0 |
 | Fonts | `fonts\SongMyung` (titles), `fonts\GowunBatang` (body), `fonts\BarlowCondensed` (numbers) | OFL |
 | Music, SFX | `fab-ue\fantasy-music-starter-pack-v2` (CC BY, "Music by Cinematsic"), `fab\wafu-vol35-mountain-temple` (calm), `fab\free-realistic-sword-sound-effects-pack` (cleaver), `kenney\impact-sounds`, `fab-ue\essential-footsteps-sfx`; synthesized wind, reel whirr, bellows, bell, giant thuds | Fab Standard / CC BY / CC0 |
+
+**Lanthorn's own look (coordinator note):** the identity shots are the Naganeupseong ring wall, thatched Lower
+Ward and the red-and-iron kite masts; temple pieces stay in the background and on the S3 terraces.
 
 **IP guard:** no exposed-muscle giants, no human-faced giants, no "titan" anywhere, no wings emblem, no green
 cloaks, no hip-mounted gas tanks or twin box-sheathed swords (our gear is forearm reels + back bellows + one
@@ -319,6 +324,8 @@ march for the Pilgrim.
   (background runners on splines), `AGFGameMode` (scenario flow, flares, win/lose, score, telemetry),
   `UGFGameInstance` (settings, save, AutoPlay hook), `UGFSaveGame`, `AGFPlayerController`, UMG widgets in C++
   (`UGFHudWidget`, menus), `UGFBotComponent`.
+- Replay rule: every pack copy, giant scale, re-material (stone/ember material instances), skin choice, retarget
+  (IK Retargeter assets for the hero anims) and data asset is made by a committed editor script in `Scripts/`.
 - DataTables: `DT_Cairns`, `DT_Attacks` (wind-up, active, recovery, damage, zone), `DT_Scenarios`, `DT_StoryLines`.
 - Engine: `CableComponent` plugin, Niagara, Enhanced Input. Config: `r.RDG.AsyncCompute=0`,
   `bAllowHighDPIInGameMode=True`, motion blur off, a custom `Anchor` trace channel.
@@ -356,3 +363,5 @@ march for the Pilgrim.
 
 - 2026-10-12: story bible and design draft v1 written during the shared-slot hold; title EMBERWAKE chosen; repo
   created; sent to the coordinator for approval.
+- 2026-10-12: approved by the coordinator (565b883) with notes on Lanthorn's distinct look, lock-speed cap,
+  scripted asset work; asset requests sent to the scout. Writing C++ and editor scripts offline (no engine runs).
