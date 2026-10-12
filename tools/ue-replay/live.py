@@ -330,11 +330,16 @@ def run_findings(cfg, wins):
             continue
         with open(path, encoding="utf-8") as f:
             recs = [json.loads(l) for l in f if l.strip()]
+        prev_extra = set()
         for x in recs:
+            if kind == "window":
+                # an extra file is reported in the window it appears in, not again in every later window
+                extra_now = set((x.get("detail") or {}).get("extra") or [])
+                new_extra, prev_extra = sorted(extra_now - prev_extra), extra_now
             if x.get("window") not in ws:
                 continue
             if kind == "window":
-                d = x.get("detail") or {}
+                d = dict(x.get("detail") or {}, extra=new_extra)
                 fb = d.get("fallback") or []
                 if fb:
                     out.append(finding("warn", "content_not_replayed", "%d Content file(s) in commit %s were made by no "
@@ -354,12 +359,16 @@ def run_findings(cfg, wins):
             if x.get("kind") != "run" or x.get("skipped"):
                 continue
             where = {"window": x["window"], "run": x.get("run"), "script": x.get("script")}
-            if x.get("exit_code") not in (0, None) and x.get("exit_code_original") in (0, None):
-                out.append(finding("error", "run_failed", "%s exited %s in the replay (original %s): it may depend on "
-                                   "something outside the repo (an absolute path, an uncommitted file, the live project). %s" % (
-                                       x.get("script"), x.get("exit_code"), x.get("exit_code_original"),
-                                       first_errors(os.path.join(work, x.get("log") or ""))), **where))
-            elif x.get("rows_replayed", 0) < len(x.get("rows_original") or []):
+            # UnrealEditor-Cmd exits 1 whenever the engine logs an error (a missing navmesh...), so an exit code alone
+            # says little: a run failed when it also did less than the original (fewer workflow rows)
+            short = x.get("rows_replayed", 0) < len(x.get("rows_original") or [])
+            if short and x.get("exit_code") not in (0, None) and x.get("exit_code") != x.get("exit_code_original"):
+                out.append(finding("error", "run_failed", "%s exited %s in the replay (original %s) and logged %d of %d "
+                                   "workflow rows: it may depend on something outside the repo (an absolute path, an "
+                                   "uncommitted file, the live project). %s" % (
+                                       x.get("script"), x.get("exit_code"), x.get("exit_code_original"), x.get("rows_replayed", 0),
+                                       len(x.get("rows_original") or []), first_errors(os.path.join(work, x.get("log") or ""))), **where))
+            elif short:
                 out.append(finding("warn", "rows_short", "%s logged %d workflow row(s) in the replay, %d originally" % (
                     x.get("script"), x.get("rows_replayed", 0), len(x.get("rows_original") or [])), **where))
             if str(x.get("code_at_run_time") or "").startswith("commit code ("):
@@ -369,12 +378,15 @@ def run_findings(cfg, wins):
 
 
 def first_errors(log):
+    """The script's own errors first (Python), engine errors only when there are none."""
     try:
         with open(log, encoding="utf-8", errors="replace") as f:
-            errs = [l.strip() for l in f if "LogPython: Error" in l or "Error: " in l][:2]
+            lines = [l.strip() for l in f]
     except OSError:
         return ""
-    return ("First error: " + " | ".join(e[-200:] for e in errs)) if errs else ""
+    errs = [l for l in lines if "LogPython: Error" in l or "Traceback" in l][:2] or \
+        [l for l in lines if re.search(r"\bError: |Fatal error|Assertion failed", l)][:2]
+    return ("First error: " + " | ".join(re.sub(r"^\[[^\]]*\]\[[^\]]*\]", "", e)[-200:] for e in errs)) if errs else ""
 
 
 # ------------------------------------------------------------------------------------------------ structure check
