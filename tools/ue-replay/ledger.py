@@ -289,7 +289,13 @@ def repo_rel(path, repo_abs):
 ABSENT = object()  # sentinel: the file does not exist yet
 
 
-TEXT_EXT = (".py", ".ps1", ".sh", ".bat", ".cpp", ".h", ".cs", ".ini", ".json", ".md", ".uproject", ".txt", ".gitignore",
+def is_code(path):
+    """Files an editor build compiles from (the runner rebuilds when one of them changes)."""
+    return (path.startswith(("Source/", "Plugins/")) and path.endswith((".cpp", ".h", ".inl", ".cs"))) or \
+        path.endswith((".uproject", ".uplugin"))
+
+
+TEXT_EXT = (".py", ".ps1", ".sh", ".bat", ".cpp", ".h", ".inl", ".cs", ".uplugin", ".ini", ".json", ".md", ".uproject", ".txt", ".gitignore",
             ".gitattributes", ".csv", ".tsv")
 
 
@@ -427,6 +433,7 @@ def build(cfg):
     drops = {d["id"]: d for d in cfg.get("asset_drops", [])}
     shells = cfg.get("shell_replay", [])
     seen_tool = set()
+    commit_code = {}   # (sha, path) -> code text at that commit (ABSENT when not in it)
     cur_w = 1
     run_seq = 0
 
@@ -506,6 +513,39 @@ def build(cfg):
                         del texts[u["script"]]
                         unknown.append(u["script"])
                 rr = dict(r, id="R%04d" % run_seq, window=w["index"], texts=texts, unknown=unknown, absent=absent)
+                if cfg.get("code_at_run_time", True):
+                    # the C++ as it stood when the run started, where it differs from the window's commit: a run before
+                    # a mid-window code change ran with the earlier code (stealth L02: built with the commit's C++, the
+                    # level got duplicate actors). The runner writes these files and rebuilds before the run.
+                    code, code_unknown = {}, []
+                    for x in w["inputs"]:
+                        p = x["path"]
+                        if not is_code(p):
+                            continue
+                        st = fs.get(p)
+                        if st is None:
+                            code_unknown.append(p)
+                            continue
+                        key = (w["sha"], p)
+                        if key not in commit_code:
+                            b = blob_at(repo, w["sha"], p)
+                            commit_code[key] = norm_text(b) if b is not None else ABSENT
+                        if st is ABSENT and commit_code[key] is ABSENT:
+                            continue
+                        if st is not ABSENT and commit_code[key] is not ABSENT and st == commit_code[key]:
+                            continue
+                        if st is ABSENT:
+                            code[p] = "absent"
+                        else:
+                            h = sha256(st)
+                            blobs[h] = st
+                            code[p] = h
+                    if code_unknown:
+                        # some file's text at that moment is unknown (a shell edit the ledger cannot follow): a mix of
+                        # earlier and commit texts may not compile, so the run keeps the commit's code
+                        rr["code_unknown"] = code_unknown
+                    elif code:
+                        rr["code"] = code
                 if not r["script"].startswith("Scripts/"):
                     rr["script_version"] = "external"
                 elif r["script"] in texts:
@@ -573,6 +613,8 @@ def build(cfg):
                 "runs_readonly": sum(1 for r in all_runs if r["readonly"]),
                 "script_version": dict(collections.Counter(r["script_version"] for r in all_runs)),
                 "runs_with_unknown_helper": sum(1 for r in all_runs if r["unknown"]),
+                "runs_with_earlier_code": sum(1 for r in all_runs if r.get("code")),
+                "runs_with_unknown_code": sum(1 for r in all_runs if r.get("code_unknown")),
                 "reconstruction_checks": sum(len(w["reconstruction"]) for w in windows),
                 "reconstruction_match": sum(1 for w in windows for c in w["reconstruction"] if c["match"]),
                 "reconstruction_unknown": sum(1 for w in windows for c in w["reconstruction"] if not c["reconstructed"]),

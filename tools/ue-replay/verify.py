@@ -431,6 +431,16 @@ def deviations(ctx, report):
           "runs": [x.get("run") for x in retried if x.get("script_paths_remapped")]}
          for e in cfg.get("external_sources", []) if e.get("remap_scripts")
          and any(x.get("script_paths_remapped") for x in retried)], None)
+    add("code_at_run_time", "runs replayed with the C++ as it stood when they started (the window's commit has later "
+        "code; the editor is rebuilt between runs)",
+        [{"run": x.get("run"), "script": x.get("script"), "code": x["code_at_run_time"]} for x in retried
+         if x.get("code_at_run_time") and not str(x["code_at_run_time"]).startswith("commit code")])
+    add("code_at_run_time_not_buildable", "runs whose run-time C++ did not compile here: they got the window's commit code",
+        [{"run": x.get("run"), "script": x.get("script"), "detail": x["code_at_run_time"]} for x in retried
+         if str(x.get("code_at_run_time") or "").startswith("commit code (")])
+    add("code_at_run_time_unknown", "runs whose C++ at that moment the recording cannot rebuild (a shell edit it cannot "
+        "follow): they got the window's commit code", [{"run": r["id"], "script": r["script"], "files": r["code_unknown"]}
+                                                      for r in runs if r.get("code_unknown") and not r.get("readonly")])
     add("runs_retried_after_engine_crash", "runs the engine crashed in before the script finished, run once more",
         [{"run": x.get("run"), "script": x.get("script"), "retries": x["retried_after_engine_crash"]} for x in retried if x.get("retried_after_engine_crash")])
     add("structure_dump_excluded", "folders left out of the structure dump (loading them crashes the editor, in the final commit too)",

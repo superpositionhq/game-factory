@@ -353,6 +353,39 @@ def code_changed(w):
                for x in w["inputs"])
 
 
+def apply_run_code(ctx, w, want):
+    """Make the project's code files what the run needs: the ledger's run-time texts (want: path -> blob sha256 or
+    "absent") over the window's commit; files an earlier run changed and this one does not go back to the commit.
+    Returns True when a file changed (the editor must be rebuilt)."""
+    have = ctx.state.get("code_applied") or {}
+    if want == have:
+        return False
+    in_tree = None
+    for p in sorted(set(have) | set(want)):
+        fp = ctx.p(p)
+        if p in want:
+            if want[p] == "absent":
+                if os.path.exists(fp):
+                    os.remove(fp)
+            else:
+                with open(os.path.join(ctx.work, "blobs", want[p]), "rb") as f:
+                    data = f.read()
+                os.makedirs(os.path.dirname(fp), exist_ok=True)
+                with open(fp, "wb") as f:
+                    f.write(data)
+        else:
+            if in_tree is None:
+                in_tree = set(git(ctx.proj, "ls-tree", "-r", "--name-only", w["sha"]).splitlines())
+            if p in in_tree:
+                git(ctx.proj, "checkout", w["sha"], "--", p)
+            elif os.path.exists(fp):
+                os.remove(fp)
+    ctx.state["code_applied"] = dict(want)
+    ctx.state["code_dirty"] = True
+    ctx.save()
+    return True
+
+
 def build_editor(ctx, label):
     cfg = ctx.cfg
     log = os.path.join(ctx.logs, "build_%s.log" % label)
@@ -740,11 +773,29 @@ def cmd_run(cfg, a):
                     ctx.state["done"].append(sid)
                     ctx.save()
                     continue
+                # the C++ as it stood when the run started (ledger "code"), unless that text did not build before
+                want = (r.get("code") or {}) if cfg.get("code_at_run_time", True) else {}
+                if want and json.dumps(want, sort_keys=True) in ctx.state.get("code_failed", []):
+                    want = {}
+                    rec["code_at_run_time"] = "commit code (the run-time code did not build)"
+                if apply_run_code(ctx, w, want):
+                    rec["code_at_run_time"] = rec.get("code_at_run_time") or (
+                        "%d file(s) as at the run's start" % len(want) if want else "commit code again")
                 if ctx.state.get("code_dirty") or ctx.state.get("built") is None:
-                    code, secs, log = build_editor(ctx, "w%02d" % i)
-                    jappend(runs_log, {"window": i, "kind": "build", "step": "w%02d.build" % i, "exit_code": code, "seconds": secs,
-                                       "log": os.path.relpath(log, ctx.work)})
-                    print("   build: exit %s (%.0f s)" % (code, secs), flush=True)
+                    code, secs, log = build_editor(ctx, "w%02d_%s" % (i, r["id"]))
+                    jappend(runs_log, {"window": i, "kind": "build", "step": "w%02d.build.%s" % (i, r["id"]), "exit_code": code,
+                                       "seconds": secs, "code_files": len(want), "log": os.path.relpath(log, ctx.work)})
+                    print("   build: exit %s (%.0f s)%s" % (code, secs, " with %d run-time code file(s)" % len(want) if want else ""), flush=True)
+                    if code != 0 and want:
+                        # the code the builder had at that moment does not compile here (an edit between two of their
+                        # builds): this run gets the commit's code, as before code_at_run_time
+                        ctx.state.setdefault("code_failed", []).append(json.dumps(want, sort_keys=True))
+                        rec["code_at_run_time"] = "commit code (the run-time code did not build: %s)" % os.path.relpath(log, ctx.work)
+                        apply_run_code(ctx, w, {})
+                        code, secs2, log = build_editor(ctx, "w%02d_%s_commit" % (i, r["id"]))
+                        jappend(runs_log, {"window": i, "kind": "build", "step": "w%02d.build.%s.commit" % (i, r["id"]),
+                                           "exit_code": code, "seconds": secs2, "log": os.path.relpath(log, ctx.work)})
+                        print("   build with the commit's code: exit %s (%.0f s)" % (code, secs2), flush=True)
                     if code != 0:
                         sys.exit("editor build failed in window %d, see %s" % (i, log))
                     ctx.state["built"] = w["sha"]
@@ -806,7 +857,8 @@ def cmd_run(cfg, a):
             jappend(runs_log, rec)
             ctx.state["done"].append(sid)
             ctx.save()
-        # boundary
+        # boundary (code files a run had at their earlier text go back to the commit first)
+        apply_run_code(ctx, w, {})
         res = boundary(ctx, w)
         summ = {"window": i, "commit": w["sha"], "subject": w["subject"], "time": now(), "seconds": round(time.time() - t_w, 1),
                 "runs": len(w["runs"]), "reconstruction": {"checks": len(w["reconstruction"]),
