@@ -120,6 +120,9 @@ def main():
     ap.add_argument("game")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--quiet-minutes", type=int, default=10)
+    # an object whose match is not a path or author field (e.g. compressed pixels that happen to spell the name;
+    # giant-fall re-encoded such a normal map later): commits that held it get HEAD's clean version of the same path
+    ap.add_argument("--unpatchable-use-head", action="store_true")
     ap.add_argument("--repo", help="testing only: this repo instead of <root>/games/<game>")
     a = ap.parse_args()
     root = gfroot.root()
@@ -138,10 +141,26 @@ def main():
         print("  %s %s  %s  rewritten %d%s" % (oid[:12], paths[0], json.dumps(counts), rewritten,
                                              ("  UNPATCHABLE %d (not a path or author field)" % unpatchable) if unpatchable else ""))
         plan.append((sha, oid, paths, out, unpatchable, rewritten))
-    bad = [p for p in plan if p[4] or not p[5]]
+    # unpatchable objects: HEAD's clean version of the same path, when asked for and available
+    head_ptr = {}
+    for line in git(repo, "ls-tree", "-r", "HEAD").decode("utf-8", "replace").splitlines():
+        meta, path = line.split("\t", 1)
+        head_ptr[path] = meta.split()[2]
+    substitute = {}
+    for sha, oid, paths, out, unpatchable, rewritten in plan:
+        if not (unpatchable or not rewritten) or not a.unpatchable_use_head:
+            continue
+        hs = next((head_ptr[p] for p in paths if p in head_ptr and head_ptr[p] in pointers), None)
+        clean = hs and not any(h[0] == hs for h in hits)
+        if clean:
+            substitute[sha] = hs
+            print("  %s %s: HEAD's version (pointer %s) replaces it in every commit" % (oid[:12], paths[0], hs[:10]))
+    bad = [p for p in plan if (p[4] or not p[5]) and p[0] not in substitute]
     if bad:
-        raise SystemExit("%d object(s) have matches outside a safe context: nothing changed; fix them by hand" % len(bad))
-    if not a.apply or not plan:
+        raise SystemExit("%d object(s) have matches outside a safe context: nothing changed; fix them by hand, or pass "
+                         "--unpatchable-use-head when HEAD has a clean version of the same path" % len(bad))
+    plan = [p for p in plan if p[0] not in substitute]
+    if not a.apply or not (plan or substitute):
         print("dry run: nothing changed" if not a.apply else "nothing to do")
         shutil.rmtree(tmp, ignore_errors=True)
         return 0
@@ -176,6 +195,7 @@ def main():
         ptr = "version https://git-lfs.github.com/spec/v1\noid sha256:%s\nsize %d\n" % (new_oid, size)
         new_sha = git(repo, "hash-object", "-w", "--stdin", inp=ptr.encode()).decode().strip()
         mapping[sha] = new_sha
+    mapping.update(substitute)
     mfile = os.path.join(tmp, "map.txt")
     with open(mfile, "w", encoding="ascii", newline="\n") as f:
         f.write("".join("%s %s\n" % kv for kv in mapping.items()))
