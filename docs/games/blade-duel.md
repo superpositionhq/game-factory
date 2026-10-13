@@ -439,5 +439,10 @@ script run gets a workflow row with the script's sha256. Pack content copied unc
   metadata). Framing reviewed from timed shots; fixes made for dark/blown arenas, spark clouds, blocked camera, the
   glaive grip, and a Slate font crash (runtime-font glyph height on first use).
 - Store packs pruned to the used dependency closure and committed (about 6.9 GB, LFS); scrub-import-paths verify 0.
-- Not yet: portraits (script ready), Rimeshelf arena (Hessa/Ishen ladder duels fall back to other arenas until it
-  exists), S4 versus recording (stretch), packaged Shipping build (pipeline).
+- Packaged Win64 Shipping builds and runs (menu, then S1 under AutoPlay); the leak scan is clean.
+- The Rimeshelf is built from scans: an ice shelf under snow-light, four cabins sinking into meltwater ice pools, a
+  boat frozen in, the marker post by the ring, snow hills and tundra rocks all round. Ishen's 3rd and Hessa's 1st Rite
+  duels are fought there (a missing arena map still falls back to the Saltpans).
+- Portraits: each fighter shot in the game on the select stage (lit close-up, Scripts/portraits.sh), cropped and
+  imported as T_Portrait_<Id>; shown beside subtitles and on the select card.
+- Not yet: S4 versus recording (stretch).
