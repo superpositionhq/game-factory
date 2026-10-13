@@ -118,7 +118,8 @@ def fingerprint(w):
     """What a replayed window depends on: its commit, its runs (scripts, texts, code, flags), drops and shell steps."""
     runs = [[r["id"], r["script"], r.get("args"), r.get("texts"), r.get("unknown"), r.get("code"), r.get("code_unknown"),
              r.get("readonly"), r.get("not_run"), r.get("mode"), r.get("env")] for r in w["runs"]]
-    return json.dumps([w["sha"], runs, [d["id"] for d in w["drops"]], [s.get("argv") for s in w["shell"]]], sort_keys=True)
+    drops = [[d["id"], [[it.get("from"), it.get("to"), it.get("from_git"), it.get("ref")] for it in d["items"]]] for d in w["drops"]]
+    return json.dumps([w["sha"], runs, drops, [s.get("argv") for s in w["shell"]]], sort_keys=True)
 
 
 def last_unchanged(old, new, done):
@@ -599,11 +600,15 @@ def catch_up(cfg, lst):
     have_project = os.path.isdir(os.path.join(cfg["project_dir"], ".git"))
     done = ctx.state.get("window", 0) if have_project else 0
     k = last_unchanged(old, new, done) if have_project else done
+    forced = lst.pop("restart", None)
+    if forced is not None and have_project and forced < k:
+        k = forced
     ue_replay.save_ledger(cfg, new, blobs)
     if not have_project:
         runner.cmd_prepare(cfg, RunArgs)
     elif k < done:
         why = ("the first commit changed" if k < 0 else
+               "replay again from window %d (requested: --restart)" % (k + 1) if forced is not None and k == forced else
                "window %d changed (history rewritten, or the settings or recording changed what it replays)" % (k + 1))
         rep["reset"] = reset_to(cfg, old, new, k, why)
     w0 = runner.Ctx(cfg).state.get("window", 0)
@@ -655,6 +660,9 @@ def cmd_live(cfg, a):
         return 0
     lst_path = os.path.join(live_dir(cfg), "state.json")
     lst = runner.jload(lst_path, {})
+    if getattr(a, "restart", None) is not None:
+        # replay again from window N+1 (the project goes back to window N's commit), e.g. after a tool fix
+        lst["restart"] = int(a.restart)
     try:
         print("== %s live job (pid %d)" % (runner.now(), os.getpid()), flush=True)
         while True:

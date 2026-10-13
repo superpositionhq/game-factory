@@ -9,7 +9,7 @@
   python ue_replay.py record  --game ...                             visible world replay + capture (GPU job)
   python ue_replay.py status  --game ...
   python ue_replay.py package --game ... [--force]                     deliverables/_replay/<game>/<sha8>/ (READY when complete)
-  python ue_replay.py live    --game ... [--log <file>]               per-commit replay of a live game (background job)
+  python ue_replay.py live    --game ... [--log <file>] [--restart N] per-commit replay of a live game (background job)
   python ue_replay.py live-status                                     every live game: HEAD, replayed windows, last result
   python ue_replay.py truth   --game ...                              truth project at the final commit, editor built
   python ue_replay.py release --game ...                              catch up, truth, dumps, verify, package
@@ -267,6 +267,7 @@ def main():
     ap.add_argument("command")
     ap.add_argument("--game", default=None)
     ap.add_argument("--log", default=None)
+    ap.add_argument("--restart", type=int, default=None)   # live: replay again from window N+1 (project back to window N)
     ap.add_argument("--verbose", "-v", action="store_true")
     ap.add_argument("--until", type=int, default=None)
     ap.add_argument("--which", default="replay")
