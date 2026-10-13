@@ -54,6 +54,8 @@ started you. Use the **commit-always** skill for every commit.
 
 - UE 5.3 only. C++ for gameplay logic; Blueprint subclasses and data assets/DataTables for tuning; editor work through
   UE Python scripts in `Scripts/` (run headless via UnrealEditor-Cmd `-run=pythonscript`), never hand-edited `.uasset`.
+- UE 5.3 Python gotcha: positional `unreal.Color(r, g, b, a)` fills B, G, R, A, so red and blue come out swapped (light
+  colours, tints). Always pass keywords, `unreal.Color(r=..., g=..., b=..., a=...)`, or use `unreal.LinearColor`.
 - **Art (user rule):** premium, coherent, never primitives or flat colours in the final game. Use the bought and
   downloaded Fab packs and the animation packs (catalogue `docs/asset-library.md`, library `<GF_ROOT>\asset-library\`);
   characters and creatures animated. Store content under `Content/Fab/<Pack>/`; adapt it (materials, kitbash, set
