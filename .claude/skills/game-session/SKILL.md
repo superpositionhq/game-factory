@@ -56,6 +56,10 @@ started you. Use the **commit-always** skill for every commit.
   UE Python scripts in `Scripts/` (run headless via UnrealEditor-Cmd `-run=pythonscript`), never hand-edited `.uasset`.
 - UE 5.3 Python gotcha: positional `unreal.Color(r, g, b, a)` fills B, G, R, A, so red and blue come out swapped (light
   colours, tints). Always pass keywords, `unreal.Color(r=..., g=..., b=..., a=...)`, or use `unreal.LinearColor`.
+- Additive animation clips (most Paragon hit reactions, aim offsets, Infima additive poses) are never played as a full
+  pose by a native anim instance or proxy: the mesh collapses to a point or the arms leave the view (blade-duel hitstun,
+  fps-breach). Check `AnimSequence.AdditiveAnimType`; play an additive clip as a layer over a full-pose base (e.g. the
+  idle), or use the clip's NoAdditive variant.
 - **Art (user rule):** premium, coherent, never primitives or flat colours in the final game. Use the bought and
   downloaded Fab packs and the animation packs (catalogue `docs/asset-library.md`, library `<GF_ROOT>\asset-library\`);
   characters and creatures animated. Store content under `Content/Fab/<Pack>/`; adapt it (materials, kitbash, set
