@@ -364,3 +364,19 @@ the text copy, imported by script.
   rings and order markers; hold 60 fps with ~60 units + scan buildings (LODs, instanced foliage, check early); each
   scan pack's licence in `assets.manifest.json`; the bot uses rally points and attacks with grouped armies, never
   trickles units; smooth camera glides only.
+- 2026-10-12, built: all three scenarios play in the Haeun valley (L_Haeun). Built: the camp and its five buildings,
+  porters gathering rice and timber, five unit types with counters, box selection and right-click orders, mist of war
+  with a charted veil, the enemy AI (watch post, waves, full economy), the HUD, menu, settings and barks.
+  Fixes from the framing passes:
+  - the valley rendered black: the ground material read normal z from BC5 maps;
+  - camera: a wider and flatter three-quarter view (arm 5400, pitch −44° to −53°), and the Survey Hall and
+    Waystation at 0.85 scale;
+  - mist edges blurred; portraits rendered in the game (`-rcportraits`);
+  - scenarios 2 and 3 had no map ("+ScenarioMaps" de-duplicated the lines);
+  - motion blur off.
+- 2026-10-12, verified: one AutoPlay run per scenario, validate PASS (S1 300 s, S2 600 s, S3 900 s, all timeouts;
+  the bot is not tuned to win). The packaged Win64 Shipping build (2.2 GB) opens the menu and plays S1 at 58.5 fps.
+  The store packs are pruned to what the game uses (4.3 GB) and committed through LFS. Import paths are scrubbed.
+  Pushed at c194f17. The recording request is with the coordinator (framing shots in the shared notes).
+- Known and left as is: in S3 the bot stalls on timber at 18/18 supply (bot behaviour). The menu backdrop drifts
+  over grey mist with hard tree shadows.
