@@ -666,6 +666,9 @@ def drop_assets(ctx, d):
             n += len(git(ctx.proj, "ls-tree", "-r", "--name-only", ref, "--", it["from_git"]).splitlines())
             continue
         dst = ctx.p(it["to"])
+        if not os.path.exists(it["from"]):
+            # a wrong source path used to copy nothing without a word (rts-command: "{engine}/../../Templates/...")
+            raise SystemExit("asset drop %s: source %s does not exist" % (d["id"], it["from"]))
         if os.path.isfile(it["from"]):
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copy2(it["from"], dst)

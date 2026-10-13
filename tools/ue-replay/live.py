@@ -153,7 +153,34 @@ def reset_to(cfg, old, new, k, why):
     k0 = max(k, 0)
     sha = new["windows"][k0]["sha"]
     runner.git(ctx.proj, "checkout", "-q", "-f", "--detach", sha)
-    runner.git(ctx.proj, "clean", "-fdq")
+    # Store packs dropped in windows 1..k0 may never have been committed (staged, then pruned): git clean must not take
+    # them (rts-command: s05_data and s08 lost KT_SmartMat_Vol_4 and CityPark after a reset), and files of theirs that
+    # a later window deleted come back (copied only where missing, so later edits of kept files stay as they are)
+    drops = [d for w in new["windows"][1:k0 + 1] for d in w["drops"]]
+    excl = []
+    for d in drops:
+        for it in d["items"]:
+            excl += ["-e", "/" + (it.get("from_git") or it["to"]).strip("/") + "/"]
+    runner.git(ctx.proj, "clean", "-fdq", *excl)
+    restored = 0
+    for d in drops:
+        for it in d["items"]:
+            if it.get("from_git"):
+                continue   # restored from git by the drop itself when a later window needs it again
+            src, dst = it["from"], ctx.p(it["to"])
+            if os.path.isfile(src):
+                if not os.path.exists(dst):
+                    os.makedirs(os.path.dirname(dst), exist_ok=True)
+                    shutil.copy2(src, dst)
+                    restored += 1
+                continue
+            for dp, _, fns in os.walk(src):
+                for fn in fns:
+                    t = os.path.join(dst, os.path.relpath(os.path.join(dp, fn), src))
+                    if not os.path.exists(t):
+                        os.makedirs(os.path.dirname(t), exist_ok=True)
+                        shutil.copy2(os.path.join(dp, fn), t)
+                        restored += 1
     runner.fix_lfs_pointers(ctx, ["Content"])
     dropped = [r["id"] for w in (old or {"windows": []})["windows"][k0 + 1:] for r in w["runs"]]
     for rid in dropped:
@@ -167,7 +194,7 @@ def reset_to(cfg, old, new, k, why):
                       "provenance": {p: "git:" + sha[:10] for p in runner.scan(ctx.proj)}})
     ctx.save()
     ev = {"time": runner.now(), "kind": "replay_restarted_from_commit", "window": k0, "commit": sha, "reason": why,
-          "dropped_runs": len(dropped)}
+          "dropped_runs": len(dropped), "drops_kept": [d["id"] for d in drops], "drop_files_restored": restored}
     runner.jappend(os.path.join(live_dir(cfg), "events.jsonl"), ev)
     print("reset: replay project at window %d (%s): %s" % (k0, sha[:8], why), flush=True)
     return ev

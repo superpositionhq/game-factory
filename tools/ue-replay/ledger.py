@@ -84,6 +84,30 @@ RUN_PATTERNS = [
 EXIT_RE = re.compile(r"exit code (-?\d+)(?: \((\d+) s\))?|exit=(-?\d+)(?: seconds=(\d+))?|\bexit (-?\d+)(?: log ue-| seconds (\d+))")
 
 
+# UE log line timestamps ([2026.10.12-18.19.52:086], UTC by default) in a command's output: the end of an editor run
+UE_TS = re.compile(r"\[(\d{4})\.(\d{2})\.(\d{2})-(\d{2})\.(\d{2})\.(\d{2}):(\d{3})\]")
+
+
+def log_end_time(resp, action_time):
+    """The latest UE log timestamp in a command's output, as an ISO time in the action's offset, when it lies before the
+    action's own end (the tool call went on after the editor exited: output filtering, a commit made meanwhile); else
+    None. UTC first (UE's default), then local time."""
+    stamps = UE_TS.findall(resp)
+    if not stamps:
+        return None
+    t_act = parse_time(action_time)
+    last = max(stamps)
+    naive = datetime.datetime(*[int(x) for x in last[:6]], int(last[6]) * 1000)
+    for tz in (datetime.timezone.utc, t_act.tzinfo):
+        t = naive.replace(tzinfo=tz)
+        lag = (t_act - t).total_seconds()
+        if 2 < lag < 2 * 3600:
+            return t.astimezone(t_act.tzinfo).isoformat(timespec="milliseconds")
+        if -2 <= lag <= 2:
+            return None
+    return None
+
+
 # a shell command that exited non-zero still ran: its file edits and editor runs happened
 RAN_EVENTS = ("PostToolUse", "PostToolUseFailure")
 
@@ -235,6 +259,8 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
                                   reason if reason is not None else run_reason(c, m.start()), g.get("mode") or "commandlet",
                                   pi >= len(RUN_PATTERNS)))
         found.sort()
+        # one run in the command: its editor's last log line dates the run's end better than the tool call's end
+        log_end = log_end_time(resp, a["time"]) if len(found) == 1 else None
         for i, ((pos, _), script, args, env, reason, mode, via_wrapper) in enumerate(found):
             ex = exits[i] if i < len(exits) and len(exits) == len(found) else None
             s = script.replace("\\", "/")
@@ -249,6 +275,8 @@ def editor_runs(actions, repo_abs, extra_patterns=()):
                 "env": env, "reason": reason, "mode": mode, "via_wrapper": via_wrapper, "pos": pos,
                 "command": cmd,   # in full: the recorded command is data, never cut
             })
+            if log_end:
+                runs[-1]["log_end"] = log_end
     return runs
 
 
@@ -408,6 +436,15 @@ def build(cfg):
                      "command": "(not in the recorded actions: rebuilt from workflow row %s)" % item["row"]})
         actions.append({"time": row["time"], "tool": "Bash", "event": "PostToolUse", "tool_use_id": tid, "input": {"command": ""},
                         "session_id": "runs_from_rows"})
+    # A run whose editor finished before a commit that the tool call itself outlived (rts-command: s07_ui_audio's log
+    # ends 14:19:52, the commit holding its output is 14:20:02, the call ended 14:20:28) belongs before that commit:
+    # it is attached at its log end through a pseudo-action, like a recorded command
+    commit_times = [parse_time(c["time"]) for c in chain]
+    for k, r in enumerate(runs):
+        if r.get("log_end") and any(parse_time(r["log_end"]) < t <= parse_time(r["time"]) for t in commit_times):
+            r["attach_id"] = "logend:%d:%s" % (k, r.get("action_tool_use_id"))
+            actions.append({"time": r["log_end"], "tool": "Bash", "event": "PostToolUse", "tool_use_id": r["attach_id"],
+                            "input": {"command": ""}, "session_id": "log_end"})
     actions.sort(key=lambda a: a["time"])
     ro = cfg.get("readonly_patterns", [])
     for r in runs:
@@ -452,7 +489,7 @@ def build(cfg):
     aux = {}  # helper files the agent wrote outside the repo (absolute path -> text)
     run_by_tool = collections.defaultdict(list)
     for r in runs:
-        run_by_tool[r["action_tool_use_id"]].append(r)
+        run_by_tool[r.get("attach_id") or r["action_tool_use_id"]].append(r)
     drops = {d["id"]: d for d in cfg.get("asset_drops", [])}
     shells = cfg.get("shell_replay", [])
     seen_tool = set()
