@@ -12,6 +12,7 @@ through Enhanced Input, see [autoplay-contract.md](autoplay-contract.md)) as gam
 | `enqueue.ps1 <game> [-Runs k] [-Scenarios ..] [-MaxSeconds "1=300,3=900"]` | queue a pipeline run and return at once (for game sessions) |
 | `validate-run.ps1 <OutputDir>` | contract check of one raw run directory (for game sessions testing by hand) |
 | `scrub-history.ps1 <game> [-Apply]` | archive, then remove the names Superposition/game-factory from a finished game's history; dry run by default |
+| `scrub-lfs-history.py <game> [--apply]` | the user name in Git LFS objects of a game's history (assets committed before scrub-import-paths): same-length patch into new objects, every commit repointed (filter-branch, tags kept), bundle archived first, verified (no hits, HEAD tree, `git lfs fsck`); dry run by default |
 | `mark-invalid.ps1 <game> -Commit sha \| -RunId id -Reason text` | exclude bundles from the dataset (INVALID file, validation status `invalid`); files kept |
 | `scrub-import-paths.py` (UE Python, headless) | removes the user's profile path from a project's editor import-source paths (AssetImportData, FontFace, Interchange); see below |
 | `leak-scan.ps1 <dir> [-Patterns ..]` | byte search (ASCII + UTF-16) for the user name or other strings that must not ship |
