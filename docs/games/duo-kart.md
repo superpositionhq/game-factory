@@ -3,7 +3,7 @@
 Slug `duo-kart`, project/module `DuoKart`, Unreal Engine 5.3, Windows. Genre: local 2-player split-screen arcade
 kart racer with CPU racers, items, a 4-track cup, single versus races and (if time allows) a battle arena.
 
-Status (2026-10-12 21:20): playable; Win64 Shipping package builds (cook clean) and runs with both seats. All four
+Status (2026-10-12 22:00): playable; Win64 Shipping package builds (cook clean) and runs with both seats. All four
 tracks and the frontend map built by committed scripts; AutoPlay S1-S3 pass validate-run (tag `milestone/autoplay-3`,
 a93f2d2). Framing reviewed again after the top half's camera fix: both karts inside their halves, HUD columns clear of
 the shared minimap, UI kit (Kenney CC0 panels, tinted) on every frame. Cup ending: the podium beside the Great Vane
@@ -12,8 +12,10 @@ line. The Great Vane's notch ring (24 lanterns round the hub, lit clockwise as k
 rotor's own axis) takes the cup winner's guild colour at the ending and on the menu terrace afterwards. Banter chirps
 are synthesized (whistled blips at each driver's pitch, no voice). Packs trimmed to what the game uses;
 scrub-import-paths verify 0 hits. Open: driver characters (purchase list with the user; karts are kitbashed from
-Fantastic Village props meanwhile), the menu backdrop in front of the camera (terrace edge, fields, windmill), battle
-arena (optional).
+Fantastic Village props meanwhile). Menu terrace rebuilt in front of the camera (parapet, fields, windmill, the vane in
+the right third). Pinwheel Scramble plays in Weathercock Square (a 22 m wide ring round the weathercock column, market
+stalls, four storm-jar rows, sprinklers): 3 pinwheels a kart, an item hit knocks one off for anyone to take, 2 minutes,
+places by pinwheels; on the mode page; checked once on Shipping.
 
 ## 1. The game in one paragraph
 
@@ -407,7 +409,7 @@ Pack folders: store packs keep their own top folder under `Content/` (e.g. `Cont
 - [ ] Drift with three tailwind tiers, hop, tailwind start, gust vents, ramps, slipstream
 - [ ] 6 items with their counterplay; storm jar rows; position-based odds; subtle CPU rubber band
 - [ ] 4 tracks with shortcut and hazards each; season turns during each race
-- [x] Turning Cup with standings, podium and endings; Versus; (Battle optional, not started)
+- [x] Turning Cup with standings, podium and endings; Versus; Battle (Pinwheel Scramble)
 - [x] Banter subtitles, postcards, Past Turnings boards, the vane payoff
 - [ ] Main menu, settings (volume, resolution, split layout, rebinding per seat), pause, results, save of cup unlocks/best times
 - [ ] Styled UI only; premium pack art; synthesized engine and chirps
