@@ -407,30 +407,23 @@ lines carry a soft synthesized murmur under the subtitle. Music: modal theme, sp
 
 ## 15. Status and open items
 
-**2026-10-12 06:35, offline build during the slot hold (nothing compiled or run in the engine yet).**
+**2026-10-12 20:40.** Playable in the editor and as a packaged Win64 Shipping build (842 MB cooked, no leak hits).
 
-Done (committed):
-- C++ module `BattleBoats`: sea sampling (`UBBSeaSubsystem`), ship handling (`UBBShipMotion`), damage
-  (`UBBDamageModel`), weapons (`UBBWeaponMount`, `ABBShell`, `ABBTorpedo`, `ABBMine`), the ship pawn with the
-  stabilised camera rig (`ABBShip`), captain AI (`UBBShipAI`), fleet registry, scenario director (`ABBGameMode`),
-  player controller with every action in Enhanced Input, the AutoPlay bot (`UBBBotComponent`, injection only),
-  chart-room HUD and menus (`BBWidgets`), editor helpers (fonts, Water plugin ocean). Config: Shell trace channel,
-  BBIsland and WaterBodyCollision profiles, scenario maps, cook list.
-- Data: `Data/*.json` (9 ship classes, 8 refit lines, 44 lines all under 15 words).
-- Generated: 43 UI textures (oilcloth, brass, dial, blueprint, reticle, League knot, sea chart, flag alphabet,
-  crew cameos, ensigns, title), 24 synthesized SFX, 5 music tracks, flagged stand-in hulls.
-- Staged: fonts, icons, free Fab ships/harbour props, Megascans + Poly Haven rock scans, UE-format Niagara fire,
-  explosion and ambience packs.
-- Editor scripts (to run after the hold): import, materials, water waves, data assets, the four maps.
-
-Next, once the coordinator releases the slots: compile, run the editor scripts in the order in `Scripts/README.md`,
-verify the Water plugin ocean and the hull ride, first playable S1, AutoPlay S1, then S2 and S3.
+- All three scenarios run under AutoPlay v1.4 with validate-run PASS (one run each; results are metadata):
+  S1 win 282 s, S2 lose 425 s, S3 lose 388 s. Tags `milestone/autoplay-1`, `milestone/autoplay-3`.
+- Water plugin ocean with three Gerstner sea states; hulls ride four wave samples; the camera rig never takes heave,
+  pitch or roll; aim view only narrows the lens; framing checked by the coordinator (HUD clear of the ship, labels
+  stacked).
+- Islands from Megascans and Poly Haven rock scans; lighthouses and piers from free CC BY packs; raiders on the free
+  trawler hulls; fire, explosions and sea ambience from the copied packs; synthesized SFX and score.
+- Story in play: signal hoists S1-S3 including the payoff exchange, crew calls, the canvas-squadron and bells
+  discoveries, refit cards naming the towns, ship's-log results with the payoff line, changed menu line after S3.
 
 Open:
-- [ ] Fab purchase list (section 12) waiting for the user; must-haves for recordings: ship hulls, splash columns
-      (Realistic Water Explosions), rain (Easy Rain). Until then the stand-in hulls stay flagged and no recording is
-      requested.
-- [ ] Move the UE-format packs under `Content/Fab/` in-editor (with reference fix-up).
+- [ ] Fab purchase (section 12) with the user: real League/Crown hulls (stand-ins are flagged), splash columns,
+      wakes, rain, town houses (bell towers, dark towns). No recording until the hulls land.
+- [x] UE-format packs moved under `Content/Fab/` (reference fix-up; two unloadable UE4 destructible meshes removed).
+- [ ] Sea colour toward the cold grey-green of the Reach.
 
 ## 16. Acceptance checklist
 
