@@ -52,7 +52,7 @@ commit. A window's steps come from the ledger (`ue_replay.py ledger`), in the or
 | `assets.drop` | game settings + `actions.jsonl` | copies an initial asset (a store pack from the asset library) into `Content/` at the point where the builder copied it |
 | `build.editor` | `Source/` changed | UBT editor build of the replay project (lazily, before the next editor run) |
 | `editor.script` | `actions.jsonl` command lines | re-runs the editor script headless, with the same command shape (`-run=pythonscript -script=<path> [args]`, same environment variables), in the replay project |
-| `shell.replay` | game settings (allow list) | shell commands that changed `Content/` outside the editor (for example moving a pack's loose `.fbx` files) |
+| `shell.replay` | game settings (allow list) | shell commands that changed `Content/` outside the editor, matched to the recorded command (`match`) and replayed as `argv`: `delete <paths>`, `move-merge <src> <dst>`, `host-python <script> <args>` (engine Python, outside the editor), `keep-committed <dirs>` (a prune the replay cannot recompute, e.g. one driven by Shipping cook output: deletes the files under the dirs that the commit `ref` does not have) |
 | `boundary` | commit | checks the window (below), then makes the replay project's inputs equal to the commit |
 
 Read-only runs (probes, analyses, checks: settings `readonly_patterns`) are listed but skipped, except a script in

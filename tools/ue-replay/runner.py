@@ -580,6 +580,31 @@ def delete_paths(ctx, step):
     return n
 
 
+def keep_committed(ctx, step, w):
+    """shell step 'keep-committed dir...': a prune the replay cannot recompute (rts-command's prune_packs.py keeps what a
+    registry walk and the Shipping cook output name; the cook is not replayed), reproduced from its result: files under
+    the dirs that the commit `ref` (settings, default the window's commit) does not have are deleted, at the position of
+    the recorded prune command. rts committed the pruned packs over the four commits after the prune: ref names the
+    last of them."""
+    removed = 0
+    ref = git(ctx.proj, "rev-parse", step.get("ref") or w["sha"]).strip()
+    for rel in step["argv"][1:]:
+        rel = rel.strip("/")
+        root = os.path.normpath(ctx.p(rel))
+        if not os.path.normcase(root).startswith(os.path.normcase(os.path.normpath(ctx.proj)) + os.sep):
+            raise SystemExit("keep-committed outside the replay project: " + rel)
+        keep = set(git(ctx.proj, "ls-tree", "-r", "--name-only", ref, "--", rel).splitlines())
+        for dp, dns, fns in os.walk(root, topdown=False):
+            for fn in fns:
+                p = os.path.relpath(os.path.join(dp, fn), ctx.proj).replace("\\", "/")
+                if p not in keep:
+                    os.remove(os.path.join(dp, fn))
+                    removed += 1
+            if not os.listdir(dp):
+                os.rmdir(dp)
+    return removed
+
+
 def move_merge(ctx, step):
     """shell step 'move-merge src dst' (cp -rn src/. dst/ && rm -rf src) under cwd."""
     cwd = ctx.p(step.get("cwd", ""))
@@ -785,6 +810,7 @@ def cmd_run(cfg, a):
             elif kind == "shell":
                 rec["files"] = (move_merge(ctx, s) if s["argv"][0] == "move-merge" else
                                 delete_paths(ctx, s) if s["argv"][0] == "delete" else
+                                keep_committed(ctx, s, w) if s["argv"][0] == "keep-committed" else
                                 host_python(ctx, s) if s["argv"][0] == "host-python" else 0)
                 rec["outputs"] = {k: len(v) for k, v in note_outputs(ctx, before, scan(ctx.proj), "shell:" + sid).items()}
             else:
