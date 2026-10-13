@@ -238,7 +238,8 @@ Hush gauge out of the red; reach the district's end (scenario) or go as far as p
 | 0 | 0.42 s | 0.9 s | ±0.12 s | 25 % | low |
 | 1 | 0.16 s | 1.9 s | ±0.03 s | 0 % | high |
 
-  (linear in between). Skill 1 should win all three scenarios; skill 0 usually stumbles and often crashes in S2/S3.
+  (linear in between). The bot's job is to drive the game with human-like input so a recording shows it running; the
+  result (win or lose) is metadata, not a goal.
 
 ## 9. Systems, classes, data, maps
 
@@ -339,10 +340,25 @@ is bought.
     the nine tally plates, painted HUD and C++ menus (main, run select, Route Log, settings, pause, results), save
     game, native animation blending of 22 clips, synthesized SFX, AutoPlay bot.
   - Tests: `MetroRunner.Smoke.Fairness` passes (S1-S3 and three Endless seeds, 0 hits for a perfect runner);
-    `MetroRunner.Smoke.Bot` passes (skill 1 wins S1-S3 on 4 seeds each; lower skills lose some runs).
+    `MetroRunner.Report.Bot` (report only) plays S1-S3 offline; winning is not a requirement (user rule).
   - Rendered hand tests (off-screen): S1 win, S2 win (validate-run PASS); S3 was stopped at 1,660 m by the slot hold.
   - Found and fixed on the way: depot kit paths, ScenarioMaps duplicates collapsing, ramp landing, planner step size
     and the bot's timing model (side hits), motion blur (off for comfort), washed-out depot, dark Ironside, glaring
     Coldwell floodlights.
   - Next: rebuild with the lighting and UI changes, run content_v2 (container colours, lamp glass, window glow, UI
     icons), screenshots of all three districts and the menu, framing set, recording request.
+- 2026-10-12 (second pass, up to the recording request):
+  - Rendered hand tests: S1 1,100 m, S2 1,800 m and S3 2,400 m all finished, validate-run PASS. Tag
+    `milestone/autoplay-3` (d31c3c4) is the recording request; it waits on the user.
+  - Lighting (user note: "too bright and too dark"): every district's look is data in `Config/DefaultGame.ini`
+    `[MetroRunner.Lighting]` (exposure range and bias, local exposure, bloom, sky, fog, sun/moon, lamp and flood
+    scale), with slow eye adaptation. `Scripts/measure_shots_v1.py` checks rendered frames for a mean of about 75-95,
+    under 8 % crushed and under 2 % clipped. Measured: S1 97, S2 107, S3 90; the packaged S3 is 83.
+  - Materials: steel ramps and a tiled world-metal (ambientCG Metal047B) replace flat grey; container colours richer.
+  - Camera: in the air it follows the last surface stood on, so gaps between wagon roofs no longer pull it down.
+  - Packaging: Win64 Shipping builds and runs (1.5 GB, ~52 fps); `scrub-import-paths --verify` finds 0 hits.
+- 2026-10-12 (polish, no recording needed):
+  - UI: enamel plates rendered white (the brush tint was ignored); fixed, `-MRShotsUI` stills confirm the design.
+  - The Ember cell now rides on Wren's back, low amber glow (content_v6/v7), dropping lower in a slide.
+  - Menu diorama: a three-quarter view down the depot hall. The idle runner is placed through the sim
+    (`PlaceIdle`); before, the runner's own BeginPlay reset it to the open end of the line.
