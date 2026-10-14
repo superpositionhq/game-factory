@@ -26,7 +26,7 @@ a one-off that produced `machine/`, the skills and these briefs.
 | `{{COORDINATOR_ID}}` | session id of the coordinator |
 | `{{NOTES_DIR}}` | the shared notes folder of this group of sessions |
 | `{{GAMES}}` | the game slugs: the folders under `{{GF_ROOT}}\games\` |
-| `{{ENGINE_DIR}}` | the UE 5.3 root (`engine` in the machine config; default `C:\Program Files\Epic Games\UE_5.3`) |
+| `{{ENGINE_DIR}}` | the UE root for new games (`engine` in the machine config; default `C:\Program Files\Epic Games\UE_5.7`; a game made on another version uses its own, `Get-GFEngine`) |
 | `{{GAME_SESSION_IDS}}` | slug = session id, where the helper talks to game sessions |
 
 Helper-specific placeholders are listed in each file.

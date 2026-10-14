@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Create a new UE 5.3 game repo from templates\ue-game: project skeleton, AutoPlay drop-in, Scripts\ue.ps1 (builds and
+  Create a new game repo from templates\ue-game (UE 5.7, the version its .uproject names): project skeleton, AutoPlay drop-in, Scripts\ue.ps1 (builds and
   editor-script runs through the heavy-job limiter), ReplayConfig.json ("live": true: the creation replay runs after
   every commit, docs/ue-replay.md section 3), first workflow.jsonl row, git + LFS, the post-commit hook (commit
   recorder + live replay), first commit, and the private GitHub repo <Org>/game-<slug> (not pushed).
@@ -24,7 +24,7 @@ param(
     [string]$Title,                     # default from the slug: Island Survival
     [string]$Description = '',
     [string]$IdPrefix,                  # workflow row id prefix; default the slug's initials (is, rr, td) or its first two letters
-    [string]$Reason = 'Create the UE 5.3 project from the standard skeleton (Target.cs build fixes, Live Coding off, Shipping/HiDPI config, AutoPlay drop-in, LFS for every binary type)',
+    [string]$Reason = 'Create the project from the standard UE skeleton (Live Coding off, Shipping/HiDPI config, AutoPlay drop-in, LFS for every binary type)',
     [string]$Root,
     [string]$HooksDir = (Join-Path $env:USERPROFILE '.claude\hooks'),
     [string]$Org = 'superpositionhq',
@@ -57,6 +57,7 @@ if ((Test-Path -LiteralPath $Path) -and @(Get-ChildItem -LiteralPath $Path -Forc
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw 'git not found (run machine\bootstrap.ps1 first)' }
 
 $template = Join-Path $PSScriptRoot 'ue-game'
+$engineVer = [string]([IO.File]::ReadAllText((Join-Path $template '__PROJECT__.uproject')) | ConvertFrom-Json).EngineAssociation
 $guid = [guid]::NewGuid().ToString('N').ToUpperInvariant()
 $map = [ordered]@{ '__PROJECT_GUID__' = $guid; '__PROJECT__' = $Project; '__SLUG__' = $Slug; '__TITLE__' = $Title; '__DESCRIPTION__' = $Description }
 $utf8 = New-Object Text.UTF8Encoding($false)
@@ -87,7 +88,7 @@ $rowId = '{0}-{1:D5}' -f $IdPrefix, 1
 $row = [ordered]@{
     schema = 'ue-workflow/v0'; id = $rowId; seq = 1; time = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz')
     actor = 'agent'; op = 'project.create'; target = "$Project.uproject"
-    params = [ordered]@{ engine = '5.3'; template = 'ue-game'; template_commit = $templateCommit; files = $count; autoplay_contract = $contract; module = $Project }
+    params = [ordered]@{ engine = $engineVer; template = 'ue-game'; template_commit = $templateCommit; files = $count; autoplay_contract = $contract; module = $Project }
     reason = $Reason; reason_source = 'agent_note'; status = 'observed'
     source = [ordered]@{ script = 'new-game.ps1'; sha256 = $scriptSha; commit = $null }
 }
@@ -101,7 +102,7 @@ $ErrorActionPreference = $old
 & (Join-Path $repo 'machine\install-git-hook.ps1') -Repo $Path -HooksDir $HooksDir | Out-Null
 $ErrorActionPreference = 'Continue'
 & git -C $Path add -A 2>&1 | Out-Null
-$msg = "Create the $Title project (UE 5.3 skeleton)`n`nTarget.cs build fixes for MSVC 14.4x, Live Coding off, Shipping + HiDPI config, AutoPlay drop-in v$contract,`nroot-anchored .gitignore, LFS for every binary type.`n`nworkflow: $rowId"
+$msg = "Create the $Title project (UE $engineVer skeleton)`n`nLive Coding off, Shipping + HiDPI config, AutoPlay drop-in v$contract,`nroot-anchored .gitignore, LFS for every binary type.`n`nworkflow: $rowId"
 $msgFile = Join-Path $env:TEMP "new-game-$PID.txt"
 [IO.File]::WriteAllText($msgFile, $msg, $utf8)
 & git -C $Path commit -q -F $msgFile 2>&1 | Out-Null

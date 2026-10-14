@@ -7,7 +7,7 @@ Usage: py -3.12 -I fabue_batch.py ITEMS.psv URLS.txt [URLS.txt ...]
              fileidx is used unless CHOICE overrides it.
 Each pack -> asset-library/fab-ue/<slug>/ (skipped if fab-ue/_status/<slug>.json says ok).
 Packs over 15 GB are skipped and reported. After a rebuild, every .uasset/.umap header is scanned for
-the engine that saved it; anything newer than 5.3 is flagged.
+the engine that saved it; anything newer than 5.3 is flagged (ue53_ok; ue57_ok for 5.7).
 """
 import json
 import os
@@ -81,6 +81,7 @@ def run(job):
             status["saved_by"] = vers
             nv = newest(vers)
             status["ue53_ok"] = nv is None or nv <= (5, 3)
+            status["ue57_ok"] = nv is None or nv <= (5, 7)
             status["result"] = "ok" if res["bad"] == 0 else "hash-mismatch"
     os.makedirs(STATUS, exist_ok=True)
     json.dump(status, open(st_path, "w"), indent=1)

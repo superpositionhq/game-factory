@@ -15,11 +15,16 @@ All machine paths hang off one root, the "Work" folder that holds `game-factory\
 3. `%USERPROFILE%\Work`, the original machine's layout (so a machine without a config behaves as before).
 
 The config also holds `ueb` (default `C:\UEB`: private build clones and build temp, outside the user profile so the
-user name is not compiled into Shipping exes), `engine` (default `C:\Program Files\Epic Games\UE_5.3`) and
-`record_extra_projects` (default `[]`: extra top-level folders the recording hooks treat as projects besides
+user name is not compiled into Shipping exes), `engine` (default `C:\Program Files\Epic Games\UE_5.7`: the engine new
+games use) and `record_extra_projects` (default `[]`: extra top-level folders the recording hooks treat as projects besides
 `games\<slug>`). Optional: `out` (env `GF_OUT`; default `<root>\deliverables`: packages, dataset zips and replay
 packages, tens of GB per game, so point it at a roomy drive) and `min_free_gb` (env `GF_MIN_FREE_GB`, default 50:
 packaging and creation replay refuse to start on a drive with less free).
+
+Engine per project: a project's `.uproject` names its engine (`EngineAssociation`, e.g. `5.3` for the first games,
+`5.7` for new ones), and the build, script, recording and replay tools use that install (`lib/gf-root.ps1`
+`Get-GFEngine`, `lib/gfroot.py` `engine`): `engines` in the config (`{"5.3": "D:\\UE_5.3"}`) if set, else the
+`UE_<version>` folder next to `engine`, else the Epic Games Launcher's registry entry, else `engine`.
 
 Job slots (ue-heavy.ps1, docs/ue-pipeline.md "Machine-wide slots"):
 
@@ -36,7 +41,7 @@ source (config set by hand, config from bootstrap, or computed at run time). The
 `lib/gf-root.ps1` (`Get-GFComputedSlots`) and `lib/gfroot.py` (`computed_slots`).
 
 ```json
-{ "root": "C:\\Users\\<name>\\Work", "ueb": "C:\\UEB", "engine": "C:\\Program Files\\Epic Games\\UE_5.3", "record_extra_projects": [],
+{ "root": "C:\\Users\\<name>\\Work", "ueb": "C:\\UEB", "engine": "C:\\Program Files\\Epic Games\\UE_5.7", "record_extra_projects": [],
   "heavy_slots": 3, "gpu_slots": 2, "slots_auto": { "heavy_slots": 3, "gpu_slots": 2, "basis": "<hardware>" } }
 ```
 

@@ -5,7 +5,8 @@
 # `script` runs one editor Python script headless (UnrealEditor-Cmd -run=pythonscript). Keep this call shape: the
 # creation replay recognises "ue.ps1 script -Script Scripts/<name>.py" in the recorded command, with the script as a
 # literal, project-relative path. The script logs its own workflow.jsonl rows; -Reason reaches it as $env:UE_RUN_REASON.
-# Engine: $env:UE_ENGINE, else the default UE 5.3 install. Limiter: $env:GF_ROOT\tools, else two folders up (<root>).
+# Engine: $env:UE_ENGINE, else the install for the .uproject's EngineAssociation (<root>\tools\gf-root.ps1 Get-GFEngine,
+# else C:\Program Files\Epic Games\UE_<version>). Limiter: $env:GF_ROOT\tools, else two folders up (<root>).
 param(
   [Parameter(Position = 0)][ValidateSet('build', 'script', 'game')][string]$Mode,
   [string]$Script = '',
@@ -19,10 +20,15 @@ param(
 )
 $ErrorActionPreference = 'Continue'
 $Proj = Split-Path $PSScriptRoot -Parent
-$Engine = if ($env:UE_ENGINE) { $env:UE_ENGINE } else { 'C:\Program Files\Epic Games\UE_5.3' }
 $Root = if ($env:GF_ROOT) { $env:GF_ROOT } else { Split-Path (Split-Path $Proj -Parent) -Parent }
 $Heavy = Join-Path $Root 'tools\ue-heavy.ps1'
 $UProject = Join-Path $Proj '__PROJECT__.uproject'
+$Engine = $env:UE_ENGINE
+if (-not $Engine -and (Test-Path (Join-Path $Root 'tools\gf-root.ps1'))) {
+  . (Join-Path $Root 'tools\gf-root.ps1')
+  if (Get-Command Get-GFEngine -ErrorAction SilentlyContinue) { $Engine = Get-GFEngine $UProject }
+}
+if (-not $Engine) { $Engine = 'C:\Program Files\Epic Games\UE_' + (Get-Content $UProject -Raw | ConvertFrom-Json).EngineAssociation }
 $Logs = Join-Path $Proj 'Saved\Logs'
 New-Item -ItemType Directory -Force $Logs | Out-Null
 $t0 = Get-Date

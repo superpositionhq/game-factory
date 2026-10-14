@@ -37,7 +37,7 @@ as it did).
 ```text
 Background:
 game-factory ({{GF_ROOT}}\game-factory, superpositionhq/game-factory) coordinates Claude Code sessions on one machine and
-turns their games into datasets. Game sessions build Unreal Engine 5.3 games in {{GF_ROOT}}\games\<slug> ({{GAMES}}),
+turns their games into datasets. Game sessions build Unreal Engine 5.7 games (the first ones on 5.3) in {{GF_ROOT}}\games\<slug> ({{GAMES}}),
 each pushed to a private superpositionhq/game-<slug> repo with Git LFS; a coordinator session ({{COORDINATOR_ID}})
 spawns and supervises everyone and owns the GPU schedule. The games were built by agent sessions almost entirely
 through committed code: C++ in Source/, editor-Python scripts in Scripts/ run headless (they import art, build
@@ -53,7 +53,7 @@ CLAUDE.md (if present), docs/ue-replay.md (all of it: replay unit, isolated proj
 deliverable layout, packager integration), docs/ue-pipeline.md
 (scrub-import-paths, names rule), docs/dataset-layout-v1.json, docs/game-deliverable.md, and the shared notes.
 Targets, in order: {{TARGET_GAMES}}. Game sessions: {{GAME_SESSION_IDS}}. Packager: {{PACKAGER_ID}}.
-Machine: Windows 11, UE 5.3 at {{ENGINE_DIR}}, MSVC 14.44 + .NET 4.8.1 SDK, Python 3.12 (standard
+Machine: Windows 11, UE 5.7 at {{ENGINE_DIR}} (and UE 5.3 for the games made on it), MSVC 14.44 + .NET 4.8.1 SDK, Python 3.12 (standard
 library only for the host driver), pinned ffmpeg under {{GF_ROOT}}\tools. The machine-wide limiter
 {{GF_ROOT}}\tools\ue-heavy.ps1 has 3 CPU slots and 1 GPU slot.
 

@@ -307,7 +307,7 @@ World->GetAudioDeviceRaw()->RegisterSubmixBufferListener(AudioCapture, nullptr);
 
 ## 7. Testing by hand and declaring readiness
 
-Without packaging (editor binaries, uncooked). **Always disable Live Coding** with the ini override shown: an `UnrealEditor.exe` that starts Live Coding makes UnrealBuildTool refuse to build *every* project on this UE 5.3 install ("Unable to build while Live Coding is active") until it exits. The override works without `-unattended` (which would also turn off DPI awareness). It is a heavy job, so run it under `Work\tools\ue-heavy.ps1`, which must wait for GUI processes; see the note below.
+Without packaging (editor binaries, uncooked). **Always disable Live Coding** with the ini override shown: an `UnrealEditor.exe` that starts Live Coding makes UnrealBuildTool refuse to build *every* project on that engine install ("Unable to build while Live Coding is active") until it exits. The override works without `-unattended` (which would also turn off DPI awareness). It is a heavy job, so run it under `Work\tools\ue-heavy.ps1`, which must wait for GUI processes; see the note below.
 
 ```
 "<engine>\Engine\Binaries\Win64\UnrealEditor.exe" "<project>.uproject" -game -AutoPlay -Scenario=1 -Seed=1 -Skill=1 -MaxSeconds=120 -GoTimeout=0 -windowed -ResX=1920 -ResY=1080 -ini:EditorPerProjectUserSettings:[/Script/LiveCoding.LiveCodingSettings]:bEnabled=False -log

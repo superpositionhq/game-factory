@@ -31,7 +31,7 @@ zero; for a from-scratch variant, reuse its stage 1-4 task list).
 ```text
 Background:
 game-factory ({{GF_ROOT}}\game-factory, superpositionhq/game-factory, Windows PowerShell 5.1 tooling) coordinates
-Claude Code sessions on one machine. Game sessions build Unreal Engine 5.3 games in {{GF_ROOT}}\games\<slug> ({{GAMES}}),
+Claude Code sessions on one machine. Game sessions build Unreal Engine 5.7 games (the first ones on 5.3) in {{GF_ROOT}}\games\<slug> ({{GAMES}}),
 each pushed to a private superpositionhq/game-<slug> repo with Git LFS; helper sessions build the shared tooling; a
 coordinator session ({{COORDINATOR_ID}}) spawns and supervises everyone and owns the recording queue. Hooks log every
 tool call and commit of the game sessions into {{GF_ROOT}}\.recording\<game>\ (actions.jsonl, commits.jsonl: never touch
@@ -44,7 +44,7 @@ validate-run.ps1, mark-invalid.ps1, gameplay-mp4.ps1, stills.ps1, leak-scan.ps1,
 scrub-history.ps1, sync-check.ps1, common.ps1). Read README.md, AGENTS.md, CLAUDE.md (if present), docs/ue-pipeline.md (all of it),
 docs/autoplay-contract.md, docs/dataset-layout-v1.json, and the shared notes
 (ue-pipeline-findings.md, autoplay-v1.4-rollout.md, live-coding-blocks-builds.md, ue53-msvc1444-fix.md).
-Machine: {{MACHINE}}. UE 5.3 at {{ENGINE_DIR}}; MSVC 14.44 + .NET 4.8.1 SDK; pinned ffmpeg 8.1.2 under
+Machine: {{MACHINE}}. UE 5.7 at {{ENGINE_DIR}} (and UE 5.3 for the games made on it); MSVC 14.44 + .NET 4.8.1 SDK; pinned ffmpeg 8.1.2 under
 {{GF_ROOT}}\tools\ffmpeg-8.1.2 (machine/ fetches and checksum-verifies it); Python 3.12. Private build clones live under
 {{UEB}} (outside %USERPROFILE%, so the user name is never compiled into an exe). The machine-wide limiter is
 {{GF_ROOT}}\tools\ue-heavy.ps1: general slots (Global\ue-heavy-jobs-v2, config heavy_slots) and GPU slots (Global\ue-gpu-jobs-v2, config

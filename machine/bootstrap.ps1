@@ -26,7 +26,7 @@
 param(
     [string]$Root,                                              # default: GF_ROOT / existing config / %USERPROFILE%\Work
     [string]$Ueb,                                               # default: config / C:\UEB
-    [string]$Engine,                                            # default: config / C:\Program Files\Epic Games\UE_5.3
+    [string]$Engine,                                            # default: config / C:\Program Files\Epic Games\UE_5.7 (new games)
     [string]$ClaudeDir = (Join-Path $env:USERPROFILE '.claude'),
     [string]$ConfigPath,                                        # default: GF_CONFIG / %USERPROFILE%\.game-factory\config.json
     [string]$FfmpegArchive,                                     # a downloaded ffmpeg-8.1.2-full_build.7z (still verified)

@@ -25,7 +25,9 @@ through Enhanced Input, see [autoplay-contract.md](autoplay-contract.md)) as gam
 
 `%GF_ROOT%` is the machine root: env `GF_ROOT`, else `root` in `%USERPROFILE%\.game-factory\config.json`
 (written by `machine/bootstrap.ps1`), else `%USERPROFILE%\Work`; `machine/lib/gf-root.ps1` resolves it, and the
-same file gives `ueb` (default `C:\UEB`) and `engine`. See [../machine/README.md](../machine/README.md).
+same file gives `ueb` (default `C:\UEB`) and `engine` (UE 5.7, for new games; each project builds, records and
+replays on the engine its `.uproject` names, `Get-GFEngine`, so the 5.3 games stay on 5.3). See
+[../machine/README.md](../machine/README.md).
 
 ```
 %GF_ROOT%\

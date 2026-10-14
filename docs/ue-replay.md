@@ -82,8 +82,8 @@ accumulate visibly instead of being reset. Files the commit deletes are deleted.
 
 `initial-assets.manifest.json` lists what the replay gets from outside the game's history, with sha256 per file:
 the store packs (from `asset-library\fab-ue\<pack>\Content\<Folder>`) and external source trees the scripts read
-(read-only, listed in the game's settings; only the files the import scripts name). The engine is `UE_5.3` as
-installed; the C++ toolchain is the one the game compiled with.
+(read-only, listed in the game's settings; only the files the import scripts name). The engine is the one the game's
+`.uproject` names (`UE_5.3` for the first games), as installed; the C++ toolchain is the one the game compiled with.
 
 An external source the builder unpacked into a scratch folder that no longer exists takes a `rebuild` recipe in
 `external_sources`: `{"unzip": [{"zip": "{root}/asset-library/...*.zip", "to": "<subdir>", "exclude": ["*Cavity*"]}]}`,

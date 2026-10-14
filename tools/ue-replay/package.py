@@ -55,6 +55,7 @@ def copytree(src, dst, skip_ext=()):
 
 def readme(cfg, led, state, parts, report):
     win_total = total_windows(led) if led else 0
+    ver = os.path.basename(cfg.get("engine", "").rstrip("/\\")).replace("UE_", "") or "5.7"   # the game's own engine
     lines = [
         "# ReplayScripts: creation replay of %s" % cfg["game"], "",
         "Replays how the game was built, from its git history, the builder's recorded actions and `workflow.jsonl`,",
@@ -67,7 +68,7 @@ def readme(cfg, led, state, parts, report):
         "- Verified: the replayed project against the final commit (`Verification/`: report, per-window checks, JSON",
         "  structure dumps of both projects).", "",
         "## How to replay", "",
-        "Requirements: Windows, Unreal Engine 5.3, Visual Studio 2022 (C++), Python 3.11+, git with Git LFS, and the game",
+        "Requirements: Windows, Unreal Engine %s, Visual Studio 2022 (C++), Python 3.11+, git with Git LFS, and the game" % ver,
         "repository. Set the machine root (`GF_ROOT`) and point `game.json` at the repository, then:", "",
         "```",
         "python ue_replay.py ledger  --game game.json   # windows, runs, script texts",

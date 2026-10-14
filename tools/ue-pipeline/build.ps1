@@ -160,6 +160,9 @@ try {
     if ($apHeader -and ((Get-Content $apHeader.FullName -Raw) -match 'ContractVersion\s*=\s*(\d+)')) { $autoplayVersion = [int]$matches[1] }
 
     $uproject = Join-Path $src $info.UProjectName
+    # The game's own engine (its EngineAssociation): games made on an older UE keep building on it.
+    $script:EngineRoot = Get-GFEngine $uproject $GFConfig
+    Write-Step "engine $EngineRoot"
     $editorTarget = Find-Target $src 'Editor'
     $gameTarget = Find-Target $src 'Game'
     if (-not $editorTarget -or -not $gameTarget) { throw "Editor/Game Target.cs not found under $src\Source" }

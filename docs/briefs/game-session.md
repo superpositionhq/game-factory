@@ -20,7 +20,7 @@ Background (from the session that started this one):
 game-factory ({{GF_ROOT}}\game-factory, private repo superpositionhq/game-factory: read CLAUDE.md, README.md,
 AGENTS.md, docs/plan.md, docs/autoplay-contract.md, docs/ue-pipeline.md) produces game-CREATION data: how
 a game is built step by step, recorded as it happens, packaged as a dataset (layout v1.1: Dataset/ committed in the game repo, the full
-Dataset.zip git-ignored next to it). Other sessions are building UE 5.3 games right
+Dataset.zip git-ignored next to it). Other sessions are building UE games right
 now in {{GF_ROOT}}\games\<slug> ({{SIBLINGS}}); read their docs in game-factory/docs/games/ for conventions and
 solved problems. The asset-scout session ({{ASSET_SCOUT_ID}}) keeps the asset library in {{GF_ROOT}}\asset-library\
 (catalogue: game-factory/docs/asset-library.md) and hands each game its packs. Everything shares one Windows PC
@@ -48,7 +48,7 @@ my relayed text as it is, and append it at once to your repo-root workflow.jsonl
 "direction": "<row id>" on the rows and "Direction: <row id>" in the commits that act on it (commit-always skill).
 
 Task:
-Build "{{GAME_TITLE}}", {{GENRE_LINE}}, in Unreal Engine 5.3, recording its creation as you go.
+Build "{{GAME_TITLE}}", {{GENRE_LINE}}, in Unreal Engine 5.7, recording its creation as you go.
 
 Slug and location: {{SLUG}} -> {{GF_ROOT}}\games\{{SLUG}} (project/module {{PROJECT}}, its own git repo, private
 GitHub repo superpositionhq/game-{{SLUG}}). Design doc, story bible and status:

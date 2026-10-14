@@ -41,10 +41,12 @@ winget install --id Microsoft.DotNet.Framework.DeveloperPack_4 -e
 winget install --id Microsoft.VisualStudio.2022.BuildTools -e --override "--passive --wait --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.14.44.17.14.x86.x64 --add Microsoft.VisualStudio.Component.Windows11SDK.22621 --add Microsoft.Net.Component.4.8.1.SDK --includeRecommended"
 ```
 
-- MSVC must be **14.44** (`VC\Tools\MSVC\14.44.*`, e.g. 14.44.35207); the template's Target.cs
-  files carry the fix UE 5.3 needs with it (`bOverrideBuildEnvironment = true;
-  GlobalDefinitions.Add("PLATFORM_HAS_ASAN_INCLUDE=0");`). If the installer also puts a newer MSVC next to it, pin UBT
-  to 14.44 in `%APPDATA%\Unreal Engine\UnrealBuildTool\BuildConfiguration.xml`:
+- MSVC must be **14.44** (`VC\Tools\MSVC\14.44.*`, e.g. 14.44.35207), with VS 2022 17.14 kept updated: UE 5.7 bans
+  compiler versions 14.44.0-14.44.35210, and an updated 17.14 puts a newer compiler in that folder (UBT's log line
+  "Using Visual Studio 2022 14.44.35229 toolchain" shows the compiler version). The games made on UE 5.3 carry the
+  fix 5.3 needs with it in their Target.cs (`bOverrideBuildEnvironment = true;
+  GlobalDefinitions.Add("PLATFORM_HAS_ASAN_INCLUDE=0");`); the 5.7 template needs none. If the installer also puts a
+  newer MSVC next to it, pin UBT to 14.44 in `%APPDATA%\Unreal Engine\UnrealBuildTool\BuildConfiguration.xml`:
   `<WindowsPlatform><CompilerVersion>14.44.35207</CompilerVersion></WindowsPlatform>`. The component id above is the
   VS 17.14 name for the 14.44 toolset; if winget rejects it, add "MSVC v143 - VS 2022 C++ x64/x86 build tools
   (v14.44)" under Individual components in the VS Installer.
@@ -58,8 +60,9 @@ winget install --id Microsoft.VisualStudio.2022.BuildTools -e --override "--pass
    **superpositionhq** and may create private repos there. Set `git config --global user.name` / `user.email` for the
    commits the sessions make.
 2. **Epic Games**: install the Epic Games Launcher, sign in, accept the Unreal Engine EULA, and install **Unreal
-   Engine 5.3** (Library > + > 5.3.x) to `C:\Program Files\Epic Games\UE_5.3` (another folder works: set `engine` in
-   the config). The engine EULA acceptance and the Launcher sign-in cannot be scripted.
+   Engine 5.7** (Library > + > 5.7.x) to `C:\Program Files\Epic Games\UE_5.7` (another folder works: set `engine` in
+   the config). To rebuild, record or replay a game made on 5.3 (its `.uproject` names 5.3), also install 5.3.x next
+   to it (`UE_5.3`; elsewhere: `"engines": {"5.3": "<folder>"}` in the config). The engine EULA acceptance and the Launcher sign-in cannot be scripted.
 3. **Fab**: sign in at fab.com with the Epic account that owns the purchased packs (the paid list is in
    `docs/fab-shopping-list.md`; the user bought them on the Personal tier). Purchases and licence choices stay with the
    user. For the asset-scout session, sign in to fab.com **in the Claude browser pane** too: its tools download owned
@@ -102,7 +105,7 @@ repo into `<root>\game-factory`. Bootstrap:
 powershell -ExecutionPolicy Bypass -File C:/Users/<you>/Work/game-factory/machine/check.ps1
 ```
 
-PASS / WARN / FAIL for UE 5.3, MSVC 14.44, Windows SDK, .NET 4.8.1 SDK, git, Git LFS, gh + superpositionhq access,
+PASS / WARN / FAIL for UE 5.7 (and 5.3 for older games), MSVC 14.44, Windows SDK, .NET 4.8.1 SDK, git, Git LFS, gh + superpositionhq access,
 Python, NVIDIA driver, refresh rate, display and system sleep, free disk, memory, long paths, pinned ffmpeg (NVENC
 test), config, job slots (in effect, and from where), layout, ue-heavy, hooks, skills, root CLAUDE.md, game repo hooks, the asset library against
 `docs/asset-library.md` + `docs/asset-library-fab-ue.tsv`. Exit code = number of FAILs. Fix

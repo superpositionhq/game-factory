@@ -2,7 +2,7 @@
 
 ## ue-game/ + new-game.ps1
 
-Skeleton of a game repo for Unreal Engine 5.3. `new-game.ps1` instantiates it:
+Skeleton of a game repo for Unreal Engine 5.7. `new-game.ps1` instantiates it:
 
 ```bash
 powershell -ExecutionPolicy Bypass -File templates/new-game.ps1 -Slug island-survival -Path C:/Users/<you>/Work/games/island-survival -Title "Island Survival" -Description "Stranded on a tropical island..."
@@ -20,7 +20,7 @@ What the skeleton carries, and why:
 
 | File | Why |
 |---|---|
-| `Source/<P>.Target.cs`, `<P>Editor.Target.cs` | `bOverrideBuildEnvironment = true` + `PLATFORM_HAS_ASAN_INCLUDE=0`: UE 5.3 with MSVC 14.4x fails with C4668 `__has_feature` otherwise. No `bUseLoggingInShipping` (breaks the Shipping link with the launcher engine). |
+| `Source/<P>.Target.cs`, `<P>Editor.Target.cs` | `BuildSettingsVersion.V6` + `EngineIncludeOrderVersion.Unreal5_7`. No `bOverrideBuildEnvironment` (the installed 5.7 refuses a target that changes the shared build environment; the 5.3 games carry it with `PLATFORM_HAS_ASAN_INCLUDE=0` for MSVC 14.4x). No `bUseLoggingInShipping` (breaks the Shipping link with the launcher engine). |
 | `Source/<P>/<P>.Build.cs` | EnhancedInput, UMG; Slate/SlateCore/AudioMixer for the AutoPlay drop-in; flat include paths |
 | `Source/<P>/<P>GameInstance.*` | AutoPlay wiring: `StartScenario(n)` opens `ScenarioMaps[n-1]` (from `DefaultGame.ini`) |
 | `Config/DefaultEngine.ini` | GameInstance class, Enhanced Input classes, `bAllowHighDPIInGameMode=True` (Shipping recording builds; the pipeline packages Development without it), DX12 SM6, Lumen + VSM, `r.RDG.AsyncCompute=0` (first-frame GPU hang) |

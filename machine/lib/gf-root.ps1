@@ -6,9 +6,10 @@
 #   2. "root" in the config file: $env:GF_CONFIG, else %USERPROFILE%\.game-factory\config.json (bootstrap.ps1 writes it)
 #   3. %USERPROFILE%\Work (the original machine's layout)
 # The same config file also holds "ueb" (private build clones, outside the user profile so the user name is not compiled
-# into Shipping exes), "engine" (UE 5.3 root) and "record_extra_projects" (top-level folders under the root that the
-# recording hooks treat as projects besides games\<slug>). Installed copies of the hooks and ue-heavy.ps1 carry a copy of
-# this file next to them.
+# into Shipping exes), "engine" (the UE root new games use; Get-GFEngine picks each project's own), optional "engines"
+# ({"5.3": "<UE root>", ...}) and "record_extra_projects" (top-level folders under the root that the recording hooks
+# treat as projects besides games\<slug>). Installed copies of the hooks and ue-heavy.ps1 carry a copy of this file
+# next to them.
 
 function Get-GFConfigPath {
     if ($env:GF_CONFIG) { return $env:GF_CONFIG }
@@ -19,7 +20,7 @@ function Get-GFConfig {
     $cfg = [ordered]@{
         root                  = (Join-Path $env:USERPROFILE 'Work')
         ueb                   = 'C:\UEB'
-        engine                = 'C:\Program Files\Epic Games\UE_5.3'
+        engine                = 'C:\Program Files\Epic Games\UE_5.7'
         record_extra_projects = @()
     }
     $path = Get-GFConfigPath
@@ -38,6 +39,34 @@ function Get-GFConfig {
 }
 
 function Get-GFRoot { return (Get-GFConfig).root }
+
+# The UE root for a project: its .uproject's EngineAssociation ("5.3", "5.7", ...) picks the install, so a game made on
+# an older engine keeps building, recording and replaying on it. Order: "engines" in the config, then the UE_<version>
+# folder next to "engine", then the Epic Games Launcher's registry entry, then "engine". $Project is a .uproject or the
+# folder holding one; without one, or without a version-number association, the answer is "engine".
+function Get-GFEngine([string]$Project, $Cfg = (Get-GFConfig)) {
+    $assoc = ''
+    if ($Project) {
+        $up = if ($Project -like '*.uproject') { $Project } else {
+            Get-ChildItem -LiteralPath $Project -Filter *.uproject -File -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+        }
+        if ($up -and (Test-Path -LiteralPath $up)) { $assoc = [string]([IO.File]::ReadAllText($up) | ConvertFrom-Json).EngineAssociation }
+    }
+    return (Get-GFEngineForVersion $assoc $Cfg)
+}
+
+# The UE root for an engine version ("5.3"): the same order as Get-GFEngine; "engine" when nothing else names one.
+function Get-GFEngineForVersion([string]$Version, $Cfg = (Get-GFConfig)) {
+    if ($Version -notmatch '^\d+\.\d+$') { return $Cfg.engine }
+    if ($Cfg.PSObject.Properties['engines'] -and $Cfg.engines -and $Cfg.engines.PSObject.Properties[$Version]) {
+        return [IO.Path]::GetFullPath(([string]$Cfg.engines.$Version).TrimEnd('\', '/'))
+    }
+    $sibling = Join-Path (Split-Path $Cfg.engine -Parent) "UE_$Version"
+    if (Test-Path -LiteralPath (Join-Path $sibling 'Engine\Binaries\Win64')) { return $sibling }
+    $reg = Get-ItemProperty -LiteralPath "HKLM:\SOFTWARE\EpicGames\Unreal Engine\$Version" -ErrorAction SilentlyContinue
+    if ($reg -and $reg.PSObject.Properties['InstalledDirectory'] -and $reg.InstalledDirectory) { return $reg.InstalledDirectory.TrimEnd('\') }
+    return $Cfg.engine
+}
 
 # Output root for packages, dataset zips and their staging folders: $env:GF_OUT, else "out" in the config file, else
 # <root>\deliverables. Point it at a roomy drive (packages and zips run to tens of GB per game).

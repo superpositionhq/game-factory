@@ -11,7 +11,7 @@ timestamps, screen video, inputs, code commits and a playtest with inputs.
 
 1. **Story bible and design doc**: `docs/games/<slug>.md` (pitch, systems, maps, scenarios, art and story), after a
    duplicate check against the games already made.
-2. **New project**: `templates/new-game.ps1` creates `%GF_ROOT%\games\<slug>` from the UE 5.3 template: hooks that
+2. **New project**: `templates/new-game.ps1` creates `%GF_ROOT%\games\<slug>` from the UE 5.7 template: hooks that
    record every action and commit, `ReplayConfig.json` (`"live": true`), `Scripts/ue.ps1`, a private GitHub repo.
 3. **Build**: the session follows the `commit-always` and `game-session` skills; every action is recorded
    (`workflow.jsonl`, the action hooks, git history).
@@ -69,7 +69,7 @@ tools/ue-pipeline/                  UE build, package and gameplay recording pip
 tools/package-game.ps1, package-dataset.ps1   per-game deliverables and dataset layout v1.1
 tools/ue-replay/                    creation replay: per-commit (live) and at release; ReplayScripts/ of the dataset
 machine/                            machine setup: bootstrap/check, ue-heavy limiter, recording hooks, ffmpeg, asset-scout
-templates/                          UE 5.3 game skeleton + new-game.ps1
+templates/                          UE 5.7 game skeleton + new-game.ps1
 .claude/skills/                     commit-always, game-session
 docs/                               everything learned so far; docs/briefs/ = session prompts
 ```

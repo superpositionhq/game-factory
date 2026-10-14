@@ -68,25 +68,35 @@ def check_free(path, what):
 RECORDED_KEYS = ("match", "recorded")
 
 
-def machine_engine():
-    """UE 5.3 root: "engine" in the machine config (machine/lib/gf-root.ps1), else the default install folder."""
+def machine_engine(project=None):
+    """The UE root for the game: its .uproject's EngineAssociation picks the install (gfroot.engine), so a game made on
+    an older engine replays on it; without a project, "engine" in the machine config. A dataset's ReplayScripts copy has
+    no gfroot: there the association of the project (or of the dataset's UEProject next to it) names the default
+    install folder, UE_<version>."""
     try:
         import gfroot
-        e = gfroot.config().get("engine")
+        return gfroot.engine(project)
     except ImportError:
-        e = None
-    return (e or "C:/Program Files/Epic Games/UE_5.3").replace("\\", "/").rstrip("/")
+        pass
+    assoc = ""
+    for d in ([project, os.path.join(project, "..", "UEProject")] if project else []):
+        ups = sorted(f for f in os.listdir(d) if f.lower().endswith(".uproject")) if os.path.isdir(d) else []
+        if ups:
+            with open(os.path.join(d, ups[0]), encoding="utf-8-sig") as f:
+                assoc = str(json.load(f).get("EngineAssociation") or "")
+            break
+    return "C:/Program Files/Epic Games/UE_%s" % (assoc if re.fullmatch(r"\d+\.\d+", assoc) else "5.7")
 
 
-def expand(v, root):
+def expand(v, root, project=None):
     if isinstance(v, str):
         if "{engine}" in v:
-            v = v.replace("{engine}", machine_engine())
+            v = v.replace("{engine}", machine_engine(project))
         return v.replace("{root}", root).replace("{home}", os.path.expanduser("~").replace("\\", "/"))
     if isinstance(v, list):
-        return [expand(x, root) for x in v]
+        return [expand(x, root, project) for x in v]
     if isinstance(v, dict):
-        return {k: (x if k in RECORDED_KEYS else expand(x, root)) for k, x in v.items()}
+        return {k: (x if k in RECORDED_KEYS else expand(x, root, project)) for k, x in v.items()}
     return v
 
 
@@ -212,7 +222,7 @@ def resolve_cfg(game):
 def load_cfg(path):
     p = resolve_cfg(path)
     with open(p, encoding="utf-8") as f:
-        cfg = expand(json.load(f), machine_root())
+        cfg = expand(json.load(f), machine_root(), os.path.dirname(p))   # the settings sit next to the game's .uproject
     cfg["root"] = machine_root()
     cfg["_path"] = p
     w = cfg["work_root"]

@@ -11,7 +11,7 @@ $script:GamesRoot     = Join-Path $WorkRoot 'games'
 $script:BuildsRoot    = Join-Path $WorkRoot 'builds'
 $script:RecordingsRoot = Join-Path $WorkRoot 'recordings'
 $script:LogRoot       = Join-Path $WorkRoot '.recording'
-$script:EngineRoot    = $GFConfig.engine   # default C:\Program Files\Epic Games\UE_5.3
+$script:EngineRoot    = $GFConfig.engine   # the new-game default; build.ps1 switches to the game's own (Get-GFEngine)
 # Private build clones live outside the user profile: __FILE__ (check/ensure/log macros) and PDB paths compile the
 # source path into the Shipping exe, so a root under C:\Users\<name> ships the user name. Short to stay clear of MAX_PATH.
 $script:SrcRoot       = Join-Path $GFConfig.ueb 'src'   # default C:\UEB\src

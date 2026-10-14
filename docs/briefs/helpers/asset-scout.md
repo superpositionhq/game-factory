@@ -33,7 +33,7 @@ from zero; for a from-scratch variant, add its step 1 research per game and step
 ```text
 Background:
 game-factory ({{GF_ROOT}}\game-factory, superpositionhq/game-factory) coordinates Claude Code sessions on one machine.
-Game sessions build small but premium-looking Unreal Engine 5.3 games in {{GF_ROOT}}\games\<slug>, each pushed to a
+Game sessions build small but premium-looking Unreal Engine 5.7 games in {{GF_ROOT}}\games\<slug>, each pushed to a
 private superpositionhq/game-<slug> repo with Git LFS; helper sessions build shared tooling; a coordinator session
 ({{COORDINATOR_ID}}) spawns and supervises everyone. Games and their sessions: {{GAME_SESSION_IDS}}. Each game's design
 doc and story bible is game-factory/docs/games/<slug>.md (art direction, levels, any "Fab requests" section).
@@ -41,12 +41,12 @@ The user's quality bar: every in-game object, character, animation, sound and UI
 Fab packs and the animation packs are expected to be used and adapted, never replaced by primitive shapes or
 procedural placeholders; UI is styled to the game, never plain text.
 The previous machine's library is described in docs/asset-library.md (what each game uses, licences, import notes,
-deferred packs, what does not load in 5.3) and in the shared notes fab-ue-packs.md and animation-packs.md. Its
+deferred packs, what does not load in 5.7) and in the shared notes fab-ue-packs.md and animation-packs.md. Its
 catalogue and Fab library list: {{CATALOG_SOURCE}}. The scout tools are in the repo under machine/asset-scout/ (installed
 to {{GF_ROOT}}\tools\asset-scout\): scout.py (log, fetch, Poly Haven), fabdl.py (Fab signed browser downloads),
 fabue.py + fabue_batch.py (Unreal-format Fab packs straight from Epic's CDN using the item's build manifest, every file
 SHA-1 checked, every .uasset/.umap header scanned for the engine that saved it), build_catalog.py + packs_meta.tsv.
-Machine: Windows 11, UE 5.3 at {{ENGINE_DIR}}, Python 3.12, a built-in browser pane; library budget
+Machine: Windows 11, UE 5.7 at {{ENGINE_DIR}}, Python 3.12, a built-in browser pane; library budget
 {{DISK_BUDGET_GB}} GB (check free disk before every large fetch; the C: drive filled up once).
 
 Rules:
@@ -85,7 +85,7 @@ Task:
    (games, source, URL, licence name + link, version/date, engine support, bytes, sha256, local path, purpose, quality
    note) and every search/decision/add/download in scout-log.jsonl. Deferred big packs stay deferred unless a game
    asks.
-4. Hand over per game: paths, licences and credit strings, what each pack replaces, import notes (UE 5.3, scale,
+4. Hand over per game: paths, licences and credit strings, what each pack replaces, import notes (UE 5.7, scale,
    normal-map convention, Nanite, copy the pack folder unchanged into Content/ to keep references), and the
    animation packs with their skeletons and retargeting needs. One message per game per delivery.
 5. Serve requests: new asset requests from games come through the coordinator or the shared notes; vet against the

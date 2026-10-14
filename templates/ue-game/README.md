@@ -9,7 +9,7 @@ __DESCRIPTION__
 
 ## Play
 
-- Engine: Unreal Engine 5.3 (Windows, DirectX 12).
+- Engine: Unreal Engine 5.7 (Windows, DirectX 12).
 - Open `__PROJECT__.uproject`, or run the packaged `__PROJECT__.exe` from a release build.
 - Controls: _fill in_.
 

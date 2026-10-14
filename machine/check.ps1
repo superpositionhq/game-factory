@@ -2,7 +2,7 @@
 .SYNOPSIS
   Check that this machine can run game-factory sessions; prints a PASS / WARN / FAIL report. Read-only.
 .DESCRIPTION
-  Toolchain: UE 5.3, MSVC 14.44, Windows SDK, .NET Framework 4.8.1 SDK, git + Git LFS, gh (logged in, can see the
+  Toolchain: UE 5.7 (and 5.3 for games made on it), MSVC 14.44, Windows SDK, .NET Framework 4.8.1 SDK, git + Git LFS, gh (logged in, can see the
   org's repos), Python. Recording: NVIDIA driver >= 617 (NVENC with the pinned ffmpeg), refresh rate, display sleep
   off, the pinned ffmpeg. Space: free disk on the root's drive. Content: the asset library against
   docs/asset-library.md and docs/asset-library-fab-ue.tsv. Setup done by bootstrap.ps1: config, job slots, ue-heavy.ps1, hooks
@@ -44,13 +44,21 @@ function Run([string]$Exe, [string[]]$ArgList) {
 }
 
 # --- toolchain ------------------------------------------------------------------------------------------------------
-Try-Check 'Unreal Engine 5.3' {
+Try-Check 'Unreal Engine 5.7' {
     $ver = Join-Path $cfg.engine 'Engine\Build\Build.version'
     $ed = Join-Path $cfg.engine 'Engine\Binaries\Win64\UnrealEditor.exe'
-    if (-not (Test-Path $ver) -or -not (Test-Path $ed)) { Add-Result FAIL 'Unreal Engine 5.3' "not found at $($cfg.engine)" 'Epic Games Launcher > Unreal Engine > Library > install 5.3 (or set "engine" in the config)'; return }
+    if (-not (Test-Path $ver) -or -not (Test-Path $ed)) { Add-Result FAIL 'Unreal Engine 5.7' "not found at $($cfg.engine)" 'Epic Games Launcher > Unreal Engine > Library > install 5.7 (or set "engine" in the config)'; return }
     $v = Get-Content $ver -Raw | ConvertFrom-Json
-    if ($v.MajorVersion -eq 5 -and $v.MinorVersion -eq 3) { Add-Result PASS 'Unreal Engine 5.3' "5.3.$($v.PatchVersion) at $($cfg.engine)" }
-    else { Add-Result FAIL 'Unreal Engine 5.3' "found $($v.MajorVersion).$($v.MinorVersion) at $($cfg.engine)" 'install 5.3 exactly; the games and the AutoPlay drop-in target 5.3' }
+    if ($v.MajorVersion -eq 5 -and $v.MinorVersion -eq 7) { Add-Result PASS 'Unreal Engine 5.7' "5.7.$($v.PatchVersion) at $($cfg.engine)" }
+    else { Add-Result FAIL 'Unreal Engine 5.7' "found $($v.MajorVersion).$($v.MinorVersion) at $($cfg.engine)" 'point "engine" at a 5.7 install; new games and the template target 5.7' }
+}
+# Games made on 5.3 build, record and replay on 5.3 (their EngineAssociation; Get-GFEngine finds the install).
+Try-Check 'Unreal Engine 5.3 (older games)' {
+    $e53 = Get-GFEngineForVersion '5.3' $cfg
+    $v53 = Join-Path $e53 'Engine\Build\Build.version'
+    $is53 = (Test-Path $v53) -and ((Get-Content $v53 -Raw | ConvertFrom-Json).MinorVersion -eq 3)
+    if ($is53 -and (Test-Path (Join-Path $e53 'Engine\Binaries\Win64\UnrealEditor.exe'))) { Add-Result PASS 'Unreal Engine 5.3 (older games)' $e53 }
+    else { Add-Result WARN 'Unreal Engine 5.3 (older games)' 'not installed' 'needed only to rebuild, record or replay a game whose .uproject names 5.3 (Library > + > 5.3.x, or "engines" in the config)' }
 }
 
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -59,7 +67,7 @@ Try-Check 'MSVC 14.44' {
     $msvc = @($installs | ForEach-Object { Get-ChildItem (Join-Path $_ 'VC\Tools\MSVC') -Directory -ErrorAction SilentlyContinue } | Select-Object -ExpandProperty Name)
     $hit = @($msvc | Where-Object { $_ -like '14.44.*' })
     if ($hit) { Add-Result PASS 'MSVC 14.44' ("{0} (all: {1})" -f $hit[0], ($msvc -join ', ')) }
-    else { Add-Result FAIL 'MSVC 14.44' $(if ($msvc) { "found $($msvc -join ', ')" } else { 'no Visual Studio / Build Tools C++ toolset' }) 'VS 2022 Build Tools with "Desktop development with C++" (MSVC v143 14.44); Target.cs needs bOverrideBuildEnvironment + PLATFORM_HAS_ASAN_INCLUDE=0' }
+    else { Add-Result FAIL 'MSVC 14.44' $(if ($msvc) { "found $($msvc -join ', ')" } else { 'no Visual Studio / Build Tools C++ toolset' }) 'VS 2022 Build Tools with "Desktop development with C++" (MSVC v143 14.44, VS 17.14 kept updated: UE 5.7 bans compiler versions 14.44.0-14.44.35210)' }
 }
 Try-Check 'Windows SDK' {
     $inc = "${env:ProgramFiles(x86)}\Windows Kits\10\Include"

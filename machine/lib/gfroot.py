@@ -23,6 +23,45 @@ def config():
     return {}
 
 
+DEFAULT_ENGINE = "C:/Program Files/Epic Games/UE_5.7"
+
+
+def engine_association(project):
+    """The EngineAssociation ("5.3", "5.7", ...) of a .uproject or of the first .uproject in a folder; "" without one."""
+    up = project
+    if project and os.path.isdir(project):
+        found = sorted(f for f in os.listdir(project) if f.lower().endswith(".uproject"))
+        up = os.path.join(project, found[0]) if found else None
+    if not up or not os.path.isfile(up):
+        return ""
+    with open(up, encoding="utf-8-sig") as f:
+        return str(json.load(f).get("EngineAssociation") or "")
+
+
+def engine(project=None):
+    """The UE root for a project, as gf-root.ps1 Get-GFEngine (keep the two in step): the project's EngineAssociation
+    picks the install through "engines" in the config, then the UE_<version> folder next to "engine", then the Epic
+    Games Launcher's registry entry; without a project or a version-number association, "engine" (the one new games
+    use). Forward slashes, no trailing slash."""
+    import re
+    c = config()
+    default = (c.get("engine") or DEFAULT_ENGINE).replace("\\", "/").rstrip("/")
+    assoc = engine_association(project) if project else ""
+    if not re.fullmatch(r"\d+\.\d+", assoc):
+        return default
+    if (c.get("engines") or {}).get(assoc):
+        return c["engines"][assoc].replace("\\", "/").rstrip("/")
+    sibling = "%s/UE_%s" % (os.path.dirname(default), assoc)
+    if os.path.isdir(os.path.join(sibling, "Engine", "Binaries", "Win64")):
+        return sibling
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\EpicGames\\Unreal Engine\\" + assoc) as k:
+            return winreg.QueryValueEx(k, "InstalledDirectory")[0].replace("\\", "/").rstrip("/")
+    except OSError:
+        return default
+
+
 def out():
     """Output root for packages and dataset zips: env GF_OUT, else "out" in the config file, else <root>/deliverables."""
     o = os.environ.get("GF_OUT") or config().get("out")

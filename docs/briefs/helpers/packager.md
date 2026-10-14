@@ -33,7 +33,7 @@ zero; for a from-scratch variant, reuse its task paragraph plus the layout v1.1 
 ```text
 Background:
 game-factory ({{GF_ROOT}}\game-factory, superpositionhq/game-factory, Windows PowerShell 5.1 tooling) coordinates
-Claude Code sessions on one machine. Game sessions build Unreal Engine 5.3 games in {{GF_ROOT}}\games\<slug> ({{GAMES}};
+Claude Code sessions on one machine. Game sessions build Unreal Engine 5.7 games (the first ones on 5.3) in {{GF_ROOT}}\games\<slug> ({{GAMES}};
 sessions: {{GAME_SESSION_IDS}}), each pushed to a private superpositionhq/game-<slug> repo with Git LFS; a coordinator
 session ({{COORDINATOR_ID}}) spawns and supervises everyone. Each game repo has its real git history, workflow.jsonl
 (operations logged by the builder as they happened), Scripts/, and Docs/ThirdPartyNotices.md + assets.manifest.json.

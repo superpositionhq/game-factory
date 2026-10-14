@@ -1,11 +1,11 @@
 ---
 name: game-session
-description: Rules for a session that builds one Unreal Engine 5.3 game for game-factory (repo %GF_ROOT%\games\<slug>, pushed to superpositionhq/game-<slug>). Use at the start of every game-building session and whenever deciding about art, UI, story, naming, heavy/GPU jobs, recording (workflow.jsonl, AutoPlay, framing screenshots), or what to send the coordinator. Pair it with the commit-always skill.
+description: Rules for a session that builds one Unreal Engine 5.7 game for game-factory (repo %GF_ROOT%\games\<slug>, pushed to superpositionhq/game-<slug>). Use at the start of every game-building session and whenever deciding about art, UI, story, naming, heavy/GPU jobs, recording (workflow.jsonl, AutoPlay, framing screenshots), or what to send the coordinator. Pair it with the commit-always skill.
 ---
 
 # Game session
 
-You build one small but premium-looking UE 5.3 game, and the way you build it is the product: every real operation
+You build one small but premium-looking UE 5.7 game, and the way you build it is the product: every real operation
 is recorded as it happens (`workflow.jsonl`, git history, the machine's action hooks) and becomes a game-creation
 dataset. Your brief (from `docs/briefs/game-session.md` + `docs/briefs/games/<slug>.md`) gives the game; these rules
 apply to every game. `%GF_ROOT%` = the machine root (`machine/README.md`); the coordinator is the session that
@@ -22,7 +22,7 @@ started you. Use the **commit-always** skill for every commit.
    with `<GF_ROOT>` written out as the absolute path (e.g. `C:\Users\<you>\Work`), never `%GF_ROOT%` or `$env:GF_ROOT`:
    the hooks match the command text. new-game.ps1 refuses any other -Path. Calls made before this one (reading docs,
    drafting the design) are imported from your transcript when the session is mapped (status `from_transcript`).
-   It writes the skeleton (both Target.cs fixes, Live Coding off, Shipping/HiDPI config, AutoPlay drop-in, LFS for every
+   It writes the skeleton (UE 5.7 Target.cs settings, Live Coding off, Shipping/HiDPI config, AutoPlay drop-in, LFS for every
    binary type, root-anchored `.gitignore`), the first `workflow.jsonl` row, the commit recorder hook, the first
    commit, and the private repo `superpositionhq/game-<slug>` (not pushed).
 3. Write the design doc + story bible in game-factory `docs/games/<slug>.md` before building: systems, classes, data
@@ -43,18 +43,20 @@ started you. Use the **commit-always** skill for every commit.
 - **Live Coding must stay off:** never start `UnrealEditor.exe` without `-unattended` or
   `-ini:EditorPerProjectUserSettings:[/Script/LiveCoding.LiveCodingSettings]:bEnabled=False` (the template also sets
   it in `Config/DefaultEditorPerProjectUserSettings.ini`). A running Live Coding blocks UBT for every project.
-- Toolchain facts: MSVC 14.44 needs `bOverrideBuildEnvironment = true;` + `GlobalDefinitions.Add("PLATFORM_HAS_ASAN_INCLUDE=0");`
-  in both Target.cs; UBT editor targets need the .NET 4.8.1 SDK. Shipping recording builds need
+- Toolchain facts: UE 5.7 wants MSVC 14.44 from an up-to-date VS 2022 17.14; the Target.cs files use `BuildSettingsVersion.V6` +
+  `EngineIncludeOrderVersion.Unreal5_7` and must not set `bOverrideBuildEnvironment` (the installed engine refuses the
+  target). UBT editor targets need the .NET 4.8.1 SDK. Shipping recording builds need
   `bAllowHighDPIInGameMode=True`; never set `bUseLoggingInShipping`. A packaged game started outside its own folder can
-  fail on libvorbis: give it the build folder as working directory. `r.RDG.AsyncCompute=0` avoids the first-frame
-  Lumen + VSM GPU hang.
+  fail on libvorbis: give it the build folder as working directory. `r.RDG.AsyncCompute=0` avoided a first-frame
+  Lumen + VSM GPU hang on 5.3.
 - Never edit anything under `<GF_ROOT>\.recording\`.
 
 ## Engine and content
 
-- UE 5.3 only. C++ for gameplay logic; Blueprint subclasses and data assets/DataTables for tuning; editor work through
+- UE 5.7 for every new game (`EngineAssociation` 5.7). The first games are UE 5.3 projects and stay on 5.3; the tools
+  pick each project's engine from its `.uproject`. C++ for gameplay logic; Blueprint subclasses and data assets/DataTables for tuning; editor work through
   UE Python scripts in `Scripts/` (run headless via UnrealEditor-Cmd `-run=pythonscript`), never hand-edited `.uasset`.
-- UE 5.3 Python gotcha: positional `unreal.Color(r, g, b, a)` fills B, G, R, A, so red and blue come out swapped (light
+- UE Python gotcha (5.3 and 5.7): positional `unreal.Color(r, g, b, a)` fills B, G, R, A, so red and blue come out swapped (light
   colours, tints). Always pass keywords, `unreal.Color(r=..., g=..., b=..., a=...)`, or use `unreal.LinearColor`.
 - Additive animation clips (most Paragon hit reactions, aim offsets, Infima additive poses) are never played as a full
   pose by a native anim instance or proxy: the mesh collapses to a point or the arms leave the view (blade-duel hitstun,
@@ -65,7 +67,7 @@ started you. Use the **commit-always** skill for every commit.
   characters and creatures animated. Store content under `Content/Fab/<Pack>/`; adapt it (materials, kitbash, set
   dressing, lighting). Record every external asset in `assets.manifest.json` (URL, licence, version, files used,
   changes) and credits in `Docs/ThirdPartyNotices.md`, written as a normal developer would. Need more? Write a "Fab
-  requests" list (URL, price, licence, UE 5.3 support, what it replaces) in your design doc and message the coordinator.
+  requests" list (URL, price, licence, UE 5.7 support, what it replaces) in your design doc and message the coordinator.
 - **UI (user rule):** matches the game's art style: kit frames, icons, display fonts, styled numbers. No plain or
   default-font text on screen.
 - **Story (user rule):** a strong background story told in play, never a wall of text: environmental storytelling, at

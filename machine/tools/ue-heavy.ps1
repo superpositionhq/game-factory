@@ -1,6 +1,6 @@
 ﻿# Run one heavy Unreal job (UBT build, RunUAT, UnrealEditor-Cmd, shader-heavy editor run) under a
 # machine-wide limit so the parallel game sessions don't exhaust CPU/RAM. Waits for a free slot.
-#   & <root>\tools\ue-heavy.ps1 -Label "TowerDefense editor build" -- "C:\Program Files\Epic Games\UE_5.3\Engine\Build\BatchFiles\Build.bat" TowerDefenseEditor Win64 Development -Project=...
+#   & <root>\tools\ue-heavy.ps1 -Label "TowerDefense editor build" -- "C:\Program Files\Epic Games\UE_5.7\Engine\Build\BatchFiles\Build.bat" TowerDefenseEditor Win64 Development -Project=...
 # Exit code is the job's. Waits/acquire/release are appended to <root>\.recording\_heavy-jobs.jsonl.
 # <root> is the machine root (machine/lib/gf-root.ps1); machine/bootstrap.ps1 installs this file as <root>\tools\ue-heavy.ps1
 # with a copy of gf-root.ps1 next to it.
