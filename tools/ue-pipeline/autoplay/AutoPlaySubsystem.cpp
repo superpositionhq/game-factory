@@ -23,6 +23,11 @@
 #include "Misc/App.h"
 #include "Misc/CommandLine.h"
 #include "Misc/EngineVersion.h"
+#include "Runtime/Launch/Resources/Version.h"
+
+// UE 5.4+ registers submix buffer listeners by TSharedRef (ISubmixBufferListener is TSharedFromThis there); the old
+// raw-pointer overloads assert on 5.7. UE 5.3 has only the raw-pointer ones.
+#define AUTOPLAY_SHARED_SUBMIX_LISTENER (ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4))
 #include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
@@ -216,6 +221,17 @@ namespace AutoPlay
 	};
 }
 
+// Stop the master-submix capture: by shared reference on UE 5.4+, by pointer on 5.3 (AUTOPLAY_SHARED_SUBMIX_LISTENER).
+static void AutoPlayUnregisterCapture(FAudioDevice* AudioDevice, AutoPlay::FAudioCapture* Raw,
+	const TSharedPtr<AutoPlay::FAudioCapture, ESPMode::ThreadSafe>& Ref)
+{
+#if AUTOPLAY_SHARED_SUBMIX_LISTENER
+	if (Ref.IsValid()) { AudioDevice->UnregisterSubmixBufferListener(Ref.ToSharedRef(), AudioDevice->GetMainSubmixObject()); }
+#else
+	if (Raw) { AudioDevice->UnregisterSubmixBufferListener(Raw, nullptr); }
+#endif
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Clock and JSON helpers
 
@@ -401,7 +417,7 @@ void UAutoPlaySubsystem::Deinitialize()
 		if (AudioCapture && Phase < EPhase::Exporting)
 		{
 			// Quit mid-run: keep the audio captured so far.
-			if (FAudioDevice* AudioDevice = GetGameWorld() ? GetGameWorld()->GetAudioDeviceRaw() : nullptr) { AudioDevice->UnregisterSubmixBufferListener(AudioCapture, nullptr); }
+			if (FAudioDevice* AudioDevice = GetGameWorld() ? GetGameWorld()->GetAudioDeviceRaw() : nullptr) { AutoPlayUnregisterCapture(AudioDevice, AudioCapture, AudioCaptureRef); }
 			AudioCapture->Close();
 		}
 		if (Phase != EPhase::Done)
@@ -560,11 +576,20 @@ void UAutoPlaySubsystem::BeginRun(bool bTimedOut)
 	// Master-submix capture with a per-buffer clock (replaces StartRecordingOutput, which silently drops render stalls).
 	if (FAudioDevice* AudioDevice = GetGameWorld() ? GetGameWorld()->GetAudioDeviceRaw() : nullptr)
 	{
+#if AUTOPLAY_SHARED_SUBMIX_LISTENER
+		AudioCaptureRef = MakeShared<AutoPlay::FAudioCapture, ESPMode::ThreadSafe>();
+		AudioCapture = AudioCaptureRef.Get();
+#else
 		AudioCapture = new AutoPlay::FAudioCapture();
+#endif
 		if (AudioCapture->Open(OutputDir / TEXT("audio.wav"), OutputDir / TEXT("audio_clock.jsonl")))
 		{
 			AudioCapture->Start();
+#if AUTOPLAY_SHARED_SUBMIX_LISTENER
+			AudioDevice->RegisterSubmixBufferListener(AudioCaptureRef.ToSharedRef(), AudioDevice->GetMainSubmixObject());
+#else
 			AudioDevice->RegisterSubmixBufferListener(AudioCapture, nullptr);
+#endif
 		}
 	}
 	ClockSamples.Add(ClockSample(TEXT("audio_start")));
@@ -625,7 +650,7 @@ void UAutoPlaySubsystem::StartExport()
 	{
 		if (FAudioDevice* AudioDevice = GetGameWorld() ? GetGameWorld()->GetAudioDeviceRaw() : nullptr)
 		{
-			AudioDevice->UnregisterSubmixBufferListener(AudioCapture, nullptr);
+			AutoPlayUnregisterCapture(AudioDevice, AudioCapture, AudioCaptureRef);
 		}
 		AudioCapture->Close(); // stops accepting buffers first; the object stays alive for late audio-thread calls
 		AudioFrames = AudioCapture->GetWrittenFrames(); AudioSilence = AudioCapture->GetSilenceFrames(); AudioGaps = AudioCapture->GetGaps();

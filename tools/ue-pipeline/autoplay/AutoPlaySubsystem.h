@@ -157,6 +157,9 @@ private:
 	TMap<FString, IConsoleVariable*> CVarCache;
 	// Master-submix capture (audio render thread). Never deleted: the audio thread may still call it after unregistering.
 	AutoPlay::FAudioCapture* AudioCapture = nullptr;
+	// UE 5.4+: submix listeners are TSharedFromThis (thread-safe) and registered by shared reference; the raw-pointer
+	// overload asserts (SharedThis.Get() == this) on an object made with new. Keeps the capture alive as before.
+	TSharedPtr<AutoPlay::FAudioCapture, ESPMode::ThreadSafe> AudioCaptureRef;
 	int64 LastAudioSize = -1;
 	double AudioStableSince = 0.0;
 };
