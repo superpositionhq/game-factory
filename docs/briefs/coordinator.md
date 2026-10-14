@@ -45,6 +45,9 @@ Standing user decisions (keep applying them):
   voices: subtitles and synthesized sound only.
 - liaozhai-night reuses 2D art from an earlier licensed project; that reuse is wanted.
 - AutoPlay runs play "scenarios" (not levels); contract changes go through you.
+- Relay the user's instructions to game sessions as directions: what to change and why, in one or two sentences, not
+  a forward of the user's words. The session logs each as a user.direction row before acting (commit-always skill), so
+  the dataset records the human's directions and what they led to.
 - AutoPlay's goal is NOT to win. The bot only drives the game with human-like input so a recording shows the game
   running. Never tune, fix or re-test the bot to win, score, finish, reach targets, resupply or avoid getting stuck;
   losing, timing out or wandering is fine (metadata). Fix only game bugs (crash, hang, broken level, missing art,

@@ -31,7 +31,8 @@ The user's standing rule: **every session commits its work continuously.**
 
 - Subject: what changed, imperative, specific (`Add frost tower slow stacking and its data table`), under ~72 chars.
 - Body: why, how it was verified (build/test/run result), anything left open.
-- Game repos: end with the workflow rows the commit covers: `workflow: td-00412..td-00431`.
+- Game repos: end with the workflow rows the commit covers: `workflow: td-00412..td-00431`. A commit that acts on a
+  human direction also names it: `Direction: td-00398 (<the direction in a few words>)`.
 - Game repos: no AI attribution trailers (`Co-Authored-By: Claude ...`) and never the names Superposition or
   game-factory: commit messages ship in the dataset's `git.log`. Deliverables block Claude/Anthropic/Opus outright.
   game-factory commits follow the normal attribution rules.
@@ -47,6 +48,15 @@ The user's standing rule: **every session commits its work continuously.**
   what and when. Failed attempts get rows too.
 - Every editor script that ran stays in `Scripts/` unchanged (new version instead of overwriting), so `source.script`
   + `source.sha256` point at the real code.
+- **Human directions (user rule: "not direct user messages, more like user directions").** When a direction reaches
+  you, from the user directly or relayed by the coordinator, log it FIRST, before acting on it: one row with
+  `actor:"user"`, `op:"user.direction"`, `target` the area (`camera`, `lighting`, `art`, `ui`, `audio`, `story`,
+  `design`, `bot`, `build`, `process`...), `params: {direction: "<one or two sentences: what the human directed and
+  why, in neutral wording, no names, not a quote of the message>", via: "direct" | "coordinator"}`,
+  `reason_source:"user_direction"`, `status:"observed"`. Every later row that acts on it carries
+  `"direction": "<that row id>"`, and each commit that acts on it names it in the body (`Direction: dk-00412 (camera
+  further back in narrow spaces)`), so the dataset's `git.log` links each change to its cause. One row per direction,
+  not per message; a direction that changes an earlier one gets a new row saying so.
 
 ## What to commit
 

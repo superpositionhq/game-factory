@@ -197,7 +197,7 @@ never contains the original values.
 
 | Data | Observed (written when it happened) | Derived |
 |---|---|---|
-| `workflow.jsonl` | every row, by the builder at the time of the operation | nothing (scrubbed copy) |
+| `workflow.jsonl` | every row, by the builder at the time of the operation; human directions as `actor:"user"`, `op:"user.direction"` rows (a neutral summary of what was directed and why, not the message), logged before the work they cause, which carries `"direction": "<row id>"` (commits: `Direction: <row id>`) | nothing (scrubbed copy); the dataset README counts the directions |
 | `git.log` | commits, messages, dates, file contents | diffs (git), sha256 of binaries, `dev_NN` |
 | `History/` | hook and pipeline rows | the lineage filter |
 | `Gameplay/` | video, audio, inputs, telemetry, outcome, clock samples | `metadata.json` estimates, `validation.json`, `summary.*` |

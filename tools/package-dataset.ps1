@@ -424,6 +424,21 @@ function Write-Readme([string]$Dest, [string]$Variant) {
     if (-not $repo) { A '- `UEProject/` — the completed game project at the commit above.' }
     A ('- `ReplayScripts/` — replay of the creation process from the recorded editor operations.' + $(if ($status -ne 'complete') { ' *(pending)*' } else { '' }))
     A '- `workflow.jsonl` — editor operations and parameters, one row per operation, written when it happened.'
+    # human directions: rows actor "user", op "user.direction" (commit-always skill), and the rows that act on them
+    $wfFile = Join-Path $Dest 'workflow.jsonl'
+    $nDir = 0; $nActs = 0
+    if (Test-Path -LiteralPath $wfFile) {
+        foreach ($l in [IO.File]::ReadLines($wfFile)) {
+            if ($l -match '"op"\s*:\s*"user\.direction"') { $nDir++ }
+            elseif ($l -match '"direction"\s*:\s*"[^"]+"') { $nActs++ }
+        }
+    }
+    if ($nDir) {
+        A ("  It also holds $nDir human direction(s): rows with ``actor`` ""user"" and ``op`` ""user.direction"" summarise, in neutral " +
+           "words, what the person directing the work asked for and why (``params.direction``, area in ``target``, ``params.via``: " +
+           "direct or relayed). $nActs later row(s) carry ``""direction"": ""<row id>""`` for the direction they act on, and " +
+           "commits that act on one name it in their message (``Direction: <row id>``), so ``git.log`` links changes to their cause.")
+    }
     A '- `git.log` — every commit with its message and full diff (binary files as path and sha256).'
     A "- ``Gameplay/`` — one video per scenario of this version ($($scen.Count)), played through with the game audio."
     if (-not $repo) { A "- ``Build/`` — the packaged Windows Shipping build$(if ($exe) { " (``Build/$exe``)" })." }
