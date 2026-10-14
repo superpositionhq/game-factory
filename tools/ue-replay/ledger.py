@@ -503,13 +503,33 @@ def build(cfg):
             windows[cur_w]["reconstruction"] = fs.boundary(windows[cur_w]["sha"])
             cur_w += 1
 
+    def close_through(k):
+        nonlocal cur_w
+        while cur_w <= k and cur_w < len(windows):
+            windows[cur_w]["reconstruction"] = fs.boundary(windows[cur_w]["sha"])
+            cur_w += 1
+
+    commit_rx = re.compile(r"\bgit\b(?:\s+-c\s+\S+)*\s+commit\b")
     for a in actions:
-        # A command that ends with `git commit` did its work before that commit: close only the windows whose commits
-        # come before the command started, so its edits and runs land in the window the commit closes.
+        # A command with `git commit` in it did its work around its own commits: close only the windows whose commits
+        # came before the command started (after the session's previous tool call), so its edits and runs land in the
+        # window the next commit closes. A run that comes after n of the command's own commits in the command text
+        # lands after the n-th of them (fps-breach: "commit && build && run build_level_S1 && commit" lost the run).
         cmd_text = (a.get("input") or {}).get("command", "") if a.get("tool") in ("Bash", "PowerShell") else ""
+        cmd_commit_pos, cmd_windows = [], []
         if "git commit" in cmd_text and run_by_tool.get(a.get("tool_use_id")):
             first = run_by_tool[a["tool_use_id"]][0]
-            close_until(first.get("start") or a["time"])
+            t_start = first.get("after") or first.get("start") or a["time"]
+            close_until(t_start)
+            cmd_commit_pos = [m.start() for m in commit_rx.finditer(shellfx.protect_heredocs(cmd_text)[0])]
+            cmd_windows = [k for k in range(cur_w, len(windows))
+                           if parse_time(t_start) <= parse_time(windows[k]["time"]) <= parse_time(a["time"])]
+            # more commits in that span than the command makes: the earlier ones are not its own (the end-of-turn WIP
+            # commit between two turns), so they close before its work
+            extra = len(cmd_windows) - len(cmd_commit_pos)
+            if extra > 0:
+                close_through(cmd_windows[extra - 1])
+                cmd_windows = cmd_windows[extra:]
         else:
             close_until(a["time"])
         if cur_w >= len(windows):
@@ -552,6 +572,13 @@ def build(cfg):
                     w["shell"].append(dict(s, time=a["time"], pos=ue_replay.has_recorded(s["match"], shellfx.protect_heredocs(cmd)[0])))
             # runs in this command, at the command's position in time (texts as of before the command's own writes)
             for r in run_by_tool.get(a.get("tool_use_id"), []):
+                if cmd_windows and cmd_commit_pos:
+                    n = sum(1 for p in cmd_commit_pos if p < (r.get("pos") or 0))
+                    if n:
+                        close_through(cmd_windows[min(n, len(cmd_windows)) - 1])
+                        if cur_w >= len(windows):
+                            continue   # after the last commit: not part of the replayed history
+                        w = windows[cur_w]
                 run_seq += 1
                 # every script file the window changes, as it stood when the run started
                 texts, unknown, absent = {}, [], []
