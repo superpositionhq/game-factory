@@ -42,9 +42,10 @@ AUTOPLAY'S GOAL IS NOT TO WIN. The bot only drives the game with human-like inpu
 running. Never tune, fix or re-test the bot to win, score, finish, reach targets, resupply or avoid getting stuck;
 losing, timing out or wandering is fine (metadata). Fix only game bugs (crash, hang, broken level, missing art,
 lighting, camera); then one AutoPlay run per scenario and the recording request.
-Human directions (from the user, or relayed by me) are recorded before you act on them: a user.direction row first
-(what and why, neutral, no names), then "direction": "<row id>" on the rows and "Direction: <row id>" in the commits
-that act on it (commit-always skill).
+Human directions (from the user, or relayed by me) are recorded before you act on them: rewrite a user message to you
+as a direction (what and why, one or two neutral sentences, no names or chat wording; never the raw message), or take
+my relayed text as it is, and append it at once to your repo-root workflow.jsonl as a user.direction row; then
+"direction": "<row id>" on the rows and "Direction: <row id>" in the commits that act on it (commit-always skill).
 
 Task:
 Build "{{GAME_TITLE}}", {{GENRE_LINE}}, in Unreal Engine 5.3, recording its creation as you go.

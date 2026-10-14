@@ -160,7 +160,9 @@ the game folder, next to `Dataset/`: git-ignored (with `.dataset/`, the packager
 - Report milestones, recording requests and blockers to the coordinator; put long findings in the shared notes folder.
 - User playtest feedback arrives through the coordinator: fix it first, commit, report the sha.
 - **Every human direction is recorded before you act on it** (from the user directly, or relayed by the coordinator):
-  first a `user.direction` row (what was directed and why, in neutral words, no names; `via` direct or coordinator),
+  rewrite a user message to you as a direction (what to change and why, one or two neutral sentences: no tone,
+  profanity, names or chat wording; never the raw message), or take the coordinator's relayed text as it is; append
+  it at once to the repo-root `workflow.jsonl` as a `user.direction` row (`via` direct or coordinator),
   then the work, with `"direction": "<row id>"` on each row that acts on it and `Direction: <row id> (...)` in each
   commit body (commit-always skill, "workflow.jsonl"). The dataset shows the human's directions and what they led to.
 - Blocked (UAC, a purchase, an engine limit)? Write it in your design doc, message the coordinator once, carry on

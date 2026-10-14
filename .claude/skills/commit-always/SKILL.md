@@ -48,8 +48,14 @@ The user's standing rule: **every session commits its work continuously.**
   what and when. Failed attempts get rows too.
 - Every editor script that ran stays in `Scripts/` unchanged (new version instead of overwriting), so `source.script`
   + `source.sha256` point at the real code.
-- **Human directions (user rule: "not direct user messages, more like user directions").** When a direction reaches
-  you, from the user directly or relayed by the coordinator, log it FIRST, before acting on it: one row with
+- **Human directions (user rule: "not direct user messages, more like user directions"; "you should rewrite that and
+  save to the workflow.jsonl").** Whoever receives a user message REWRITES it as a direction: what to change and why,
+  one or two neutral sentences, without tone, profanity, names or chat wording (a game session for a message to it;
+  the coordinator before relaying, sending the rewritten text ready to log). The rewritten direction is SAVED at once,
+  before any action, by appending it to the game repo's own `workflow.jsonl` (the file at the repo root: the live
+  source the packager copies, scrubbed, into `Dataset/workflow.jsonl`; never edit `Dataset/workflow.jsonl` by hand).
+  A relayed direction is appended as the coordinator worded it, with `via: "coordinator"`. The raw message is never
+  stored anywhere in the repo. The row:
   `actor:"user"`, `op:"user.direction"`, `target` the area (`camera`, `lighting`, `art`, `ui`, `audio`, `story`,
   `design`, `bot`, `build`, `process`...), `params: {direction: "<one or two sentences: what the human directed and
   why, in neutral wording, no names, not a quote of the message>", via: "direct" | "coordinator"}`,
