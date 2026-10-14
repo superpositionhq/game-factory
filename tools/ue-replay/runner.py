@@ -7,6 +7,7 @@ every editor-script run headless through ue-heavy.ps1, then the boundary check. 
 work/STOP file pauses it cleanly between steps.
 """
 import datetime
+import glob
 import hashlib
 import json
 import os
@@ -171,13 +172,24 @@ class Ctx:
         self.proj = cfg["project_dir"]
         self.work = cfg["work_dir"]
         self.uproject = os.path.join(self.proj, cfg["uproject"])
-        self.engine = cfg["engine"]
-        self.editor_cmd = os.path.join(self.engine, "Engine", "Binaries", "Win64", "UnrealEditor-Cmd.exe")
         self.ledger = jload(os.path.join(self.work, "ledger.json"))
         self.state_path = os.path.join(self.work, "state.json")
         self.state = jload(self.state_path, {"window": 0, "done": [], "built": None, "provenance": {}})
+        # the engine in use: the one the replay project was last built with (state), else the one its .uproject names
+        self.set_engine(self.state.get("engine") or self.engine_for(self.proj))
         self.logs = os.path.join(self.work, "logs")
         os.makedirs(self.logs, exist_ok=True)
+
+    def engine_for(self, project):
+        """The engine for a project folder (or .uproject) as it stands on disk: with "{engine}" settings the install its
+        EngineAssociation names (a ported game's early commits name the older engine); a literal "engine" is used as is."""
+        if self.cfg.get("_engine_per_commit") and project and os.path.exists(project):
+            return ue_replay.machine_engine(project)
+        return self.cfg["engine"]
+
+    def set_engine(self, engine):
+        self.engine = engine.replace("\\", "/").rstrip("/")
+        self.editor_cmd = os.path.join(self.engine, "Engine", "Binaries", "Win64", "UnrealEditor-Cmd.exe")
 
     def save(self):
         jdump(self.state_path, self.state)
@@ -412,7 +424,7 @@ def build_editor(ctx, label):
     with open(bat, "w", encoding="utf-8") as f:
         f.write('@echo off\r\ncall "%s\\Engine\\Build\\BatchFiles\\Build.bat" %s Win64 Development -Project="%s" -WaitMutex '
                 '-NoHotReloadFromIDE -Log="%s" > "%s" 2>&1\r\nexit /b %%ERRORLEVEL%%\r\n' % (
-                    cfg["engine"].replace("/", "\\"), cfg["editor_target"], ctx.uproject.replace("/", "\\"), ubt_log, log))
+                    ctx.engine.replace("/", "\\"), cfg["editor_target"], ctx.uproject.replace("/", "\\"), ubt_log, log))
     code, secs = heavy("ue-replay %s build %s" % (cfg["game"], label), [bat])
     if code != 0 and "being used by another process" in open(log, encoding="utf-8", errors="replace").read():
         # a file another build holds (UBT logs, makefiles): once more after a pause
@@ -539,7 +551,9 @@ def dump_maps(ctx, maps, out, assets=False, t3d=True, label="dump", project=None
         with open(lst, "w", encoding="utf-8", newline="\n") as f:
             f.write("".join(p + "\n" for p in packages))
         sarg += " --packages %s" % lst.replace("\\", "/")
-    argv = [ctx.editor_cmd, up, "-run=pythonscript", sarg] + ctx.cfg.get("editor_args", []) + ["-abslog=" + log]
+    # the truth project may name another engine than the replay project (a ported game's final commit vs its replay)
+    editor = ctx.editor_cmd if not project else os.path.join(ctx.engine_for(proj), "Engine", "Binaries", "Win64", "UnrealEditor-Cmd.exe")
+    argv = [editor, up, "-run=pythonscript", sarg] + ctx.cfg.get("editor_args", []) + ["-abslog=" + log]
     return heavy("ue-replay %s %s" % (ctx.cfg["game"], label), argv)
 
 
@@ -681,7 +695,11 @@ def fix_lfs_pointers(ctx, paths):
 
 def drop_assets(ctx, d):
     n = 0
-    for it in d["items"]:
+    raw = next((r for r in ctx.cfg.get("_raw_drops", []) if r.get("id") == d["id"]), None)
+    for k, it in enumerate(d["items"]):
+        if raw and k < len(raw.get("items", [])) and "{engine}" in str(raw["items"][k].get("from", "")):
+            # engine content (template mannequins...) from the engine in use at this window, not the game's current one
+            it = dict(it, **{"from": ue_replay.expand(raw["items"][k]["from"].replace("{engine}", ctx.engine), ctx.cfg["root"])})
         if it.get("from_git"):
             # the pack exactly as the game committed it (e.g. a fetch script that filtered the files), restored from the
             # final commit into the working tree at the moment the builder copied it in; LFS objects from the game's store
@@ -784,6 +802,24 @@ def cmd_run(cfg, a):
             print("   inputs: %d written, %d deleted" % (n_am, n_d), flush=True)
         if code_changed(w):
             ctx.state["code_dirty"] = True
+            ctx.save()
+        # engine switch: the commit names another engine (a port): build output of the old engine goes, the editor is
+        # rebuilt with the new one before the next run, and runs.jsonl records it (a report deviation)
+        eng = ctx.engine_for(ctx.proj)
+        if eng != ctx.engine:
+            for d in ("Binaries", "Intermediate"):
+                shutil.rmtree(ctx.p(d), ignore_errors=True)
+            for pdir in glob.glob(ctx.p("Plugins/*")):
+                for d in ("Binaries", "Intermediate"):
+                    shutil.rmtree(os.path.join(pdir, d), ignore_errors=True)
+            jappend(runs_log, {"window": i, "kind": "engine_switch", "step": "w%02d.engine" % i, "commit": w["sha"],
+                               "from": ctx.engine, "to": eng, "time": now()})
+            print("   engine: %s -> %s (Binaries/Intermediate cleared, editor rebuilt before the next run)" % (ctx.engine, eng), flush=True)
+            ctx.set_engine(eng)
+            ctx.state.update({"engine": eng, "code_dirty": True, "built": None})
+            ctx.save()
+        elif ctx.state.get("engine") != ctx.engine:
+            ctx.state["engine"] = ctx.engine
             ctx.save()
         # order of the recorded tool calls (each call's end time), then position inside the call; estimated start
         # times can invert two runs of one command (a duration is printed for one and not the other)

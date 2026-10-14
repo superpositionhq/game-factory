@@ -435,6 +435,10 @@ def deviations(ctx, report):
           "runs": [x.get("run") for x in retried if x.get("script_paths_remapped")]}
          for e in cfg.get("external_sources", []) if e.get("remap_scripts")
          and any(x.get("script_paths_remapped") for x in retried)], None)
+    add("engine_switch", "commits where the project moved to another engine (a port): from that window on the replay "
+        "builds and runs on the engine the commit names, with the old engine's build output cleared",
+        [{"window": x.get("window"), "commit": (x.get("commit") or "")[:10], "from": os.path.basename(x.get("from", "")),
+          "to": os.path.basename(x.get("to", ""))} for x in retried if x.get("kind") == "engine_switch"])
     add("code_at_run_time", "runs replayed with the C++ as it stood when they started (the window's commit has later "
         "code; the editor is rebuilt between runs)",
         [{"run": x.get("run"), "script": x.get("script"), "code": x["code_at_run_time"]} for x in retried

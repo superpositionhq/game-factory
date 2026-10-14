@@ -214,6 +214,16 @@ whose code text the recording cannot rebuild (a shell edit the ledger does not f
 (`code_unknown`). Deviations: `code_at_run_time`, `code_at_run_time_not_buildable`, `code_at_run_time_unknown`.
 Settings `"code_at_run_time": false` turns it off.
 
+### 2.8 Engine per commit
+
+With `"engine": "{engine}"` (the template's setting), every window uses the engine its commit's `.uproject` names
+(`EngineAssociation`, resolved like `machine/lib/gf-root.ps1` Get-GFEngine), so a game ported to a newer engine replays
+its early commits on the old one. At the commit that switches (the port), the replay project's `Binaries/` and
+`Intermediate/` (and plugins') are cleared and the editor is rebuilt with the new engine before the next run; the
+switch is a report deviation (`engine_switch`). Asset drops whose `from` uses `{engine}` copy from the engine in use at
+that window. The truth project builds and dumps with the engine its own commit names (`truth/Saved/replay-truth-engine.txt`
+records it; a different one clears its build output first). A literal `"engine"` path stays fixed for every window.
+
 ## 3. Live replay (per commit, during development)
 
 A game whose `ReplayConfig.json` has `"live": true` (the template's default) is replayed while it is being built, so

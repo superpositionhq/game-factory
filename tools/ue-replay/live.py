@@ -459,7 +459,20 @@ def build_truth(cfg, label, since=None, sha=None):
         return 0, 0.0, None
     ctx = runner.Ctx(cfg)
     ctx.uproject = os.path.join(cfg["truth_dir"], cfg["uproject"])
-    return runner.build_editor(ctx, label)
+    # the engine the truth commit names; build output of another engine (truth checked out across a port) goes first
+    eng = ctx.engine_for(ctx.uproject)
+    ctx.set_engine(eng)
+    marker = os.path.join(cfg["truth_dir"], "Saved", "replay-truth-engine.txt")
+    old = open(marker, encoding="utf-8").read().strip() if os.path.exists(marker) else None
+    if old and old != eng:
+        for d in ("Binaries", "Intermediate"):
+            shutil.rmtree(os.path.join(cfg["truth_dir"], d), ignore_errors=True)
+    code, secs, log = runner.build_editor(ctx, label)
+    if code == 0:
+        os.makedirs(os.path.dirname(marker), exist_ok=True)
+        with open(marker, "w", encoding="utf-8") as f:
+            f.write(eng + "\n")
+    return code, secs, log
 
 
 def structure_check(cfg, led, wins, head, lst):

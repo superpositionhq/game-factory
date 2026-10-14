@@ -222,7 +222,12 @@ def resolve_cfg(game):
 def load_cfg(path):
     p = resolve_cfg(path)
     with open(p, encoding="utf-8") as f:
-        cfg = expand(json.load(f), machine_root(), os.path.dirname(p))   # the settings sit next to the game's .uproject
+        raw = json.load(f)
+    cfg = expand(raw, machine_root(), os.path.dirname(p))   # the settings sit next to the game's .uproject
+    # "{engine}" settings follow the engine the project names at each replayed commit (runner.Ctx.engine_for): a game
+    # ported to a newer engine replays its early commits on the old one. The raw drops keep "{engine}" for that.
+    cfg["_engine_per_commit"] = "{engine}" in str(raw.get("engine", ""))
+    cfg["_raw_drops"] = raw.get("asset_drops", [])
     cfg["root"] = machine_root()
     cfg["_path"] = p
     w = cfg["work_root"]
