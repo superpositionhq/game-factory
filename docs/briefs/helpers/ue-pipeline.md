@@ -47,8 +47,8 @@ docs/autoplay-contract.md, docs/dataset-layout-v1.json, and the shared notes
 Machine: {{MACHINE}}. UE 5.7 at {{ENGINE_DIR}} (and UE 5.3 for the games made on it); MSVC 14.44 + .NET 4.8.1 SDK; pinned ffmpeg 8.1.2 under
 {{GF_ROOT}}\tools\ffmpeg-8.1.2 (machine/ fetches and checksum-verifies it); Python 3.12. Private build clones live under
 {{UEB}} (outside %USERPROFILE%, so the user name is never compiled into an exe). The machine-wide limiter is
-{{GF_ROOT}}\tools\ue-heavy.ps1: general slots (Global\ue-heavy-jobs-v2, config heavy_slots) and GPU slots (Global\ue-gpu-jobs-v2, config
-gpu_slots; both from the hardware formula in docs/ue-pipeline.md, "Machine-wide slots") with a VRAM guard; it holds back new GPU jobs while
+{{GF_ROOT}}\tools\ue-heavy.ps1: general slots (config heavy_slots) and GPU slots (config gpu_slots; both from the hardware formula in
+docs/ue-pipeline.md, "Machine-wide slots"), one named mutex per slot so a killed job leaks none, with a VRAM guard; it holds back new GPU jobs while
 builds\_queue\_recording-wants-gpu is fresh. A recording takes every GPU slot.
 
 Rules:
@@ -56,7 +56,7 @@ Rules:
   never end a turn with uncommitted work, never push unless the coordinator says so. Other sessions share this
   checkout: stage only the paths you changed (git add <paths>), never git add -A.
 - Every GPU launch (editor GUI, -game, packaged game) goes through {{GF_ROOT}}\tools\ue-heavy.ps1; headless
-  UBT/RunUAT/UnrealEditor-Cmd work takes a CPU slot (build.ps1 takes the semaphore itself). Only the coordinator
+  UBT/RunUAT/UnrealEditor-Cmd work takes a CPU slot (build.ps1 takes its slot itself). Only the coordinator
   enqueues recordings (enqueue.ps1 refuses without -RequestedBy coordinator): never queue, start or retry a recording
   yourself, and never create the nightly Task Scheduler entry; ask the coordinator, who also reviews framing
   screenshots before anything is queued. Close everything you launch.

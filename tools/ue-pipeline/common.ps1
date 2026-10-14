@@ -129,32 +129,37 @@ function Write-HeavyLog([string]$Event, [string]$Label, $Extra) {
 }
 
 # General slots of the machine-wide limiter, as ue-heavy.ps1 counts them: "heavy_slots" in the machine config, else the
-# hardware formula (machine/lib/gf-root.ps1 Get-GFSlotPlan). The semaphore keeps the count it was created with while any
-# job holds it.
+# hardware formula (machine/lib/gf-root.ps1 Get-GFSlotPlan). One named mutex per slot (gf-root.ps1 Get-GFSlotMutexes):
+# a job killed before it releases leaves its mutex abandoned and the next job takes it over, so nothing leaks.
 function Get-HeavySlotCount { return [int](Get-GFSlotPlan $GFConfig).heavy_slots }
+$script:HeavyLog = Join-Path $LogRoot '_heavy-jobs.jsonl'
 
 function Invoke-Logged([string]$Exe, [string]$Arguments, [string]$LogPath, [string]$WorkDir = $null, [string]$HeavyLabel = $null) {
     # Runs Exe with stdout+stderr to LogPath, returns the exit code. Child inherits our (below-normal) priority.
-    # With -HeavyLabel the job holds a slot of the machine-wide limiter every game session uses
-    # (Global\ue-heavy-jobs-v2, Get-HeavySlotCount slots, Work\tools\ue-heavy.ps1); taken here rather than through that
-    # script so the exact command line survives (its PowerShell re-quoting would split -ExecCmds="...").
-    $sem = $null
+    # With -HeavyLabel the job holds a general slot of the machine-wide limiter every game session uses
+    # (Global\ue-heavy-slot-<n>, Work\tools\ue-heavy.ps1); taken here rather than through that script so the exact
+    # command line survives (its PowerShell re-quoting would split -ExecCmds="...").
+    $mx = $null; $idx = -1
     if ($HeavyLabel) {
-        $n = Get-HeavySlotCount
-        $sem = New-Object System.Threading.Semaphore($n, $n, 'Global\ue-heavy-jobs-v2')
-        $t0 = Get-Date
-        Write-HeavyLog 'wait' $HeavyLabel @{ command = "`"$Exe`" $Arguments" }
-        while (-not $sem.WaitOne(60000)) { Write-Step "[ue-heavy] waiting for a free slot since $($t0.ToString('HH:mm:ss'))" }
-        Write-HeavyLog 'start' $HeavyLabel @{ waited_s = [int]((Get-Date) - $t0).TotalSeconds }
+        $mx = Get-GFSlotMutexes heavy (Get-HeavySlotCount)
+        $t0 = Get-Date; $next = $t0
+        Write-HeavyLog 'wait' $HeavyLabel @{ command = "`"$Exe`" $Arguments"; slots = 'mutex' }
+        while ($true) {
+            $idx = Enter-GFSlot $mx (Get-GFLegacySlotHolders $HeavyLog).heavy
+            if ($idx -ge 0) { break }
+            if ((Get-Date) -ge $next) { Write-Step "[ue-heavy] waiting for a free slot since $($t0.ToString('HH:mm:ss'))"; $next = (Get-Date).AddMinutes(1) }
+            Start-Sleep -Seconds 3
+        }
+        Write-HeavyLog 'start' $HeavyLabel @{ waited_s = [int]((Get-Date) - $t0).TotalSeconds; slot = $idx }
     }
     $t1 = Get-Date
     $code = -1
     try {
         $code = Invoke-LoggedProcess $Exe $Arguments $LogPath $WorkDir
     } finally {
-        if ($sem) {
-            [void]$sem.Release(); $sem.Dispose()
-            Write-HeavyLog 'end' $HeavyLabel @{ exit_code = $code; duration_s = [int]((Get-Date) - $t1).TotalSeconds }
+        if ($mx) {
+            Exit-GFSlot $mx $idx
+            Write-HeavyLog 'end' $HeavyLabel @{ exit_code = $code; duration_s = [int]((Get-Date) - $t1).TotalSeconds; slots = 'mutex' }
         }
     }
     return $code
@@ -227,47 +232,46 @@ function Stop-RecordingWantsGpuHold {
     try { if (Test-Path $RecordingWantsGpuFlag) { Remove-Item -Force $RecordingWantsGpuFlag } } catch { }
 }
 
-# GPU slots: Global\ue-gpu-jobs-v2 with "gpu_slots" in the machine config, else the hardware formula (gf-root.ps1
-# Get-GFSlotPlan), one per session GPU job (ue-heavy.ps1). A recording takes ALL of them, plus the old single slot
-# Global\ue-gpu-jobs that jobs started before the change may still use, so a capture has the GPU to itself. Slots are
-# collected as running GPU jobs end; the recording-wants-gpu flag keeps new session GPU jobs from taking freed ones.
+# GPU slots: Global\ue-gpu-slot-<n>, "gpu_slots" in the machine config, else the hardware formula (gf-root.ps1
+# Get-GFSlotPlan), one per session GPU job (ue-heavy.ps1). A recording takes ALL of them and then waits until no job of
+# the old counted semaphores still holds a GPU slot (Get-GFLegacySlotHolders), so a capture has the GPU to itself.
+# Slots are collected as running GPU jobs end; the recording-wants-gpu flag keeps new session GPU jobs from taking
+# freed ones. Mutexes: a recorder killed mid-run leaves its slots abandoned, and the next taker gets them.
 function Get-GpuSlotCount { return [math]::Min(8, [int](Get-GFSlotPlan $GFConfig).gpu_slots) }
 
 function Enter-GpuSlot([string]$Label, [switch]$Recording) {
     $n = Get-GpuSlotCount
-    $sem = New-Object System.Threading.Semaphore($n, $n, 'Global\ue-gpu-jobs-v2')
-    $old = if ($Recording) { New-Object System.Threading.Semaphore(1, 1, 'Global\ue-gpu-jobs') } else { $null }
-    $want = if ($Recording) { $n } else { 1 }
+    $mx = Get-GFSlotMutexes gpu $n
     $t0 = Get-Date
-    Write-HeavyLog 'wait' $Label @{ gpu = $true; gpu_slots = $want }
+    Write-HeavyLog 'wait' $Label @{ gpu = $true; gpu_slots = $(if ($Recording) { $n } else { 1 }); slots = 'mutex' }
     $said = $false
-    $held = 0; $heldOld = $false
+    $held = New-Object Collections.Generic.List[int]
     try {
         if ($Recording) { Set-RecordingWantsGpu $Label }
-        while ($held -lt $want) {
-            if ($sem.WaitOne(60000)) { $held++; continue }
+        while ($true) {
+            if ($Recording) {
+                for ($i = 0; $i -lt $n; $i++) { if (-not $held.Contains($i) -and (Enter-GFMutex $mx[$i] 0)) { $held.Add($i) } }
+                if ($held.Count -eq $n -and (Get-GFLegacySlotHolders $HeavyLog).gpu -eq 0) { break }
+            } else {
+                $i = Enter-GFSlot $mx (Get-GFLegacySlotHolders $HeavyLog).gpu
+                if ($i -ge 0) { $held.Add($i); break }
+            }
             if ($Recording) { Set-RecordingWantsGpu $Label }
-            if (-not $said) { Write-Step "[gpu] waiting for $(if ($Recording) { "all $n GPU slots ($held held)" } else { 'a GPU slot' }) since $($t0.ToString('HH:mm:ss'))$(if ($Recording) { '; recording priority flag set' })"; $said = $true }
-        }
-        if ($old) {
-            while (-not $old.WaitOne(60000)) { if ($Recording) { Set-RecordingWantsGpu $Label } }
-            $heldOld = $true
+            if (-not $said) { Write-Step "[gpu] waiting for $(if ($Recording) { "all $n GPU slots ($($held.Count) held)" } else { 'a GPU slot' }) since $($t0.ToString('HH:mm:ss'))$(if ($Recording) { '; recording priority flag set' })"; $said = $true }
+            Start-Sleep -Seconds 3
         }
     } catch {
-        if ($held) { [void]$sem.Release($held) }
-        if ($heldOld) { [void]$old.Release() }
+        foreach ($i in $held) { Exit-GFSlot $mx $i }
         throw
     } finally { if ($Recording) { Clear-RecordingWantsGpu } }
-    Write-HeavyLog 'start' $Label @{ gpu = $true; gpu_slots = $held; waited_s = [int]((Get-Date) - $t0).TotalSeconds }
-    return [pscustomobject]@{ Sem = $sem; Count = $held; Old = $old; Label = $Label; Since = Get-Date }
+    Write-HeavyLog 'start' $Label @{ gpu = $true; gpu_slots = $held.Count; slot = -1; gpu_slot = @($held); waited_s = [int]((Get-Date) - $t0).TotalSeconds }
+    return [pscustomobject]@{ Mutexes = $mx; Held = @($held); Label = $Label; Since = Get-Date }
 }
 
 function Exit-GpuSlot($Slot) {
     if (-not $Slot) { return }
-    try { [void]$Slot.Sem.Release([int]$Slot.Count) } catch { }
-    $Slot.Sem.Dispose()
-    if ($Slot.Old) { try { [void]$Slot.Old.Release() } catch { }; $Slot.Old.Dispose() }
-    Write-HeavyLog 'end' $Slot.Label @{ gpu = $true; duration_s = [int]((Get-Date) - $Slot.Since).TotalSeconds }
+    foreach ($i in $Slot.Held) { Exit-GFSlot $Slot.Mutexes $i }
+    Write-HeavyLog 'end' $Slot.Label @{ gpu = $true; duration_s = [int]((Get-Date) - $Slot.Since).TotalSeconds; slots = 'mutex' }
 }
 
 function Get-VramUsedMB {

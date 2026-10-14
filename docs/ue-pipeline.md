@@ -60,14 +60,19 @@ editors stay responsive; the game and ffmpeg run at above-normal priority during
 ### Machine-wide slots
 
 Every heavy job of every session goes through one limiter, `<root>\tools\ue-heavy.ps1` (rows in
-`.recording\_heavy-jobs.jsonl`); build.ps1 takes the same semaphore itself (common.ps1 `Invoke-Logged -HeavyLabel`)
-instead of calling ue-heavy.ps1, because that script re-quotes arguments through PowerShell and would split
+`.recording\_heavy-jobs.jsonl`); build.ps1 takes a slot itself (common.ps1 `Invoke-Logged -HeavyLabel`) instead of
+calling ue-heavy.ps1, because that script re-quotes arguments through PowerShell and would split
 `-ExecCmds="Automation RunTests ...; Quit"`.
 
-| Slots | Named semaphore | Taken by | Count |
+Each slot is a named mutex (machine/lib/gf-root.ps1 `Get-GFSlotMutexes`, `Enter-GFSlot`). A job that is killed before
+it releases its slot (a cancelled tool call, a killed UAT) leaves the mutex abandoned, and the next job takes it over,
+so no slot leaks. Counted semaphores, used before, lost one slot per killed holder until someone released it by hand.
+The counts are read from the config at every call, so a new `heavy_slots` / `gpu_slots` applies at once.
+
+| Slots | Named mutexes | Taken by | Count |
 |---|---|---|---|
-| general | `Global\ue-heavy-jobs-v2` | every job: Build.bat/UBT, RunUAT, UnrealEditor-Cmd, and GPU jobs too | config `heavy_slots`, else the formula |
-| GPU | `Global\ue-gpu-jobs-v2` | jobs that render (editor GUI, `-game`, packaged games; not `-nullrhi`/`-nographics`), taken before the general slot | config `gpu_slots`, else the formula |
+| general | `Global\ue-heavy-slot-<n>` | every job: Build.bat/UBT, RunUAT, UnrealEditor-Cmd, and GPU jobs too | config `heavy_slots`, else the formula |
+| GPU | `Global\ue-gpu-slot-<n>` | jobs that render (editor GUI, `-game`, packaged games; not `-nullrhi`/`-nographics`), together with a general slot: a GPU job never holds one while waiting for the other | config `gpu_slots`, else the formula |
 
 The formula (machine/lib/gf-root.ps1 `Get-GFComputedSlots`; bootstrap.ps1 writes its result to the config, and a value
 set by hand stays unless `bootstrap.ps1 -Force`):
@@ -82,15 +87,16 @@ Dynamic guards on top of the counts:
 - **VRAM guard:** a GPU job starts only while the GPU's used VRAM is under `gpu_vram_limit_mb` (default half the
   VRAM) and no other GPU job started in the last 60 s (a new renderer's VRAM shows only once it has loaded);
   otherwise it hands its slot back and looks again every 30 s (`vram_wait` rows).
-- **Recordings are exclusive:** a recording takes every GPU slot (common.ps1 `Enter-GpuSlot -Recording`, plus the old
-  single slot `Global\ue-gpu-jobs` jobs from before the change may still hold), so a capture has the GPU to itself:
-  record.ps1 for the whole run (acquired after the idle wait, released in `finally`) and the Firewall pre-flight launch.
+- **Recordings are exclusive:** a recording takes every GPU slot (common.ps1 `Enter-GpuSlot -Recording`), so a capture
+  has the GPU to itself: record.ps1 for the whole run (acquired after the idle wait, released in `finally`) and the
+  Firewall pre-flight launch.
 - **`-Low`** (background work such as the live creation replay): one low job machine-wide; it takes a general slot only
   while no other job waits for one and another slot stays free, at below-normal priority.
+- **Switch from the semaphores:** jobs started before the per-slot mutexes (rows in the log without a `slot` field) keep
+  their semaphore slots; new jobs count those that still run (`Get-GFLegacySlotHolders`) and leave as many slots unused
+  until they end, so the switch never runs more jobs than the counts.
 
-A named semaphore keeps the count it was created with while any process holds it: a new count takes effect once
-every job holding it has ended (or under a new name, which is how the `-v2` names came about; jobs on the old name
-drain). `machine/check.ps1` shows the slots in effect and where each comes from.
+`machine/check.ps1` shows the slots in effect and where each comes from.
 
 The smoke test runs with `-nullrhi` and cooks/compiles use the general slots. Before launching, record.ps1 also
 waits while more than `-MaxVramInUseMB` (default 4096) MB of VRAM is in use (nvidia-smi total; per-process numbers are
@@ -101,8 +107,7 @@ it waits for the slot, it gives the slot back and waits for idle again. Waits/st
 every minute, removed once it holds the slot and in `finally`); ue-heavy.ps1 holds back new session GPU jobs while that
 file exists and is under 20 min old. The queue drainer holds the same flag for each whole job (from its first build
 step to the end of its last run, and across the gap to the next job; a timer rewrites it every 60 s) and removes it
-when the queue is empty. Caveat: a semaphore is not released when its
-holder is killed, so kill the whole job tree only if every holder dies (the count resets once no process has it open).
+when the queue is empty.
 
 Every editor process the pipeline starts has `-unattended` (smoke test; RunUAT passes it to the cook commandlet):
 an `UnrealEditor.exe` without it starts Live Coding, and while Live Coding runs UBT refuses to build any project on

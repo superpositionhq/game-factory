@@ -64,29 +64,27 @@ def gpu_priority_run(label, argv, env, root, holder=None):
     k32.CreateSemaphoreW.argtypes = [ctypes.c_void_p, ctypes.c_long, ctypes.c_long, wintypes.LPCWSTR]
     k32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
     k32.ReleaseSemaphore.argtypes = [wintypes.HANDLE, ctypes.c_long, ctypes.c_void_p]
-    # a capture takes every GPU slot (Global\ue-gpu-jobs-v2: "gpu_slots" in the machine config, else the hardware
-    # formula) and the old single slot, as the pipeline recorder does (tools/ue-pipeline/common.ps1 Enter-GpuSlot -Recording)
+    # a capture takes every GPU slot (the mutexes Global\ue-gpu-slot-<n>, "gpu_slots" in the machine config, else the
+    # hardware formula), as the pipeline recorder does (tools/ue-pipeline/common.ps1 Enter-GpuSlot -Recording). A mutex
+    # whose holder died is handed over (WAIT_ABANDONED), so a killed capture leaks nothing.
     try:
         import gfroot
         n = max(1, min(8, int(gfroot.slot_plan()["gpu_slots"])))
     except (ImportError, ValueError):
         n = 3
-    sem = k32.CreateSemaphoreW(None, n, n, "Global\\ue-gpu-jobs-v2")
-    old = k32.CreateSemaphoreW(None, 1, 1, "Global\\ue-gpu-jobs")
-    if not sem or not old:
-        sys.exit("cannot open the GPU slot semaphores")
+    k32.CreateMutexW.restype = wintypes.HANDLE
+    k32.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
+    k32.ReleaseMutex.argtypes = [wintypes.HANDLE]
+    slots = [k32.CreateMutexW(None, False, "Global\\ue-gpu-slot-%d" % i) for i in range(n)]
+    if not all(slots):
+        sys.exit("cannot open the GPU slot mutexes")
     ft = threading.Thread(target=keep_flag, daemon=True)
     ft.start()
     t0 = time.time()
     log("wait", command=" ".join(argv))
     print(runner.now(), "recording priority flag set; waiting for the GPU slot", flush=True)
-    if os.environ.get("GF_GPU_SLOT_HELD") == "1":   # a killed earlier capture left the slot taken: adopt it
-        print(runner.now(), "adopting the GPU slot left held by the previous capture", flush=True)
-    else:
-        for _ in range(n):
-            while k32.WaitForSingleObject(sem, 60000) != 0:   # WAIT_OBJECT_0
-                pass
-        while k32.WaitForSingleObject(old, 60000) != 0:
+    for h in slots:
+        while k32.WaitForSingleObject(h, 60000) not in (0, 0x80):   # WAIT_OBJECT_0, WAIT_ABANDONED (holder died)
             pass
     log("start", waited_s=int(time.time() - t0))
     print(runner.now(), "GPU slot held after %d s; starting the editor" % (time.time() - t0), flush=True)
@@ -99,8 +97,8 @@ def gpu_priority_run(label, argv, env, root, holder=None):
             holder["proc"] = proc
         code = proc.wait()
     finally:
-        k32.ReleaseSemaphore(sem, n, None)
-        k32.ReleaseSemaphore(old, 1, None)
+        for h in slots:
+            k32.ReleaseMutex(h)
         stop.set()
         try:
             if open(flag, encoding="ascii", errors="replace").read().endswith(me):

@@ -6,10 +6,14 @@
 # with a copy of gf-root.ps1 next to it.
 #
 # Slot model (docs/ue-pipeline.md, "Machine-wide slots"):
-# - General slots (Global\ue-heavy-jobs-v2): every job takes one. Count: "heavy_slots" in the machine config, else the
+# - Slots are named mutexes, one per slot (gf-root.ps1 Get-GFSlotMutexes): a job killed before it releases leaves its
+#   mutex abandoned and the next job takes it over, so no slot leaks (the counted semaphores of before leaked one per
+#   killed job). Jobs started before the change are counted from the log and their number of slots stays unused until
+#   they end (Get-GFLegacySlotHolders). Counts are read at every call, so a config change applies at once.
+# - General slots (Global\ue-heavy-slot-<n>): every job takes one. Count: "heavy_slots" in the machine config, else the
 #   hardware formula in gf-root.ps1 Get-GFComputedSlots (bootstrap.ps1 writes it to the config).
-# - GPU slots (Global\ue-gpu-jobs-v2): jobs that render (editor GUI, -game, packaged games; not -nullrhi/-nographics) take
-#   one FIRST, then a general slot. Count: "gpu_slots", else the same formula.
+# - GPU slots (Global\ue-gpu-slot-<n>): jobs that render (editor GUI, -game, packaged games; not -nullrhi/-nographics)
+#   take one together with a general slot, never one while waiting for the other. Count: "gpu_slots", else the formula.
 # - VRAM guard: a GPU job starts only while the GPU's used VRAM is under "gpu_vram_limit_mb" (default half the VRAM) and
 #   no other GPU job started in the last 60 s (a new renderer's VRAM shows only once it has loaded); otherwise it gives
 #   the slot back and looks again every 30 s (logged as vram_wait).
@@ -17,8 +21,6 @@
 #   and while it waits (builds\_queue\_recording-wants-gpu fresh) new GPU jobs hold back or hand their slot back.
 # - -Low (background work such as the live creation replay): one low job machine-wide; it takes a general slot only
 #   while no other job waits for one and another slot stays free; its process runs below normal priority.
-# A named semaphore keeps the count it was created with while any process holds it: a new count takes effect once every
-# job holding it has ended (or under a new name; the "-v2" names date from such a change).
 [CmdletBinding(PositionalBinding = $false)]
 param(
   [string]$Label = 'ue job',
@@ -65,7 +67,11 @@ function Log($event, $extra) {
     }
   } finally { $m.ReleaseMutex() }
 }
-$sem = New-Object Threading.Semaphore($Slots, $Slots, 'Global\ue-heavy-jobs-v2')
+if (-not (Get-Command Get-GFSlotMutexes -ErrorAction SilentlyContinue)) {
+  Write-Error "ue-heavy: $gfLib has no per-slot mutexes (Get-GFSlotMutexes): install machine\lib\gf-root.ps1 next to this script (machine\bootstrap.ps1)"
+  exit 2
+}
+$heavyM = Get-GFSlotMutexes heavy $Slots
 $cmdText = $Command -join ' '
 $isGpu = $Gpu -or ($Command[0] -match '(?i)UnrealEditor\.exe$|-Shipping\.exe$') -or
   ($cmdText -match '(?i)(^|\s)-game(\s|$)|-AllowCommandletRendering') -or
@@ -73,58 +79,61 @@ $isGpu = $Gpu -or ($Command[0] -match '(?i)UnrealEditor\.exe$|-Shipping\.exe$') 
 if ($cmdText -match '(?i)-nullrhi|-nographics') { $isGpu = $false }
 $gpuSlots = if ($plan) { [math]::Min(8, [int]$plan.gpu_slots) } else { 1 }
 $vramLimit = if ($plan) { [int]$plan.gpu_vram_limit_mb } else { 0 }
-$gpuSem = if ($isGpu) { New-Object Threading.Semaphore($gpuSlots, $gpuSlots, 'Global\ue-gpu-jobs-v2') } else { $null }
+$gpuM = if ($isGpu) { Get-GFSlotMutexes gpu $gpuSlots } else { $null }
+$heavyIdx = -1; $gpuIdx = -1; $lowHeld = $false
 function Get-VramMB([string]$What) {
   try { $v = & nvidia-smi "--query-gpu=memory.$What" --format=csv,noheader,nounits 2>$null | Select-Object -First 1 } catch { $v = $null }
   if ("$v".Trim() -match '^\d+$') { return [int]"$v".Trim() } else { return $null }
 }
 if ($isGpu -and $vramLimit -le 0) { $tot = Get-VramMB 'total'; $vramLimit = if ($tot) { [int]($tot / 2) } else { 8192 } }
 $t0 = Get-Date
-Log 'wait' @{ command = $cmdText; gpu = [bool]$isGpu; low = [bool]$Low }
-# GPU jobs get the GPU slot FIRST and only then a general slot, so a job queued behind a recording doesn't sit on
-# one of the general (compile) slots the whole time.
-if ($gpuSem) {
-  # Recordings have priority: while the pipeline has flagged that it is waiting for the GPU (a fresh
-  # _recording-wants-gpu file, refreshed by the recorder), session GPU jobs hold back so they don't take the
-  # slot first. A stale flag (over 20 min old) is ignored.
-  $flag = Join-Path $gfRoot 'builds\_queue\_recording-wants-gpu'
-  while ((Test-Path $flag) -and ((Get-Date) - (Get-Item $flag).LastWriteTime).TotalMinutes -lt 20) {
-    Write-Host "[ue-heavy] a recording is waiting for the GPU; holding back since $($t0.ToString('HH:mm:ss'))..."
-    Start-Sleep -Seconds 15
-  }
-  $nextVramLog = Get-Date
+# "slots":"mutex" marks this script's rows (Get-GFLegacySlotHolders tells them from jobs of the old semaphores)
+Log 'wait' @{ command = $cmdText; gpu = [bool]$isGpu; low = [bool]$Low; slots = 'mutex' }
+$flag = Join-Path $gfRoot 'builds\_queue\_recording-wants-gpu'
+function Test-RecordingWaits { (Test-Path $flag) -and ((Get-Date) - (Get-Item $flag).LastWriteTime).TotalMinutes -lt 20 }
+# A GPU job that started in the last minute has not loaded yet: its VRAM does not show, so wait for it to settle.
+function Test-VramBusy {
+  $script:vramUsed = Get-VramMB 'used'
+  $script:vramRecent = $false
+  try {
+    foreach ($l in (Get-Content -LiteralPath $log -Tail 200 -ErrorAction Stop)) {
+      if ($l -notmatch '"event":"start"' -or $l -notmatch '"gpu":true') { continue }
+      $r = $l | ConvertFrom-Json
+      if ($r.pid -ne $PID -and ((Get-Date) - [datetime]$r.time).TotalSeconds -lt 60) { $script:vramRecent = $true }
+    }
+  } catch { }
+  $script:vramRecent -or ($null -ne $script:vramUsed -and $script:vramUsed -gt $vramLimit)
+}
+if ($gpuM) {
+  # GPU jobs take a GPU slot and a general slot together or not at all: holding the GPU slot while waiting for a
+  # general one blocked every other GPU job and left the GPU idle. Recordings have priority: while the recorder has
+  # flagged that it waits for the GPU (a fresh _recording-wants-gpu file; one over 20 min old is ignored), session
+  # GPU jobs hold back. VRAM guard: start only while the GPU's used VRAM is under the limit (per-process VRAM is not
+  # available under WDDM) and no GPU job started in the last minute.
+  $nextNote = Get-Date; $nextVramLog = Get-Date
   while ($true) {
-    while (-not $gpuSem.WaitOne(60000)) { Write-Host "[ue-heavy] waiting for a GPU slot ($gpuSlots max; a recording takes all) since $($t0.ToString('HH:mm:ss'))..." }
-    # A recording may have started waiting while we were queued: give the slot back and let it go first.
-    if ((Test-Path $flag) -and ((Get-Date) - (Get-Item $flag).LastWriteTime).TotalMinutes -lt 20) {
-      [void]$gpuSem.Release()
-      Write-Host "[ue-heavy] a recording is waiting for the GPU; yielding the slot..."
-      Start-Sleep -Seconds 20
-      continue
+    if (Test-RecordingWaits) {
+      if ((Get-Date) -ge $nextNote) { Write-Host "[ue-heavy] a recording is waiting for the GPU; holding back since $($t0.ToString('HH:mm:ss'))..."; $nextNote = (Get-Date).AddMinutes(1) }
+      Start-Sleep -Seconds 15; continue
     }
-    # VRAM guard: start only while less than the limit is in use (per-process VRAM is not available under WDDM, so
-    # this is the GPU's total); otherwise hand the slot back and look again.
-    # A GPU job that started in the last minute has not loaded yet: its VRAM does not show, so wait for it to settle.
-    $used = Get-VramMB 'used'
-    $recent = $false
-    try {
-      foreach ($l in (Get-Content -LiteralPath $log -Tail 200 -ErrorAction Stop)) {
-        if ($l -notmatch '"event":"start"' -or $l -notmatch '"gpu":true') { continue }
-        $r = $l | ConvertFrom-Json
-        if ($r.pid -ne $PID -and ((Get-Date) - [datetime]$r.time).TotalSeconds -lt 60) { $recent = $true }
+    $legacy = Get-GFLegacySlotHolders $log
+    $gpuIdx = Enter-GFSlot $gpuM $legacy.gpu
+    if ($gpuIdx -ge 0) {
+      if (Test-VramBusy) {
+        Exit-GFSlot $gpuM $gpuIdx; $gpuIdx = -1
+        if ((Get-Date) -ge $nextVramLog) {
+          Write-Host "[ue-heavy] $vramUsed MB VRAM in use (limit $vramLimit MB)$(if ($vramRecent) { ', a GPU job started under a minute ago' }): waiting..."
+          Log 'vram_wait' @{ gpu = $true; vram_used_mb = $vramUsed; limit_mb = $vramLimit; settling = $vramRecent; slots = 'mutex' }
+          $nextVramLog = (Get-Date).AddMinutes(5)
+        }
+        Start-Sleep -Seconds 30; continue
       }
-    } catch { }
-    if ($recent -or ($null -ne $used -and $used -gt $vramLimit)) {
-      [void]$gpuSem.Release()
-      if ((Get-Date) -ge $nextVramLog) {
-        Write-Host "[ue-heavy] $used MB VRAM in use (limit $vramLimit MB)$(if ($recent) { ', a GPU job started under a minute ago' }): waiting..."
-        Log 'vram_wait' @{ gpu = $true; vram_used_mb = $used; limit_mb = $vramLimit; settling = $recent }
-        $nextVramLog = (Get-Date).AddMinutes(5)
-      }
-      Start-Sleep -Seconds 30
-      continue
+      $heavyIdx = Enter-GFSlot $heavyM $legacy.heavy
+      if ($heavyIdx -ge 0) { break }
+      Exit-GFSlot $gpuM $gpuIdx; $gpuIdx = -1
     }
-    break
+    if ((Get-Date) -ge $nextNote) { Write-Host "[ue-heavy] waiting for a GPU slot ($gpuSlots) and a general slot ($Slots) together since $($t0.ToString('HH:mm:ss'))..."; $nextNote = (Get-Date).AddMinutes(1) }
+    Start-Sleep -Seconds 3
   }
 }
 function Test-OthersWaiting {
@@ -142,24 +151,40 @@ function Test-OthersWaiting {
   }
   return $false
 }
-$lowSem = $null
+$lowM = $null
 if ($Low) {
-  # Low-priority work never makes another job wait: one low job machine-wide, and it takes a slot only while nobody
-  # else is waiting and another slot would still be free for the next normal job.
-  $lowSem = New-Object Threading.Semaphore(1, 1, 'Global\ue-heavy-low')
-  while (-not $lowSem.WaitOne(60000)) { Write-Host "[ue-heavy] low priority: another low-priority job runs; waiting..." }
+  # Low-priority work never makes another job wait: one low job machine-wide (a mutex, so a killed one does not block
+  # the next), and it takes a general slot only while nobody else is waiting and another slot would still be free.
+  $lowM = New-Object Threading.Mutex($false, 'Global\ue-heavy-low-slot')
+  while (-not (Enter-GFMutex $lowM 60000)) { Write-Host "[ue-heavy] low priority: another low-priority job runs; waiting..." }
+  $lowHeld = $true
   while ($true) {
-    if (-not (Test-OthersWaiting) -and $sem.WaitOne(0)) {
-      if ($Slots -lt 2) { break }
-      if ($sem.WaitOne(0)) { [void]$sem.Release(); break }
-      [void]$sem.Release()
+    if (-not (Test-OthersWaiting)) {
+      $legacy = Get-GFLegacySlotHolders $log
+      $heavyIdx = Enter-GFSlot $heavyM $legacy.heavy
+      if ($heavyIdx -ge 0) {
+        if ($Slots -lt 2) { break }
+        $spare = Enter-GFSlot $heavyM $legacy.heavy @($heavyIdx)
+        if ($spare -ge 0) { Exit-GFSlot $heavyM $spare; break }
+        Exit-GFSlot $heavyM $heavyIdx; $heavyIdx = -1
+      }
     }
     Start-Sleep -Seconds 20
   }
-} else {
-  while (-not $sem.WaitOne(60000)) { Write-Host "[ue-heavy] waiting for a free slot ($Slots max) since $($t0.ToString('HH:mm:ss'))..." }
+} elseif ($heavyIdx -lt 0) {
+  $nextNote = Get-Date
+  while ($true) {
+    $legacy = Get-GFLegacySlotHolders $log
+    $heavyIdx = Enter-GFSlot $heavyM $legacy.heavy
+    if ($heavyIdx -ge 0) { break }
+    if ((Get-Date) -ge $nextNote) {
+      Write-Host "[ue-heavy] waiting for a free slot ($Slots max$(if ($legacy.heavy) { ", $($legacy.heavy) held by jobs started before the per-slot mutexes" })) since $($t0.ToString('HH:mm:ss'))..."
+      $nextNote = (Get-Date).AddMinutes(1)
+    }
+    Start-Sleep -Seconds 3
+  }
 }
-Log 'start' @{ waited_s = [int]((Get-Date) - $t0).TotalSeconds; gpu = [bool]$isGpu; low = [bool]$Low; vram_used_mb = $(if ($isGpu) { Get-VramMB 'used' } else { $null }) }
+Log 'start' @{ waited_s = [int]((Get-Date) - $t0).TotalSeconds; gpu = [bool]$isGpu; low = [bool]$Low; slot = $heavyIdx; gpu_slot = $(if ($isGpu) { $gpuIdx } else { $null }); vram_used_mb = $(if ($isGpu) { Get-VramMB 'used' } else { $null }) }
 $t1 = Get-Date
 # Start the process directly and wait for it: `& exe` returns at once for GUI-subsystem programs
 # (UnrealEditor.exe -game), which would release the slot while the job still runs. Arguments are
@@ -184,10 +209,10 @@ try {
   $proc.WaitForExit()
   $code = $proc.ExitCode
 } finally {
-  if ($gpuSem) { [void]$gpuSem.Release() }
-  [void]$sem.Release()
-  if ($lowSem) { [void]$lowSem.Release() }
-  Log 'end' @{ exit_code = $code; duration_s = [int]((Get-Date) - $t1).TotalSeconds }
+  if ($gpuM) { Exit-GFSlot $gpuM $gpuIdx }
+  Exit-GFSlot $heavyM $heavyIdx
+  if ($lowHeld) { try { $lowM.ReleaseMutex() } catch { } }
+  Log 'end' @{ exit_code = $code; duration_s = [int]((Get-Date) - $t1).TotalSeconds; slots = 'mutex' }
 }
 exit $code
 

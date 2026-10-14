@@ -157,3 +157,60 @@ function Get-GFSlotPlan($Cfg = (Get-GFConfig)) {
     $plan['gpu_vram_limit_mb'] = if ($Cfg.PSObject.Properties['gpu_vram_limit_mb'] -and [int]$Cfg.gpu_vram_limit_mb -gt 0) { [int]$Cfg.gpu_vram_limit_mb } else { 0 }
     [pscustomobject]$plan
 }
+
+# ---- machine-wide job slots: one named mutex per slot (ue-heavy.ps1, tools/ue-pipeline/common.ps1) -----------------------
+# A slot is the mutex Global\ue-heavy-slot-<n> (general) or Global\ue-gpu-slot-<n> (GPU), n < heavy_slots / gpu_slots.
+# Unlike a counted semaphore nothing leaks: a holder that dies without releasing (killed job, crashed UAT) leaves its
+# mutex "abandoned", and the next taker gets it. The count is the config's at every call, so a new heavy_slots or
+# gpu_slots takes effect at once. A mutex belongs to the thread that took it: take and release it in the same script.
+function Get-GFSlotMutexes([ValidateSet('heavy', 'gpu')][string]$Kind, [int]$Count) {
+    $prefix = if ($Kind -eq 'gpu') { 'Global\ue-gpu-slot-' } else { 'Global\ue-heavy-slot-' }
+    , @(for ($i = 0; $i -lt $Count; $i++) { New-Object Threading.Mutex($false, "$prefix$i") })
+}
+
+# Take a mutex within TimeoutMs; an abandoned one (its holder died) is taken over. $true when held.
+function Enter-GFMutex($Mutex, [int]$TimeoutMs = 0) {
+    try { return [bool]$Mutex.WaitOne($TimeoutMs) }
+    catch {
+        $e = $_.Exception
+        while ($e -and -not ($e -is [Threading.AbandonedMutexException])) { $e = $e.InnerException }
+        if ($e) { return $true }
+        throw
+    }
+}
+
+# One free slot among indices From..Count-1 (Skip: indices this script already holds), without waiting; -1 if none.
+function Enter-GFSlot($Mutexes, [int]$From = 0, [int[]]$Skip = @()) {
+    for ($i = [math]::Max(0, $From); $i -lt $Mutexes.Count; $i++) {
+        if ($Skip -contains $i) { continue }
+        if (Enter-GFMutex $Mutexes[$i] 0) { return $i }
+    }
+    return -1
+}
+
+function Exit-GFSlot($Mutexes, [int]$Index) {
+    if ($Index -ge 0 -and $Index -lt $Mutexes.Count) { try { $Mutexes[$Index].ReleaseMutex() } catch { } }
+}
+
+# Jobs still holding a slot of the old counted semaphores (Global\ue-heavy-jobs-v2 / Global\ue-gpu-jobs-v2, before the
+# per-slot mutexes): live processes whose last row in the heavy-jobs log is a 'start' without a "slot" field, plus, for
+# the GPU, old GPU waiters (they held a GPU slot while waiting for a general one). New jobs leave that many slots
+# unused until those jobs end, so the switch never runs more jobs than the counts allow. @{heavy=n; gpu=n}
+function Get-GFLegacySlotHolders([string]$Log) {
+    $last = @{}
+    try { $lines = Get-Content -LiteralPath $Log -Tail 800 -ErrorAction Stop } catch { return @{ heavy = 0; gpu = 0 } }
+    foreach ($l in $lines) {
+        try { $r = $l | ConvertFrom-Json } catch { continue }
+        if ($r.pid) { $last[[int]$r.pid] = $r }
+    }
+    $heavy = 0; $gpu = 0
+    foreach ($p in $last.Keys) {
+        $r = $last[$p]
+        if ($r.PSObject.Properties['slot'] -or $r.PSObject.Properties['slots']) { continue }   # a per-slot-mutex job
+        if ($r.event -notin @('start', 'wait')) { continue }
+        if (-not (Get-Process -Id $p -ErrorAction SilentlyContinue)) { continue }
+        if ($r.event -eq 'start') { $heavy++; if ($r.gpu) { $gpu++ } }
+        elseif ($r.gpu) { $gpu++ }
+    }
+    @{ heavy = $heavy; gpu = $gpu }
+}
