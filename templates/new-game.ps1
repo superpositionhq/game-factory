@@ -3,7 +3,8 @@
   Create a new game repo from templates\ue-game (UE 5.7, the version its .uproject names): project skeleton, AutoPlay drop-in, Scripts\ue.ps1 (builds and
   editor-script runs through the heavy-job limiter), ReplayConfig.json ("live": true: the creation replay runs after
   every commit, docs/ue-replay.md section 3), first workflow.jsonl row, git + LFS, the post-commit hook (commit
-  recorder + live replay), first commit, and the private GitHub repo <Org>/game-<slug> (not pushed).
+  recorder + live replay), first commit, and the private GitHub repo <org>/game-<slug> (not pushed; <org> = -Org, else
+  the config's github_org).
 .DESCRIPTION
   Placeholders replaced in file names and contents: __PROJECT__ (module/project name), __SLUG__, __TITLE__,
   __DESCRIPTION__, __PROJECT_GUID__. tools\ue-pipeline\autoplay\AutoPlaySubsystem.h/.cpp are copied unchanged into
@@ -27,13 +28,15 @@ param(
     [string]$Reason = 'Create the project from the standard UE skeleton (Live Coding off, Shipping/HiDPI config, AutoPlay drop-in, LFS for every binary type)',
     [string]$Root,
     [string]$HooksDir = (Join-Path $env:USERPROFILE '.claude\hooks'),
-    [string]$Org = 'superpositionhq',
+    [string]$Org,                       # default: the config's github_org (GF_ORG)
     [switch]$NoGitHub                   # skip creating the GitHub repo (tests, offline)
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 . (Join-Path $repo 'machine\lib\gf-root.ps1')
 if (-not $Root) { $Root = Get-GFRoot }
+if (-not $Org) { $Org = Get-GFOrg }
+if (-not $Org -and -not $NoGitHub) { throw 'no GitHub org: set github_org (machine/bootstrap.ps1 -Org <org>), pass -Org, or -NoGitHub' }
 # Pre-flight, first: the recording hooks tie this session to the game when a tool call names the project folder as an
 # absolute path, so the call must carry -Path <root>\games\<slug> literally (not %GF_ROOT% / $env:GF_ROOT, which the hook
 # sees unexpanded). The session's earlier calls are then imported from its transcript (machine/README.md, "Recording").
@@ -51,7 +54,7 @@ if ($Project -notmatch '^[A-Z][A-Za-z0-9]{1,30}$') { throw "project name '$Proje
 
 # Names that must never appear inside a game (code, config, commits, builds).
 foreach ($v in @($Slug, $Project, $Title, $Description, $Reason)) {
-    if ($v -match '(?i)superposition|game[-_ ]?factory|claude|anthropic') { throw "banned name in '$v' (see the game-session skill)" }
+    if ($v -match '(?i)superposition|game[-_ ]?factory|claude|anthropic' -or ($Org -and $v -match ('(?i)' + [regex]::Escape($Org)))) { throw "banned name in '$v' (see the game-session skill)" }
 }
 if ((Test-Path -LiteralPath $Path) -and @(Get-ChildItem -LiteralPath $Path -Force).Count) { throw "$Path exists and is not empty" }
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw 'git not found (run machine\bootstrap.ps1 first)' }

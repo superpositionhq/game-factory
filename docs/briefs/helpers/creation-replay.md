@@ -25,6 +25,7 @@ as it did).
 | Placeholder | Example |
 |---|---|
 | `{{GF_ROOT}}` | `C:\Users\<name>\Work` |
+| `{{ORG}}` | `<org>`: the GitHub organisation (or user) owning game-factory and the game repos, the config's `github_org` |
 | `{{COORDINATOR_ID}}` | session id of the coordinator |
 | `{{NOTES_DIR}}` | `%APPDATA%\Claude\side-session-notes\<group id>` |
 | `{{GAMES}}` | the game slugs: the folders under `{{GF_ROOT}}\games\` |
@@ -36,9 +37,9 @@ as it did).
 
 ```text
 Background:
-game-factory ({{GF_ROOT}}\game-factory, superpositionhq/game-factory) coordinates Claude Code sessions on one machine and
+game-factory ({{GF_ROOT}}\game-factory, {{ORG}}/game-factory) coordinates Claude Code sessions on one machine and
 turns their games into datasets. Game sessions build Unreal Engine 5.7 games (the first ones on 5.3) in {{GF_ROOT}}\games\<slug> ({{GAMES}}),
-each pushed to a private superpositionhq/game-<slug> repo with Git LFS; a coordinator session ({{COORDINATOR_ID}})
+each pushed to a private {{ORG}}/game-<slug> repo with Git LFS; a coordinator session ({{COORDINATOR_ID}})
 spawns and supervises everyone and owns the GPU schedule. The games were built by agent sessions almost entirely
 through committed code: C++ in Source/, editor-Python scripts in Scripts/ run headless (they import art, build
 materials and Blueprints, create the maps from empty levels and place every actor, logging workflow.jsonl rows), and

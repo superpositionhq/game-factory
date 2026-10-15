@@ -101,7 +101,7 @@ already made: the replay has to go back and redo everything after it.
   (untracked files, ignored dirs, non-LFS blobs, LFS coverage), then tells you to push.
 - When told: `git push origin main --follow-tags`, then verify `git ls-remote origin main` matches `git rev-parse HEAD`
   and `git lfs push origin main --dry-run` lists nothing left.
-- Game repos live at `superpositionhq/game-<slug>` (private). Never force-push. Never rewrite pushed history except a
+- Game repos live at `<org>/game-<slug>` (private; `<org>` = `github_org` in the machine config). Never force-push. Never rewrite pushed history except a
   coordinator-ordered scrub (`tools/ue-pipeline/scrub-history.ps1`) or LFS migration.
 
 ## The WIP auto-commit

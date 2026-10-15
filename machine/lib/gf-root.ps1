@@ -8,7 +8,8 @@
 # The same config file also holds "ueb" (private build clones, outside the user profile so the user name is not compiled
 # into Shipping exes), "engine" (the UE root new games use; Get-GFEngine picks each project's own), optional "engines"
 # ({"5.3": "<UE root>", ...}) and "record_extra_projects" (top-level folders under the root that the recording hooks
-# treat as projects besides games\<slug>). Installed copies of the hooks and ue-heavy.ps1 carry a copy of this file
+# treat as projects besides games\<slug>), and "github_org" (the GitHub organisation or user that owns game-factory and
+# the private game-<slug> repos; Get-GFOrg). Installed copies of the hooks and ue-heavy.ps1 carry a copy of this file
 # next to them.
 
 function Get-GFConfigPath {
@@ -66,6 +67,14 @@ function Get-GFEngineForVersion([string]$Version, $Cfg = (Get-GFConfig)) {
     $reg = Get-ItemProperty -LiteralPath "HKLM:\SOFTWARE\EpicGames\Unreal Engine\$Version" -ErrorAction SilentlyContinue
     if ($reg -and $reg.PSObject.Properties['InstalledDirectory'] -and $reg.InstalledDirectory) { return $reg.InstalledDirectory.TrimEnd('\') }
     return $Cfg.engine
+}
+
+# GitHub organisation (or user) that owns game-factory and the private game-<slug> repos: $env:GF_ORG, else
+# "github_org" in the config file (bootstrap.ps1 -Org writes it), else '' (callers that need it say how to set it).
+function Get-GFOrg($Cfg = (Get-GFConfig)) {
+    if ($env:GF_ORG) { return $env:GF_ORG.Trim() }
+    if ($Cfg.PSObject.Properties['github_org'] -and $Cfg.github_org) { return ([string]$Cfg.github_org).Trim() }
+    return ''
 }
 
 # Output root for packages, dataset zips and their staging folders: $env:GF_OUT, else "out" in the config file, else

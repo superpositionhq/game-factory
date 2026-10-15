@@ -12,7 +12,9 @@
      (backup settings.json.bak-<time> first; other settings and hooks are kept), the repo's skills into
      <ClaudeDir>\skills\, and <root>\CLAUDE.md importing game-factory\CLAUDE.md (sessions start in the root).
   4. Git: git-lfs filters (git lfs install --skip-repo), gh login check, the commit recorder in every
-     <root>\games\*\.git (machine\install-git-hook.ps1); -CloneGames clones every <Org>/game-* repo first.
+     <root>\games\*\.git (machine\install-git-hook.ps1); -CloneGames clones every <org>/game-* repo first.
+  The GitHub organisation (or user) that owns game-factory and the game repos is "github_org" in the config: -Org sets
+  it, else the config's value is kept, else bootstrap asks (non-interactive runs warn and leave it unset).
   Any file it replaces is copied to a backup first (<root>\tools\_backup\<time>\, <ClaudeDir>\hooks\_backup\<time>\,
   <ClaudeDir>\skills\_backup\<time>\). It never pushes, never changes Windows settings and never signs in for you.
   Then run machine\check.ps1. Manual steps (Epic/Fab sign-in, gh login, display sleep): docs\new-machine.md.
@@ -32,7 +34,7 @@ param(
     [string]$FfmpegArchive,                                     # a downloaded ffmpeg-8.1.2-full_build.7z (still verified)
     [switch]$SkipFfmpeg,
     [switch]$CloneGames,
-    [string]$Org = 'superpositionhq',
+    [string]$Org,                                               # GitHub org/user of the game repos -> config github_org
     [switch]$Force                                              # also replace heavy_slots / gpu_slots someone set by hand
 )
 $ErrorActionPreference = 'Stop'
@@ -96,10 +98,16 @@ Write-Host "game-factory bootstrap: root $Root, repo $repo, Claude dir $ClaudeDi
 # --- 1. config + layout -------------------------------------------------------------------------------------------
 Write-Host "1. config and layout"
 $cfgPath = Get-GFConfigPath
+if (-not $Org) { $Org = Get-GFOrg $cfg }
+if (-not $Org -and [Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+    $Org = (Read-Host 'GitHub organisation (or user) that owns game-factory and the game-<slug> repos').Trim()
+}
 $want = [ordered]@{ root = $Root; ueb = $Ueb; engine = $Engine; record_extra_projects = @($cfg.record_extra_projects) }
+if ($Org) { $want['github_org'] = $Org }
 $have = if (Test-Path -LiteralPath $cfgPath) { [IO.File]::ReadAllText($cfgPath) | ConvertFrom-Json } else { $null }
 $same = $have -and ($have.root -eq $want.root) -and ($have.ueb -eq $want.ueb) -and ($have.engine -eq $want.engine) -and
-    ((@($have.record_extra_projects) -join '|') -eq (@($want.record_extra_projects) -join '|'))
+    ((@($have.record_extra_projects) -join '|') -eq (@($want.record_extra_projects) -join '|')) -and
+    (-not $Org -or ($have.PSObject.Properties['github_org'] -and $have.github_org -eq $Org))
 if ($same) { Note ok "config $cfgPath" }
 else {
     if ($have) {
@@ -107,8 +115,9 @@ else {
         Copy-Item -LiteralPath $cfgPath "$cfgPath.bak-$stamp"
     }
     Write-JsonFile $cfgPath $want
-    Note $(if ($have) { 'changed' } else { 'added' }) "config $cfgPath" "root=$Root ueb=$Ueb"
+    Note $(if ($have) { 'changed' } else { 'added' }) "config $cfgPath" "root=$Root ueb=$Ueb github_org=$Org"
 }
+if (-not $Org) { Note warn 'github_org' 'not set: run bootstrap.ps1 -Org <GitHub org or user> (new-game.ps1, -CloneGames and check.ps1 need it)' }
 # Job slots from the hardware (lib\gf-root.ps1 Get-GFComputedSlots; ue-heavy.ps1 and the pipeline read the config).
 # The computed values are recorded in slots_auto; a heavy_slots / gpu_slots that differs from it was set by hand and
 # stays unless -Force.
@@ -255,6 +264,7 @@ else {
 
 if ($CloneGames) {
     if (-not $ghOk) { Note warn 'clone games' 'needs gh logged in' }
+    elseif (-not $Org) { Note warn 'clone games' 'needs github_org (-Org)' }
     else {
         $names = @(& gh repo list $Org --limit 200 --json name --jq '.[].name' | Where-Object { $_ -match '^game-.' -and $_ -ne 'game-factory' })
         foreach ($n in $names) {

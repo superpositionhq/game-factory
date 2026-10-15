@@ -10,14 +10,15 @@ brief stays short and the rules stay in one place. The originals this was distil
 |---|---|
 | `{{GAME_TITLE}}`, `{{SLUG}}`, `{{PROJECT}}`, `{{GENRE_LINE}}`, `{{PITCH}}`, `{{BRIEF}}`, `{{SCENARIOS}}`, `{{STORY}}`, `{{ART_PACKS}}`, `{{GAME_NOTES}}` | `games/<slug>.md` |
 | `{{GF_ROOT}}` | the machine root (`machine/lib/gf-root.ps1`; e.g. `C:\Users\<name>\Work`) |
+| `{{ORG}}` | the GitHub organisation (or user) owning the repos: `github_org` in the machine config |
 | `{{MACHINE}}` | one line: `<CPU, RAM, GPU + driver, display>` of this machine |
 | `{{SIBLINGS}}` | the other game slugs running now |
 | `{{COORDINATOR_ID}}`, `{{ASSET_SCOUT_ID}}`, `{{NOTES_DIR}}` | session ids and the shared notes folder |
-| `{{MODE}}` | `NEW` (no repo yet) or `CONTINUE` (repo cloned from `superpositionhq/game-{{SLUG}}`) |
+| `{{MODE}}` | `NEW` (no repo yet) or `CONTINUE` (repo cloned from `{{ORG}}/game-{{SLUG}}`) |
 
 ```text
 Background (from the session that started this one):
-game-factory ({{GF_ROOT}}\game-factory, private repo superpositionhq/game-factory: read CLAUDE.md, README.md,
+game-factory ({{GF_ROOT}}\game-factory, private repo {{ORG}}/game-factory: read CLAUDE.md, README.md,
 AGENTS.md, docs/plan.md, docs/autoplay-contract.md, docs/ue-pipeline.md) produces game-CREATION data: how
 a game is built step by step, recorded as it happens, packaged as a dataset (layout v1.1: Dataset/ committed in the game repo, the full
 Dataset.zip git-ignored next to it). Other sessions are building UE games right
@@ -51,7 +52,7 @@ Task:
 Build "{{GAME_TITLE}}", {{GENRE_LINE}}, in Unreal Engine 5.7, recording its creation as you go.
 
 Slug and location: {{SLUG}} -> {{GF_ROOT}}\games\{{SLUG}} (project/module {{PROJECT}}, its own git repo, private
-GitHub repo superpositionhq/game-{{SLUG}}). Design doc, story bible and status:
+GitHub repo {{ORG}}/game-{{SLUG}}). Design doc, story bible and status:
 {{GF_ROOT}}\game-factory\docs\games\{{SLUG}}.md.
 Mode {{MODE}}: NEW = your first tool call creates the project with
   powershell -ExecutionPolicy Bypass -File {{GF_ROOT}}\game-factory\templates\new-game.ps1 -Slug {{SLUG}} -Path {{GF_ROOT}}\games\{{SLUG}} -Project {{PROJECT}} -Title "<title>" -Description "<one line>"

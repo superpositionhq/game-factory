@@ -20,6 +20,7 @@ from zero; for a from-scratch variant, add its step 1 research per game and step
 | Placeholder | Example |
 |---|---|
 | `{{GF_ROOT}}` | `C:\Users\<name>\Work` |
+| `{{ORG}}` | `<org>`: the GitHub organisation (or user) owning game-factory and the game repos, the config's `github_org` |
 | `{{COORDINATOR_ID}}` | session id of the coordinator |
 | `{{NOTES_DIR}}` | `%APPDATA%\Claude\side-session-notes\<group id>` |
 | `{{GAMES}}` | the game slugs: the folders under `{{GF_ROOT}}\games\` |
@@ -32,9 +33,9 @@ from zero; for a from-scratch variant, add its step 1 research per game and step
 
 ```text
 Background:
-game-factory ({{GF_ROOT}}\game-factory, superpositionhq/game-factory) coordinates Claude Code sessions on one machine.
+game-factory ({{GF_ROOT}}\game-factory, {{ORG}}/game-factory) coordinates Claude Code sessions on one machine.
 Game sessions build small but premium-looking Unreal Engine 5.7 games in {{GF_ROOT}}\games\<slug>, each pushed to a
-private superpositionhq/game-<slug> repo with Git LFS; helper sessions build shared tooling; a coordinator session
+private {{ORG}}/game-<slug> repo with Git LFS; helper sessions build shared tooling; a coordinator session
 ({{COORDINATOR_ID}}) spawns and supervises everyone. Games and their sessions: {{GAME_SESSION_IDS}}. Each game's design
 doc and story bible is game-factory/docs/games/<slug>.md (art direction, levels, any "Fab requests" section).
 The user's quality bar: every in-game object, character, animation, sound and UI element must look high end; bought

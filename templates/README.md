@@ -13,7 +13,7 @@ It copies `ue-game/`, replacing `__PROJECT__` (PascalCase module name, default f
 (`tools/ue-pipeline/autoplay/AutoPlaySubsystem.h/.cpp`, contract v1.4) unchanged into `Source/<Project>/AutoPlay/`;
 writes the first `workflow.jsonl` row (`project.create`); runs `git init -b main` + `git lfs install --local`; adds the
 commit recorder to `post-commit` (`machine/install-git-hook.ps1`); makes the first commit; and creates the private
-GitHub repo `superpositionhq/game-<slug>` as `origin` without pushing (`-NoGitHub` skips that). It refuses names
+GitHub repo `<org>/game-<slug>` (`github_org` in the machine config, or `-Org`) as `origin` without pushing (`-NoGitHub` skips that). It refuses names
 containing Superposition, game-factory, Claude or Anthropic.
 
 What the skeleton carries, and why:

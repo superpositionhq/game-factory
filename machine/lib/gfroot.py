@@ -62,6 +62,12 @@ def engine(project=None):
         return default
 
 
+def org():
+    """GitHub organisation (or user) owning game-factory and the game-<slug> repos: env GF_ORG, else "github_org" in
+    the config file (bootstrap.ps1 -Org writes it), else ""."""
+    return (os.environ.get("GF_ORG") or config().get("github_org") or "").strip()
+
+
 def out():
     """Output root for packages and dataset zips: env GF_OUT, else "out" in the config file, else <root>/deliverables."""
     o = os.environ.get("GF_OUT") or config().get("out")

@@ -20,6 +20,7 @@ zero; for a from-scratch variant, reuse its stage 1-4 task list).
 | Placeholder | Example |
 |---|---|
 | `{{GF_ROOT}}` | `C:\Users\<name>\Work` |
+| `{{ORG}}` | `<org>`: the GitHub organisation (or user) owning game-factory and the game repos, the config's `github_org` |
 | `{{COORDINATOR_ID}}` | session id of the coordinator |
 | `{{NOTES_DIR}}` | `%APPDATA%\Claude\side-session-notes\<group id>` |
 | `{{GAMES}}` | the game slugs: the folders under `{{GF_ROOT}}\games\` |
@@ -30,9 +31,9 @@ zero; for a from-scratch variant, reuse its stage 1-4 task list).
 
 ```text
 Background:
-game-factory ({{GF_ROOT}}\game-factory, superpositionhq/game-factory, Windows PowerShell 5.1 tooling) coordinates
+game-factory ({{GF_ROOT}}\game-factory, {{ORG}}/game-factory, Windows PowerShell 5.1 tooling) coordinates
 Claude Code sessions on one machine. Game sessions build Unreal Engine 5.7 games (the first ones on 5.3) in {{GF_ROOT}}\games\<slug> ({{GAMES}}),
-each pushed to a private superpositionhq/game-<slug> repo with Git LFS; helper sessions build the shared tooling; a
+each pushed to a private {{ORG}}/game-<slug> repo with Git LFS; helper sessions build the shared tooling; a
 coordinator session ({{COORDINATOR_ID}}) spawns and supervises everyone and owns the recording queue. Hooks log every
 tool call and commit of the game sessions into {{GF_ROOT}}\.recording\<game>\ (actions.jsonl, commits.jsonl: never touch
 those two files). Gameplay is recorded by an in-game AutoPlay bot that injects input through Enhanced Input

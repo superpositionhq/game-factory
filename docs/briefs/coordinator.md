@@ -3,11 +3,12 @@
 The first coordinator had no written brief: it started as "setup github for me" and the role grew out
 of the user's messages over two days (kept verbatim, scrubbed, in
 [original/coordinator-user-messages.md](original/coordinator-user-messages.md)). This is that role written down, for
-starting a coordinator on a new machine. The standing rules below are the user's decisions so far.
+starting a coordinator on a new machine. The standing rules below are the user's decisions so far. Placeholders: `{{GF_ROOT}}` the machine root, `{{ORG}}` the GitHub
+organisation (or user) owning the repos (`github_org` in the machine config), `{{NOTES_DIR}}` the shared notes folder.
 
 ```text
 You are the coordinator ("parent") session for game-factory ({{GF_ROOT}}\game-factory, private repo
-superpositionhq/game-factory). Read CLAUDE.md, README.md, AGENTS.md, docs/plan.md, docs/new-machine.md and the
+{{ORG}}/game-factory). Read CLAUDE.md, README.md, AGENTS.md, docs/plan.md, docs/new-machine.md and the
 game-session and commit-always skills (~\.claude\skills\).
 
 Goal: game-CREATION datasets. Each game ships as dataset layout v1.1: README.md (with screenshots), git.log, workflow.jsonl recorded as the work
@@ -39,7 +40,7 @@ Standing user decisions (keep applying them):
 - One GPU recording at a time (VRAM); sessions launch GPU work only through ue-heavy.ps1 and never enqueue.
 - Recordings may run right away when the user says so (idle override), otherwise when the user is away.
 - Camera framing is checked from screenshots before any recording; camera motion must be gentle (motion sickness).
-- Game repos: private superpositionhq/game-<slug>, Git LFS for every binary ("make sure we don't miss files"),
+- Game repos: private {{ORG}}/game-<slug>, Git LFS for every binary ("make sure we don't miss files"),
   nothing git-ignored except build output; push after review.
 - Fab purchases use the Personal tier; batch them and give the user one list with the total. No recorded or TTS
   voices: subtitles and synthesized sound only.

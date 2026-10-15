@@ -16,7 +16,8 @@ All machine paths hang off one root, the "Work" folder that holds `game-factory\
 
 The config also holds `ueb` (default `C:\UEB`: private build clones and build temp, outside the user profile so the
 user name is not compiled into Shipping exes), `engine` (default `C:\Program Files\Epic Games\UE_5.7`: the engine new
-games use) and `record_extra_projects` (default `[]`: extra top-level folders the recording hooks treat as projects besides
+games use), `github_org` (the GitHub organisation or user that owns game-factory and the private `game-<slug>`
+repos: `bootstrap.ps1 -Org` writes it, env `GF_ORG` overrides it; new-game.ps1, `-CloneGames` and check.ps1 read it) and `record_extra_projects` (default `[]`: extra top-level folders the recording hooks treat as projects besides
 `games\<slug>`). Optional: `out` (env `GF_OUT`; default `<root>\deliverables`: packages, dataset zips and replay
 packages, tens of GB per game, so point it at a roomy drive) and `min_free_gb` (env `GF_MIN_FREE_GB`, default 50:
 packaging and creation replay refuse to start on a drive with less free).
@@ -41,7 +42,7 @@ source (config set by hand, config from bootstrap, or computed at run time). The
 `lib/gf-root.ps1` (`Get-GFComputedSlots`) and `lib/gfroot.py` (`computed_slots`).
 
 ```json
-{ "root": "C:\\Users\\<name>\\Work", "ueb": "C:\\UEB", "engine": "C:\\Program Files\\Epic Games\\UE_5.7", "record_extra_projects": [],
+{ "root": "C:\\Users\\<name>\\Work", "ueb": "C:\\UEB", "engine": "C:\\Program Files\\Epic Games\\UE_5.7", "github_org": "<org>", "record_extra_projects": [],
   "heavy_slots": 3, "gpu_slots": 2, "slots_auto": { "heavy_slots": 3, "gpu_slots": 2, "basis": "<hardware>" } }
 ```
 

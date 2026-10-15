@@ -57,7 +57,7 @@ winget install --id Microsoft.VisualStudio.2022.BuildTools -e --override "--pass
 ## 3. Accounts and licences (manual)
 
 1. **GitHub**: `gh auth login` (GitHub.com, HTTPS, log in with a browser) with an account that is a member of
-   **superpositionhq** and may create private repos there. Set `git config --global user.name` / `user.email` for the
+   **`<org>`** (the GitHub organisation set as `github_org`) and may create private repos there. Set `git config --global user.name` / `user.email` for the
    commits the sessions make.
 2. **Epic Games**: install the Epic Games Launcher, sign in, accept the Unreal Engine EULA, and install **Unreal
    Engine 5.7** (Library > + > 5.7.x) to `C:\Program Files\Epic Games\UE_5.7` (another folder works: set `engine` in
@@ -72,7 +72,7 @@ winget install --id Microsoft.VisualStudio.2022.BuildTools -e --override "--pass
 ## 4. Clone and bootstrap
 
 ```bash
-git clone https://github.com/superpositionhq/game-factory C:/Users/<you>/Work/game-factory
+git clone https://github.com/<org>/game-factory C:/Users/<you>/Work/game-factory
 ```
 ```bash
 powershell -ExecutionPolicy Bypass -File C:/Users/<you>/Work/game-factory/machine/bootstrap.ps1 -CloneGames
@@ -95,7 +95,7 @@ repo into `<root>\game-factory`. Bootstrap:
   (downloaded from gyan.dev or its GitHub mirror and SHA-256 verified; nothing is committed);
 - installs the recording hooks into `~\.claude\hooks\`, merges them into `~\.claude\settings.json` (backup first),
   installs the skills into `~\.claude\skills\`, writes `<root>\CLAUDE.md` importing `game-factory/CLAUDE.md`;
-- sets up Git LFS, checks `gh auth`, clones every `superpositionhq/game-*` repo into `games\<slug>` (with
+- sets up Git LFS, checks `gh auth`, clones every `<org>/game-*` repo into `games\<slug>` (with
   `-CloneGames`; LFS content included, so this is the long part) and adds the commit recorder to each repo's
   `post-commit` hook.
 
@@ -105,7 +105,7 @@ repo into `<root>\game-factory`. Bootstrap:
 powershell -ExecutionPolicy Bypass -File C:/Users/<you>/Work/game-factory/machine/check.ps1
 ```
 
-PASS / WARN / FAIL for UE 5.7 (and 5.3 for older games), MSVC 14.44, Windows SDK, .NET 4.8.1 SDK, git, Git LFS, gh + superpositionhq access,
+PASS / WARN / FAIL for UE 5.7 (and 5.3 for older games), MSVC 14.44, Windows SDK, .NET 4.8.1 SDK, git, Git LFS, gh + access to the `<org>` repos,
 Python, NVIDIA driver, refresh rate, display and system sleep, free disk, memory, long paths, pinned ffmpeg (NVENC
 test), config, job slots (in effect, and from where), layout, ue-heavy, hooks, skills, root CLAUDE.md, game repo hooks, the asset library against
 `docs/asset-library.md` + `docs/asset-library-fab-ue.tsv`. Exit code = number of FAILs. Fix

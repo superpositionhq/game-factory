@@ -23,6 +23,7 @@ a one-off that produced `machine/`, the skills and these briefs.
 | Placeholder | Meaning |
 |---|---|
 | `{{GF_ROOT}}` | the Work root holding `game-factory\`, `games\`, `builds\`, `recordings\`, `.recording\`, `deliverables\`, `asset-library\`, `tools\` (e.g. `C:\Users\<name>\Work`; `machine/lib/gf-root.ps1` resolves it) |
+| `{{ORG}}` | the GitHub organisation (or user) that owns game-factory and the private `game-<slug>` repos: `github_org` in the machine config (`machine/bootstrap.ps1 -Org`) |
 | `{{COORDINATOR_ID}}` | session id of the coordinator |
 | `{{NOTES_DIR}}` | the shared notes folder of this group of sessions |
 | `{{GAMES}}` | the game slugs: the folders under `{{GF_ROOT}}\games\` |

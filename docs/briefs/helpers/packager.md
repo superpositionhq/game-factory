@@ -21,6 +21,7 @@ zero; for a from-scratch variant, reuse its task paragraph plus the layout v1.1 
 | Placeholder | Example |
 |---|---|
 | `{{GF_ROOT}}` | `C:\Users\<name>\Work` |
+| `{{ORG}}` | `<org>`: the GitHub organisation (or user) owning game-factory and the game repos, the config's `github_org` |
 | `{{COORDINATOR_ID}}` | session id of the coordinator |
 | `{{NOTES_DIR}}` | `%APPDATA%\Claude\side-session-notes\<group id>` |
 | `{{GAMES}}` | the game slugs: the folders under `{{GF_ROOT}}\games\` |
@@ -32,9 +33,9 @@ zero; for a from-scratch variant, reuse its task paragraph plus the layout v1.1 
 
 ```text
 Background:
-game-factory ({{GF_ROOT}}\game-factory, superpositionhq/game-factory, Windows PowerShell 5.1 tooling) coordinates
+game-factory ({{GF_ROOT}}\game-factory, {{ORG}}/game-factory, Windows PowerShell 5.1 tooling) coordinates
 Claude Code sessions on one machine. Game sessions build Unreal Engine 5.7 games (the first ones on 5.3) in {{GF_ROOT}}\games\<slug> ({{GAMES}};
-sessions: {{GAME_SESSION_IDS}}), each pushed to a private superpositionhq/game-<slug> repo with Git LFS; a coordinator
+sessions: {{GAME_SESSION_IDS}}), each pushed to a private {{ORG}}/game-<slug> repo with Git LFS; a coordinator
 session ({{COORDINATOR_ID}}) spawns and supervises everyone. Each game repo has its real git history, workflow.jsonl
 (operations logged by the builder as they happened), Scripts/, and Docs/ThirdPartyNotices.md + assets.manifest.json.
 Hooks logged every tool call and commit into {{GF_ROOT}}\.recording\<game>\ (actions.jsonl, commits.jsonl, builds.jsonl,

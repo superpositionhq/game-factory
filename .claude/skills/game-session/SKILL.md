@@ -1,6 +1,6 @@
 ---
 name: game-session
-description: Rules for a session that builds one Unreal Engine 5.7 game for game-factory (repo %GF_ROOT%\games\<slug>, pushed to superpositionhq/game-<slug>). Use at the start of every game-building session and whenever deciding about art, UI, story, naming, heavy/GPU jobs, recording (workflow.jsonl, AutoPlay, framing screenshots), or what to send the coordinator. Pair it with the commit-always skill.
+description: Rules for a session that builds one Unreal Engine 5.7 game for game-factory (repo %GF_ROOT%\games\<slug>, pushed to the private <org>/game-<slug>, <org> = the config's github_org). Use at the start of every game-building session and whenever deciding about art, UI, story, naming, heavy/GPU jobs, recording (workflow.jsonl, AutoPlay, framing screenshots), or what to send the coordinator. Pair it with the commit-always skill.
 ---
 
 # Game session
@@ -24,7 +24,7 @@ started you. Use the **commit-always** skill for every commit.
    drafting the design) are imported from your transcript when the session is mapped (status `from_transcript`).
    It writes the skeleton (UE 5.7 Target.cs settings, Live Coding off, Shipping/HiDPI config, AutoPlay drop-in, LFS for every
    binary type, root-anchored `.gitignore`), the first `workflow.jsonl` row, the commit recorder hook, the first
-   commit, and the private repo `superpositionhq/game-<slug>` (not pushed).
+   commit, and the private repo `<org>/game-<slug>` (`github_org` in the machine config; not pushed).
 3. Write the design doc + story bible in game-factory `docs/games/<slug>.md` before building: systems, classes, data
    tables, maps, scenarios 1..n (start state + win/lose), art and audio direction, acceptance checklist. Keep its
    status section current. It is the only game-factory file you edit.

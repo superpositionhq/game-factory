@@ -16,7 +16,7 @@ param(
     [string]$Root,
     [string]$ClaudeDir = (Join-Path $env:USERPROFILE '.claude'),
     [string]$ConfigPath,
-    [string]$Org = 'superpositionhq',
+    [string]$Org,                   # default: the config's github_org (GF_ORG)
     [int]$MinFreeGB = 300,          # WARN below this, FAIL below a third of it
     [int]$MinDriver = 610,
     [string]$Json
@@ -28,6 +28,7 @@ if ($ConfigPath) { $env:GF_CONFIG = $ConfigPath }
 if ($Root) { $env:GF_ROOT = $Root }
 $cfg = Get-GFConfig
 $Root = $cfg.root
+if (-not $Org) { $Org = Get-GFOrg $cfg }
 $results = New-Object Collections.Generic.List[object]
 
 function Add-Result([string]$Status, [string]$Check, [string]$Detail, [string]$Fix = '') {
@@ -94,6 +95,7 @@ Try-Check 'GitHub CLI' {
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { Add-Result FAIL 'GitHub CLI' 'gh not found' 'winget install GitHub.cli'; return }
     $login = Run gh @('api', 'user', '--jq', '.login')
     if ($login.code -ne 0) { Add-Result FAIL 'GitHub CLI' 'not logged in' 'gh auth login (GitHub.com, HTTPS, browser)'; return }
+    if (-not $Org) { Add-Result FAIL 'GitHub org' "logged in as $($login.out); no github_org in the config" 'machine/bootstrap.ps1 -Org <GitHub org or user that owns game-factory and the game repos>'; return }
     $v = Run gh @('repo', 'view', "$Org/game-factory", '--json', 'name,visibility', '--jq', '.visibility')
     if ($v.code -ne 0) { Add-Result FAIL "GitHub access to $Org" "logged in as $($login.out), but cannot see $Org/game-factory" "ask an $Org owner to add the account (needs repo create rights for game-<slug> repos)"; return }
     $m = Run gh @('api', "user/memberships/orgs/$Org", '--jq', '.role + " " + .state')
@@ -212,7 +214,7 @@ Try-Check 'Work layout' {
 Try-Check 'game-factory clone' {
     $exp = Join-Path $Root 'game-factory'
     if ([IO.Path]::GetFullPath($repo).TrimEnd('\') -eq $exp) { Add-Result PASS 'game-factory clone' $repo }
-    else { Add-Result WARN 'game-factory clone' "running from $repo, briefs and docs assume $exp" "git clone https://github.com/$Org/game-factory $exp" }
+    else { Add-Result WARN 'game-factory clone' "running from $repo, briefs and docs assume $exp" "git clone https://github.com/$(if ($Org) { $Org } else { '<org>' })/game-factory $exp" }
 }
 function Same-File([string]$A, [string]$B) { (Test-Path $A) -and (Test-Path $B) -and ((Get-FileHash $A).Hash -eq (Get-FileHash $B).Hash) }
 Try-Check 'ue-heavy.ps1' {
