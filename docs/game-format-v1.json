@@ -137,7 +137,7 @@
     "dataset_folder": "Dataset/ (variant repo-dataset): checked as a dataset when manifest.json is there; a game that is not packaged yet has none"
   },
   "dataset": {
-    "layout": "docs/dataset-layout-v1.2.json for new deliveries (v1.1: docs/dataset-layout-v1.json, still valid for deliveries made before 2026-10-15); entries, names, video format, manifest keys, README sections; tools/validate-dataset.ps1 picks the file by manifest.layout",
+    "layout": "docs/dataset-layout-v1.3.json for new deliveries (v1.2 and v1.1 stay valid for deliveries made before); tools/validate-dataset.ps1 picks the file by manifest.layout",
     "content_schemas": {
       "manifest.json": "docs/schemas/dataset-manifest.schema.json",
       "workflow.jsonl": "docs/schemas/workflow-row.schema.json (each line)",
@@ -184,6 +184,12 @@
     ],
     "brief": [
       "v1.2: Brief/brief.md (the original brief) and Brief/design.md (design doc, story bible, status) are present and non-empty; manifest.brief names them"
+    ],
+    "tasks": [
+      "v1.3 full variant: Tasks/ holds exactly 10 <name>.json files and README.md; manifest.tasks lists the 10 names",
+      "each task is valid against the game environment's task schema (tasks.schema.json found through tasks_source / GF_TASKS_SOURCE; without it the structure is checked loosely and the validator says so)",
+      "each task's name equals its file name; seed.game is the dataset's game; seed.commit and seed.reference are commits of History/<game>.bundle",
+      "repo-dataset: no Tasks/ (tasks live in the game environment)"
     ]
   }
 }

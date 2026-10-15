@@ -1,13 +1,13 @@
 # Game format v1
 
-The final format of a game: its **repo** at the release commit and its **dataset** (`Dataset.zip`, layout v1.2). It is
+The final format of a game: its **repo** at the release commit and its **dataset** (`Dataset.zip`, layout v1.3). It is
 the same for every game, whether a game session here made it or a contractor delivered it. What the RL environment
 needs from a game (tasks that start from any commit, the person's directions, the brief) is in it.
 
 | Machine-readable | What |
 |---|---|
 | [game-format-v1.json](game-format-v1.json) | the rules for the repo and the dataset (this page in JSON) |
-| [dataset-layout-v1.2.json](dataset-layout-v1.2.json) | the dataset's entries, names, video format, manifest keys, README sections (v1.1: [dataset-layout-v1.json](dataset-layout-v1.json)) |
+| [dataset-layout-v1.3.json](dataset-layout-v1.3.json) | the dataset's entries, names, video format, manifest keys, README sections (earlier: [v1.2](dataset-layout-v1.2.json), [v1.1](dataset-layout-v1.json)) |
 | [schemas/dataset-manifest.schema.json](schemas/dataset-manifest.schema.json) | `manifest.json` |
 | [schemas/workflow-row.schema.json](schemas/workflow-row.schema.json) | one row of `workflow.jsonl` |
 | [schemas/replay-report.schema.json](schemas/replay-report.schema.json) | `ReplayScripts/Verification/report.json` |
@@ -74,7 +74,7 @@ inside `UEProject/` of `Dataset.zip` (dataset check). Content shipped with the e
 own scripts are not listed. `tools/migrate-assets-manifest.py <repo>` converts the earlier shapes (dry run first; it
 lists what needs a person).
 
-## The dataset (layout v1.2)
+## The dataset (layout v1.3)
 
 `<repo>\Dataset.zip`, one top folder `<game>/`, made by `tools/package-game.ps1 -Dataset` (which runs
 `tools/package-dataset.ps1`):
@@ -86,6 +86,7 @@ lists what needs a person).
 | `workflow.jsonl` | yes | the creation record; **the person's directions are `user.direction` rows** (they replace conversation transcripts) |
 | `Brief/` | yes | `brief.md`, the original brief; `design.md`, the design doc with story bible and status |
 | `History/` | no | `<game>.bundle` (every commit of every ref) and `lfs/objects/<aa>/<bb>/<sha256>` (every Git LFS object of every commit) |
+| `Tasks/` | no | exactly 10 tasks on this game in the game environment's task format (`<task name>.json`) and a generated `README.md` |
 | `UEProject/` | no | the project at the release commit, store content included |
 | `ReplayScripts/` | yes | the creation replayed headless, with `Verification/report.json` (PASS required for complete) |
 | `Gameplay/<game>_S<n>.mp4` | yes | one video per scenario, 1920x1080 h264 + aac |
@@ -105,6 +106,15 @@ git clone History/<game>.bundle <game>
 
 then copy `History/lfs` into `<game>/.git/lfs`, `git lfs install --local`, `git checkout <commit>`, `git lfs checkout`.
 
+**Tasks (layout v1.3).** `Tasks/` holds exactly 10 tasks on the game, in the game environment's task format
+(`GameTask`: name, title, instruction, a seed with the game, its start commit and an optional reference commit and
+kind, the map graders play, limits, and milestones of checks). The packager copies the game's 10 selected tasks from
+the environment (machine config `tasks_source`, env `GF_TASKS_SOURCE`), maps each seed's commits through the history
+rewrite, scrubs them like every other text, and writes `Tasks/README.md`; fewer than 10 tasks is an error. A task's
+seed commit is checked out from `History/` as above. The validator checks each task against the environment's
+published `tasks.schema.json` (loosely, with a note, while that schema is not published) and that every seed
+commit is in the bundle.
+
 **Complete vs pending.** `status` is `complete` only with a passing replay verification; `pending` while
 `ReplayScripts/` is missing (the zip is then `Dataset.pending.zip`).
 
@@ -116,4 +126,6 @@ Deliver the repo (private, with Git LFS) and run the packager, or deliver the sa
 2. `workflow.jsonl` from the first operation, with every direction you were given as a `user.direction` row
    (neutral wording, what and why) before the work it caused, and `"direction": "<id>"` on the rows that act on it.
 3. `Brief/brief.md` (the brief you were given) and `Brief/design.md` (your design doc).
-4. `python tools/validate-game.py <repo>` VALID, and the same for the `Dataset.zip`.
+4. The 10 tasks on your game come from the game environment (they are written against your history); you deliver
+   the history they need.
+5. `python tools/validate-game.py <repo>` VALID, and the same for the `Dataset.zip`.

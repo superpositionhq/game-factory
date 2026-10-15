@@ -42,9 +42,9 @@ account and a Claude account:
 7. **Dataset v1.1**: `ue_replay.py release` (the replay is already verified, so only the last windows, a full final
    verify and the package remain: minutes), then `tools/package-dataset.ps1` writes `games\<slug>\Dataset.zip`.
 
-## Dataset format (layout v1.2, all games)
+## Dataset format (layout v1.3, all games)
 
-Every game is delivered in **dataset layout v1.2** ([docs/game-format.md](docs/game-format.md)): the creation record
+Every game is delivered in **dataset layout v1.3** ([docs/game-format.md](docs/game-format.md)): the creation record
 (`git.log`, `workflow.jsonl` with the person's directions, `ReplayScripts/`, the full git history in `History/`), the
 brief and design doc, the project, per-scenario gameplay videos, README screenshots and the packaged build:
 
@@ -55,6 +55,7 @@ brief and design doc, the project, per-scenario gameplay videos, README screensh
   workflow.jsonl                 editor operations + user.direction rows (the person's directions)
   Brief/                         brief.md (the original brief), design.md (design doc, story bible, status)
   History/                       <game>.bundle (every commit) + lfs/objects/ (every LFS object); not in the repo Dataset/
+  Tasks/                         10 game-environment tasks on this game (<task>.json) + README.md; not in the repo Dataset/
   UEProject/                     not in the repo Dataset/
   ReplayScripts/
   Gameplay/<game>_S<n>.mp4       one video per scenario of the release version, game audio muxed
@@ -65,9 +66,9 @@ brief and design doc, the project, per-scenario gameplay videos, README screensh
 
 Each game repo keeps the same delivery in `Dataset/`, minus `UEProject/`, `Build/` and `History/`. The game repo itself
 follows the same format's repo rules (one `assets.manifest.json` format, every asset committed). Machine-readable:
-[docs/game-format-v1.json](docs/game-format-v1.json), [docs/dataset-layout-v1.2.json](docs/dataset-layout-v1.2.json),
+[docs/game-format-v1.json](docs/game-format-v1.json), [docs/dataset-layout-v1.3.json](docs/dataset-layout-v1.3.json),
 [docs/schemas/](docs/schemas/). Build with `tools/package-game.ps1 ... -Dataset`; check a repo and its datasets with
-`python tools/validate-game.py <repo>` (or `--dataset <zip>`). Deliveries made before 2026-10-15 are layout v1.1
+`python tools/validate-game.py <repo>` (or `--dataset <zip>`). Earlier deliveries stay valid as layout v1.2 or v1.1
 ([docs/game-deliverable.md](docs/game-deliverable.md#dataset-layout-v11-the-delivery)).
 
 ## Read first
@@ -75,7 +76,7 @@ follows the same format's repo rules (one `assets.manifest.json` format, every a
 - [docs/plan.md](docs/plan.md): the plan, phases, open decisions.
 - [docs/autoplay-contract.md](docs/autoplay-contract.md): what each game implements so a bot can play and record it.
 - [docs/ue-pipeline.md](docs/ue-pipeline.md): build, package, smoke-test and gameplay recording pipeline (`tools/ue-pipeline/`).
-- [docs/game-format.md](docs/game-format.md): the final game format (repo + Dataset.zip layout v1.2), its schemas and `tools/validate-game.py`.
+- [docs/game-format.md](docs/game-format.md): the final game format (repo + Dataset.zip layout v1.3), its schemas and `tools/validate-game.py`.
 - [docs/game-deliverable.md](docs/game-deliverable.md): the per-game deliverable (`tools/package-game.ps1`): layout, store-content variants, scrub.
 - [AGENTS.md](AGENTS.md): rules for agents working here (each with the failure behind it).
 - [CLAUDE.md](CLAUDE.md): what every Claude session reads first; points at the skills in `.claude/skills/`
