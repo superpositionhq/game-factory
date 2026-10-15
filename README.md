@@ -55,7 +55,7 @@ brief and design doc, the project, per-scenario gameplay videos, README screensh
   workflow.jsonl                 editor operations + user.direction rows (the person's directions)
   Brief/                         brief.md (the original brief), design.md (design doc, story bible, status)
   History/                       <game>.bundle (every commit) + lfs/objects/ (every LFS object); not in the repo Dataset/
-  Tasks/                         10 game-environment tasks on this game (<task>.json) + README.md; not in the repo Dataset/
+  Tasks/                         the game's tasks, each <name>/task.json (agent) + grader.json; from the repo's Tasks/
   UEProject/                     not in the repo Dataset/
   ReplayScripts/
   Gameplay/<game>_S<n>.mp4       one video per scenario of the release version, game audio muxed
@@ -64,7 +64,8 @@ brief and design doc, the project, per-scenario gameplay videos, README screensh
   manifest.json
 ```
 
-Each game repo keeps the same delivery in `Dataset/`, minus `UEProject/`, `Build/` and `History/`. The game repo itself
+Each game repo keeps the same delivery in `Dataset/`, minus `UEProject/`, `Build/`, `History/` and `Tasks/` (the repo's own
+`Tasks/` holds its tasks). The game repo itself
 follows the same format's repo rules (one `assets.manifest.json` format, every asset committed). Machine-readable:
 [docs/game-format-v1.json](docs/game-format-v1.json), [docs/dataset-layout-v1.3.json](docs/dataset-layout-v1.3.json),
 [docs/schemas/](docs/schemas/). Build with `tools/package-game.ps1 ... -Dataset`; check a repo and its datasets with

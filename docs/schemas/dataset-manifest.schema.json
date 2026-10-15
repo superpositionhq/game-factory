@@ -24,7 +24,7 @@
         "dataset-layout/v1.2",
         "dataset-layout/v1.3"
       ],
-      "description": "v1.2 adds History/ and Brief/; v1.3 adds Tasks/ (10 game-environment tasks); earlier deliveries stay valid as they are"
+      "description": "v1.2 adds History/ and Brief/; v1.3 adds Tasks/ (the game's tasks, split agent/grader); earlier deliveries stay valid as they are"
     },
     "game": {
       "type": "string",
@@ -319,28 +319,26 @@
         "object",
         "null"
       ],
-      "description": "v1.3 full variant: the 10 tasks in Tasks/",
+      "description": "v1.3 full variant: the tasks in Tasks/ (null in a repo Dataset/)",
       "required": [
         "count",
         "names"
       ],
       "properties": {
         "count": {
-          "const": 10
+          "type": "integer",
+          "minimum": 1
         },
         "names": {
           "type": "array",
-          "minItems": 10,
+          "minItems": 1,
           "items": {
             "type": "string",
             "pattern": "^[a-z0-9][a-z0-9-]{1,62}$"
           }
         },
-        "schema_sha256": {
-          "type": [
-            "string",
-            "null"
-          ]
+        "schema": {
+          "type": "string"
         }
       }
     }

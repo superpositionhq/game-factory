@@ -56,6 +56,10 @@
       {
         "pattern": "^ReplayConfig\\.json$",
         "what": "creation replay config (ReplayScripts/ of the dataset)"
+      },
+      {
+        "pattern": "^Tasks/[a-z0-9][a-z0-9-]{1,62}\\.json$",
+        "what": "the game's tasks, one GameTask per file (docs/schemas/game-task.schema.json); about 10 recommended, at least one"
       }
     ],
     "engine_associations": [
@@ -134,7 +138,14 @@
         "why": "user decision (b), 2026-10-15: enforced in workflow.jsonl, ReplayConfig.json and every other non-script file; scripts (Scripts/, and .ps1/.psm1/.py/.sh/.bat/.cmd files anywhere) that already ran stay unchanged and are scrubbed at packaging"
       }
     },
-    "dataset_folder": "Dataset/ (variant repo-dataset): checked as a dataset when manifest.json is there; a game that is not packaged yet has none"
+    "dataset_folder": "Dataset/ (variant repo-dataset): checked as a dataset when manifest.json is there; a game that is not packaged yet has none",
+    "tasks": [
+      "Tasks/<game>-<kind>-<slug>.json, one GameTask each (game-task/1), committed and versioned with the game; the name field equals the file stem",
+      "at least one task (none is an error); about 10 recommended (the count is reported, never an error or warning)",
+      "seed.game is the repo's slug; seed.commit and seed.reference are commits of the repo",
+      "written with the write-tasks skill (.claude/skills/write-tasks)",
+      "An agent given a task starts from a history-less snapshot of the game at seed.commit with Tasks/, History/ and Dataset/ removed (they hold every task's rubrics and references): only the brief and that snapshot. The grader's half (milestones: rubrics, judge and code-judge questions, log_absent patterns; and seed.reference) never reaches the agent."
+    ]
   },
   "dataset": {
     "layout": "docs/dataset-layout-v1.3.json for new deliveries (v1.2 and v1.1 stay valid for deliveries made before); tools/validate-dataset.ps1 picks the file by manifest.layout",
@@ -186,10 +197,12 @@
       "v1.2: Brief/brief.md (the original brief) and Brief/design.md (design doc, story bible, status) are present and non-empty; manifest.brief names them"
     ],
     "tasks": [
-      "v1.3 full variant: Tasks/ holds exactly 10 <name>.json files and README.md; manifest.tasks lists the 10 names",
-      "each task is valid against the game environment's task schema (tasks.schema.json found through tasks_source / GF_TASKS_SOURCE; without it the structure is checked loosely and the validator says so)",
-      "each task's name equals its file name; seed.game is the dataset's game; seed.commit and seed.reference are commits of History/<game>.bundle",
-      "repo-dataset: no Tasks/ (tasks live in the game environment)"
+      "v1.3 full variant: Tasks/README.md and, per task, Tasks/<name>/task.json (the agent's part) and Tasks/<name>/grader.json (milestones, seed.reference); manifest.tasks lists the names",
+      "task.json holds no milestones and no seed.reference; task.json merged with grader.json is valid against docs/schemas/game-task.schema.json",
+      "each task's name equals its folder; seed.game is the dataset's game; seed.commit and seed.reference are commits of History/<game>.bundle",
+      "at least one task; about 10 recommended",
+      "repo-dataset: no Tasks/ (the repo's own Tasks/ is the source)",
+      "An agent given a task starts from a history-less snapshot of the game at seed.commit with Tasks/, History/ and Dataset/ removed (they hold every task's rubrics and references): only the brief and that snapshot. The grader's half (milestones: rubrics, judge and code-judge questions, log_absent patterns; and seed.reference) never reaches the agent."
     ]
   }
 }

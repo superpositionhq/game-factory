@@ -1,8 +1,8 @@
 {
   "schema": "dataset-layout/v1.3",
   "approved": "2026-10-15",
-  "changes": "v1.3 (2026-10-15, user): Tasks/ with exactly 10 tasks for the game in the game environment's task format (one JSON per task, seeds on the delivered history) and a generated Tasks/README.md. v1.2 (2026-10-15, user): the dataset carries the full git history (History/: a git bundle of every commit and every Git LFS object) and the original brief and design doc (Brief/); workflow.jsonl is the record of the person's directions (user.direction rows), no conversation transcripts. v1.1 (2026-10-12): no replay video; ReplayScripts/ only; Dataset.zip next to Dataset/.",
-  "description": "Our standard delivery layout for every game: the creation record (git.log, workflow.jsonl, ReplayScripts/, the full git history in History/, the brief and design doc in Brief/), 10 tasks on the game in Tasks/, the project, per-scenario gameplay videos, README screenshots and the packaged build. docs/game-format.md is the prose version of this file (v1.1: docs/game-deliverable.md); tools/validate-dataset.ps1 checks against this file.",
+  "changes": "v1.3 (2026-10-15, user): Tasks/ with the game's tasks (from the game repo's Tasks/, about 10 recommended, at least one), each split into the agent's part and the grader's part, plus a generated Tasks/README.md. v1.2 (2026-10-15, user): the dataset carries the full git history (History/: a git bundle of every commit and every Git LFS object) and the original brief and design doc (Brief/); workflow.jsonl is the record of the person's directions (user.direction rows), no conversation transcripts. v1.1 (2026-10-12): no replay video; ReplayScripts/ only; Dataset.zip next to Dataset/.",
+  "description": "Our standard delivery layout for every game: the creation record (git.log, workflow.jsonl, ReplayScripts/, the full git history in History/, the brief and design doc in Brief/), the game's tasks in Tasks/, the project, per-scenario gameplay videos, README screenshots and the packaged build. docs/game-format.md is the prose version of this file (v1.1: docs/game-deliverable.md); tools/validate-dataset.ps1 checks against this file.",
   "names": {
     "zip": "Dataset.zip",
     "zip_place": "the game repo's own folder, next to Dataset/ (git-ignored, with the packager's scratch in .dataset/)",
@@ -59,11 +59,10 @@
       "kind": "dir",
       "required": true,
       "in_repo_dataset": false,
-      "what": "exactly 10 tasks on this game in the game environment's task format: Tasks/<task name>.json (validated against the environment's published task schema), plus Tasks/README.md (what a task is, its fields, how a seed commit is checked out from History/). Each seed names this game and commits of the delivered history.",
+      "what": "the game's tasks in the game environment's task format (GameTask, docs/schemas/game-task.schema.json), copied from the game repo's Tasks/ with seed commits mapped to the delivered history: Tasks/<name>/task.json (the agent's part: everything but the grader's) and Tasks/<name>/grader.json (the grader's part: milestones, seed.reference), plus Tasks/README.md (what a task is, the split, the harness rule, how a seed is checked out of History/)",
       "must_contain": [
         "README.md"
-      ],
-      "only_files_matching": "^(README\\.md|[a-z0-9][a-z0-9-]{1,62}\\.json)$"
+      ]
     },
     {
       "name": "UEProject",
@@ -180,7 +179,7 @@
     ],
     "history_rule": "full variant: history is an object (head = commit, the bundle holds every commit, every LFS object of every commit is under History/lfs/objects); repo-dataset: history is null (the repo is its own history)",
     "brief_rule": "brief lists the Brief/ files: {\"brief\": \"Brief/brief.md\", \"design\": \"Brief/design.md\"}",
-    "tasks_rule": "tasks: {\"count\": 10, \"names\": [the 10 task names], \"schema_sha256\": sha256 of the task schema the tasks were checked against, or null}"
+    "tasks_rule": "tasks: {\"count\": n >= 1, \"names\": [the task names], \"schema\": \"game-task/1\"}"
   },
   "readme": {
     "sections_in_order": [
@@ -221,9 +220,13 @@
     "directions": "every direction a person gave (what to change and why) is a user.direction row, written before the work it caused; rows acting on it carry \"direction\": <id>. These rows replace conversation transcripts."
   },
   "tasks": {
-    "count": 10,
-    "format": "the game environment's GameTask (published as tasks.schema.json; machine config tasks_source, env GF_TASKS_SOURCE)",
-    "seed_rules": "seed.game = the dataset's game; seed.commit and seed.reference are commits of History/<game>.bundle (mapped through the history rewrite)",
-    "file_name": "<task name>.json, the name field equal to the file name"
+    "count": "at least 1; about 10 recommended (fewer or more is fine)",
+    "format": "GameTask (game-task/1, docs/schemas/game-task.schema.json); merging task.json and grader.json (grader.json's seed into task.json's) gives the task",
+    "split": {
+      "task.json": "name, title, instruction, engine, template, seed {game, commit, kind}, play_map, asset_packs, difficulty, tags, limits",
+      "grader.json": "name, seed {reference} when the task has one, milestones"
+    },
+    "seed_rules": "seed.game = the dataset's game; seed.commit and seed.reference are commits of History/<game>.bundle",
+    "harness_rule": "An agent given a task starts from a history-less snapshot of the game at seed.commit with Tasks/, History/ and Dataset/ removed (they hold every task's rubrics and references): only the brief and that snapshot. The grader's half (milestones: rubrics, judge and code-judge questions, log_absent patterns; and seed.reference) never reaches the agent."
   }
 }

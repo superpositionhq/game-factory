@@ -43,7 +43,8 @@ Everything needed to rebuild the game from the repo alone, tracked in git (binar
 | `Docs/ThirdPartyNotices.md` | credits and licences |
 | `ReplayConfig.json` | creation replay config ([ue-replay.md](ue-replay.md)) |
 | `.gitattributes`, `.gitignore` | LFS for every binary type; `/Dataset.zip`, `/Dataset.pending.zip`, `/.dataset/` ignored; `Content/` never ignored |
-| `Dataset/` | the dataset minus `UEProject/`, `Build/` and `History/` (written by the packager) |
+| `Tasks/` | the game's tasks: `<game>-<kind>-<slug>.json`, one task each in the game environment's format ([schemas/game-task.schema.json](schemas/game-task.schema.json)); at least one, about 10 recommended; written with the `write-tasks` skill |
+| `Dataset/` | the dataset minus `UEProject/`, `Build/`, `History/` and `Tasks/` (written by the packager) |
 
 No tool, vendor or owner names anywhere in the repo's text (the validator scans tracked text files; the packager
 scans binaries too). The build machine's account name (machine paths carry it) counts too: the validator reads it at
@@ -86,7 +87,7 @@ lists what needs a person).
 | `workflow.jsonl` | yes | the creation record; **the person's directions are `user.direction` rows** (they replace conversation transcripts) |
 | `Brief/` | yes | `brief.md`, the original brief; `design.md`, the design doc with story bible and status |
 | `History/` | no | `<game>.bundle` (every commit of every ref) and `lfs/objects/<aa>/<bb>/<sha256>` (every Git LFS object of every commit) |
-| `Tasks/` | no | exactly 10 tasks on this game in the game environment's task format (`<task name>.json`) and a generated `README.md` |
+| `Tasks/` | no | the game's tasks, each split: `Tasks/<name>/task.json` (the agent's part) and `Tasks/<name>/grader.json` (milestones, `seed.reference`), plus a generated `README.md` |
 | `UEProject/` | no | the project at the release commit, store content included |
 | `ReplayScripts/` | yes | the creation replayed headless, with `Verification/report.json` (PASS required for complete) |
 | `Gameplay/<game>_S<n>.mp4` | yes | one video per scenario, 1920x1080 h264 + aac |
@@ -106,14 +107,23 @@ git clone History/<game>.bundle <game>
 
 then copy `History/lfs` into `<game>/.git/lfs`, `git lfs install --local`, `git checkout <commit>`, `git lfs checkout`.
 
-**Tasks (layout v1.3).** `Tasks/` holds exactly 10 tasks on the game, in the game environment's task format
-(`GameTask`: name, title, instruction, a seed with the game, its start commit and an optional reference commit and
-kind, the map graders play, limits, and milestones of checks). The packager copies the game's 10 selected tasks from
-the environment (machine config `tasks_source`, env `GF_TASKS_SOURCE`), maps each seed's commits through the history
-rewrite, scrubs them like every other text, and writes `Tasks/README.md`; fewer than 10 tasks is an error. A task's
-seed commit is checked out from `History/` as above. The validator checks each task against the environment's
-published `tasks.schema.json` (loosely, with a note, while that schema is not published) and that every seed
-commit is in the bundle.
+**Tasks.** A game is complete when its repo has `Tasks/`: tasks an agent can be given on this game (a bug fix
+from its history, a correction from a person's direction, a feature, a look or content change), in the game
+environment's task format (`GameTask`, game-task/1), one file per task named `<game>-<kind>-<slug>.json` with
+`name` equal to the file name. About 10 are recommended; the count is reported, and only a game with none fails.
+The repo's `Tasks/` is the single source: the environment loads `Tasks/*.json` from the repos. How to write them:
+the `write-tasks` skill. The validator checks each task against
+[schemas/game-task.schema.json](schemas/game-task.schema.json) (vendored from the environment), that its seed is
+on this game, and that its seed commits exist.
+
+In a dataset (layout v1.3) the packager copies the repo's tasks, maps each seed's commits through the history
+rewrite, scrubs them, and splits each into `Tasks/<name>/task.json` (what the agent may see) and
+`Tasks/<name>/grader.json` (the grader's half: `milestones` with their rubrics, judge and code-judge questions and
+log patterns, and `seed.reference`); merging the two gives the task. `Tasks/README.md` explains it.
+
+**The harness rule.** An agent given a task starts from a history-less snapshot of the game at `seed.commit`, with
+`Tasks/`, `History/` and `Dataset/` removed (every task's answers are in them, and the reference fixes are in the
+history); it sees only the brief and that snapshot. The grader's half never reaches the agent.
 
 **Complete vs pending.** `status` is `complete` only with a passing replay verification; `pending` while
 `ReplayScripts/` is missing (the zip is then `Dataset.pending.zip`).
@@ -126,6 +136,6 @@ Deliver the repo (private, with Git LFS) and run the packager, or deliver the sa
 2. `workflow.jsonl` from the first operation, with every direction you were given as a `user.direction` row
    (neutral wording, what and why) before the work it caused, and `"direction": "<id>"` on the rows that act on it.
 3. `Brief/brief.md` (the brief you were given) and `Brief/design.md` (your design doc).
-4. The 10 tasks on your game come from the game environment (they are written against your history); you deliver
-   the history they need.
+4. `Tasks/` with your game's tasks (about 10; the `write-tasks` skill, or the format and examples it points to), each
+   seeded on commits of your own history.
 5. `python tools/validate-game.py <repo>` VALID, and the same for the `Dataset.zip`.
