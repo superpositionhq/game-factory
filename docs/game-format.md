@@ -46,7 +46,10 @@ Everything needed to rebuild the game from the repo alone, tracked in git (binar
 | `Dataset/` | the dataset minus `UEProject/`, `Build/` and `History/` (written by the packager) |
 
 No tool, vendor or owner names anywhere in the repo's text (the validator scans tracked text files; the packager
-scans binaries too).
+scans binaries too). That includes `workflow.jsonl`: it is append-only except that a row naming a banned term (or the
+old schema id `superposition.ue-workflow/v0`) is edited in place to a neutral word or placeholder, nothing else
+changed, with one `log.correct` row appended (`params {rows, what}`) and the edited rows named in the commit message:
+`python tools/scrub-workflow-rows.py <repo>` (dry run), then `--apply`.
 
 **Store content.** Store packs may sit in any folder under `Content/` (or `RawAssets/` for import sources): what
 matters is that every file the game uses is committed, so a clone builds the game. The repo stays private.

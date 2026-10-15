@@ -152,7 +152,8 @@
       "ids unique; seq strictly increasing",
       "a row's direction names an earlier op user.direction row",
       "user.direction rows: actor user, reason_source user_direction, params.direction a non-empty string",
-      "v1.2: the person's directions are user.direction rows (they replace conversation transcripts); a game with none is reported as a warning"
+      "v1.2: the person's directions are user.direction rows (they replace conversation transcripts); a game with none is reported as a warning",
+      "banned names in rows: workflow.jsonl is append-only except that a row naming a banned term (or the old schema id superposition.ue-workflow/v0) is edited in place to a neutral word or placeholder, nothing else changed, followed by one appended row op \"log.correct\", params {rows: [ids], what}; the commit names the edited rows (tools/scrub-workflow-rows.py). A banned name left in a row is an error, in the repo and in the dataset."
     ],
     "git_log": {
       "first_line": "GIT-LOG 1",

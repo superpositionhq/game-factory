@@ -46,6 +46,13 @@ The user's standing rule: **every session commits its work continuously.**
   `op:"vcs.commit"` row (sha, subject, files) right after committing; it rides along in the next commit.
 - Never edit, delete, reorder or backfill rows. Missed something: one `op:"log.gap"`, `status:"unrecorded"` row saying
   what and when. Failed attempts get rows too.
+- **One exception (user rule): banned names.** A row that contains a banned name (studio/org name, the tool repo's
+  name, agent/tool/provider names, the account name or machine paths with it, e-mail addresses) or the old schema id
+  `superposition.ue-workflow/v0` is edited in place to remove it, with a neutral word or placeholder and nothing else in
+  the row changed; then one correction row is appended (`op:"log.correct"`, `params {rows: [ids], what: "removed banned
+  names"}`), and the commit message names the edited rows. `python <GF_ROOT>/game-factory/tools/scrub-workflow-rows.py
+  <repo>` does exactly this (dry run first, then `--apply`; it prints the commit message line). Write new rows without
+  such names in the first place (relative paths, neutral words).
 - Every editor script that ran stays in `Scripts/` unchanged (new version instead of overwriting), so `source.script`
   + `source.sha256` point at the real code.
 - **Human directions (user rule: "not direct user messages, more like user directions"; "you should rewrite that and

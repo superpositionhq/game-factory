@@ -91,7 +91,8 @@ refuse them). Recording traces are fine: `workflow.jsonl` stays in the repo, row
 
 - `workflow.jsonl` at the project root, one row per real operation **at the moment you act** (schema in the
   commit-always skill; id prefix per game, e.g. `is-00042`). Log failures, dead ends, debugging and fixes; never edit,
-  reorder or backfill rows (`log.gap` row for anything missed).
+  reorder or backfill rows (`log.gap` row for anything missed), except to remove a banned name (commit-always skill:
+  `tools/scrub-workflow-rows.py --apply`, which appends the `log.correct` row).
 - The machine hooks record every tool call to `<GF_ROOT>\.recording\<slug>\actions.jsonl` and every commit to
   `commits.jsonl`; leftover changes are auto-committed as `WIP` at the end of a turn (commit properly instead).
 

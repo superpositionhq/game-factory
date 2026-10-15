@@ -32,7 +32,8 @@ Rules: follow the game-session and commit-always skills (installed in ~\.claude\
 game-factory/.claude/skills/). In short: every heavy or GPU job through {{GF_ROOT}}\tools\ue-heavy.ps1, Live Coding
 never on; premium art from the bought/downloaded Fab packs and animation packs, styled UI with no plain text, story
 embedded in play, gentle camera; never the names Superposition or game-factory anywhere in the game; one
-workflow.jsonl row per operation at the moment you act; commit after every meaningful step and never end a turn with
+workflow.jsonl row per operation at the moment you act (rows never edited, except to remove a banned name with
+tools/scrub-workflow-rows.py --apply); commit after every meaningful step and never end a turn with
 uncommitted work; LFS for every binary; commit the store packs you use (any folder under Content/, LFS, never
 git-ignored; the repo stays private, never public or shared outside the org); never enqueue recordings yourself (send me the commit + framing screenshots);
 push only when I say. Your game's full dataset is {{GF_ROOT}}\games\{{SLUG}}\Dataset.zip, made by the packager:

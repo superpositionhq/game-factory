@@ -30,7 +30,8 @@ and the game-session and commit-always skills (~\.claude\skills\). They hold the
 - premium art from store packs (any folder under Content/, committed through Git LFS, never git-ignored; the repo stays
   private), styled UI with no plain text, story embedded in play, gentle camera; never the names of the toolkit or
   its owners inside the game;
-- one workflow.jsonl row per operation at the moment you act; commit after every meaningful step, never end a turn
+- one workflow.jsonl row per operation at the moment you act (rows are never edited, except to remove a banned name
+  with tools/scrub-workflow-rows.py --apply); commit after every meaningful step, never end a turn
   with uncommitted work; LFS for every binary;
 - my messages that change the game are directions: rewrite each as one or two neutral sentences and append it to
   workflow.jsonl as a user.direction row (via "direct") before acting on it (commit-always skill);
