@@ -245,6 +245,9 @@ import source path and the Shipping exe (build paths), by category only.
 
 ## Dataset layout v1.1 (the delivery)
 
+> **Superseded for new deliveries by layout v1.2** (2026-10-15: the full git history in `History/`, the brief and design
+> doc in `Brief/`): [game-format.md](game-format.md). v1.1 deliveries made before stay valid as v1.1.
+
 Approved 2026-10-12 as v1; v1.1 the same day (user): no replay video, the verified replay scripts are the creation replay.
 
 Our standard delivery of every game, the same for all of them: the creation record (`git.log`,
