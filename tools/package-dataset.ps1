@@ -376,7 +376,7 @@ $replayVerification = if ($verdict) {
                 else { [ordered]@{ id = $_.Name; what = $e.what; count = $e.count } } }) }
 } else { $null }
 $status = if ($haveReplay) { 'complete' } else { 'pending' }
-$pending = if ($haveReplay) { @() } else { @('ReplayScripts/') }
+$pending = @(if (-not $haveReplay) { 'ReplayScripts/' })
 Write-Step "dataset v1: $Game @ $short ($status)  from $pkg"
 
 # ---- Gameplay/<game>_S<n>.mp4: one video per scenario of the release version, game audio muxed ------------------------
@@ -486,9 +486,11 @@ function New-Delivery([string]$Src, [string]$Dest, [string]$Variant) {
     # History/lfs/objects/ is content-addressed (each file named by its sha256): counted in history, not listed in files
     $all = @([DatasetV1.T]::HashAll($Dest) | Where-Object { $_.Path -ne 'manifest.json' -and $_.Path -ne '.gitattributes' -and -not $_.Path.StartsWith('History/lfs/objects/') })
     $buildCommit = [string]$man.build.commit; if ($commitMap.ContainsKey($buildCommit)) { $buildCommit = $commitMap[$buildCommit] }
+    # a variable, not $( ): a subexpression unrolls the list (one entry became a string, none became null)
+    $pendingList = New-Object System.Collections.ArrayList; foreach ($x in $pending) { [void]$pendingList.Add([string]$x) }
     $mj = [ordered]@{
             layout = $layout; game = $Game; title = $title; version = $Version; commit = $sha; status = $status; variant = $Variant
-            pending = $(if ($pending) { [System.Collections.ArrayList]@($pending) } else { New-Object System.Collections.ArrayList }); created = (Get-IsoNow); source_package = (Split-Path $Src -Leaf)
+            pending = $pendingList; created = (Get-IsoNow); source_package = (Split-Path $Src -Leaf)
             replay_verification = $replayVerification
             build = $(if ($repo) { $null } else { [ordered]@{ config = $man.build.config; commit = $buildCommit; exe = $exe; source = $man.build.source } })
             scenarios = @($scen | ForEach-Object { [ordered]@{ file = "Gameplay/$($Game)_S$($_.scenario).mp4"; scenario = $_.scenario; name = $_.scenario_name; result = $_.result
@@ -531,7 +533,7 @@ function Write-Readme([string]$Dest, [string]$Variant) {
     A ''
     A '## Package contents'; A ''
     if (-not $repo) { A '- `UEProject/` — the completed game project at the commit above.' }
-    A ('- `ReplayScripts/` — replay of the creation process from the recorded editor operations.' + $(if ($status -ne 'complete') { ' *(pending)*' } else { '' }))
+    A ('- `ReplayScripts/` — replay of the creation process from the recorded editor operations.' + $(if (-not $haveReplay) { ' *(pending)*' } else { '' }))
     A '- `workflow.jsonl` — editor operations and parameters, one row per operation, written when it happened.'
     # human directions: rows actor "user", op "user.direction" (commit-always skill), and the rows that act on them
     $wfFile = Join-Path $Dest 'workflow.jsonl'
@@ -566,7 +568,7 @@ function Write-Readme([string]$Dest, [string]$Variant) {
     A ''
     $play = Get-MdSection $pkgReadme '^Play'; if ($play) { A (($play -split "`n" | Where-Object { $_ -notmatch 'Build/|Windows 10/11' }) -join "`n").Trim(); A '' }
     A '## Replay the creation process'; A ''
-    if ($status -eq 'complete') {
+    if ($haveReplay) {
         A 'See `ReplayScripts/README.md` for the command and its options; the supplied project is not changed.'; A ''
         A ('The replay was run end to end, headless, from these scripts and verified against the release commit: **' +
            $(if ($replayVerification.pass) { 'PASS' } else { 'FAIL' }) + '** (`ReplayScripts/Verification/report.md`).'); A ''
