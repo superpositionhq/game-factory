@@ -260,7 +260,9 @@ project-relative path through `Scripts/ue.ps1 script -Script Scripts/<name>.py` 
 relative paths only, never an absolute path to or `os.chdir` into `games\<slug>`; probes named by `readonly_patterns`
 (`not_readonly` for one that writes something later work reads); one workflow row per run at least; scripts edited
 with Write/Edit or written as `name_v2.py`; no custom commandlets; `ReplayConfig.json` from day one, with an
-`asset_drops` entry for every store pack copied in; no amend or rebase.
+`asset_drops` entry for every store pack copied in; no amend or rebase. A `run_patterns` script that is a pipeline
+tool is written `{pipeline}/<tool>.py` (this checkout's `tools/ue-pipeline`): the settings then name no tool repo
+(game format: no banned names), and the runner takes the tool's version at the run time from the tool repo's history.
 
 **Release** (`ue_replay.py release --game <slug>`, normal priority): catches the replay up to the settings' `final`
 (`HEAD` by default), checks out and builds `truth/` there, dumps both projects in full, runs `verify` and `package`.

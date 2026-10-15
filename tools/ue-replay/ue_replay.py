@@ -88,10 +88,17 @@ def machine_engine(project=None):
     return "C:/Program Files/Epic Games/UE_%s" % (assoc if re.fullmatch(r"\d+\.\d+", assoc) else "5.7")
 
 
+# {pipeline}: this checkout's tools/ue-pipeline folder, for run_patterns scripts that are pipeline tools (e.g.
+# "{pipeline}/scrub-import-paths.py"): a game's settings then name no tool repo, and the runner still takes the script's
+# version at the run time from that repo's history (runner.external_script).
+PIPELINE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ue-pipeline").replace("\\", "/")
+
+
 def expand(v, root, project=None):
     if isinstance(v, str):
         if "{engine}" in v:
             v = v.replace("{engine}", machine_engine(project))
+        v = v.replace("{pipeline}", PIPELINE)
         return v.replace("{root}", root).replace("{home}", os.path.expanduser("~").replace("\\", "/"))
     if isinstance(v, list):
         return [expand(x, root, project) for x in v]
