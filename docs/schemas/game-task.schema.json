@@ -1,0 +1,719 @@
+{
+  "$comment": "Vendored, unchanged except this comment, from the game environment's published GameTask schema (backend/app/factory/game_env/tasks.schema.json at commit 68010c4a, 2026-10-15). Update it from there; tools/validate-game.py checks every task in a game repo's Tasks/ and in a dataset against it.",
+  "$defs": {
+    "ActionsJudge": {
+      "additionalProperties": false,
+      "description": "A reviewer's question over what the agent did, from its own trace: each tool call in order (the tool, its\narguments and what it returned, cut), whether it worked, and which made a checkpoint; never the agent's reasoning\nor messages. How the game was made counts beside the game itself (the owner, 2026-10-14: grade \"based on agent\nactions, and the final build\").",
+      "properties": {
+        "kind": {
+          "const": "actions_judge",
+          "default": "actions_judge",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[a-z0-9_]{1,48}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "needs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Needs",
+          "type": "array"
+        },
+        "question": {
+          "maxLength": 1200,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "rubric": {
+          "items": {
+            "$ref": "#/$defs/RubricItem"
+          },
+          "maxItems": 12,
+          "minItems": 1,
+          "title": "Rubric",
+          "type": "array"
+        },
+        "weight": {
+          "default": 1,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Weight",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "question",
+        "rubric"
+      ],
+      "title": "ActionsJudge",
+      "type": "object"
+    },
+    "Boot": {
+      "additionalProperties": false,
+      "description": "The game starts (headless, rendering offscreen) and runs `seconds` with no crash and no fatal error in its log.",
+      "properties": {
+        "kind": {
+          "const": "boot",
+          "default": "boot",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[a-z0-9_]{1,48}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "needs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Needs",
+          "type": "array"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "seconds": {
+          "default": 60,
+          "maximum": 600,
+          "minimum": 5,
+          "title": "Seconds",
+          "type": "integer"
+        },
+        "weight": {
+          "default": 1,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Weight",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Boot",
+      "type": "object"
+    },
+    "Build": {
+      "additionalProperties": false,
+      "description": "The editor target compiles.",
+      "properties": {
+        "kind": {
+          "const": "build",
+          "default": "build",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[a-z0-9_]{1,48}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "needs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Needs",
+          "type": "array"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "weight": {
+          "default": 1,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Weight",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Build",
+      "type": "object"
+    },
+    "CodeJudge": {
+      "additionalProperties": false,
+      "description": "A code reviewer's question over the run's own change (its diff from the start, text files) beside the game's\nreal change for the same problem (the seed's `reference`, a bug's fix from the game's history), which the agent\nnever sees.",
+      "properties": {
+        "kind": {
+          "const": "code_judge",
+          "default": "code_judge",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[a-z0-9_]{1,48}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "needs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Needs",
+          "type": "array"
+        },
+        "question": {
+          "maxLength": 1200,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "rubric": {
+          "items": {
+            "$ref": "#/$defs/RubricItem"
+          },
+          "maxItems": 12,
+          "minItems": 1,
+          "title": "Rubric",
+          "type": "array"
+        },
+        "weight": {
+          "default": 1,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Weight",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "question",
+        "rubric"
+      ],
+      "title": "CodeJudge",
+      "type": "object"
+    },
+    "FileExists": {
+      "additionalProperties": false,
+      "description": "At least `min_count` project files match `glob` (relative to the project; e.g. Content/Maps/*.umap).",
+      "properties": {
+        "glob": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Glob",
+          "type": "string"
+        },
+        "kind": {
+          "const": "file_exists",
+          "default": "file_exists",
+          "title": "Kind",
+          "type": "string"
+        },
+        "min_count": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Min Count",
+          "type": "integer"
+        },
+        "name": {
+          "pattern": "^[a-z0-9_]{1,48}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "needs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Needs",
+          "type": "array"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "weight": {
+          "default": 1,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Weight",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "glob"
+      ],
+      "title": "FileExists",
+      "type": "object"
+    },
+    "Judge": {
+      "additionalProperties": false,
+      "description": "The game judge's question over evidence the grader takes itself (screenshots and gameplay frames of a scripted\nplay, and the brief), item by item; never the agent's own words. `before`: the grader also plays the game as it\nwas at the start, and the judge compares (a seeded task that changes how the game looks or plays). `route`: a\nproject file in which the agent leaves inputs that play its game through (the probe's [{t, key, press}], e.g.\nTests/win_route.json); the grader plays it in its own clean copy as one more play, and the judge is told when\nthe file is missing or isn't a route.",
+      "properties": {
+        "before": {
+          "default": false,
+          "title": "Before",
+          "type": "boolean"
+        },
+        "kind": {
+          "const": "judge",
+          "default": "judge",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[a-z0-9_]{1,48}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "needs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Needs",
+          "type": "array"
+        },
+        "question": {
+          "maxLength": 1200,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "reference": {
+          "default": false,
+          "title": "Reference",
+          "type": "boolean"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "route": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "pattern": "^([A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}/){0,6}[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Route"
+        },
+        "rubric": {
+          "items": {
+            "$ref": "#/$defs/RubricItem"
+          },
+          "maxItems": 12,
+          "minItems": 1,
+          "title": "Rubric",
+          "type": "array"
+        },
+        "weight": {
+          "default": 1,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Weight",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "question",
+        "rubric"
+      ],
+      "title": "Judge",
+      "type": "object"
+    },
+    "Limits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_minutes": {
+          "default": 240,
+          "maximum": 1440,
+          "minimum": 1,
+          "title": "Max Minutes",
+          "type": "integer"
+        },
+        "max_turns": {
+          "default": 200,
+          "maximum": 2000,
+          "minimum": 1,
+          "title": "Max Turns",
+          "type": "integer"
+        },
+        "max_usd": {
+          "default": 40.0,
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "title": "Max Usd",
+          "type": "number"
+        },
+        "tool_timeout_seconds": {
+          "default": 600,
+          "maximum": 3600,
+          "minimum": 10,
+          "title": "Tool Timeout Seconds",
+          "type": "integer"
+        }
+      },
+      "title": "Limits",
+      "type": "object"
+    },
+    "LogAbsent": {
+      "additionalProperties": false,
+      "description": "No line of the game's log during a boot matches `pattern` (a regular expression).",
+      "properties": {
+        "kind": {
+          "const": "log_absent",
+          "default": "log_absent",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[a-z0-9_]{1,48}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "needs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Needs",
+          "type": "array"
+        },
+        "pattern": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Pattern",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "weight": {
+          "default": 1,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Weight",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "pattern"
+      ],
+      "title": "LogAbsent",
+      "type": "object"
+    },
+    "Milestone": {
+      "additionalProperties": false,
+      "properties": {
+        "checks": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "actions_judge": "#/$defs/ActionsJudge",
+                "boot": "#/$defs/Boot",
+                "build": "#/$defs/Build",
+                "code_judge": "#/$defs/CodeJudge",
+                "file_exists": "#/$defs/FileExists",
+                "judge": "#/$defs/Judge",
+                "log_absent": "#/$defs/LogAbsent",
+                "package": "#/$defs/Package"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/Build"
+              },
+              {
+                "$ref": "#/$defs/Boot"
+              },
+              {
+                "$ref": "#/$defs/LogAbsent"
+              },
+              {
+                "$ref": "#/$defs/FileExists"
+              },
+              {
+                "$ref": "#/$defs/Package"
+              },
+              {
+                "$ref": "#/$defs/Judge"
+              },
+              {
+                "$ref": "#/$defs/CodeJudge"
+              },
+              {
+                "$ref": "#/$defs/ActionsJudge"
+              }
+            ]
+          },
+          "maxItems": 12,
+          "minItems": 1,
+          "title": "Checks",
+          "type": "array"
+        },
+        "name": {
+          "pattern": "^[a-z0-9_]{1,32}$",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "checks"
+      ],
+      "title": "Milestone",
+      "type": "object"
+    },
+    "Package": {
+      "additionalProperties": false,
+      "description": "A Development package builds, and the packaged game boots.",
+      "properties": {
+        "kind": {
+          "const": "package",
+          "default": "package",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[a-z0-9_]{1,48}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "needs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Needs",
+          "type": "array"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "weight": {
+          "default": 1,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Weight",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Package",
+      "type": "object"
+    },
+    "RubricItem": {
+      "additionalProperties": false,
+      "properties": {
+        "criterion": {
+          "maxLength": 600,
+          "minLength": 1,
+          "title": "Criterion",
+          "type": "string"
+        },
+        "key": {
+          "pattern": "^[a-z0-9_]{1,40}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "weight": {
+          "default": 1,
+          "maximum": 10,
+          "minimum": 1,
+          "title": "Weight",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "key",
+        "criterion"
+      ],
+      "title": "RubricItem",
+      "type": "object"
+    },
+    "Seed": {
+      "additionalProperties": false,
+      "description": "Where a seeded task starts: one of the studio's games at `commit`. `game` is its slug in the games catalog\n(games.json: its repository, project and mirror), the folder under the machine's games root on the studio's PC.\n`reference`: a later commit of that game whose change solves the task (a bug's fix), for the code judge only.",
+      "properties": {
+        "commit": {
+          "pattern": "^[0-9a-f]{40}$",
+          "title": "Commit",
+          "type": "string"
+        },
+        "game": {
+          "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+          "title": "Game",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "bug_fix",
+            "feature",
+            "change",
+            "correction"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "reference": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{40}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reference"
+        }
+      },
+      "required": [
+        "game",
+        "commit",
+        "kind"
+      ],
+      "title": "Seed",
+      "type": "object"
+    }
+  },
+  "$id": "https://lab.superposition.ai/schemas/game-task/1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "asset_packs": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Asset Packs",
+      "type": "array"
+    },
+    "difficulty": {
+      "default": "medium",
+      "enum": [
+        "calibration",
+        "easy",
+        "medium",
+        "hard"
+      ],
+      "title": "Difficulty",
+      "type": "string"
+    },
+    "engine": {
+      "const": "5.7",
+      "default": "5.7",
+      "title": "Engine",
+      "type": "string"
+    },
+    "instruction": {
+      "maxLength": 20000,
+      "minLength": 1,
+      "title": "Instruction",
+      "type": "string"
+    },
+    "limits": {
+      "$ref": "#/$defs/Limits"
+    },
+    "milestones": {
+      "items": {
+        "$ref": "#/$defs/Milestone"
+      },
+      "maxItems": 8,
+      "minItems": 1,
+      "title": "Milestones",
+      "type": "array"
+    },
+    "name": {
+      "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+      "title": "Name",
+      "type": "string"
+    },
+    "play_map": {
+      "anyOf": [
+        {
+          "maxLength": 300,
+          "pattern": "^/[A-Za-z0-9_/.-]+(\\?[A-Za-z0-9_=.,-]+)*$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Play Map"
+    },
+    "seed": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Seed"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "tags": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Tags",
+      "type": "array"
+    },
+    "template": {
+      "const": "blank-cpp",
+      "default": "blank-cpp",
+      "title": "Template",
+      "type": "string"
+    },
+    "title": {
+      "maxLength": 120,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "title",
+    "instruction",
+    "milestones"
+  ],
+  "title": "game-task/1",
+  "type": "object"
+}
