@@ -171,6 +171,12 @@ committed shows as a broken image).
 listed file committed (`tools/migrate-assets-manifest.py` converts an older file), `workflow.jsonl` rows, README
 images, no banned names. The dataset adds your design doc and the original brief (`Brief/`) and the full history.
 
+**Tasks (write-tasks skill).** A game is complete when its repo has `Tasks/`: tasks an agent can be given on this game,
+one `Tasks/<game>-<kind>-<slug>.json` each in the game environment's format, about 10 (a mix of bug fixes from your
+real history, corrections from `user.direction` rows, features and look/content changes). Follow the write-tasks skill
+(seeds, the brief written from context, play map, checks and rubrics, what must never reach the agent); never point the
+game's code or docs at `Tasks/`. validate-game.py checks them.
+
 ## Working with the coordinator
 
 - Report milestones, recording requests and blockers to the coordinator; put long findings in the shared notes folder.
