@@ -119,6 +119,10 @@ private:
 	float Skill = 1.f;
 	double MaxSeconds = 600.0;
 	double GoTimeout = 60.0;
+	// Exit watchdog (-AutoPlayWatchdog=<s>, 0 = off): the process is terminated (exit code 124, watchdog.json) if it is
+	// still alive this long after MaxSeconds from go, or ShutdownWatchdogSeconds after run_end / engine exit.
+	double WatchdogSeconds = 120.0;
+	static constexpr double ShutdownWatchdogSeconds = 30.0;
 	FString OutputDir;
 	FString BuildCommit;
 	FString RunId;

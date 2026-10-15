@@ -91,6 +91,7 @@ The pipeline marks such runs `gpu_crash` (not a generic failure) and retries the
 | `-RunId=<id>` | echoed into every header | empty |
 | `-GoTimeout=<s>` | how long to wait for the pipeline's `go` file; use `-GoTimeout=0` when testing by hand | 60 |
 | `-AutoPlayAllowInput` | debugging only: don't block hardware input / mouse capture | off |
+| `-AutoPlayWatchdog=<s>` | exit watchdog: the process is terminated if still alive `<s>` after `MaxSeconds` from go, or 30 s after `run_end` / engine exit (section 3, step 8); 0 = off | 120 |
 
 ## 2. Display and timing (enforced by the subsystem in AutoPlay)
 
@@ -127,6 +128,12 @@ The pipeline marks such runs `gpu_crash` (not a generic failure) and retries the
    writes `outcome.json` and `clock.json`, telemetry `run_end`,
    then quits (`FPlatformMisc::RequestExit(false)`, exit code 0). The pipeline kills the process at
    `MaxSeconds + 90 s` and marks the run failed.
+   The drop-in's **exit watchdog** (a detached thread, any caller: recorder, test scripts, smoke runs) ends a process
+   that hangs instead: still alive 30 s after `run_end` (a hang in engine shutdown) or `-AutoPlayWatchdog` seconds
+   (default 120) after `MaxSeconds` from go (a hang in gameplay) → it writes `OutputDir/watchdog.json`
+   (`autoplay-watchdog/1`: `reason` `shutdown` or `run`) and terminates with **exit code 124**. The recorder treats
+   `shutdown` after a complete run as a warning, `run` as a failure. Same contract version: builds with an older
+   drop-in simply have no watchdog.
 
 ## 4. Input rules
 

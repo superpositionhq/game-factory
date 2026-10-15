@@ -33,6 +33,10 @@
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
 #include "Widgets/SWindow.h"
+#include <thread>
+#if PLATFORM_WINDOWS
+#include "Windows/WindowsHWrapper.h"
+#endif
 
 namespace AutoPlay
 {
@@ -232,6 +236,68 @@ static void AutoPlayUnregisterCapture(FAudioDevice* AudioDevice, AutoPlay::FAudi
 #endif
 }
 
+namespace AutoPlay
+{
+	/**
+	 * Exit watchdog: ends the process when it is still alive past a deadline, so a hang in gameplay or in engine
+	 * shutdown after run_end cannot hold the GPU until the caller's own timeout. A detached thread, independent of the
+	 * game thread and of engine shutdown: at the deadline it writes watchdog.json (prepared when armed, so nothing is
+	 * formatted or allocated then) and terminates the process with exit code 124. Deadlines only ever move earlier.
+	 */
+	class FExitWatchdog
+	{
+	public:
+		static constexpr uint32 ExitCode = 124;
+
+		static void Arm(double DeadlineSeconds, const TCHAR* Reason, const FString& NoteFile)
+		{
+			FState& S = State();
+			FScopeLock L(&S.Lock);
+			if (S.Deadline > 0.0 && S.Deadline <= DeadlineSeconds) { return; }
+			S.Deadline = DeadlineSeconds;
+			S.NoteFile = NoteFile;
+			const FString Note = FString::Printf(TEXT("{\"schema\":\"autoplay-watchdog/1\",\"reason\":\"%s\",\"armed_t_ns\":%llu,\"after_s\":%s,\"exit_code\":%u}\n"),
+				Reason, UAutoPlaySubsystem::QpcToNs(UAutoPlaySubsystem::Qpc()), *UAutoPlaySubsystem::JsonNum(DeadlineSeconds - FPlatformTime::Seconds()), ExitCode);
+			const FTCHARToUTF8 Utf8(*Note);
+			S.Note.Reset();
+			S.Note.Append((const uint8*)Utf8.Get(), Utf8.Length());
+			if (!S.bStarted) { S.bStarted = true; std::thread(&FExitWatchdog::Loop).detach(); }
+		}
+
+		static void Disarm() { FState& S = State(); FScopeLock L(&S.Lock); S.Deadline = 0.0; }
+
+	private:
+		struct FState
+		{
+			FCriticalSection Lock;
+			double Deadline = 0.0;
+			FString NoteFile;
+			TArray<uint8> Note;
+			bool bStarted = false;
+		};
+		static FState& State() { static FState* S = new FState(); return *S; } // never destroyed: the thread outlives statics
+
+		static void Loop()
+		{
+			for (;;)
+			{
+				FPlatformProcess::Sleep(1.0f);
+				FState& S = State();
+				FScopeLock L(&S.Lock);
+				if (S.Deadline <= 0.0 || FPlatformTime::Seconds() < S.Deadline) { continue; }
+#if PLATFORM_WINDOWS
+				HANDLE File = ::CreateFileW(*S.NoteFile, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+				if (File != INVALID_HANDLE_VALUE) { DWORD Done = 0; ::WriteFile(File, S.Note.GetData(), (DWORD)S.Note.Num(), &Done, nullptr); ::CloseHandle(File); }
+				::TerminateProcess(::GetCurrentProcess(), ExitCode);
+#else
+				FFileHelper::SaveArrayToFile(S.Note, *S.NoteFile);
+				FPlatformMisc::RequestExitWithStatus(true, (uint8)ExitCode);
+#endif
+			}
+		}
+	};
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Clock and JSON helpers
 
@@ -374,6 +440,7 @@ void UAutoPlaySubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	float Seconds = 0.f;
 	if (FParse::Value(Cmd, TEXT("MaxSeconds="), Seconds)) { MaxSeconds = Seconds; }
 	if (FParse::Value(Cmd, TEXT("GoTimeout="), Seconds)) { GoTimeout = Seconds; }
+	if (FParse::Value(Cmd, TEXT("AutoPlayWatchdog="), Seconds)) { WatchdogSeconds = Seconds; }
 	if (!FParse::Value(Cmd, TEXT("OutputDir="), OutputDir))
 	{
 		FParse::Value(Cmd, TEXT("RecordDir="), OutputDir); // v1 name, still accepted
@@ -408,6 +475,9 @@ void UAutoPlaySubsystem::Deinitialize()
 {
 	if (bEnabled)
 	{
+		// Engine shutdown: the process must be gone soon (a hang here would hold the GPU); otherwise stand down.
+		if (IsEngineExitRequested() && WatchdogSeconds > 0.0) { AutoPlay::FExitWatchdog::Arm(FPlatformTime::Seconds() + ShutdownWatchdogSeconds, TEXT("shutdown"), OutputDir / TEXT("watchdog.json")); }
+		else if (!IsEngineExitRequested()) { AutoPlay::FExitWatchdog::Disarm(); }
 		FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
 		FWorldDelegates::OnWorldPostActorTick.Remove(PostTickHandle);
 		if (InputBlocker.IsValid() && FSlateApplication::IsInitialized())
@@ -595,6 +665,7 @@ void UAutoPlaySubsystem::BeginRun(bool bTimedOut)
 		}
 	}
 	ClockSamples.Add(ClockSample(TEXT("audio_start")));
+	if (MaxSeconds > 0.0 && WatchdogSeconds > 0.0) { AutoPlay::FExitWatchdog::Arm(FPlatformTime::Seconds() + MaxSeconds + WatchdogSeconds, TEXT("run"), OutputDir / TEXT("watchdog.json")); }
 	Phase = EPhase::Running;
 	Telemetry(TEXT("run_start"), FString::Printf(TEXT("\"scenario\":%d,\"seed\":%d,\"skill\":%s,\"go_timed_out\":%s"),
 		Scenario, Seed, *JsonNum(Skill), bTimedOut ? TEXT("true") : TEXT("false")));
@@ -691,6 +762,7 @@ void UAutoPlaySubsystem::FinalizeAndQuit(bool bAudioOk)
 	InputsAr.Reset();
 	TelemetryAr.Reset();
 	Phase = EPhase::Done;
+	if (WatchdogSeconds > 0.0) { AutoPlay::FExitWatchdog::Arm(FPlatformTime::Seconds() + ShutdownWatchdogSeconds, TEXT("shutdown"), OutputDir / TEXT("watchdog.json")); }
 	FPlatformMisc::RequestExit(false);
 }
 
