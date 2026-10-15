@@ -292,7 +292,8 @@ Try-Check 'Asset library (Fab packs)' {
     $detail = "$have of $($all.Count) packs present in $lib"
     if ($missing.Count -eq 0) { Add-Result PASS 'Asset library (Fab packs)' $detail }
     elseif ($have -ge $all.Count / 2) { Add-Result WARN 'Asset library (Fab packs)' "$detail; missing e.g. $(($missing | Select-Object -First 6) -join ', ')" 'asset-scout session re-downloads them (Fab sign-in in the browser pane first); game repos already carry the packs they use' }
-    else { Add-Result FAIL 'Asset library (Fab packs)' "$detail; missing e.g. $(($missing | Select-Object -First 6) -join ', ')" 'sign in to fab.com with the account that owns the packs, then spawn the asset-scout helper (docs/briefs/helpers/asset-scout.md)' }
+    # Cloned games carry the packs they use (committed through LFS); the library only feeds NEW games, so never a FAIL.
+    else { Add-Result WARN 'Asset library (Fab packs)' "$detail; missing e.g. $(($missing | Select-Object -First 6) -join ', ')" 'needed only for new games (cloned games bring their own packs): sign in to fab.com with the account that owns the packs, then spawn the asset-scout helper (docs/briefs/helpers/asset-scout.md)' }
 }
 
 # --- report ------------------------------------------------------------------------------------------------------------

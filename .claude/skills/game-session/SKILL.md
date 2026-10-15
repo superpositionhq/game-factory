@@ -64,7 +64,8 @@ started you. Use the **commit-always** skill for every commit.
   idle), or use the clip's NoAdditive variant.
 - **Art (user rule):** premium, coherent, never primitives or flat colours in the final game. Use the bought and
   downloaded Fab packs and the animation packs (catalogue `docs/asset-library.md`, library `<GF_ROOT>\asset-library\`);
-  characters and creatures animated. Store content under `Content/Fab/<Pack>/`; adapt it (materials, kitbash, set
+  characters and creatures animated. Store content under `Content/Fab/<Pack>/`, committed through Git LFS and never
+  git-ignored (the repo stays private; commit-always skill, "Store packs are committed"); adapt it (materials, kitbash, set
   dressing, lighting). Record every external asset in `assets.manifest.json` (URL, licence, version, files used,
   changes) and credits in `Docs/ThirdPartyNotices.md`, written as a normal developer would. Need more? Write a "Fab
   requests" list (URL, price, licence, UE 5.7 support, what it replaces) in your design doc and message the coordinator.

@@ -109,7 +109,8 @@ PASS / WARN / FAIL for UE 5.7 (and 5.3 for older games), MSVC 14.44, Windows SDK
 Python, NVIDIA driver, refresh rate, display and system sleep, free disk, memory, long paths, pinned ffmpeg (NVENC
 test), config, job slots (in effect, and from where), layout, ue-heavy, hooks, skills, root CLAUDE.md, game repo hooks, the asset library against
 `docs/asset-library.md` + `docs/asset-library-fab-ue.tsv`. Exit code = number of FAILs. Fix
-until no FAIL is left; the asset library may stay WARN until the asset-scout has rebuilt it.
+until no FAIL is left. The asset library stays WARN until the asset-scout rebuilds it, and only new games need it:
+cloning the games (`-CloneGames`) brings each game's store packs with it (committed through Git LFS in its private repo).
 
 ## 6. First sessions
 

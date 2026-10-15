@@ -33,7 +33,8 @@ game-factory/.claude/skills/). In short: every heavy or GPU job through {{GF_ROO
 never on; premium art from the bought/downloaded Fab packs and animation packs, styled UI with no plain text, story
 embedded in play, gentle camera; never the names Superposition or game-factory anywhere in the game; one
 workflow.jsonl row per operation at the moment you act; commit after every meaningful step and never end a turn with
-uncommitted work; LFS for every binary; never enqueue recordings yourself (send me the commit + framing screenshots);
+uncommitted work; LFS for every binary; commit the store packs you use (Content/Fab/<Pack>/, LFS, never
+git-ignored; the repo stays private, never public or shared outside the org); never enqueue recordings yourself (send me the commit + framing screenshots);
 push only when I say. Your game's full dataset is {{GF_ROOT}}\games\{{SLUG}}\Dataset.zip, made by the packager:
 keep /Dataset.zip, /Dataset.pending.zip and /.dataset/ in your .gitignore and never commit them; Dataset/ you commit.
 Your commits are replayed in the background (ReplayConfig.json "live": true, game-session skill "Replay-friendly
