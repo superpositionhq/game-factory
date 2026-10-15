@@ -679,7 +679,8 @@ def run_layout_validator(rep, path, repo_dataset):
         elif s.startswith('! '):
             rep.note(area, s[2:])   # validate-dataset.ps1: "!" = note
     if r.returncode == 1:
-        rep.warn(area, 'PENDING: ReplayScripts/ not there yet')
+        m = re.search(r'pending: ([^)]+)\)', verdict)
+        rep.warn(area, f'PENDING: {m.group(1).strip() if m else "parts"} not there yet')
     rep.note(area, f'validate-dataset.ps1: {verdict}')
 
 
