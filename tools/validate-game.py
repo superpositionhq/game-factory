@@ -21,7 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 SPEC = json.load(open(os.path.join(REPO, 'docs', 'game-format-v1.json'), encoding='utf-8'))
 SCHEMAS = {n: json.load(open(os.path.join(REPO, 'docs', 'schemas', n + '.schema.json'), encoding='utf-8'))
-           for n in ('workflow-row', 'dataset-manifest', 'replay-report', 'assets-manifest')}
+           for n in ('workflow-row', 'dataset-manifest', 'replay-report', 'assets-manifest', 'game-task')}
 
 
 class Report:
@@ -496,102 +496,133 @@ def check_history(rep, area, v, m):
 
 
 TASK_NAME = re.compile(r'^[a-z0-9][a-z0-9-]{1,62}$')
-SHA1 = re.compile(r'^[0-9a-f]{40}$')
+GRADER_KEYS = ('milestones',)          # the grader's half of a task, with seed.reference
 
 
-def task_schema():
-    """The game environment's published task schema (machine config tasks_schema / tasks_source), or None."""
-    try:
-        sys.path.insert(0, os.path.join(REPO, 'machine', 'lib'))
-        import gfroot
-        p = gfroot.tasks_schema()
-    except Exception:
-        p = ''
-    if not p:
-        return None, None
-    import hashlib
-    data = open(p, 'rb').read()
-    return json.loads(data.decode('utf-8-sig')), hashlib.sha256(data).hexdigest()
-
-
-def loose_task_errors(t):
-    """Structure of a task without the environment's schema: the fields every task has and their basic shapes."""
-    errs = []
-    if not isinstance(t, dict):
-        return ['not an object']
-    for k in ('name', 'title', 'instruction', 'milestones'):
-        if k not in t:
-            errs.append(f'missing "{k}"')
-    if 'name' in t and not (isinstance(t['name'], str) and TASK_NAME.match(t['name'])):
-        errs.append('name is not a lowercase slug')
-    if 'instruction' in t and not (isinstance(t['instruction'], str) and t['instruction'].strip()):
-        errs.append('empty instruction')
-    ms = t.get('milestones')
-    if not (isinstance(ms, list) and ms and all(isinstance(m, dict) and isinstance(m.get('checks'), list) and m['checks'] for m in ms)):
-        errs.append('milestones must be a non-empty list, each with a non-empty checks list')
-    s = t.get('seed')
-    if s is not None:
-        if not isinstance(s, dict):
-            errs.append('seed is not an object')
-        else:
-            if not SHA1.match(str(s.get('commit', ''))):
-                errs.append('seed.commit is not a full commit id')
-            if s.get('reference') is not None and not SHA1.match(str(s['reference'])):
-                errs.append('seed.reference is not a full commit id')
-            if s.get('kind') not in ('bug_fix', 'feature', 'change', 'correction'):
-                errs.append(f'seed.kind {s.get("kind")!r} is not bug_fix/feature/change/correction')
+def task_semantic_errors(t):
+    """What the schema cannot say (the game environment's tasks.validate): check names unique, `needs` naming earlier
+    checks, a code judge or a reference judge only with seed.reference, a before/after judge only with a seed."""
+    errs, seen = [], set()
+    seed = t.get('seed') if isinstance(t.get('seed'), dict) else None
+    ref = seed.get('reference') if seed else None
+    for m in t.get('milestones') or []:
+        for c in (m.get('checks') or []) if isinstance(m, dict) else []:
+            if not isinstance(c, dict):
+                continue
+            n, k = c.get('name'), c.get('kind')
+            if k == 'code_judge' and not ref:
+                errs.append(f'check {n}: a code judge needs seed.reference')
+            if k == 'judge' and c.get('before') and not seed:
+                errs.append(f'check {n}: a before/after judge needs a seed')
+            if k == 'judge' and c.get('reference') and not ref:
+                errs.append(f'check {n}: a reference judge needs seed.reference')
+            if n in seen:
+                errs.append(f'check {n} is named twice')
+            missing = [x for x in (c.get('needs') or []) if x not in seen]
+            if missing:
+                errs.append(f'check {n} needs {missing}, which come later or do not exist')
+            seen.add(n)
     return errs
 
 
+def check_task(rep, a, label, t, game, has_commit):
+    """One whole task (GameTask): schema, the environment's extra rules, seed on `game` and on known commits."""
+    for e in list(check_schema(t, SCHEMAS['game-task']))[:5]:
+        rep.error(a, f'{label}: {e}')
+    for e in task_semantic_errors(t)[:5]:
+        rep.error(a, f'{label}: {e}')
+    s = t.get('seed')
+    if isinstance(s, dict):
+        if s.get('game') != game:
+            rep.error(a, f'{label}: seed.game {s.get("game")!r} is not this game ({game})')
+        for k in ('commit', 'reference'):
+            c = s.get(k)
+            if c and has_commit is not None and not has_commit(c):
+                rep.error(a, f'{label}: seed.{k} {str(c)[:12]} is not a commit of this game\'s history')
+
+
+def check_repo_tasks(rep, repo, files):
+    """The repo's Tasks/<name>.json: one GameTask each, name = file stem, seeds on this repo's commits."""
+    a = 'repo: Tasks'
+    game = os.path.basename(os.path.normpath(repo))
+    paths = [f for f in files if re.fullmatch(r'Tasks/[^/]+\.json', f)]
+    if not paths:
+        return   # the required-files rule already reports a game without tasks
+    known = {}
+
+    def has_commit(c):
+        if c not in known:
+            known[c] = subprocess.run(['git', '-C', repo, 'cat-file', '-e', c + '^{commit}'], capture_output=True).returncode == 0
+        return known[c]
+    for f in paths:
+        stem = f[len('Tasks/'):-len('.json')]
+        try:
+            t = json.load(open(os.path.join(repo, f), encoding='utf-8-sig'))
+        except ValueError as e:
+            rep.error(a, f'{f}: not JSON ({e})')
+            continue
+        if not isinstance(t, dict):
+            rep.error(a, f'{f}: not a task object')
+            continue
+        if t.get('name') != stem:
+            rep.error(a, f'{f}: name {t.get("name")!r} differs from the file name')
+        check_task(rep, a, f, t, game, has_commit)
+    rep.note(a, f'{len(paths)} task(s) (about 10 recommended)')
+
+
 def check_tasks(rep, area, v, m):
-    """Layout v1.3 Tasks/: exactly 10 tasks, each valid (environment schema, else loosely), name = file name,
-    seed on this game and on commits of the delivered history."""
+    """Layout v1.3 Tasks/ in a Dataset.zip: README.md and Tasks/<name>/task.json + grader.json per task; the agent's part
+    holds none of the grader's half; merged, each is a valid task on this game and on commits of History/."""
     a = f'{area}: Tasks'
-    files = sorted(r for r in v.names if r.startswith('Tasks/') and r.endswith('.json'))
     if not v.has('Tasks/README.md'):
         rep.error(a, 'no Tasks/README.md')
-    if len(files) != 10:
-        rep.error(a, f'{len(files)} task files, the layout needs exactly 10')
-    schema, sha = task_schema()
-    if schema is None:
-        rep.warn(a, "the game environment's task schema (tasks.schema.json) was not found (machine config tasks_source / "
-                    "tasks_schema): tasks checked loosely")
-    names = []
+    folders = sorted({r.split('/')[1] for r in v.names if r.startswith('Tasks/') and r.count('/') >= 2})
+    stray = sorted(r for r in v.names if r.startswith('Tasks/') and r != 'Tasks/README.md'
+                   and not re.fullmatch(r'Tasks/[^/]+/(task|grader)\.json', r))
+    for r in stray[:5]:
+        rep.error(a, f'{r}: not part of the layout (Tasks/<name>/task.json, Tasks/<name>/grader.json, Tasks/README.md)')
+    if not folders:
+        rep.error(a, 'no tasks (a game ships at least one)')
     commits = getattr(v, 'commits', None)
-    for rel in files:
+    names = []
+    for name in folders:
+        tp, gp = f'Tasks/{name}/task.json', f'Tasks/{name}/grader.json'
+        if not (v.has(tp) and v.has(gp)):
+            rep.error(a, f'Tasks/{name}/: needs task.json and grader.json')
+            continue
         try:
-            t = v.json(rel)
+            task, grader = v.json(tp), v.json(gp)
         except ValueError as e:
-            rep.error(a, f'{rel}: not JSON ({e})')
+            rep.error(a, f'Tasks/{name}/: not JSON ({e})')
             continue
-        errs = list(check_schema(t, schema)) if schema is not None else loose_task_errors(t)
-        for e in errs[:5]:
-            rep.error(a, f'{rel}: {e}')
-        if not isinstance(t, dict):
+        if not isinstance(task, dict) or not isinstance(grader, dict):
+            rep.error(a, f'Tasks/{name}/: task.json and grader.json must be objects')
             continue
-        stem = rel[len('Tasks/'):-len('.json')]
-        if t.get('name') != stem:
-            rep.error(a, f'{rel}: name {t.get("name")!r} differs from the file name')
-        names.append(t.get('name'))
-        s = t.get('seed')
-        if isinstance(s, dict):
-            if s.get('game') != m['game']:
-                rep.error(a, f'{rel}: seed.game {s.get("game")!r} is not this game ({m["game"]})')
-            for k in ('commit', 'reference'):
-                c = s.get(k)
-                if c and commits is not None and c not in commits:
-                    rep.error(a, f'{rel}: seed.{k} {str(c)[:12]} is not a commit of History/')
-    if commits is None and files:
-        rep.note(a, 'seed commits not checked against History/ (bundle not unpacked: --quick, or no history)')
+        leaked = [k for k in GRADER_KEYS if k in task] + (['seed.reference'] if isinstance(task.get('seed'), dict) and 'reference' in task['seed'] else [])
+        if leaked:
+            rep.error(a, f'{tp}: holds the grader\'s half ({", ".join(leaked)}): it belongs in grader.json')
+        extra = [k for k in grader if k not in ('name', 'seed') + GRADER_KEYS] + \
+                ([k for k in grader['seed'] if k != 'reference'] if isinstance(grader.get('seed'), dict) else [])
+        if extra:
+            rep.error(a, f'{gp}: only name, milestones and seed.reference belong here, not {extra}')
+        if task.get('name') != name or grader.get('name') != name:
+            rep.error(a, f'Tasks/{name}/: name fields must equal the folder name')
+        whole = dict(task)
+        for k in GRADER_KEYS:
+            if k in grader:
+                whole[k] = grader[k]
+        if isinstance(grader.get('seed'), dict) and isinstance(whole.get('seed'), dict):
+            whole['seed'] = dict(whole['seed'], **grader['seed'])
+        check_task(rep, a, f'Tasks/{name}', whole, m['game'], (lambda c: c in commits) if commits is not None else None)
+        names.append(name)
+    if commits is None and folders:
+        rep.note(a, 'seed commits not checked against History/ (bundle not unpacked: --quick)')
     mt = m.get('tasks')
     if not isinstance(mt, dict):
-        rep.error(a, 'layout v1.3 needs manifest tasks {"count": 10, "names": [...]}')
-    else:
-        if sorted(mt.get('names') or []) != sorted(n for n in names if n):
-            rep.error(a, 'manifest tasks.names differs from the task files')
-        if schema is not None and mt.get('schema_sha256') and mt['schema_sha256'] != sha:
-            rep.warn(a, 'the tasks were packaged against another version of the task schema than the one found now')
-    rep.note(a, f'{len(files)} tasks checked {"against the environment schema" if schema is not None else "loosely"}')
+        rep.error(a, 'layout v1.3 needs manifest tasks {"count": n, "names": [...]}')
+    elif sorted(mt.get('names') or []) != names or mt.get('count') != len(names):
+        rep.error(a, 'manifest tasks (count, names) differ from Tasks/')
+    rep.note(a, f'{len(names)} task(s) (about 10 recommended)')
 
 
 def run_layout_validator(rep, path, repo_dataset):
@@ -733,6 +764,7 @@ def check_repo(rep, repo):
     if 'workflow.jsonl' in tracked:
         with open(os.path.join(repo, 'workflow.jsonl'), encoding='utf-8-sig', errors='replace') as f:
             check_workflow(rep, 'repo: workflow.jsonl', f)
+    check_repo_tasks(rep, repo, files)
 
 
 def main():
