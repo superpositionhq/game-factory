@@ -1,0 +1,514 @@
+#!/usr/bin/env python3
+"""Validate a game against the final game format (docs/game-format-v1.json, prose docs/game-format.md).
+
+    python tools/validate-game.py <games>/<slug>                 # the repo, its Dataset/ and Dataset.zip if present
+    python tools/validate-game.py --dataset <Dataset.zip|folder>  # a dataset alone (what a consumer receives)
+    options: --no-layout (skip tools/validate-dataset.ps1), --no-zip, --json <file>, --quiet
+
+Checks the repo (required files, engine, .gitignore, Git LFS for binaries, README images, banned names,
+assets.manifest.json in the one unified format with every listed file committed under Content/ or RawAssets/,
+workflow.jsonl rows) and the dataset contents (manifest.json, workflow.jsonl, git.log,
+ReplayScripts/Verification/report.json against docs/schemas/, cross-file rules, and in Dataset.zip every asset file
+inside UEProject/). The dataset layout (entries, video format, hashes, README sections) is
+tools/validate-dataset.ps1, which this script runs too on Windows unless --no-layout.
+
+Verdict: VALID (no errors), INVALID (errors). Exit code 0 / 2. Warnings never change the verdict.
+Standard library only (Python 3.10+).
+"""
+import argparse, io, json, os, re, shutil, subprocess, sys, zipfile
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(HERE)
+SPEC = json.load(open(os.path.join(REPO, 'docs', 'game-format-v1.json'), encoding='utf-8'))
+SCHEMAS = {n: json.load(open(os.path.join(REPO, 'docs', 'schemas', n + '.schema.json'), encoding='utf-8'))
+           for n in ('workflow-row', 'dataset-manifest', 'replay-report', 'assets-manifest')}
+
+
+class Report:
+    def __init__(self):
+        self.items = []  # (severity, area, message)
+
+    def error(self, area, msg): self.items.append(('error', area, msg))
+    def warn(self, area, msg): self.items.append(('warning', area, msg))
+    def note(self, area, msg): self.items.append(('note', area, msg))
+
+    def count(self, sev): return sum(1 for s, _, _ in self.items if s == sev)
+
+
+# ---- a small JSON Schema subset validator (type, required, properties, additionalProperties: false, enum, const,
+# ---- pattern, minLength, minimum, items, minItems, $ref "#/$defs/...") --------------------------------------------
+TYPES = {'object': dict, 'array': list, 'string': str, 'boolean': bool, 'null': type(None)}
+
+
+def _is(v, t):
+    if t == 'integer': return isinstance(v, int) and not isinstance(v, bool)
+    if t == 'number': return isinstance(v, (int, float)) and not isinstance(v, bool)
+    return isinstance(v, TYPES[t])
+
+
+def check_schema(value, schema, root=None, path='$'):
+    """Yield 'path: problem' strings for value against schema."""
+    root = root or schema
+    if '$ref' in schema:
+        ref = schema['$ref']
+        node = root
+        for part in ref.lstrip('#/').split('/'):
+            node = node[part]
+        yield from check_schema(value, node, root, path)
+        return
+    if 'type' in schema:
+        ts = schema['type'] if isinstance(schema['type'], list) else [schema['type']]
+        if not any(_is(value, t) for t in ts):
+            yield f'{path}: expected {"/".join(ts)}, got {type(value).__name__}'
+            return
+    if 'const' in schema and value != schema['const']:
+        yield f'{path}: must be {json.dumps(schema["const"])}, got {json.dumps(value)[:80]}'
+    if 'enum' in schema and value not in schema['enum']:
+        yield f'{path}: {json.dumps(value)[:80]} not one of {schema["enum"]}'
+    if isinstance(value, str):
+        if 'minLength' in schema and len(value) < schema['minLength']:
+            yield f'{path}: empty'
+        if 'pattern' in schema and not re.search(schema['pattern'], value):
+            yield f'{path}: {value[:80]!r} does not match {schema["pattern"]}'
+    if _is(value, 'number') and 'minimum' in schema and value < schema['minimum']:
+        yield f'{path}: {value} < {schema["minimum"]}'
+    if isinstance(value, dict):
+        for k in schema.get('required', []):
+            if k not in value:
+                yield f'{path}: missing "{k}"'
+        props = schema.get('properties', {})
+        for k, v in value.items():
+            if k in props:
+                yield from check_schema(v, props[k], root, f'{path}.{k}')
+            elif schema.get('additionalProperties') is False:
+                yield f'{path}: unexpected key "{k}"'
+    if isinstance(value, list):
+        if 'minItems' in schema and len(value) < schema['minItems']:
+            yield f'{path}: needs at least {schema["minItems"]} item(s)'
+        if 'items' in schema:
+            for i, v in enumerate(value):
+                yield from check_schema(v, schema['items'], root, f'{path}[{i}]')
+
+
+def schema_errors(rep, area, value, name, limit=20):
+    problems = list(check_schema(value, SCHEMAS[name]))
+    for p in problems[:limit]:
+        rep.error(area, p)
+    if len(problems) > limit:
+        rep.error(area, f'... and {len(problems) - limit} more schema problems')
+    return not problems
+
+
+# ---- shared content checks ---------------------------------------------------------------------------------------------
+def check_workflow(rep, area, lines, allow_schema=None):
+    """lines: iterable of text lines of a workflow.jsonl. Returns ids of user.direction rows."""
+    seen, directions, prev_seq, bad_rows, n, empty_reason = set(), set(), None, 0, 0, 0
+    problems = []
+    grouped = {}  # schema problem (row-independent text) -> [count, first line]
+    for i, line in enumerate(lines, 1):
+        line = line.strip()
+        if not line:
+            continue
+        n += 1
+        try:
+            row = json.loads(line)
+        except ValueError as e:
+            problems.append(f'line {i}: not JSON ({e})')
+            continue
+        if allow_schema and isinstance(row, dict) and row.get('schema') in allow_schema:
+            row = dict(row, schema='ue-workflow/v0')
+        errs = list(check_schema(row, SCHEMAS['workflow-row']))
+        if errs:
+            bad_rows += 1
+            for e in errs:
+                g = grouped.setdefault(e, [0, i])
+                g[0] += 1
+            continue
+        if not row['reason'].strip():
+            empty_reason += 1
+        if row['id'] in seen:
+            problems.append(f'line {i}: duplicate id {row["id"]}')
+        seen.add(row['id'])
+        if prev_seq is not None and row['seq'] <= prev_seq:
+            problems.append(f'line {i}: seq {row["seq"]} not after {prev_seq}')
+        prev_seq = row['seq']
+        if row['op'] == 'user.direction':
+            if row['actor'] != 'user' or row['reason_source'] != 'user_direction' or not str(row['params'].get('direction', '')).strip():
+                problems.append(f'line {i}: user.direction row needs actor user, reason_source user_direction, params.direction')
+            directions.add(row['id'])
+        if 'direction' in row and row['direction'] not in directions:
+            problems.append(f'line {i}: direction {row["direction"]} is not an earlier user.direction row')
+    for e, (count, first) in sorted(grouped.items(), key=lambda kv: -kv[1][0])[:15]:
+        rep.error(area, f'{count} row(s), first at line {first}: {e}')
+    for p in problems[:25]:
+        rep.error(area, p)
+    if len(problems) > 25:
+        rep.error(area, f'... {len(problems) - 25} more')
+    if empty_reason:
+        rep.warn(area, f'{empty_reason} row(s) with an empty reason')
+    if n == 0:
+        rep.error(area, 'no rows')
+    else:
+        rep.note(area, f'{n} rows, {bad_rows} not matching the row schema, {len(directions)} user.direction rows')
+    return directions
+
+
+def check_git_log(rep, area, stream):
+    g = SPEC['dataset']['git_log']
+    first = stream.readline().rstrip('\r\n')
+    if first != g['first_line']:
+        rep.error(area, f'first line must be "{g["first_line"]}", got {first[:40]!r}')
+    shas, expect, problems = [], None, []
+    commit_rx, author_rx, date_rx = re.compile(g['commit_line']), re.compile(g['author_pattern']), re.compile(g['date_pattern'])
+    for i, line in enumerate(stream, 2):
+        line = line.rstrip('\r\n')
+        if expect is None:
+            if line.startswith('commit ') and not line.startswith(' '):
+                if not commit_rx.match(line):
+                    problems.append(f'line {i}: bad commit line {line[:60]!r}')
+                    continue
+                shas.append(line[7:])
+                expect = list(g['fields_in_order'])
+            continue
+        field = expect.pop(0)
+        if not line.startswith(field + ':'):
+            problems.append(f'line {i}: expected "{field}:" after commit {shas[-1][:8]}, got {line[:40]!r}')
+            expect = None
+            continue
+        value = line[len(field) + 1:].strip()
+        if field in ('Author', 'Committer') and not author_rx.match(value):
+            problems.append(f'line {i}: {field} "{value[:40]}" is not anonymised (dev_NN)')
+        if field in ('AuthorDate', 'CommitDate') and not date_rx.match(value):
+            problems.append(f'line {i}: {field} "{value}" is not ISO 8601')
+        if not expect:
+            expect = None
+    if len(set(shas)) != len(shas):
+        problems.append('a commit appears twice')
+    for p in problems[:20]:
+        rep.error(area, p)
+    if not shas:
+        rep.error(area, 'no commits')
+    else:
+        rep.note(area, f'{len(shas)} commits')
+    return shas[-1] if shas else None
+
+
+def git_ls(repo):
+    out = subprocess.run(['git', '-C', repo, '-c', 'core.quotepath=off', 'ls-files', '-z'], capture_output=True)
+    return [p for p in out.stdout.decode('utf-8', 'replace').split('\0') if p]
+
+
+def check_assets_manifest(rep, area, data, present):
+    """data: parsed assets.manifest.json; present(path) -> True when the file (or, for a path ending in /, any file
+    under the folder) is there."""
+    if not isinstance(data, dict) or data.get('schema') != 'assets-manifest/v1':
+        rep.error(area, 'not in the unified format (schema "assets-manifest/v1"): convert with tools/migrate-assets-manifest.py')
+        return
+    if not schema_errors(rep, area, data, 'assets-manifest'):
+        return
+    missing, outside, n = [], [], 0
+    for a in data['assets']:
+        for f in a['files']:
+            n += 1
+            if not re.match(r'^(Content|RawAssets)/', f):
+                outside.append(f'{a["name"]}: {f}')
+            if not present(f):
+                missing.append(f'{a["name"]}: {f}')
+    for m in outside[:10]:
+        rep.error(area, f'asset path outside Content/ or RawAssets/: {m}')
+    for m in missing[:15]:
+        rep.error(area, f'listed asset file not present: {m}')
+    if len(missing) > 15:
+        rep.error(area, f'... {len(missing) - 15} more listed files not present')
+    rep.note(area, f'{len(data["assets"])} assets, {n} listed paths, {len(missing)} missing')
+
+
+# ---- dataset (folder or zip) -------------------------------------------------------------------------------------------
+class DatasetView:
+    def __init__(self, path):
+        self.path = path
+        self.zip = None
+        if path.lower().endswith('.zip'):
+            self.zip = zipfile.ZipFile(path)
+            names = [n for n in self.zip.namelist() if not n.endswith('/')]
+            tops = sorted({n.split('/')[0] for n in names})
+            self.top = tops[0] if len(tops) == 1 else None
+            self.names = {n[len(self.top) + 1:]: n for n in names} if self.top else {}
+            self.sizes = {n[len(self.top) + 1:]: self.zip.getinfo(n).file_size for n in names} if self.top else {}
+        else:
+            self.top = os.path.basename(os.path.normpath(path))
+            self.names, self.sizes = {}, {}
+            for d, _, fs in os.walk(path):
+                for f in fs:
+                    full = os.path.join(d, f)
+                    rel = os.path.relpath(full, path).replace('\\', '/')
+                    self.names[rel] = full
+                    self.sizes[rel] = os.path.getsize(full)
+
+    def has(self, rel): return rel in self.names
+    def has_dir(self, rel): return any(n.startswith(rel.rstrip('/') + '/') for n in self.names)
+
+    def open_text(self, rel):
+        if self.zip:
+            return io.TextIOWrapper(self.zip.open(self.names[rel]), encoding='utf-8-sig', errors='replace')
+        return open(self.names[rel], encoding='utf-8-sig', errors='replace')
+
+    def json(self, rel):
+        with self.open_text(rel) as f:
+            return json.load(f)
+
+
+def check_dataset(rep, path, area='dataset'):
+    v = DatasetView(path)
+    if v.zip and not v.top:
+        rep.error(area, 'the zip must hold exactly one top folder (<game>/)')
+        return
+    if not v.has('manifest.json'):
+        rep.error(area, 'no manifest.json')
+        return
+    try:
+        m = v.json('manifest.json')
+    except ValueError as e:
+        rep.error(area, f'manifest.json is not JSON: {e}')
+        return
+    ok = schema_errors(rep, f'{area}: manifest.json', m, 'dataset-manifest')
+    if not ok:
+        return
+    a = f'{area}: manifest.json'
+    if v.zip and m['game'] != v.top:
+        rep.error(a, f'game "{m["game"]}" differs from the zip top folder "{v.top}"')
+    listed = {f['path']: f for f in m['files']}
+    for p, f in listed.items():
+        if p not in v.sizes:
+            rep.error(a, f'files[] lists {p}, not in the dataset')
+        elif v.sizes[p] != f['bytes']:
+            rep.error(a, f'{p}: {v.sizes[p]} bytes, manifest says {f["bytes"]}')
+    if m['totals']['files'] != len(m['files']) or m['totals']['bytes'] != sum(f['bytes'] for f in m['files']):
+        rep.error(a, 'totals do not match files[]')
+    for s in m['scenarios']:
+        if s['file'] not in listed:
+            rep.error(a, f'scenario file {s["file"]} not in files[]')
+    if m['variant'] == 'full' and not isinstance(m.get('build'), dict):
+        rep.error(a, 'variant full needs a build object')
+    if m['variant'] == 'repo-dataset' and m.get('build') is not None:
+        rep.error(a, 'variant repo-dataset has build null')
+    # workflow.jsonl
+    directions = set()
+    if v.has('workflow.jsonl'):
+        with v.open_text('workflow.jsonl') as f:
+            directions = check_workflow(rep, f'{area}: workflow.jsonl', f)
+    else:
+        rep.error(area, 'no workflow.jsonl')
+    # git.log
+    last = None
+    if v.has('git.log'):
+        with v.open_text('git.log') as f:
+            last = check_git_log(rep, f'{area}: git.log', f)
+        if last and last != m['commit']:
+            rep.error(f'{area}: git.log', f'last commit {last[:12]} differs from manifest commit {m["commit"][:12]}')
+    else:
+        rep.error(area, 'no git.log')
+    # replay report
+    rp = 'ReplayScripts/Verification/report.json'
+    if v.has(rp):
+        r = v.json(rp)
+        if schema_errors(rep, f'{area}: report.json', r, 'replay-report'):
+            if r['final_commit'] != m['commit']:
+                rep.error(f'{area}: report.json', f'final_commit {r["final_commit"][:12]} differs from manifest commit {m["commit"][:12]}')
+            if m['status'] == 'complete' and not r['verdict']['pass']:
+                rep.error(f'{area}: report.json', 'status complete but the replay verdict did not pass')
+    elif m['status'] == 'complete':
+        rep.error(area, f'status complete but no {rp}')
+    if m['status'] == 'complete':
+        if m['pending']:
+            rep.error(a, 'status complete with pending entries')
+        if not (m.get('replay_verification') or {}).get('pass'):
+            rep.error(a, 'status complete needs replay_verification.pass = true')
+    else:
+        rep.warn(a, f'status pending: {", ".join(m["pending"]) or "(nothing listed)"}')
+    # full variant: every asset file listed by the project's assets.manifest.json is inside UEProject/
+    if m['variant'] == 'full':
+        am = 'UEProject/assets.manifest.json'
+        if v.has(am):
+            check_assets_manifest(rep, f'{area}: {am}', v.json(am),
+                                  lambda f: v.has_dir('UEProject/' + f) if f.endswith('/') else (v.has('UEProject/' + f) or v.has_dir('UEProject/' + f)))
+        else:
+            rep.error(area, f'no {am}')
+    rep.note(area, f'{m["game"]} {m["variant"]} {m["status"]}: {len(m["files"])} files, {len(m["scenarios"])} scenario video(s)')
+
+
+def run_layout_validator(rep, path, repo_dataset):
+    ps = shutil.which('powershell') or shutil.which('pwsh')
+    if not ps:
+        rep.note('layout', 'PowerShell not found: tools/validate-dataset.ps1 not run')
+        return
+    args = [ps, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', os.path.join(HERE, 'validate-dataset.ps1'), path]
+    if repo_dataset:
+        args.append('-RepoDataset')
+    r = subprocess.run(args, capture_output=True, text=True, encoding='utf-8', errors='replace', env=dict(os.environ, GF_SKIP_CONTENT='1'))
+    out = (r.stdout + r.stderr).strip().splitlines()
+    verdict = out[0].strip() if out else '?'
+    area = f'layout ({os.path.basename(path)})'
+    for line in out[1:]:
+        s = line.strip()
+        if s.startswith('x '):
+            rep.error(area, s[2:])
+        elif s.startswith('! '):
+            rep.note(area, s[2:])   # validate-dataset.ps1: "!" = note
+    if r.returncode == 1:
+        rep.warn(area, 'PENDING: ReplayScripts/ not there yet')
+    rep.note(area, f'validate-dataset.ps1: {verdict}')
+
+
+# ---- repo ---------------------------------------------------------------------------------------------------------------
+def check_repo(rep, repo):
+    R = SPEC['repo']
+    files = git_ls(repo)
+    if not files:
+        rep.error('repo', 'not a git repo, or nothing tracked')
+        return
+    tracked = set(files)
+    for req in R['required_files']:
+        hits = [f for f in files if re.match(req['pattern'], f)]
+        if not hits:
+            rep.error('repo', f'missing {req["pattern"]} ({req["what"]})')
+        elif req.get('count') and len(hits) != req['count']:
+            rep.error('repo', f'{len(hits)} files match {req["pattern"]}, expected {req["count"]}')
+    # engine
+    for up in [f for f in files if re.match(r'^[^/]+\.uproject$', f)][:1]:
+        try:
+            assoc = str(json.load(open(os.path.join(repo, up), encoding='utf-8-sig')).get('EngineAssociation'))
+            if assoc not in R['engine_associations']:
+                rep.error('repo', f'{up}: EngineAssociation {assoc!r} not one of {R["engine_associations"]}')
+            else:
+                rep.note('repo', f'{up}: engine {assoc}')
+        except ValueError as e:
+            rep.error('repo', f'{up} is not JSON: {e}')
+    # .gitignore
+    gi = os.path.join(repo, '.gitignore')
+    text = open(gi, encoding='utf-8', errors='replace').read() if os.path.isfile(gi) else ''
+    for line in R['gitignore_must_contain']:
+        if line not in text.split():
+            rep.error('repo: .gitignore', f'missing {line}')
+    probe = subprocess.run(['git', '-C', repo, 'check-ignore', '-q', '--no-index', 'Content/_probe_/probe.uasset'])
+    if probe.returncode == 0:
+        rep.error('repo: .gitignore', 'Content/ is git-ignored: store content and every asset must be committed')
+    # Git LFS for binaries
+    lfs = set(subprocess.run(['git', '-C', repo, '-c', 'core.quotepath=off', 'lfs', 'ls-files', '--name-only'],
+                             capture_output=True, text=True, encoding='utf-8', errors='replace').stdout.splitlines())
+    ext_rx = re.compile(r'(?i)\.(' + '|'.join(R['lfs_required_extensions']) + r')$')
+    plain = [f for f in files if ext_rx.search(f) and f not in lfs]
+    for f in plain[:10]:
+        rep.error('repo: LFS', f'binary tracked in plain git: {f}')
+    if len(plain) > 10:
+        rep.error('repo: LFS', f'... {len(plain) - 10} more binaries in plain git')
+    # README images
+    if 'README.md' in tracked:
+        md = re.sub(r'(?s)<!--.*?-->', '', open(os.path.join(repo, 'README.md'), encoding='utf-8', errors='replace').read())
+        links = re.findall(r'!\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)', md) + re.findall(r'(?i)<img\b[^>]*\bsrc\s*=\s*["\']([^"\']+)["\']', md)
+        local = []
+        for l in links:
+            if re.match(r'(?i)^(https?:|data:)', l):
+                continue
+            p = re.sub(r'^\./|^/', '', l.split('#')[0].split('?')[0]).replace('%20', ' ')
+            if p not in local:
+                local.append(p)
+        for p in local:
+            if p not in tracked:
+                rep.error('repo: README', f'links {p}, which is not committed')
+        imgs = R['readme']['gameplay_images']
+        if len(local) < imgs['min']:
+            rep.error('repo: README', 'shows no gameplay image')
+        elif not imgs['recommended_min'] <= len(local) <= imgs['recommended_max']:
+            rep.warn('repo: README', f'{len(local)} images; the rule is a hero + gallery of {imgs["recommended_min"]}-{imgs["recommended_max"]} gameplay stills')
+        else:
+            rep.note('repo: README', f'{len(local)} images, all committed' if all(p in tracked for p in local) else f'{len(local)} images')
+    # banned names in tracked text files (LFS and binaries are scanned by package-game.ps1 -Rescan)
+    bn = R['banned_names']
+    rxs = [re.compile(p) for p in bn['patterns']]
+    skip = [re.compile(p) for p in bn['skip_paths']]
+    hits = {}
+    for f in files:
+        if f in lfs or ext_rx.search(f) or any(s.search(f) for s in skip):
+            continue
+        full = os.path.join(repo, f)
+        try:
+            if os.path.getsize(full) > 20 * 1024 * 1024:
+                continue
+            data = open(full, 'rb').read()
+        except OSError:
+            continue
+        if b'\0' in data[:8192]:
+            continue
+        text = data.decode('utf-8', 'replace')
+        for rx in rxs:
+            n = len(rx.findall(text))
+            if n:
+                hits.setdefault(f, []).append(f'{rx.pattern} x{n}')
+    for f, h in list(hits.items())[:15]:
+        rep.error('repo: banned names', f'{f}: {", ".join(h)}')
+    if len(hits) > 15:
+        rep.error('repo: banned names', f'... {len(hits) - 15} more files')
+    # assets.manifest.json: unified format, every listed file committed under Content/ or RawAssets/
+    if 'assets.manifest.json' in tracked:
+        try:
+            data = json.load(open(os.path.join(repo, 'assets.manifest.json'), encoding='utf-8-sig'))
+        except ValueError as e:
+            rep.error('repo: assets.manifest.json', f'not JSON: {e}')
+            data = None
+        if data is not None:
+            check_assets_manifest(rep, 'repo: assets.manifest.json', data,
+                                  lambda p: any(t.startswith(p) for t in files) if p.endswith('/') else (p in tracked or any(t.startswith(p + '/') for t in files)))
+    # workflow.jsonl: same row schema as the dataset copy (the packager rewrites nothing else)
+    if 'workflow.jsonl' in tracked:
+        with open(os.path.join(repo, 'workflow.jsonl'), encoding='utf-8-sig', errors='replace') as f:
+            check_workflow(rep, 'repo: workflow.jsonl', f)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
+    ap.add_argument('repo', nargs='?', help='a game repo (games/<slug>)')
+    ap.add_argument('--dataset', help='validate only this dataset (Dataset.zip or a Dataset folder)')
+    ap.add_argument('--no-layout', action='store_true', help='skip tools/validate-dataset.ps1')
+    ap.add_argument('--content-only', action='store_true', help=argparse.SUPPRESS)  # used by validate-dataset.ps1
+    ap.add_argument('--no-zip', action='store_true', help="skip the repo's Dataset.zip")
+    ap.add_argument('--json', help='write the findings as JSON')
+    ap.add_argument('--quiet', action='store_true', help='print only errors and warnings')
+    a = ap.parse_args()
+    if not a.repo and not a.dataset:
+        ap.error('give a game repo or --dataset')
+    rep = Report()
+    targets = []
+    if a.dataset:
+        targets.append((os.path.abspath(a.dataset), os.path.basename(os.path.normpath(a.dataset)) == 'Dataset'))
+    else:
+        repo = os.path.abspath(a.repo)
+        check_repo(rep, repo)
+        ds = os.path.join(repo, 'Dataset')
+        if os.path.isfile(os.path.join(ds, 'manifest.json')):
+            targets.append((ds, True))
+        else:
+            rep.warn('dataset', 'Dataset/ has no manifest.json: not packaged yet (tools/package-dataset.ps1)')
+        for z in ('Dataset.zip', 'Dataset.pending.zip'):
+            if not a.no_zip and os.path.isfile(os.path.join(repo, z)):
+                targets.append((os.path.join(repo, z), False))
+    for path, repo_ds in targets:
+        name = os.path.basename(path) if not repo_ds else 'Dataset/'
+        check_dataset(rep, path, f'dataset {name}')
+        if not a.no_layout and not a.content_only:
+            run_layout_validator(rep, path, repo_ds)
+    verdict = 'INVALID' if rep.count('error') else 'VALID'
+    print(f'{verdict}  {rep.count("error")} error(s), {rep.count("warning")} warning(s)  [{a.dataset or a.repo}]')
+    for sev, area, msg in rep.items:
+        if a.quiet and sev == 'note':
+            continue
+        mark = {'error': 'x', 'warning': '!', 'note': '-'}[sev]
+        print(f'  {mark} {area}: {msg}')
+    if a.json:
+        with open(a.json, 'w', encoding='utf-8') as f:
+            json.dump({'verdict': verdict, 'target': a.dataset or a.repo, 'findings': [dict(severity=s, area=ar, message=m) for s, ar, m in rep.items]}, f, indent=1)
+    sys.exit(2 if rep.count('error') else 0)
+
+
+if __name__ == '__main__':
+    main()
