@@ -437,17 +437,34 @@ def build_editor(ctx, label):
         # as modified on their own and the rest in unity blobs. The session building the game was editing those files,
         # so they compiled alone; in the replay's project other files share their blob (a global of another .cpp
         # shadows a local, C4459: rts-command w06; an include order hides a missing include: battle-boats w25). Once
-        # more with unity off, every file on its own as the session's edited files were.
+        # more with unity off for the game's own module, every file on its own as the session's edited files were. Not
+        # -DisableUnity: on an installed engine that asks for a unique build environment (the engine's own modules would
+        # have to be rebuilt); the project's Saved/UnrealBuildTool/BuildConfiguration.xml ModuleConfiguration/
+        # DisableUnityBuild changes only the listed module, and is removed again after the build.
         nu_label = label + "_nounity"
         nu_log = os.path.join(ctx.logs, "build_%s.log" % nu_label)
         nu_bat = os.path.join(ctx.logs, "build_%s.bat" % nu_label)
         with open(nu_bat, "w", encoding="utf-8") as f:
             f.write('@echo off\r\ncall "%s\\Engine\\Build\\BatchFiles\\Build.bat" %s Win64 Development -Project="%s" -WaitMutex '
-                    '-NoHotReloadFromIDE -DisableUnity -Log="%s" > "%s" 2>&1\r\nexit /b %%ERRORLEVEL%%\r\n' % (
+                    '-NoHotReloadFromIDE -Log="%s" > "%s" 2>&1\r\nexit /b %%ERRORLEVEL%%\r\n' % (
                         ctx.engine.replace("/", "\\"), cfg["editor_target"], ctx.uproject.replace("/", "\\"),
                         os.path.join(ctx.logs, "ubt_%s.txt" % nu_label), nu_log))
-        print("build %s: compile errors; once more without unity (-DisableUnity)" % label)
-        code, secs2 = heavy("ue-replay %s build %s (no unity)" % (cfg["game"], label), [nu_bat])
+        xml = os.path.join(ctx.proj, "Saved", "UnrealBuildTool", "BuildConfiguration.xml")
+        os.makedirs(os.path.dirname(xml), exist_ok=True)
+        old = open(xml, "rb").read() if os.path.isfile(xml) else None
+        with open(xml, "w", encoding="utf-8") as f:
+            f.write('<?xml version="1.0" encoding="utf-8" ?>\n<Configuration xmlns="https://www.unrealengine.com/BuildConfiguration">\n'
+                    '  <ModuleConfiguration>\n    <DisableUnityBuild>\n      <Item>%s</Item>\n    </DisableUnityBuild>\n'
+                    '  </ModuleConfiguration>\n</Configuration>\n' % cfg.get("module", cfg["editor_target"].replace("Editor", "")))
+        print("build %s: compile errors; once more with unity off for module %s" % (label, cfg.get("module")))
+        try:
+            code, secs2 = heavy("ue-replay %s build %s (no unity)" % (cfg["game"], label), [nu_bat])
+        finally:
+            if old is None:
+                os.remove(xml)
+            else:
+                with open(xml, "wb") as f:
+                    f.write(old)
         secs += secs2
         log = nu_log
     return code, secs, log

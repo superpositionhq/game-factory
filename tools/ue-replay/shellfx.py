@@ -168,8 +168,16 @@ class Sandbox:
     def close(self):
         shutil.rmtree(self.dir, ignore_errors=True)
 
-    def run(self, states, candidates, cwd_rel, kind, payload, timeout=60):
-        """Materialize candidates, run one fragment. python/sed: (ok, err, {path: new bytes}); sed_stdout: (ok, err, stdout)."""
+    def run(self, states, candidates, cwd_rel, kind, payload, timeout=300):
+        """Materialize candidates, run one fragment. python/sed: (ok, err, {path: new bytes}); sed_stdout: (ok, err, stdout).
+        A fragment that outlives `timeout` is a failed fragment like any other (the window then takes the commit's
+        text), not the end of the replay (giant-fall: a host-python step past the old 60 s stopped the whole job)."""
+        try:
+            return self._run(states, candidates, cwd_rel, kind, payload, timeout)
+        except subprocess.TimeoutExpired:
+            return (False, "sandbox: timed out after %d s" % timeout) + ((b"",) if kind == "sed_stdout" else ({},))
+
+    def _run(self, states, candidates, cwd_rel, kind, payload, timeout):
         shutil.rmtree(self.dir, ignore_errors=True)
         os.makedirs(self.dir)
         before = {}

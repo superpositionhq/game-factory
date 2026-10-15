@@ -721,6 +721,14 @@ def cmd_release(cfg, a):
         code, secs, log = build_truth(rcfg, "truth_release")
         if code:
             raise SystemExit("release: truth editor build failed (%s)" % log)
+        # the replay project's editor too: a replay whose last windows needed no build (or whose engine switched at a
+        # port) has no module binaries for its final code, and its dump stops at "game module could not be found"
+        # (metro-runner)
+        rctx = runner.Ctx(rcfg)
+        rctx.set_engine(rctx.engine_for(rctx.uproject))
+        code, secs, log = runner.build_editor(rctx, "replay_release")
+        if code:
+            raise SystemExit("release: replay editor build failed (%s)" % log)
         for which in ("truth", "replay"):
             runner.cmd_dump(rcfg, type("A", (), {"which": which, "only": None}))
         v = verify.cmd_verify(rcfg, a)
