@@ -326,6 +326,22 @@ def check_dataset(rep, path, area='dataset'):
             rep.error(a, 'status complete needs replay_verification.pass = true')
     else:
         rep.warn(a, f'status pending: {", ".join(m["pending"]) or "(nothing listed)"}')
+    # v1.2: Brief/, the person's directions, History/
+    if m['layout'] == 'dataset-layout/v1.2':
+        b = m.get('brief')
+        if not isinstance(b, dict):
+            rep.error(a, 'layout v1.2 needs brief {"brief": "Brief/brief.md", "design": "Brief/design.md"}')
+        for rel in ('Brief/brief.md', 'Brief/design.md'):
+            if not v.has(rel):
+                rep.error(area, f'no {rel}')
+            elif v.sizes[rel] < 200:
+                rep.error(area, f'{rel} is nearly empty ({v.sizes[rel]} bytes)')
+        if not directions:
+            rep.warn(f'{area}: workflow.jsonl', "no user.direction rows: the person's directions are recorded nowhere else")
+        if m['variant'] == 'full':
+            check_history(rep, area, v, m)
+        elif m.get('history') is not None or v.has_dir('History'):
+            rep.error(area, 'a repo Dataset/ has no History/ and history null (the repo is its own history)')
     # full variant: every asset file listed by the project's assets.manifest.json is inside UEProject/
     if m['variant'] == 'full':
         am = 'UEProject/assets.manifest.json'
@@ -337,6 +353,107 @@ def check_dataset(rep, path, area='dataset'):
     rep.note(area, f'{m["game"]} {m["variant"]} {m["status"]}: {len(m["files"])} files, {len(m["scenarios"])} scenario video(s)')
 
 
+LFS_PTR = re.compile(rb'^version https://git-lfs\.github\.com/spec/v1\r?\noid sha256:([0-9a-f]{64})\r?\nsize ([0-9]+)')
+OPTS = {'hash': True, 'quick': False}
+
+
+def git_out(*args, input=None):
+    r = subprocess.run(['git', *args], capture_output=True, input=input)
+    if r.returncode != 0:
+        raise RuntimeError(f'git {" ".join(args[:3])}: {r.stderr.decode("utf-8", "replace").strip()[:200]}')
+    return r.stdout
+
+
+def check_history(rep, area, v, m):
+    """v1.2 full variant: History/<game>.bundle + History/lfs/objects (every LFS object of every commit)."""
+    import hashlib, tempfile
+    a = f'{area}: History'
+    h = m.get('history')
+    if not isinstance(h, dict):
+        rep.error(a, 'manifest.json history must be an object in a v1.2 Dataset.zip')
+        return
+    if h['head'] != m['commit']:
+        rep.error(a, f'history.head {h["head"][:12]} differs from manifest commit {m["commit"][:12]}')
+    if not v.has(h['bundle']):
+        rep.error(a, f'no {h["bundle"]}')
+        return
+    objs = {rel[len('History/lfs/objects/'):].split('/')[-1]: rel for rel in v.names if rel.startswith('History/lfs/objects/')}
+    for oid, rel in objs.items():
+        if not re.fullmatch(r'[0-9a-f]{64}', oid) or rel != f'History/lfs/objects/{oid[:2]}/{oid[2:4]}/{oid}':
+            rep.error(a, f'{rel}: not at lfs/objects/<aa>/<bb>/<sha256>')
+    if len(objs) != h['lfs_objects'] or sum(v.sizes[r] for r in objs.values()) != h['lfs_bytes']:
+        rep.error(a, f'{len(objs)} LFS objects / {sum(v.sizes[r] for r in objs.values())} bytes, manifest history says {h["lfs_objects"]} / {h["lfs_bytes"]}')
+    if OPTS['quick']:
+        rep.note(a, 'quick: bundle contents and LFS hashes not checked')
+        return
+    with tempfile.TemporaryDirectory(prefix='validate-game-') as tmp:
+        bundle = v.names[h['bundle']]
+        if v.zip:
+            bundle = os.path.join(tmp, 'h.bundle')
+            with v.zip.open(v.names[h['bundle']]) as src, open(bundle, 'wb') as dst:
+                shutil.copyfileobj(src, dst, 1 << 20)
+        try:
+            heads = git_out('bundle', 'list-heads', bundle).decode().split()
+            if h['head'] not in heads:
+                rep.error(a, f'the bundle has no ref at history.head {h["head"][:12]}')
+            bare = os.path.join(tmp, 'repo.git')
+            git_out('clone', '--quiet', '--bare', '--mirror', bundle, bare)
+            commits = git_out('-C', bare, 'rev-list', '--all').decode().split()
+            if len(commits) != h['commits']:
+                rep.error(a, f'the bundle holds {len(commits)} commits, manifest history says {h["commits"]}')
+            idents = set(git_out('-C', bare, 'log', '--all', '--format=%an%n%cn%n%ae%n%ce').decode('utf-8', 'replace').split('\n')) - {''}
+            bad = sorted(i for i in idents if not re.fullmatch(r'dev_[0-9]+(@[a-z0-9.-]+)?', i))
+            if bad:
+                rep.error(a, f'{len(bad)} author/committer identities are not anonymised (dev_NN), e.g. {bad[0][:3]}...')
+            msgs = git_out('-C', bare, 'log', '--all', '--format=%B').decode('utf-8', 'replace')
+            for p in SPEC['repo']['banned_names']['patterns']:
+                n = len(re.findall(p, msgs))
+                if n:
+                    rep.error(a, f'commit messages: {p} x{n}')
+            # every LFS pointer of every commit has its object
+            objlist = git_out('-C', bare, 'rev-list', '--objects', '--all').decode('utf-8', 'replace').splitlines()
+            shas = '\n'.join(l.split(' ')[0] for l in objlist) + '\n'
+            small = [l.split(' ') for l in git_out('-C', bare, 'cat-file', '--batch-check=%(objectname) %(objecttype) %(objectsize)',
+                                                   input=shas.encode()).decode().splitlines()]
+            cand = [s[0] for s in small if len(s) == 3 and s[1] == 'blob' and int(s[2]) < 300]
+            need, missing = set(), []
+            if cand:
+                data = git_out('-C', bare, 'cat-file', '--batch', input=('\n'.join(cand) + '\n').encode())
+                pos = 0
+                while pos < len(data):
+                    nl = data.index(b'\n', pos)
+                    size = int(data[pos:nl].split()[2])
+                    body = data[nl + 1:nl + 1 + size]
+                    pos = nl + 1 + size + 1
+                    mm = LFS_PTR.match(body)
+                    if mm:
+                        need.add((mm.group(1).decode(), int(mm.group(2))))
+            for oid, size in sorted(need):
+                rel = objs.get(oid)
+                if not rel:
+                    missing.append(oid)
+                elif v.sizes[rel] != size:
+                    rep.error(a, f'LFS object {oid[:12]}: {v.sizes[rel]} bytes, its pointer says {size}')
+            for oid in missing[:10]:
+                rep.error(a, f'LFS object {oid[:12]}... is referenced by a commit but not in History/lfs/objects')
+            if len(missing) > 10:
+                rep.error(a, f'... {len(missing) - 10} more LFS objects missing')
+            if OPTS['hash']:
+                badhash = 0
+                for oid, rel in objs.items():
+                    hs = hashlib.sha256()
+                    with (v.zip.open(v.names[rel]) if v.zip else open(v.names[rel], 'rb')) as f:
+                        for chunk in iter(lambda: f.read(1 << 20), b''):
+                            hs.update(chunk)
+                    if hs.hexdigest() != oid:
+                        badhash += 1
+                        if badhash <= 5:
+                            rep.error(a, f'{rel}: content does not hash to its name')
+            rep.note(a, f'{len(commits)} commits, {len(heads) // 2} ref(s), {len(need)} LFS objects referenced, {len(objs)} present')
+        except (RuntimeError, ValueError, IndexError) as e:
+            rep.error(a, f'cannot read the bundle: {e}')
+
+
 def run_layout_validator(rep, path, repo_dataset):
     ps = shutil.which('powershell') or shutil.which('pwsh')
     if not ps:
@@ -346,10 +463,11 @@ def run_layout_validator(rep, path, repo_dataset):
     if repo_dataset:
         args.append('-RepoDataset')
     r = subprocess.run(args, capture_output=True, text=True, encoding='utf-8', errors='replace', env=dict(os.environ, GF_SKIP_CONTENT='1'))
-    out = (r.stdout + r.stderr).strip().splitlines()
-    verdict = out[0].strip() if out else '?'
+    out = r.stdout.strip().splitlines()
+    vl = [l for l in out if re.match(r'^(VALID|PENDING|INVALID) ', l)]
+    verdict = vl[0].strip() if vl else f'no verdict (exit {r.returncode}): {r.stderr.strip()[:200]}'
     area = f'layout ({os.path.basename(path)})'
-    for line in out[1:]:
+    for line in out:
         s = line.strip()
         if s.startswith('x '):
             rep.error(area, s[2:])
@@ -474,7 +592,11 @@ def main():
     ap.add_argument('--no-zip', action='store_true', help="skip the repo's Dataset.zip")
     ap.add_argument('--json', help='write the findings as JSON')
     ap.add_argument('--quiet', action='store_true', help='print only errors and warnings')
+    ap.add_argument('--no-hash', action='store_true', help='skip hashing History/ LFS objects')
+    ap.add_argument('--quick', action='store_true', help='skip unpacking the History/ bundle')
     a = ap.parse_args()
+    OPTS['hash'] = not a.no_hash
+    OPTS['quick'] = a.quick
     if not a.repo and not a.dataset:
         ap.error('give a game repo or --dataset')
     rep = Report()

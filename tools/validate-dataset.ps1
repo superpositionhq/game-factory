@@ -62,6 +62,12 @@ if (-not $files.ContainsKey('manifest.json')) { E 'manifest.json is missing' }
 else {
     try { $man = Read-Text 'manifest.json' | ConvertFrom-Json } catch { E "manifest.json is not valid JSON: $($_.Exception.Message)" }
 }
+# The spec follows the delivery's own layout version unless -SpecFile names one (v1.1 deliveries stay valid as v1.1).
+if (-not $PSBoundParameters.ContainsKey('SpecFile') -and $man -and (Get-Prop $man 'layout') -eq 'dataset-layout/v1.2') {
+    $SpecFile = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) '..\docs\dataset-layout-v1.2.json'
+    $L = Get-Content $SpecFile -Raw -Encoding UTF8 | ConvertFrom-Json
+}
+$unlisted = Get-Prop (Get-Prop $L 'unlisted_allowed') 'prefix'   # v1.2: History/lfs/objects/ (content-addressed, not in files[])
 $game = $null; $status = $null
 if ($man) {
     foreach ($k in $L.manifest.required_keys) { if ($null -eq $man.PSObject.Properties[$k]) { E "manifest.json has no '$k'" } }
@@ -135,6 +141,7 @@ if ($man) {
     $listed = @{}; foreach ($f in @(Get-Prop $man 'files')) { $listed[$f.path] = $f }
     foreach ($rel in @($files.Keys)) {
         if ($rel -eq 'manifest.json' -or ($RepoDataset -and $rel -eq '.gitattributes')) { continue }
+        if ($unlisted -and $rel.StartsWith($unlisted)) { continue }
         if (-not $listed.ContainsKey($rel)) { E "$rel is not in manifest.json"; continue }
         if ([long]$listed[$rel].bytes -ne [long]$files[$rel]) { E "${rel}: size $($files[$rel]) differs from manifest.json ($($listed[$rel].bytes))" }
     }
@@ -170,7 +177,10 @@ else {
     foreach ($v in @($files.Keys | Where-Object { $_ -like 'Gameplay/*.mp4' } | Sort-Object)) {
         $p = if ($isZip) { if (-not $tmp) { $tmp = Join-Path $env:TEMP "validate-dataset-$PID"; New-Item -ItemType Directory -Force $tmp | Out-Null }
             $x = Join-Path $tmp ($v -split '/')[-1]; [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entryOf[$v], $x, $true); $x } else { Join-Path $full $v }
-        $j = & $ffprobe -v error -show_entries 'stream=codec_type,codec_name,width,height:format=format_name,duration' -of json $p | Out-String | ConvertFrom-Json
+        $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        $j = $null; try { $j = & $ffprobe -v error -show_entries 'stream=codec_type,codec_name,width,height:format=format_name,duration' -of json $p 2>$null | Out-String | ConvertFrom-Json } catch { }
+        $ErrorActionPreference = $old
+        if (-not $j -or -not (Get-Prop $j 'format')) { E "$v cannot be read as a video"; if ($isZip) { Remove-Item -Force $p }; continue }
         $vs = @($j.streams | Where-Object codec_type -eq 'video'); $as = @($j.streams | Where-Object codec_type -eq 'audio')
         $g = $L.gameplay_video
         if ($j.format.format_name -notmatch 'mp4') { E "$v is not an mp4 ($($j.format.format_name))" }
