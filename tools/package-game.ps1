@@ -1127,7 +1127,11 @@ $OpusCodec = @(
     '\w*Audio(?:En|De)coder\w*Opus\w*', '\w*Opus(?:Impl|Config|Decoder|Encoder|AudioInfo|Format|Codec|Header|Head|Tags|File)\w*',
     '[\w./-]*opus[\w.-]*\.(?:c|cc|cpp|h)',                            # codec source file names
     'opus/\d+(?:/\d+)?', 'audio/opus', 'A_OPUS',
-    'AudioFormatOpus[\w.]*'                                           # UE's Opus audio format key in SoundWave data (AudioFormatOPUS.LastCompileMethod)
+    'AudioFormatOpus[\w.]*',                                          # UE's Opus audio format key in SoundWave data (AudioFormatOPUS.LastCompileMethod)
+    # UE 5.7 Shipping binaries and IoStore (global.ucas): the Opus decoder, the compression enums, Interchange's
+    # audio translator and its feature flag
+    'Opus\w*(?:Decoder|Encoder)\w*', 'E\w*CompressionType::Opus', '\w*InterchangeAudioTranslator_OPUS\w*',
+    'Interchange\.FeatureFlags\.Import\.Audio\.OPUS'
 )
 $Locale = @('zh[-_]xiang',                                           # UE's Xiang Chinese locale ids
     'wuxiangshan[\w.]*')                                              # 无相山 (WuXiangShan), a place name in game content, and asset names built on it (WuXiangShanBoss1, ...)
