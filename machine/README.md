@@ -60,7 +60,7 @@ source (config set by hand, config from bootstrap, or computed at run time). The
 | `hooks/recording-exclude.txt` | `~\.claude\hooks\` (once) | session ids never recorded (the coordinator) |
 | `install-git-hook.ps1` | `<game>\.git\hooks\post-commit` | appends the commit recorder after Git LFS's own lines |
 | `asset-scout/` | `<root>\tools\asset-scout\` | Fab / Poly Haven / CC0 download and catalogue tools ([README](asset-scout/README.md)) |
-| `coordinator/repo-audit.ps1`, `coordinator/watch.ps1` | | coordinator: pre-push audit of a game repo; background watcher that wakes on queue/run/tag changes |
+| `coordinator/repo-audit.ps1`, `coordinator/watch.ps1` | | coordinator: pre-push audit of a game repo (exits 1 when README.md links an image not committed at HEAD or origin/main, or shows none); background watcher that wakes on queue/run/tag changes |
 
 `recording-sessions.json` (session id -> project map) is runtime state: bootstrap creates it empty next to the
 hooks and never overwrites it.
