@@ -67,6 +67,7 @@ param(
     [switch]$NoGitHistory,          # skip GitHistory\ (the rewritten full history for dataset layout v1.2: bundle + every LFS object)
     [switch]$LfsUnpatchableUseHead, # an LFS object naming the account outside a safe context: HEAD's clean version of its path stands in
     [switch]$Dataset,               # after packaging, build the dataset delivery (package-dataset.ps1, layout v1.2); see the end of this file
+    [string]$TasksRef = '',         # where Tasks/ comes from: '' = the orphan branch `tasks`, else `origin/tasks` (never main's tree)
     [string]$ReplayScripts          # with -Dataset: ReplayScripts\ from the replay session
 )
 
@@ -1455,14 +1456,26 @@ $storeByFolder = $storeRows | Group-Object { $p = $_.f.Path -split '/'; if ($p.C
 if (-not [GameDeliverable.Tools]::WriteBlob($repo, "${sha}:workflow.jsonl", (Join-Path $stage 'workflow.jsonl'))) {
     $problems.Add('error: no workflow.jsonl at the commit')
 }
-# Tasks/: the game's tasks at the commit (one GameTask per <name>.json), kept out of UEProject/ (they hold every task's
-# grader answers); scrubbed and seed-mapped with the package, split into agent / grader parts by package-dataset.ps1
-$taskFiles = @(Invoke-Git $repo @('-c', 'core.quotepath=off', 'ls-tree', '--name-only', "${sha}:Tasks") -AllowFail | ForEach-Object { "$_".Trim() } | Where-Object { $_ -like '*.json' })
+# Tasks/: the game's tasks (one GameTask per <name>.json) from the tip of the repo's orphan `tasks` branch (-TasksRef;
+# default `tasks`, else `origin/tasks`), never from main's tree: task work stays out of the delivered history. Kept out of
+# UEProject/ (they hold every task's grader answers); scrubbed and seed-mapped with the package (seeds name commits of
+# the delivered history), split into agent / grader parts by package-dataset.ps1.
+$tasksAt = $null
+foreach ($r in $(if ($TasksRef) { @($TasksRef) } else { @('tasks', 'origin/tasks') })) {
+    $c = @(Invoke-Git $repo @('rev-parse', '--verify', '-q', "$r^{commit}") -AllowFail | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match '^[0-9a-f]{40}$' })
+    if ($c.Count) { $tasksAt = @{ ref = $r; commit = $c[0] }; break }
+}
+if ($TasksRef -and -not $tasksAt) { throw "-TasksRef ${TasksRef}: no such commit in $repo" }
+$taskFiles = @()
+if ($tasksAt) {
+    $taskFiles = @(Invoke-Git $repo @('-c', 'core.quotepath=off', 'ls-tree', '--name-only', "$($tasksAt.commit):Tasks") -AllowFail | ForEach-Object { "$_".Trim() } | Where-Object { $_ -like '*.json' })
+}
 if ($taskFiles.Count) {
     $tasksStage = Join-Path $stage 'Tasks'; New-Item -ItemType Directory -Force $tasksStage | Out-Null
-    foreach ($tf in $taskFiles) { [void][GameDeliverable.Tools]::WriteBlob($repo, "${sha}:Tasks/$tf", (Join-Path $tasksStage $tf)) }
-    Write-Step "tasks: $($taskFiles.Count) from Tasks/ at the commit"
-} else { [void]$warnings.Add('Tasks/: no tasks at the commit (dataset layout v1.3 needs at least one; about 10 recommended)') }
+    foreach ($tf in $taskFiles) { [void][GameDeliverable.Tools]::WriteBlob($repo, "$($tasksAt.commit):Tasks/$tf", (Join-Path $tasksStage $tf)) }
+    Write-Step "tasks: $($taskFiles.Count) from Tasks/ on $($tasksAt.ref) ($($tasksAt.commit.Substring(0, 12)))"
+} elseif ($tasksAt) { [void]$warnings.Add("Tasks/: no tasks on $($tasksAt.ref) (dataset layout v1.3 needs at least one; about 10 recommended)") }
+else { [void]$warnings.Add('Tasks/: no tasks branch (neither tasks nor origin/tasks; dataset layout v1.3 needs at least one task; about 10 recommended)') }
 Write-Step 'writing git.log'
 $authors = New-Object 'System.Collections.Generic.Dictionary[string,string]'
 $glHeader = "GIT-LOG 1`n# Project $($info.ProjectName) ($Game): the original git history up to commit $sha, oldest first.`n" +

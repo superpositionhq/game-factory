@@ -301,13 +301,14 @@ if (-not $OutRoot) {
 $lockPath = Join-Path $outDir '_dataset.lock'
 try { $script:Lock = [System.IO.File]::Open($lockPath, 'OpenOrCreate', 'ReadWrite', 'None') }
 catch [System.IO.IOException] { throw "another package-dataset run for $Game is in progress ($lockPath is held); wait for it to finish" }
-# ---- Tasks/ (layout v1.3): the game's tasks from its repo (package-game.ps1 staged Tasks/ at the commit, scrubbed,
-# seed commits mapped to the delivered history), each split into the agent's part and the grader's part ---------------
+# ---- Tasks/ (layout v1.3): the game's tasks from its repo (package-game.ps1 staged Tasks/ from the tip of the orphan
+# `tasks` branch, scrubbed, seed commits mapped to the delivered history), each split into the agent's part and the
+# grader's part -------------------------------------------------------------------------------------------------------
 $taskNames = @(); $taskRows = @(); $tasksDir = Join-Path $outDir '_tasks'
 if ($layout -eq 'dataset-layout/v1.3') {
     $pkgTasks = Join-Path $pkg 'Tasks'
     $srcTasks = @(Get-ChildItem -LiteralPath $pkgTasks -Filter *.json -File -ErrorAction SilentlyContinue)
-    if (-not $srcTasks.Count) { throw "the package has no tasks (the game repo's Tasks/ at the commit is empty): layout v1.3 needs at least one (about 10 recommended); -NoTasks builds v1.2" }
+    if (-not $srcTasks.Count) { throw "the package has no tasks (the game repo has no tasks branch, or no Tasks/*.json on it): layout v1.3 needs at least one (about 10 recommended); -NoTasks builds v1.2" }
     $delivered = @{}; foreach ($v in $commitMap.Values) { $delivered[$v] = 1 }
     foreach ($f in $srcTasks) {
         $j = [IO.File]::ReadAllText($f.FullName) | ConvertFrom-Json
