@@ -5,6 +5,11 @@ sign-ins and installs that cannot be scripted. About half a day, most of it down
 GB each with their store packs). `machine/setup.ps1` does the rest; it is idempotent and resumable: after any manual
 step or a reboot, run it again and it continues where it stopped.
 
+> **Not yet proven on a clean PC.** setup.ps1 has been tested only against scratch roots on a machine that already had
+> the toolchain (dry runs, a standalone copy that cloned the repo, a "Download ZIP" copy, resume from saved answers);
+> the winget installs, UAC steps and sign-ins have not yet run end to end on a fresh Windows install. Report what
+> breaks on the first real clean run.
+
 ## Before you start
 
 | You need | Why |
