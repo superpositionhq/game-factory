@@ -7,6 +7,22 @@ timestamps, screen video, inputs, code commits and a playtest with inputs.
 
 **Priorities (user decision).** What ships is what matters, in this order: the game plays; the game builds (editor and packaged Shipping); the dataset holds the replay scripts and the git log. The AutoPlay bot should still play like a human (human-like input, aim and camera), but bot work never blocks a release: one recording per scenario that shows the game running is enough, whatever the result (win/lose/timeout is metadata). No tuning for win rates, seed sweeps or "clean" runs, and no re-runs or re-recordings to improve how the bot plays. No retest loops: every GPU or editor run costs about 30 minutes of the shared machine and holds up delivery, so run the minimum once and report; re-run only when the user asks. Game-session work never blocks dataset packaging or sharing.
 
+## Getting started
+
+On a fresh Windows 11 PC (8+ threads, 16 GB RAM or more, 300 GB free; an NVIDIA GPU only for recording), with a
+GitHub account in `<org>` (the organisation that owns this repo and the private `game-<slug>` repos), an Epic Games
+account and a Claude account:
+
+1. Get `machine/setup.ps1` (Download ZIP on github.com, or `gh api`; [docs/new-machine.md](docs/new-machine.md)) and
+   run the one command: `powershell -ExecutionPolicy Bypass -File setup.ps1 -Org <org>`. It installs the toolchain
+   through winget, asks before changing Windows settings, signs in to GitHub, clones this repo into the root, runs
+   `machine/bootstrap.ps1` (which asks before installing the recording hooks) and `machine/check.ps1`, and ends with a
+   PASS / TODO list.
+2. Do the TODOs only you can do (Epic sign-in + Unreal Engine 5.7 in the Launcher, the NVIDIA driver, Fab and Claude
+   sign-in) and run setup again until nothing is left.
+3. Start the first session: with the desktop app, the coordinator ([docs/briefs/coordinator.md](docs/briefs/coordinator.md));
+   or solo in a terminal, one game with [docs/briefs/solo-game.md](docs/briefs/solo-game.md).
+
 ## How a game goes from idea to dataset
 
 1. **Story bible and design doc**: `docs/games/<slug>.md` (pitch, systems, maps, scenarios, art and story), after a
@@ -59,7 +75,7 @@ Each game repo keeps the same delivery in `Dataset/`, minus `UEProject/` and `Bu
 - [AGENTS.md](AGENTS.md): rules for agents working here (each with the failure behind it).
 - [CLAUDE.md](CLAUDE.md): what every Claude session reads first; points at the skills in `.claude/skills/`
   (commit-always, game-session).
-- [docs/new-machine.md](docs/new-machine.md): setting up another Windows machine (`machine/bootstrap.ps1`, `machine/check.ps1`).
+- [docs/new-machine.md](docs/new-machine.md): setting up another Windows machine (`machine/setup.ps1`, which runs `machine/bootstrap.ps1` and `machine/check.ps1`).
 - [docs/briefs/](docs/briefs/README.md): the prompts that start the coordinator, game and helper sessions (templates + originals).
 
 ## Layout
@@ -68,7 +84,7 @@ Each game repo keeps the same delivery in `Dataset/`, minus `UEProject/` and `Bu
 tools/ue-pipeline/                  UE build, package and gameplay recording pipeline; AutoPlay drop-in
 tools/package-game.ps1, package-dataset.ps1   per-game deliverables and dataset layout v1.1
 tools/ue-replay/                    creation replay: per-commit (live) and at release; ReplayScripts/ of the dataset
-machine/                            machine setup: bootstrap/check, ue-heavy limiter, recording hooks, ffmpeg, asset-scout
+machine/                            machine setup: setup (entry point), bootstrap/check, ue-heavy limiter, recording hooks, ffmpeg, asset-scout
 templates/                          UE 5.7 game skeleton + new-game.ps1
 .claude/skills/                     commit-always, game-session
 docs/                               everything learned so far; docs/briefs/ = session prompts

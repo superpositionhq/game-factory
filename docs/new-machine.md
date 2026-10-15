@@ -1,136 +1,129 @@
 # Setting up a new machine
 
-Goal: a Windows PC on which the coordinator can start the same game-building sessions on day one. About half a day,
-most of it downloads (engine ~60 GB, game repos 3-16 GB each with LFS, asset library ~160 GB if rebuilt).
-Steps marked **(manual)** need a person: a sign-in, a licence, a UAC prompt or a purchase. Everything else is scripted
-and idempotent (`machine/bootstrap.ps1` can be run again any time).
+Goal: a teammate with a fresh Windows 11 PC goes from nothing to building games with **one command** plus the few
+sign-ins and installs that cannot be scripted. About half a day, most of it downloads (engine ~60 GB, game repos 3-16
+GB each with their store packs). `machine/setup.ps1` does the rest; it is idempotent and resumable: after any manual
+step or a reboot, run it again and it continues where it stopped.
 
-Example machine (the first one; not a requirement): Windows 11 Pro, 8-core CPU, 32 GB RAM, 16 GB NVIDIA GPU, 4K
-display at 120 Hz and 150 % scaling, ~400 GB free. Minimums are what `machine/check.ps1` checks.
+## Before you start
 
-## 1. Windows and drivers
+| You need | Why |
+|---|---|
+| Windows 11, 8+ logical cores, 16 GB RAM (32 GB recommended), 300 GB free (150 GB at the very least) on the drive that will hold the root, a DirectX 12 GPU | building and packaging UE 5.7 games; setup checks these first |
+| An NVIDIA GPU (8 GB+ VRAM) | only for recording gameplay videos (NVENC); without one, recording falls back to slower encoders |
+| A GitHub account that is a member of `<org>` (the organisation, or user, that owns `game-factory` and the private `game-<slug>` repos), allowed to create private repos there | an owner of `<org>` adds you |
+| An Epic Games account | the Unreal Engine EULA and the Launcher download; Fab (store packs) uses the same account |
+| A Claude account | Claude Code in a terminal, or the Claude desktop app (Code tab) |
+| Admin rights on the PC | a few UAC prompts (Build Tools, long paths) |
 
-1. **(manual)** NVIDIA driver **>= 610** (GeForce/Studio driver from nvidia.com or the NVIDIA app). Recording encodes
-   with NVENC through the pinned ffmpeg; without it record.ps1 falls back to AMF, then slow CPU encoding.
-2. **(manual)** Display: refresh rate as high as the monitor allows (Settings > System > Display > Advanced display;
-   a multiple of 60 Hz for recording, e.g. 120 Hz; at least 60 Hz). The primary display must hold a 1920x1080
-   window (physical pixels). Screen and sleep: **Never** while plugged in
-   (Settings > System > Power), or as admin: `powercfg /change monitor-timeout-ac 0` and
-   `powercfg /change standby-timeout-ac 0`. A display that sleeps during a long build has cost a recording before.
-3. Optional (admin): enable long paths (`LongPathsEnabled=1`); Fab packs nest deeply. Keeping the root short
-   (e.g. `C:\Work`) also helps.
-4. Known trouble: vendor RGB/lighting services can leak commit memory; if free commit memory keeps falling, find the
-   process with the growing commit and restart or disable that service. Windows Firewall prompts dim the screen and block capture;
-   recording builds are Shipping, which does not trigger them.
+## 1. Run setup
 
-## 2. Toolchain (winget; each needs a UAC click)
+The repo is private, so fetch the script with your GitHub account. Either:
 
-```bash
-winget install --id Git.Git -e
-```
-```bash
-winget install --id GitHub.cli -e
-```
-```bash
-winget install --id Python.Python.3.12 -e
-```
-```bash
-winget install --id Microsoft.DotNet.Framework.DeveloperPack_4 -e
-```
-```bash
-winget install --id Microsoft.VisualStudio.2022.BuildTools -e --override "--passive --wait --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.14.44.17.14.x86.x64 --add Microsoft.VisualStudio.Component.Windows11SDK.22621 --add Microsoft.Net.Component.4.8.1.SDK --includeRecommended"
-```
-
-- MSVC must be **14.44** (`VC\Tools\MSVC\14.44.*`, e.g. 14.44.35207), with VS 2022 17.14 kept updated: UE 5.7 bans
-  compiler versions 14.44.0-14.44.35210, and an updated 17.14 puts a newer compiler in that folder (UBT's log line
-  "Using Visual Studio 2022 14.44.35229 toolchain" shows the compiler version). The games made on UE 5.3 carry the
-  fix 5.3 needs with it in their Target.cs (`bOverrideBuildEnvironment = true;
-  GlobalDefinitions.Add("PLATFORM_HAS_ASAN_INCLUDE=0");`); the 5.7 template needs none. If the installer also puts a
-  newer MSVC next to it, pin UBT to 14.44 in `%APPDATA%\Unreal Engine\UnrealBuildTool\BuildConfiguration.xml`:
-  `<WindowsPlatform><CompilerVersion>14.44.35207</CompilerVersion></WindowsPlatform>`. The component id above is the
-  VS 17.14 name for the 14.44 toolset; if winget rejects it, add "MSVC v143 - VS 2022 C++ x64/x86 build tools
-  (v14.44)" under Individual components in the VS Installer.
-- The .NET Framework **4.8.1** SDK is required: without `Windows Kits\NETFXSDK\4.8.1` UBT cannot build any editor
-  target (SwarmInterface).
-- Git LFS ships with Git for Windows; `bootstrap.ps1` sets up its filters.
-
-## 3. Accounts and licences (manual)
-
-1. **GitHub**: `gh auth login` (GitHub.com, HTTPS, log in with a browser) with an account that is a member of
-   **`<org>`** (the GitHub organisation set as `github_org`) and may create private repos there. Set `git config --global user.name` / `user.email` for the
-   commits the sessions make.
-2. **Epic Games**: install the Epic Games Launcher, sign in, accept the Unreal Engine EULA, and install **Unreal
-   Engine 5.7** (Library > + > 5.7.x) to `C:\Program Files\Epic Games\UE_5.7` (another folder works: set `engine` in
-   the config). To rebuild, record or replay a game made on 5.3 (its `.uproject` names 5.3), also install 5.3.x next
-   to it (`UE_5.3`; elsewhere: `"engines": {"5.3": "<folder>"}` in the config). The engine EULA acceptance and the Launcher sign-in cannot be scripted.
-3. **Fab**: sign in at fab.com with the Epic account that owns the purchased packs (the paid list is in
-   `docs/fab-shopping-list.md`; the user bought them on the Personal tier). Purchases and licence choices stay with the
-   user. For the asset-scout session, sign in to fab.com **in the Claude browser pane** too: its tools download owned
-   packs with that session (`fabdl.py`, `fabue.py`) and never see or store credentials.
-4. **Claude**: install Claude desktop (Code tab) or Claude Code, sign in. Sessions run in the root folder (below).
-
-## 4. Clone and bootstrap
+- on github.com (signed in), open `<org>/game-factory`, **Code > Download ZIP**, unzip it anywhere and run
+  `machine\setup.ps1` from it (setup then clones the repo properly into the root), or
+- in PowerShell, with the GitHub CLI (open a new terminal after installing it):
 
 ```bash
-git clone https://github.com/<org>/game-factory C:/Users/<you>/Work/game-factory
+winget install -e --id GitHub.cli
 ```
 ```bash
-powershell -ExecutionPolicy Bypass -File C:/Users/<you>/Work/game-factory/machine/bootstrap.ps1 -CloneGames
+gh auth login --web
+```
+```bash
+gh api -H "Accept: application/vnd.github.raw" repos/<org>/game-factory/contents/machine/setup.ps1 > setup.ps1
 ```
 
-The root defaults to `%USERPROFILE%\Work` (the original layout); pass `-Root D:\Work` for another one, and clone the
-repo into `<root>\game-factory`. Bootstrap:
-
-- writes `%USERPROFILE%\.game-factory\config.json` (`root`, `ueb` = `C:\UEB` for the private build clones, `engine`,
-  `record_extra_projects` = `[]`: extra project folders under the root that the recording hooks also log, none by
-  default) and creates the layout: `games\ builds\_queue\ builds\_logs\ recordings\ .recording\ deliverables\ asset-library\
-  tools\` and `C:\UEB\src`, `C:\UEB\tmp`;
-- sizes the machine-wide job slots from the hardware (logical cores, RAM, commit limit, GPU count and VRAM): writes
-  `heavy_slots` (concurrent heavy Unreal jobs) and `gpu_slots` (concurrent rendering jobs) to the config, with the
-  computed values and their basis in `slots_auto`. Formula and guards: [ue-pipeline.md](ue-pipeline.md), "Machine-wide
-  slots". To change them, edit `heavy_slots` / `gpu_slots` (and optionally `gpu_vram_limit_mb`) in the config; later
-  bootstrap runs keep values set by hand (`-Force` recomputes them). A new count takes effect once the jobs that hold
-  the old one have ended;
-- installs `tools\ue-heavy.ps1` (machine-wide job limiter), `tools\asset-scout\`, and the pinned ffmpeg 8.1.2
-  (downloaded from gyan.dev or its GitHub mirror and SHA-256 verified; nothing is committed);
-- installs the recording hooks into `~\.claude\hooks\`, merges them into `~\.claude\settings.json` (backup first),
-  installs the skills into `~\.claude\skills\`, writes `<root>\CLAUDE.md` importing `game-factory/CLAUDE.md`;
-- sets up Git LFS, checks `gh auth`, clones every `<org>/game-*` repo into `games\<slug>` (with
-  `-CloneGames`; LFS content included, so this is the long part) and adds the commit recorder to each repo's
-  `post-commit` hook.
-
-## 5. Check
+Then the one command (in the folder holding `setup.ps1`):
 
 ```bash
-powershell -ExecutionPolicy Bypass -File C:/Users/<you>/Work/game-factory/machine/check.ps1
+powershell -ExecutionPolicy Bypass -File setup.ps1 -Org <org>
 ```
 
-PASS / WARN / FAIL for UE 5.7 (and 5.3 for older games), MSVC 14.44, Windows SDK, .NET 4.8.1 SDK, git, Git LFS, gh + access to the `<org>` repos,
-Python, NVIDIA driver, refresh rate, display and system sleep, free disk, memory, long paths, pinned ffmpeg (NVENC
-test), config, job slots (in effect, and from where), layout, ue-heavy, hooks, skills, root CLAUDE.md, game repo hooks, the asset library against
-`docs/asset-library.md` + `docs/asset-library-fab-ue.tsv`. Exit code = number of FAILs. Fix
-until no FAIL is left. The asset library stays WARN until the asset-scout rebuilds it, and only new games need it:
-cloning the games (`-CloneGames`) brings each game's store packs with it (committed through Git LFS in its private repo).
+Options: `-Root D:\Work` (the machine root; default `%USERPROFILE%\Work`, asked on the first run; a short path such as
+`C:\Work` helps with deep store-pack paths), `-CloneGames` (clone every `<org>/game-*` repo; asked otherwise), `-Yes`
+(answer yes to every question).
 
-## 6. First sessions
+What it does, in order (log: `<root>\.setup\setup.log`; answers remembered in `<root>\.setup\state.json`):
 
-1. Open Claude in the root folder and start the coordinator with [briefs/coordinator.md](briefs/coordinator.md).
-   Add its session id to `~\.claude\hooks\recording-exclude.txt`.
-2. The coordinator starts the **ue-pipeline** helper first (prove build + package + record on `games\_pipeline-test`
-   on this machine; measure the display and encoder) and the **asset-scout** (rebuild `asset-library\` from the
-   catalogue; needs the Fab sign-in in the browser pane).
-3. Then the game sessions: `CONTINUE` mode for the cloned games, `NEW` for new ones
-   ([briefs/game-session.md](briefs/game-session.md) + [briefs/games/](briefs/games/)).
+1. **Hardware precheck** against the minimums above.
+2. **Software through winget**, after one question (winget accepts each package's licence; some show a UAC prompt):
+   Git + Git LFS, GitHub CLI, Python 3.12, VS 2022 Build Tools (C++ workload: MSVC 14.44, Windows 11 SDK 22621),
+   .NET Framework 4.8.1 Developer Pack, 7-Zip, Epic Games Launcher; the Claude desktop app is offered separately.
+3. **Windows settings, each asked first**: long paths (one UAC prompt) and no sleep for the PC and the display while
+   plugged in (long builds and overnight queues).
+4. **GitHub sign-in** (`gh auth login` in the browser) and your git `user.name` / `user.email`; checks that you can
+   see `<org>/game-factory`.
+5. **game-factory**: cloned into `<root>\game-factory`, then `machine\bootstrap.ps1` (config with `github_org`, job
+   slots, layout, tools, pinned ffmpeg, skills, root `CLAUDE.md`, and the recording hooks after it has shown what
+   they record and asked; the games when you said so) and `machine\check.ps1`.
+6. **A PASS / TODO list.** Each TODO says exactly what to do; do it and run setup again.
+
+## 2. What only you can do
+
+Setup prints these as TODOs and detects them on the next run.
+
+| Step | How | Detected by |
+|---|---|---|
+| Unreal Engine 5.7 | Open the Epic Games Launcher, sign in (create an account if needed, accept the EULA), **Unreal Engine > Library > Engine Versions > + > 5.7 > Install** to `C:\Program Files\Epic Games\UE_5.7` (another folder works: set `engine` in the config). Games made on 5.3 also need 5.3 next to it (`UE_5.3`, or `"engines": {"5.3": "<folder>"}` in the config). | `Engine\Build\Build.version` |
+| NVIDIA driver (if you have an NVIDIA GPU) | the current Game Ready or Studio driver, 610 or newer, from nvidia.com/drivers or the NVIDIA app | `nvidia-smi` |
+| Display (for recording) | a multiple of 60 Hz (60/120/240) and a primary display that holds a 1920x1080 window: Settings > System > Display | `check.ps1` |
+| Fab sign-in | only to download store packs for a **new** game: sign in at fab.com with the Epic account that owns the packs, in the browser the asset-scout session uses (the Claude browser pane). Purchases and licence choices stay with their owner (paid packs: `docs/fab-shopping-list.md`). | (not detectable) |
+| Claude sign-in | sign in to Claude Code (`claude`) or the desktop app | (not detectable) |
+
+Cloned games carry their store packs (committed through Git LFS in each private repo), so the shared asset library
+(`<root>\asset-library`, rebuilt by the asset-scout helper) is only needed for new games; `check.ps1` reports it as a
+WARN until then.
+
+## 3. The first session
+
+- **Desktop app, several games at once:** open the Code tab in the root folder and start the coordinator with
+  [briefs/coordinator.md](briefs/coordinator.md); add its session id to `~\.claude\hooks\recording-exclude.txt`. The
+  coordinator starts the **ue-pipeline** helper first (proves build, package and recording on this PC), the
+  **asset-scout** when new games need packs, then the game sessions (`CONTINUE` for cloned games, `NEW` for new ones:
+  [briefs/game-session.md](briefs/game-session.md) + [briefs/games/](briefs/games/)).
+- **Solo, one game in a terminal:** `cd <root>`, run `claude`, and paste [briefs/solo-game.md](briefs/solo-game.md)
+  with its placeholders filled. Same rules; you take the coordinator's decisions (pushes, recordings).
+
+## Reference: what bootstrap writes
+
+`machine/bootstrap.ps1` (run by setup; can be run on its own any time):
+
+- `%USERPROFILE%\.game-factory\config.json`: `root`, `ueb` (`C:\UEB`, private build clones outside the user profile),
+  `engine`, `github_org`, `record_extra_projects`; the job slots `heavy_slots` / `gpu_slots` sized from the hardware,
+  with their basis in `slots_auto` (formula: [ue-pipeline.md](ue-pipeline.md), "Machine-wide slots"; values edited by
+  hand are kept, `-Force` recomputes);
+- the layout `games\ builds\_queue\ builds\_logs\ recordings\ .recording\ deliverables\ asset-library\ tools\` and
+  `<ueb>\src`, `<ueb>\tmp`;
+- `tools\ue-heavy.ps1` (the machine-wide job limiter), `tools\asset-scout\`, the pinned ffmpeg 8.1.2 (SHA-256
+  verified);
+- the recording hooks in `~\.claude\hooks\`, wired into `~\.claude\settings.json` (backup first; asked first, `-Yes`
+  skips the question), the skills in `~\.claude\skills\`, `<root>\CLAUDE.md` importing `game-factory/CLAUDE.md`;
+- Git LFS filters, the commit recorder in every game repo, and with `-CloneGames` every `<org>/game-*` repo.
+
+`machine/check.ps1` reports PASS / WARN / FAIL for the toolchain, GitHub access, display and power, disk, the pinned
+ffmpeg (NVENC test), config, job slots, layout, hooks, skills, game repo hooks and the asset library; its exit code is
+the number of FAILs. Details of every file: [../machine/README.md](../machine/README.md).
+
+## Toolchain notes
+
+- MSVC must be **14.44** (`VC\Tools\MSVC\14.44.*`) with VS 2022 17.14 kept updated: UE 5.7 bans compiler versions
+  14.44.0-14.44.35210, and an updated 17.14 puts a newer compiler in that folder (UBT's log line "Using Visual Studio
+  2022 14.44.35229 toolchain" shows it). Games made on UE 5.3 carry the fix 5.3 needs in their Target.cs. If the
+  installer also puts a newer MSVC next to it, pin UBT in `%APPDATA%\Unreal Engine\UnrealBuildTool\BuildConfiguration.xml`:
+  `<WindowsPlatform><CompilerVersion>14.44.35207</CompilerVersion></WindowsPlatform>`.
+- The .NET Framework **4.8.1** SDK is required: without `Windows Kits\NETFXSDK\4.8.1` UBT cannot build editor targets.
+- Vendor RGB/lighting services can leak commit memory; if free commit keeps falling, find the process whose commit
+  grows and restart or disable it. Windows Firewall prompts dim the screen and block capture; recording builds are
+  Shipping, which does not trigger them.
 
 ## Scratch test (without touching a live setup)
 
-Everything can be pointed at a scratch root and a scratch Claude folder:
+`-DryRun` reports installs, Windows settings, sign-ins and game clones without doing them; with a scratch root and
+Claude folder, the bootstrap and check parts run against those only:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File machine/bootstrap.ps1 -Root C:/gf-test/Work -Ueb C:/gf-test/UEB -ClaudeDir C:/gf-test/home/.claude -ConfigPath C:/gf-test/home/.game-factory/config.json
-```
-```bash
-powershell -ExecutionPolicy Bypass -File machine/check.ps1 -Root C:/gf-test/Work -ClaudeDir C:/gf-test/home/.claude -ConfigPath C:/gf-test/home/.game-factory/config.json
+powershell -ExecutionPolicy Bypass -File machine/setup.ps1 -Org <org> -DryRun -Root C:/gf-test/Work -ClaudeDir C:/gf-test/home/.claude -ConfigPath C:/gf-test/home/.game-factory/config.json
 ```
 
 `templates/new-game.ps1 -NoGitHub -Root C:/gf-test/Work -HooksDir C:/gf-test/home/.claude/hooks` creates a game
