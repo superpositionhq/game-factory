@@ -46,7 +46,10 @@ Everything needed to rebuild the game from the repo alone, tracked in git (binar
 | `Dataset/` | the dataset minus `UEProject/`, `Build/` and `History/` (written by the packager) |
 
 No tool, vendor or owner names anywhere in the repo's text (the validator scans tracked text files; the packager
-scans binaries too). That includes `workflow.jsonl`: it is append-only except that a row naming a banned term (or the
+scans binaries too). The build machine's account name (machine paths carry it) counts too: the validator reads it at
+run time, and enforces it everywhere except in scripts (`Scripts/`, and `.ps1`/`.psm1`/`.py`/`.sh`/`.bat`/`.cmd` files
+anywhere), because scripts that already ran stay unchanged; the packager scrubs them in every delivery. In
+`ReplayConfig.json` write machine paths with `{root}` / `{home}` (match strings) or `{pipeline}` (tool scripts). That includes `workflow.jsonl`: it is append-only except that a row naming a banned term (or the
 old schema id `superposition.ue-workflow/v0`) is edited in place to a neutral word or placeholder, nothing else
 changed, with one `log.correct` row appended (`params {rows, what}`) and the edited rows named in the commit message:
 `python tools/scrub-workflow-rows.py <repo>` (dry run), then `--apply`.

@@ -555,6 +555,16 @@ def check_repo(rep, repo):
     # banned names in tracked text files (LFS and binaries are scanned by package-game.ps1 -Rescan)
     bn = R['banned_names']
     rxs = [re.compile(p) for p in bn['patterns']]
+    labels = list(bn['patterns'])
+    exempt = [None] * len(rxs)
+    # the account name of this machine (machine paths with it included), read at run time, never written in the repo;
+    # not enforced in scripts (account_name.exempt_paths: Scripts/ and script files anywhere), which stay unchanged
+    # once they ran and are scrubbed at packaging (user decision b)
+    acct = os.environ.get('USERNAME') or os.path.basename(os.path.expanduser('~'))
+    if acct and len(acct) >= 4:
+        rxs.append(re.compile(r'(?i)(?<![A-Za-z0-9_])' + re.escape(acct) + r'(?![A-Za-z0-9_])'))
+        labels.append('the account name')
+        exempt.append(re.compile(bn.get('account_name', {}).get('exempt_paths', r'^Scripts/')))
     skip = [re.compile(p) for p in bn['skip_paths']]
     hits = {}
     for f in files:
@@ -570,10 +580,12 @@ def check_repo(rep, repo):
         if b'\0' in data[:8192]:
             continue
         text = data.decode('utf-8', 'replace')
-        for rx in rxs:
+        for rx, label, ex in zip(rxs, labels, exempt):
+            if ex is not None and ex.search(f):
+                continue
             n = len(rx.findall(text))
             if n:
-                hits.setdefault(f, []).append(f'{rx.pattern} x{n}')
+                hits.setdefault(f, []).append(f'{label} x{n}')
     for f, h in list(hits.items())[:15]:
         rep.error('repo: banned names', f'{f}: {", ".join(h)}')
     if len(hits) > 15:

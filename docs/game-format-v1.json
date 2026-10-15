@@ -127,7 +127,12 @@
       ],
       "skip_paths": [
         "^Dataset/"
-      ]
+      ],
+      "account_name": {
+        "what": "the account (user) name of the machine running the validator, as a word (USERNAME at run time; machine paths carry it): never written in the repo",
+        "exempt_paths": "(?i)^Scripts/|\\.(ps1|psm1|py|sh|bat|cmd)$",
+        "why": "user decision (b), 2026-10-15: enforced in workflow.jsonl, ReplayConfig.json and every other non-script file; scripts (Scripts/, and .ps1/.psm1/.py/.sh/.bat/.cmd files anywhere) that already ran stay unchanged and are scrubbed at packaging"
+      }
     },
     "dataset_folder": "Dataset/ (variant repo-dataset): checked as a dataset when manifest.json is there; a game that is not packaged yet has none"
   },

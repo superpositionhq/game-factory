@@ -52,7 +52,9 @@ The user's standing rule: **every session commits its work continuously.**
   the row changed; then one correction row is appended (`op:"log.correct"`, `params {rows: [ids], what: "removed banned
   names"}`), and the commit message names the edited rows. `python <GF_ROOT>/game-factory/tools/scrub-workflow-rows.py
   <repo>` does exactly this (dry run first, then `--apply`; it prints the commit message line). Write new rows without
-  such names in the first place (relative paths, neutral words).
+  such names in the first place (relative paths, neutral words). The account name is enforced in every non-script file
+  (workflow.jsonl, ReplayConfig.json: `{root}`/`{home}`/`{pipeline}` there, docs, data); scripts that already ran keep it
+  (never edited; the packager scrubs them), new scripts use relative paths.
 - Every editor script that ran stays in `Scripts/` unchanged (new version instead of overwriting), so `source.script`
   + `source.sha256` point at the real code.
 - **Human directions (user rule: "not direct user messages, more like user directions"; "you should rewrite that and
