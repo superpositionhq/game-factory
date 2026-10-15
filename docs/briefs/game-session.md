@@ -94,7 +94,9 @@ Steps:
 5) Expand content, art, UI and story to the quality bar (menus, settings, pause, save/load where it fits, HUD, sound,
    packaged Win64 Shipping build).
 6) Finish with a playtest checklist pass and a status section in the design doc (what works, what's left, built vs
-   store assets, stats: workflow rows, commits, hours). Report back with a short summary and the commit sha when done
+   store assets, stats: workflow rows, commits, hours). Before calling the game content-complete: Docs/screenshots/
+   holds 5-7 real gameplay stills (JPG, Git LFS), the README shows them as a hero image plus a captioned gallery, and
+   after the push every image renders on the github.com repo page (game-session skill, "README screenshots"). Report back with a short summary and the commit sha when done
    or blocked.
 
 Shared notes folder for this group of sessions (outside the repo; read siblings' notes there, leave hand-over notes

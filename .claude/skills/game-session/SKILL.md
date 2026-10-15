@@ -154,8 +154,14 @@ What ships is what matters, in this order: the game plays; the game builds (edit
 A finished game ships as: `README.md, git.log, workflow.jsonl, UEProject/, ReplayScripts/,
 Gameplay/<slug>_S<n>.mp4, Screenshots/, Build/, manifest.json`. The repo's `Dataset/` folder holds the same minus
 `UEProject/` and `Build/`; the packager produces it and you commit it. The full dataset zip is `Dataset.zip` in
-the game folder, next to `Dataset/`: git-ignored (with `.dataset/`, the packager's scratch), never committed. README screenshots live in `Docs/screenshots/`
-(jpg, LFS), taken from stills of validated recordings, not from extra GPU launches.
+the game folder, next to `Dataset/`: git-ignored (with `.dataset/`, the packager's scratch), never committed.
+
+**README screenshots (user rule; required before the game is called content-complete).** `Docs/screenshots/` holds
+5-7 real gameplay stills (JPG, in Git LFS; from validated recordings' stills or the framing-gate screenshots, not
+from extra GPU launches; no editor views, debug overlays or placeholder art). The README shows them as a hero image
+plus a captioned gallery (one line per image saying what it shows). Every image the README links must be committed:
+after pushing, open the repo page on github.com and check that each image renders (a link to a file that was never
+committed shows as a broken image).
 
 ## Working with the coordinator
 
