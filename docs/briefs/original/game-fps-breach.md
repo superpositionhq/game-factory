@@ -1,0 +1,9 @@
+# Original brief: fps-breach
+
+The instruction that started this game's building session (2026-10-12), as the coordinator sent it. Machine paths, session ids and tool names are replaced by placeholders; the shared process rules every game session received are in docs/briefs/game-session.md.
+
+Build a FIRST-PERSON SHOOTER in Unreal Engine 5.3, recording its creation as you go. Slug: fps-breach (folder <root>\games\fps-breach, project FpsBreach); you choose the final title after the story.
+
+Genre requirements: first-person movement (walk/sprint/crouch/jump), 2–3 weapons with distinct feel (hitscan rifle, shotgun or similar, one projectile/special), ammo and reload, enemy AI that takes cover, flanks and shoots back, health and pickups, hit feedback (hit markers, readable enemy reactions), and level objectives. Comfort: modest FOV (~90), very gentle head bob (or none), no screen shake beyond a subtle recoil, no motion blur spikes — the user gets motion sick. Keep violence game-like (no gore). Must not duplicate horror-escape (that's first-person but non-combat) or stealth.
+
+Start with the background story and design doc (see ORDER OF WORK): an original world and conflict, who you are and why you fight, how the story surfaces in play (objectives, environmental storytelling, radio lines as subtitles), 3 AutoPlay scenarios (e.g. training range, a mission level, a final assault) with deterministic seeds and clear win/lose, art and animation packs from the asset library (weapons/arms/enemies — list packs to request if missing), UI style. Send it to the coordinator and Factory ops, wait for the OK, then build. The AutoPlay bot must move and aim like a competent human (smooth turns capped in degrees per second, uses cover, no snap-aiming) so the recordings are watchable and comfortable.

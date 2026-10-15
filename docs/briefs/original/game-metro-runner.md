@@ -1,0 +1,9 @@
+# Original brief: metro-runner
+
+The instruction that started this game's building session (2026-10-12), as the coordinator sent it. Machine paths, session ids and tool names are replaced by placeholders; the shared process rules every game session received are in docs/briefs/game-session.md.
+
+Build an ENDLESS RUNNER in the "subway runner" style (3-lane track, auto-run forward, swipe-style lane switch, jump, slide/roll, obstacles: trains/barriers/overheads, coins and power-ups, speed ramps up) in Unreal Engine 5.3, recording its creation as you go. Slug: metro-runner (folder <root>\games\metro-runner, project MetroRunner); you choose the final title after the story.
+
+IP: it must be ORIGINAL — no character, art style, logo, guard-and-dog chase, graffiti-tagger premise or UI that imitates Subway Surfers or Temple Run. Find your own setting and reason to run (and your own chaser, if any). Camera: third-person behind the runner, gentle follow, no shake or FOV kicks (the user gets motion sick); the runner small enough in frame to read the lanes ahead. Must not duplicate rally-racer (no vehicles as the player).
+
+Start with the background story and design doc (see ORDER OF WORK): original world, the runner and why they run, how the story surfaces while running (districts that change, collectible story fragments, rival or chaser beats as subtitles), 3 AutoPlay scenarios (e.g. tutorial district, mid-speed district with power-ups, high-speed finale/boss chase) with deterministic seeds and win condition (distance/goal reached) and lose (crash), art packs from the asset library (or packs to request), procedural track chunks from modular pieces, UI style. Send it to the coordinator and Factory ops, wait for the OK, then build. The AutoPlay bot must read the lanes ahead and play like a skilled human.
