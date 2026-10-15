@@ -2,10 +2,14 @@
 
 __DESCRIPTION__
 
-![__TITLE__](Docs/screenshots/hero.jpg)
-
-<!-- Hero image + captioned gallery from Docs/screenshots/ (jpg, in LFS), taken from stills of validated gameplay
-     recordings. Replace this comment with the gallery once the first recording is in. -->
+<!-- PLACEHOLDER, replace before the game is content-complete: 5-7 real gameplay stills in Docs/screenshots/ (jpg,
+     in Git LFS, from validated recordings or the framing-gate screenshots), shown here as a hero image plus a
+     captioned gallery, e.g.
+       ![<title>](Docs/screenshots/hero.jpg)
+       | ![](Docs/screenshots/<name>.jpg) | ![](Docs/screenshots/<name>.jpg) |
+       |---|---|
+       | <what it shows> | <what it shows> |
+     Link only files that are committed, and check on github.com that every image renders. -->
 
 ## Play
 
