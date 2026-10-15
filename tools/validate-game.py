@@ -361,6 +361,9 @@ def check_dataset(rep, path, area='dataset'):
             rep.error(a, 'status complete needs replay_verification.pass = true')
     else:
         rep.warn(a, f'status pending: {", ".join(m["pending"]) or "(nothing listed)"}')
+    # videos: at least one, unless Gameplay/ is listed as pending (no recordings yet)
+    if not m['scenarios'] and not any(str(p).rstrip('/') == 'Gameplay' for p in m['pending']):
+        rep.error(a, 'no scenario videos: a delivery has at least one, or lists Gameplay/ as pending')
     # v1.2: Brief/, the person's directions, History/
     if m['layout'] in ('dataset-layout/v1.2', 'dataset-layout/v1.3'):
         b = m.get('brief')

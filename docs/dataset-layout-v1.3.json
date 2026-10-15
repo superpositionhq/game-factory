@@ -87,9 +87,10 @@
       "kind": "dir",
       "required": true,
       "in_repo_dataset": true,
-      "what": "one video per scenario of the release version",
+      "what": "one video per scenario of the release version; may be pending (listed in manifest pending, status pending) while the game has no recordings: a complete delivery has at least one video",
       "only_files_matching": "^<game>_S([0-9]+)\\.mp4$",
-      "scenario_numbers": "distinct, 1 or more; a dataset may hold a subset of the game's scenarios (e.g. rally-racer: S2 only, user decision 2026-10-12)"
+      "scenario_numbers": "distinct, 1 or more; a dataset may hold a subset of the game's scenarios (e.g. rally-racer: S2 only, user decision 2026-10-12)",
+      "pending_allowed": true
     },
     {
       "name": "Screenshots",

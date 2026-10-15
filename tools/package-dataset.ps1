@@ -27,7 +27,8 @@ param(
     [switch]$NoDataset,
     [switch]$NoZip,
     [switch]$RebuildVideos,
-    [switch]$NoTasks                # build layout v1.2 (no Tasks/) from a package with a git history
+    [switch]$NoTasks,               # build layout v1.2 (no Tasks/) from a package with a git history
+    [switch]$GameplayPending        # no gameplay runs: a pending delivery with Gameplay/ listed as pending (a complete one needs the videos)
 )
 
 . (Join-Path $PSScriptRoot 'ue-pipeline\common.ps1')
@@ -388,7 +389,12 @@ $runs = @(Get-ChildItem (Join-Path $pkg 'Gameplay') -Directory | ForEach-Object 
         [pscustomobject]@{ dir = $_.FullName; name = $_.Name; scenario = [int]$sc; scenario_name = (Get-Prop $m 'scenario_name'); dur = [double]$v.checks.video.duration_s
             offset = (([double]$m.system_audio.start_offset_ns - [double]$m.video_start_offset_ns) / 1e9); result = $m.result; status = $v.status; build = $m.build.commit }
     })
-if ($runs.Count -eq 0) { throw "no gameplay runs in $pkg" }
+if ($runs.Count -eq 0) {
+    # no recordings of this commit: a pending delivery without Gameplay/ when asked for (-GameplayPending), else an error
+    if (-not $GameplayPending) { throw "no gameplay runs in $pkg (-GameplayPending builds a pending delivery without Gameplay/)" }
+    $status = 'pending'; $pending = @($pending) + @('Gameplay/')
+    Write-Step 'no gameplay runs: Gameplay/ pending (-GameplayPending)'
+}
 $other = @($runs | Where-Object { $_.build -ne $origSha })
 if ($other.Count) { throw "the package has runs of other commits ($(@($other | ForEach-Object name) -join ', ')): package it with -OnlyCommitRuns" }
 $scen = @($runs | Group-Object scenario | Sort-Object { [int]$_.Name } | ForEach-Object {
@@ -509,7 +515,8 @@ function Write-Readme([string]$Dest, [string]$Variant) {
     A "# $title"; A ''
     if ($shots.Count) { A "![$title](Screenshots/$($shots[0].Name))"; A '' }
     if ($status -ne 'complete') {
-        A '> **Pending:** `ReplayScripts/` (the replay of the creation process) is not in this delivery yet;'
+        $what = @($pending | ForEach-Object { if ($_ -like 'ReplayScripts*') { '`ReplayScripts/` (the replay of the creation process)' } elseif ($_ -like 'Gameplay*') { '`Gameplay/` (the scenario videos)' } else { "``$_``" } })
+        A "> **Pending:** $($what -join ' and ') $(if ($what.Count -gt 1) { 'are' } else { 'is' }) not in this delivery yet;"
         A '> everything else is final. This delivery is replaced by the complete one when they land.'
         A ''
     }
@@ -547,7 +554,8 @@ function Write-Readme([string]$Dest, [string]$Variant) {
         A '- `Brief/` — the original brief the game was built from (`Brief/brief.md`) and its design doc with story bible and status (`Brief/design.md`).'
         if ($layout -eq 'dataset-layout/v1.3' -and -not $repo) { A "- ``Tasks/`` — $($taskNames.Count) tasks on this game for a game-creation environment (``Tasks/README.md``)." }
     }
-    A "- ``Gameplay/`` — one video per scenario of this version ($($scen.Count)), played through with the game audio."
+    if ($scen.Count) { A "- ``Gameplay/`` — one video per scenario of this version ($($scen.Count)), played through with the game audio." }
+    else { A '- `Gameplay/` — one video per scenario, played through with the game audio. *(pending)*' }
     if (-not $repo) { A "- ``Build/`` — the packaged Windows Shipping build$(if ($exe) { " (``Build/$exe``)" })." }
     A '- `Screenshots/` — the images in this README.'
     A '- `manifest.json` — path, size and sha256 of every file, and the release metadata.'
