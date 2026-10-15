@@ -7,7 +7,9 @@
   not exist yet, `git lfs update` creates it before the line is appended. A repo whose hook already calls
   record-commit.ps1 is left alone (pass -Force to rewrite the line, e.g. after moving the hooks dir). A second line runs
   this checkout's tools\ue-replay\live-hook.ps1, which does nothing unless the repo's ReplayConfig.json has "live": true
-  (docs/ue-replay.md, "Live replay"); it is added to hooks that lack it.
+  (docs/ue-replay.md, "Live replay"); it is added to hooks that lack it. Both scripts exit at once when the
+  committing checkout is on the orphan `tasks` branch (the game's tasks, docs/game-format.md): a commit there, e.g.
+  from a tasks worktree, is neither recorded nor replayed.
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File machine\install-git-hook.ps1 %GF_ROOT%\games\stealth
 #>

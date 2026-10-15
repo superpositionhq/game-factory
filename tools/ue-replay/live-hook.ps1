@@ -2,7 +2,8 @@
 .SYNOPSIS
   post-commit hook of a live game: show the creation replay's last findings once, start the per-commit replay job.
 .DESCRIPTION
-  Installed by machine/install-git-hook.ps1. Does nothing unless the repo's ReplayConfig.json has "live": true.
+  Installed by machine/install-git-hook.ps1. Does nothing unless the repo's ReplayConfig.json has "live": true, and
+  nothing for a commit on the orphan `tasks` branch (the game's tasks are not part of the replayed history).
   Returns at once: the job (`ue_replay.py live --game <slug>`, docs/ue-replay.md section 3) runs detached at
   below-normal priority, takes engine slots only through ue-heavy.ps1 -Low, and catches up with every commit made
   while it runs. Its findings land in <work_root>\work\live\feedback.md; this hook prints them at the next commit.
@@ -13,6 +14,7 @@
 param([Parameter(Mandatory = $true)][string]$Repo)
 $ErrorActionPreference = 'Stop'
 try {
+    if ((git -C $Repo symbolic-ref --short -q HEAD) -eq 'tasks') { exit 0 }   # the tasks branch is not game history
     $cfgPath = Join-Path $Repo 'ReplayConfig.json'
     if (-not (Test-Path -LiteralPath $cfgPath)) { exit 0 }
     $cfg = [IO.File]::ReadAllText($cfgPath) | ConvertFrom-Json

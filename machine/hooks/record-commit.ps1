@@ -1,11 +1,14 @@
 # Called by each game repo's git post-commit hook: append the new commit to
 # <root>\.recording\<repo name>\commits.jsonl, whoever made it. <root> = the machine root (gf-root.ps1 next to this
 # file; machine/lib/gf-root.ps1 in the repo). machine/install-git-hook.ps1 adds the hook line to a repo.
+# A commit on the orphan `tasks` branch (the game's tasks, docs/game-format.md) is not recorded: task work never
+# enters the game's recorded history.
 param([string]$Repo)
 $ErrorActionPreference = 'Continue'   # git warnings on stderr must not abort the record
 $utf8 = New-Object Text.UTF8Encoding($false)
 [Console]::OutputEncoding = $utf8   # git writes UTF-8; read it as such
 $Repo = (Resolve-Path $Repo).Path
+if ((git -C $Repo symbolic-ref --short -q HEAD) -eq 'tasks') { exit 0 }   # the tasks branch is not game history
 $project = Split-Path -Leaf $Repo
 $gfLib = @((Join-Path $PSScriptRoot 'gf-root.ps1'), (Join-Path $PSScriptRoot '..\lib\gf-root.ps1')) | Where-Object { Test-Path $_ } | Select-Object -First 1
 . $gfLib
