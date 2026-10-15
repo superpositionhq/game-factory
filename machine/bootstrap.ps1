@@ -9,7 +9,8 @@
   2. Tools: <root>\tools\ue-heavy.ps1 (+ gf-root.ps1), <root>\tools\asset-scout\, and the pinned ffmpeg
      (machine\get-ffmpeg.ps1, downloaded and SHA-256 verified, never committed).
   3. Claude Code: the recording hooks into <ClaudeDir>\hooks\, their entries merged into <ClaudeDir>\settings.json
-     (backup settings.json.bak-<time> first; other settings and hooks are kept), the repo's skills into
+     (backup settings.json.bak-<time> first; other settings and hooks are kept; before adding or changing them it
+     prints what they record and asks, -Yes skips the question, a non-interactive run without -Yes leaves them out), the repo's skills into
      <ClaudeDir>\skills\, and <root>\CLAUDE.md importing game-factory\CLAUDE.md (sessions start in the root).
   4. Git: git-lfs filters (git lfs install --skip-repo), gh login check, the commit recorder in every
      <root>\games\*\.git (machine\install-git-hook.ps1); -CloneGames clones every <org>/game-* repo first.
@@ -35,8 +36,10 @@ param(
     [switch]$SkipFfmpeg,
     [switch]$CloneGames,
     [string]$Org,                                               # GitHub org/user of the game repos -> config github_org
-    [switch]$Force                                              # also replace heavy_slots / gpu_slots someone set by hand
+    [switch]$Force,                                             # also replace heavy_slots / gpu_slots someone set by hand
+    [switch]$Yes                                                # install the recording hooks without asking
 )
+$hooksDeclined = $false
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'lib\gf-root.ps1')
@@ -213,11 +216,27 @@ foreach ($ev in $frag.hooks.PSObject.Properties) {
     if (-not $found) { $groups += $wantGroup; $changed = $true }
     $settings.hooks.($ev.Name) = [object[]]$groups
 }
+if ($changed -and -not $Yes) {
+    # Say plainly what the hooks do before wiring them into every Claude Code session of this Windows account.
+    Write-Host ""
+    Write-Host "  About to add recording hooks to $settingsPath (a backup .bak-$stamp is kept):" -ForegroundColor Yellow
+    Write-Host "    - PostToolUse, PostToolUseFailure and Stop run $hooksDir\record-action.ps1 after every tool call of every"
+    Write-Host "      Claude Code session on this account."
+    Write-Host "    - A session that works on a game (a tool call naming $Root\games\<slug>) has every tool call recorded"
+    Write-Host "      (command, file paths, inputs, results, times) to $Root\.recording\<slug>\actions.jsonl, including its"
+    Write-Host "      earlier calls, imported from its transcript; at the end of each turn its uncommitted work is committed as WIP."
+    Write-Host "    - Each game repo's post-commit hook records commits to $Root\.recording\<slug>\commits.jsonl."
+    Write-Host "    - Sessions that never touch a game folder are not recorded; session ids in hooks\recording-exclude.txt never are."
+    Write-Host "    These records become the game-creation dataset. Remove the three entries from settings.json to stop recording."
+    $ok = $false
+    if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) { $ok = (Read-Host '  Install the recording hooks? [y/N]') -match '^(y|yes)$' }
+    if (-not $ok) { $changed = $false; $hooksDeclined = $true; Note warn 'settings.json hooks' 'not installed (declined or non-interactive; -Yes installs them without asking)' }
+}
 if ($changed) {
     if (Test-Path -LiteralPath $settingsPath) { Copy-Item -LiteralPath $settingsPath "$settingsPath.bak-$stamp" }
     Write-JsonFile $settingsPath $settings
     Note changed "settings.json hooks" "PostToolUse/PostToolUseFailure/Stop -> $hooksDir\record-action.ps1 (backup .bak-$stamp)"
-} else { Note ok 'settings.json hooks' }
+} elseif (-not $hooksDeclined) { Note ok 'settings.json hooks' }
 
 $skillsSrc = Join-Path $repo '.claude\skills'
 foreach ($s in Get-ChildItem -LiteralPath $skillsSrc -Directory) {

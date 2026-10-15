@@ -50,7 +50,7 @@ source (config set by hand, config from bootstrap, or computed at run time). The
 
 | Path | Installed to | What |
 |---|---|---|
-| `bootstrap.ps1` | | idempotent setup: config + layout, tools, ffmpeg, hooks + settings merge, skills, root CLAUDE.md, LFS, gh, game repo hooks (`-CloneGames`) |
+| `bootstrap.ps1` | | idempotent setup: config + layout, tools, ffmpeg, hooks + settings merge (prints what the hooks record and asks first; `-Yes` skips the question), skills, root CLAUDE.md, LFS, gh, game repo hooks (`-CloneGames`) |
 | `check.ps1` | | read-only PASS/WARN/FAIL report (toolchain, GPU/display, disk, setup, asset library) |
 | `get-ffmpeg.ps1` | `<root>\tools\ffmpeg-8.1.2\` | downloads gyan.dev ffmpeg 8.1.2 full_build .7z, verifies SHA-256 `0fff1889…7059`, unpacks |
 | `lib/gf-root.ps1` | `<root>\tools\`, `~\.claude\hooks\` | root/config resolver, dot-sourced by every script |
