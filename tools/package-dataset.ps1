@@ -169,6 +169,10 @@ function Get-SessionIds {
     return [string[]]@($ids)
 }
 function Invoke-SessionRescrub([string]$Dir, [string[]]$Ids, [string]$What) {
+    $mp0 = Join-Path $Dir 'manifest.json'
+    # History/ (layout v1.2) holds a git bundle and content-addressed LFS objects: an in-place rescrub would break
+    # both, so a v1.2 delivery is re-packaged (package-game.ps1 -Dataset) instead.
+    if ((Test-Path $mp0) -and (Get-Prop (Get-Content $mp0 -Raw -Encoding UTF8 | ConvertFrom-Json) 'layout') -eq 'dataset-layout/v1.2') { throw "$What`: layout v1.2 (History/) is not rescrubbed in place: package it again with the current rules" }
     $t0 = (Get-Date).AddSeconds(-2)
     Write-Step "$What`: text scrub (package-game -ScrubDir)"
     $o = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'package-game.ps1') $Game -ScrubDir $Dir 2>&1
@@ -247,6 +251,31 @@ $pkg = (Resolve-Path $Package).Path
 $pkgNo = $null   # no _nostore variant any more (user decision 2026-10-12: always with store content, no _nostore variant)
 $man = Get-Content (Join-Path $pkg 'manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $sha = $man.commit; $short = $sha.Substring(0, 8)
+# Layout v1.2 when the package carries the rewritten git history (package-game.ps1 GitHistory\): the delivery then names
+# the delivered commit shas everywhere (manifest, git.log, ReplayScripts); $origSha stays for matching runs and builds.
+$origSha = $sha
+$gh = Get-Prop $man 'git_history'
+$layout = if ($gh) { 'dataset-layout/v1.2' } else { 'dataset-layout/v1.1' }
+$commitMap = @{}
+if ($gh) {
+    $sha = [string]$man.commit_delivered; $short = $sha.Substring(0, 8)
+    $mapTsv = "$((Resolve-Path $Package).Path).commit-map.tsv"
+    if (-not (Test-Path -LiteralPath $mapTsv)) { throw "the package has a git history but no commit map next to it ($mapTsv)" }
+    foreach ($line in [IO.File]::ReadAllLines($mapTsv) | Select-Object -Skip 1) { $p = $line -split "`t"; if ($p.Count -eq 2) { $commitMap[$p[0]] = $p[1] } }
+}
+function Invoke-ShaRemap([string]$Dir) {
+    # every full commit sha of the map in the text files under $Dir -> its delivered sha
+    if (-not $commitMap.Count) { return 0 }
+    $rx = [regex]'(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])'; $n = 0
+    foreach ($f in Get-ChildItem -LiteralPath $Dir -Recurse -File) {
+        if ($f.Length -eq 0 -or $f.Length -gt 256MB) { continue }
+        $bytes = [IO.File]::ReadAllBytes($f.FullName); if ([Array]::IndexOf($bytes, [byte]0, 0, [Math]::Min($bytes.Length, 8000)) -ge 0) { continue }
+        $t = [Text.Encoding]::UTF8.GetString($bytes)
+        $u = $rx.Replace($t, [Text.RegularExpressions.MatchEvaluator] { param($m) if ($commitMap.ContainsKey($m.Value)) { $commitMap[$m.Value] } else { $m.Value } })
+        if ($u -ne $t) { [IO.File]::WriteAllText($f.FullName, $u, $Utf8NoBom); $n++ }
+    }
+    return $n
+}
 $info = Get-GameInfo $Game
 # Everything lives in the game's own folder (user decision 2026-10-12): the full dataset zip is <game>\Dataset.zip
 # (Dataset.pending.zip while ReplayScripts\ is missing); the unpacked delivery, videos and reports are scratch in
@@ -304,7 +333,7 @@ $runs = @(Get-ChildItem (Join-Path $pkg 'Gameplay') -Directory | ForEach-Object 
             offset = (([double]$m.system_audio.start_offset_ns - [double]$m.video_start_offset_ns) / 1e9); result = $m.result; status = $v.status; build = $m.build.commit }
     })
 if ($runs.Count -eq 0) { throw "no gameplay runs in $pkg" }
-$other = @($runs | Where-Object { $_.build -ne $sha })
+$other = @($runs | Where-Object { $_.build -ne $origSha })
 if ($other.Count) { throw "the package has runs of other commits ($(@($other | ForEach-Object name) -join ', ')): package it with -OnlyCommitRuns" }
 $scen = @($runs | Group-Object scenario | Sort-Object { [int]$_.Name } | ForEach-Object {
         $_.Group | Sort-Object name | Select-Object -First 1 })   # run names start with the scenario and the start time
@@ -371,32 +400,45 @@ function New-Delivery([string]$Src, [string]$Dest, [string]$Variant) {
     foreach ($f in 'git.log', 'workflow.jsonl') { [DatasetV1.T]::LinkFile((Join-Path $Src $f), (Join-Path $Dest $f), $copy) }
     foreach ($r in $scen) { [DatasetV1.T]::LinkFile((Join-Path $vidDir "$($Game)_S$($r.scenario).mp4"), (Join-Path $Dest "Gameplay\$($Game)_S$($r.scenario).mp4"), $copy) }
     $null = Copy-TreeChecked (Join-Path $Src 'Screenshots') (Join-Path $Dest 'Screenshots') $copy '' 'Screenshots/'   # required by layout v1
+    # v1.2: the original brief and the design doc (both variants), the full git history (Dataset.zip only)
+    if ($gh -and (Test-Path (Join-Path $Src 'Brief'))) { $null = Copy-TreeChecked (Join-Path $Src 'Brief') (Join-Path $Dest 'Brief') $copy '' 'Brief/' }
     if (-not $repo) {
         $null = Copy-TreeChecked (Join-Path $Src 'UEProject') (Join-Path $Dest 'UEProject') $false '' 'UEProject/'
         $null = Copy-TreeChecked (Join-Path $Src 'Build') (Join-Path $Dest 'Build') $false '.pdb' 'Build/'
+        if ($gh) { $null = Copy-TreeChecked (Join-Path $Src 'GitHistory') (Join-Path $Dest 'History') $false '' 'History/' }
     }
     if ($haveReplay) {
         $rs = Join-Path $Dest 'ReplayScripts'
         $null = [DatasetV1.T]::LinkTree((Resolve-Path $ReplayScripts).Path, $rs, $true, '.pdb')   # a copy: scrubbed in place
         & powershell -NoProfile -ExecutionPolicy Bypass -File $tool $Game -ScrubDir $rs | Out-Host
         Move-Item -Force "$rs.scrub.json" (Join-Path $outDir "$(Split-Path $Dest -Leaf).replay-scrub.json")
+        $nr = Invoke-ShaRemap $rs   # the replay's commit shas -> the delivered history's
+        if ($nr) { Write-Step "ReplayScripts: commit shas mapped to the delivered history in $nr file(s)" }
     }
     Write-Readme $Dest $Variant
     if ($repo) {
         $lfs = @('*.mp4', '*.mkv', '*.mka', '*.wav', '*.flac', '*.jpg', '*.jpeg', '*.png', '*.webp', '*.zip') | ForEach-Object { "$_ filter=lfs diff=lfs merge=lfs -text" }
         Write-Utf8 (Join-Path $Dest '.gitattributes') (($lfs -join "`n") + "`n")
     }
-    $all = @([DatasetV1.T]::HashAll($Dest) | Where-Object { $_.Path -ne 'manifest.json' -and $_.Path -ne '.gitattributes' })
-    Write-JsonFile (Join-Path $Dest 'manifest.json') ([ordered]@{
-            layout = 'dataset-layout/v1.1'; game = $Game; title = $title; version = $Version; commit = $sha; status = $status; variant = $Variant
+    # History/lfs/objects/ is content-addressed (each file named by its sha256): counted in history, not listed in files
+    $all = @([DatasetV1.T]::HashAll($Dest) | Where-Object { $_.Path -ne 'manifest.json' -and $_.Path -ne '.gitattributes' -and -not $_.Path.StartsWith('History/lfs/objects/') })
+    $buildCommit = [string]$man.build.commit; if ($commitMap.ContainsKey($buildCommit)) { $buildCommit = $commitMap[$buildCommit] }
+    $mj = [ordered]@{
+            layout = $layout; game = $Game; title = $title; version = $Version; commit = $sha; status = $status; variant = $Variant
             pending = $(if ($pending) { [System.Collections.ArrayList]@($pending) } else { New-Object System.Collections.ArrayList }); created = (Get-IsoNow); source_package = (Split-Path $Src -Leaf)
             replay_verification = $replayVerification
-            build = $(if ($repo) { $null } else { [ordered]@{ config = $man.build.config; commit = $man.build.commit; exe = $exe; source = $man.build.source } })
+            build = $(if ($repo) { $null } else { [ordered]@{ config = $man.build.config; commit = $buildCommit; exe = $exe; source = $man.build.source } })
             scenarios = @($scen | ForEach-Object { [ordered]@{ file = "Gameplay/$($Game)_S$($_.scenario).mp4"; scenario = $_.scenario; name = $_.scenario_name; result = $_.result
                         seconds = [math]::Round($_.dur, 3); source_run = $_.name; audio_offset_s = [math]::Round($_.offset, 3) } })
             totals = [ordered]@{ files = $all.Count; bytes = [long](($all | Measure-Object Bytes -Sum).Sum) }
             files = @($all | ForEach-Object { [ordered]@{ path = $_.Path; bytes = $_.Bytes; sha256 = $_.Sha256 } })
-        })
+        }
+    if ($gh) {
+        $mj['history'] = if ($repo) { $null } else { [ordered]@{ bundle = "History/$Game.bundle"; head = $sha; commits = [int]$gh.commits; refs = @($gh.refs)
+                lfs_objects = [int]$gh.lfs_objects; lfs_bytes = [long]$gh.lfs_bytes; authors_anonymised = $true } }
+        $mj['brief'] = [ordered]@{ brief = 'Brief/brief.md'; design = 'Brief/design.md' }
+    }
+    Write-JsonFile (Join-Path $Dest 'manifest.json') $mj
 }
 
 # README template (docs/game-deliverable.md, "README template")
@@ -440,6 +482,10 @@ function Write-Readme([string]$Dest, [string]$Variant) {
            "commits that act on one name it in their message (``Direction: <row id>``), so ``git.log`` links changes to their cause.")
     }
     A '- `git.log` — every commit with its message and full diff (binary files as path and sha256).'
+    if ($gh) {
+        if (-not $repo) { A "- ``History/`` — the full git history: ``History/$Game.bundle`` (every commit of every branch) and ``History/lfs/objects/`` (every Git LFS file of every commit). Authors are anonymised as dev_NN." }
+        A '- `Brief/` — the original brief the game was built from (`Brief/brief.md`) and its design doc with story bible and status (`Brief/design.md`).'
+    }
     A "- ``Gameplay/`` — one video per scenario of this version ($($scen.Count)), played through with the game audio."
     if (-not $repo) { A "- ``Build/`` — the packaged Windows Shipping build$(if ($exe) { " (``Build/$exe``)" })." }
     A '- `Screenshots/` — the images in this README.'
@@ -464,6 +510,23 @@ function Write-Readme([string]$Dest, [string]$Variant) {
         }
     } else { A '`ReplayScripts/` is pending.' }
     A ''
+    if ($gh) {
+        A '## Restore the git history'; A ''
+        if ($repo) { A 'This repository is the history itself: every commit, with Git LFS for the binary files.' }
+        else {
+            A "``History/`` restores the project's repository at any commit (``git`` and ``git-lfs`` needed):"; A ''
+            A '```'
+            A "git clone History/$Game.bundle $Game"
+            A "robocopy History\lfs $Game\.git\lfs /E          # or: cp -r History/lfs $Game/.git/"
+            A "cd $Game"
+            A 'git lfs install --local'
+            A 'git checkout <commit>      # any commit of git.log; HEAD is the release commit'
+            A 'git lfs checkout'
+            A '```'; A ''
+            A "The release commit is ``$sha``; ``git.log`` and ``ReplayScripts/`` use the same commit ids."
+        }
+        A ''
+    }
     A '## Scenarios'; A ''
     A '| Video | # | Scenario | Result | Length |'; A '|---|---|---|---|---|'
     foreach ($r in $scen) { A "| ``Gameplay/$($Game)_S$($r.scenario).mp4`` | $($r.scenario) | $($r.scenario_name) | $($r.result) | $([math]::Round($r.dur, 1)) s |" }
