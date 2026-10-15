@@ -517,7 +517,13 @@ for ($i = 0; $i -lt $Runs; $i++) {
             [void]$problems.Add('game did not quit within 60 s after outcome.json'); $proc.Kill(); $killed = $true
         }
         $gameExit = $proc.ExitCode
-        if (-not $killed -and $gameExit -ne 0) { [void]$problems.Add("game exit code $gameExit") }
+        # Exit code 124 + watchdog.json: the AutoPlay drop-in's exit watchdog ended the process. After run_end
+        # ("shutdown") the run itself is complete, so only an engine-shutdown hang is noted.
+        $watchdog = $null
+        if ($gameExit -eq 124 -and (Test-Path (Join-Path $rawDir 'watchdog.json'))) { $watchdog = Get-Content -Raw (Join-Path $rawDir 'watchdog.json') | ConvertFrom-Json }
+        if (-not $killed -and $watchdog -and $watchdog.reason -eq 'shutdown' -and (Test-Path $outcomePath)) { [void]$warnings.Add('game hung in engine shutdown after run_end: ended by the AutoPlay exit watchdog') }
+        elseif (-not $killed -and $watchdog) { [void]$problems.Add("game ended by the AutoPlay exit watchdog ($($watchdog.reason))") }
+        elseif (-not $killed -and $gameExit -ne 0) { [void]$problems.Add("game exit code $gameExit") }
     } catch {
         [void]$problems.Add("run error: $($_.Exception.Message)")
         Write-Step "ERROR: $($_.Exception.Message)"
