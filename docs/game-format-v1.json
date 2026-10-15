@@ -132,7 +132,7 @@
     "dataset_folder": "Dataset/ (variant repo-dataset): checked as a dataset when manifest.json is there; a game that is not packaged yet has none"
   },
   "dataset": {
-    "layout": "docs/dataset-layout-v1.json (entries, names, video format, manifest keys, README sections; tools/validate-dataset.ps1)",
+    "layout": "docs/dataset-layout-v1.2.json for new deliveries (v1.1: docs/dataset-layout-v1.json, still valid for deliveries made before 2026-10-15); entries, names, video format, manifest keys, README sections; tools/validate-dataset.ps1 picks the file by manifest.layout",
     "content_schemas": {
       "manifest.json": "docs/schemas/dataset-manifest.schema.json",
       "workflow.jsonl": "docs/schemas/workflow-row.schema.json (each line)",
@@ -151,7 +151,8 @@
       "every line is one JSON object matching the row schema",
       "ids unique; seq strictly increasing",
       "a row's direction names an earlier op user.direction row",
-      "user.direction rows: actor user, reason_source user_direction, params.direction a non-empty string"
+      "user.direction rows: actor user, reason_source user_direction, params.direction a non-empty string",
+      "v1.2: the person's directions are user.direction rows (they replace conversation transcripts); a game with none is reported as a warning"
     ],
     "git_log": {
       "first_line": "GIT-LOG 1",
@@ -167,6 +168,16 @@
       "author_pattern": "^dev_[0-9]+$",
       "date_pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([+-][0-9]{2}:[0-9]{2}|Z)$",
       "order": "oldest first; commits unique"
-    }
+    },
+    "history": [
+      "v1.2 full variant: manifest.history is an object; History/<game>.bundle is a git bundle whose refs include history.head = manifest.commit",
+      "the bundle holds every commit (history.commits); git.log lists the same commits",
+      "every Git LFS pointer in every commit has its object under History/lfs/objects/<aa>/<bb>/<sha256>, and each object's sha256 equals its name (history.lfs_objects / lfs_bytes count them)",
+      "author and committer of every commit are dev_NN; commit messages and text blobs carry no banned names (same scan as the repo)",
+      "repo-dataset: no History/, manifest.history null"
+    ],
+    "brief": [
+      "v1.2: Brief/brief.md (the original brief) and Brief/design.md (design doc, story bible, status) are present and non-empty; manifest.brief names them"
+    ]
   }
 }

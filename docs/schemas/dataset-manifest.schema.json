@@ -2,63 +2,322 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "dataset-layout/v1.1/manifest",
   "title": "Dataset manifest.json",
-  "description": "Metadata of one game's dataset and the path, size and sha256 of every other file in it. Cross-file rules (files exist and match, status complete needs a passing replay report, commit = last git.log commit) are in docs/game-format-v1.json, dataset.manifest.",
+  "description": "Metadata of one game's dataset and the path, size and sha256 of every other file in it. Cross-file rules (files exist and match, status complete needs a passing replay report, commit = last git.log commit) are in docs/game-format-v1.json, dataset.manifest. v1.2 (2026-10-15) adds history and brief (required when layout is v1.2; checked by tools/validate-game.py).",
   "type": "object",
-  "required": ["layout", "game", "title", "version", "commit", "status", "variant", "pending", "scenarios", "totals", "files"],
+  "required": [
+    "layout",
+    "game",
+    "title",
+    "version",
+    "commit",
+    "status",
+    "variant",
+    "pending",
+    "scenarios",
+    "totals",
+    "files"
+  ],
   "properties": {
-    "layout": { "const": "dataset-layout/v1.1" },
-    "game": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$", "description": "the game's slug; also the zip's top folder" },
-    "title": { "type": "string", "minLength": 1 },
-    "version": { "type": "string" },
-    "commit": { "$ref": "#/$defs/sha1" },
-    "status": { "enum": ["complete", "pending"] },
-    "variant": { "enum": ["full", "repo-dataset"], "description": "full = Dataset.zip (with UEProject/ and Build/); repo-dataset = the game repo's Dataset/ folder" },
-    "pending": { "type": "array", "items": { "type": "string" }, "description": "entries still missing (only ReplayScripts may be); empty when complete" },
-    "created": { "type": "string" },
-    "source_package": { "type": "string" },
+    "layout": {
+      "enum": [
+        "dataset-layout/v1.1",
+        "dataset-layout/v1.2"
+      ],
+      "description": "v1.2 adds History/ (full git history) and Brief/ (brief + design doc); v1.1 deliveries stay valid as v1.1"
+    },
+    "game": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$",
+      "description": "the game's slug; also the zip's top folder"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string"
+    },
+    "commit": {
+      "$ref": "#/$defs/sha1"
+    },
+    "status": {
+      "enum": [
+        "complete",
+        "pending"
+      ]
+    },
+    "variant": {
+      "enum": [
+        "full",
+        "repo-dataset"
+      ],
+      "description": "full = Dataset.zip (with UEProject/ and Build/); repo-dataset = the game repo's Dataset/ folder"
+    },
+    "pending": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "entries still missing (only ReplayScripts may be); empty when complete"
+    },
+    "created": {
+      "type": "string"
+    },
+    "source_package": {
+      "type": "string"
+    },
     "replay_verification": {
       "type": "object",
-      "required": ["pass", "report", "criteria", "exclusions"],
+      "required": [
+        "pass",
+        "report",
+        "criteria",
+        "exclusions"
+      ],
       "properties": {
-        "pass": { "type": "boolean" },
-        "report": { "type": "string" },
-        "criteria": { "type": "array", "items": { "type": "object", "required": ["id", "text", "result", "pass"], "properties": { "id": { "type": "string" }, "text": { "type": "string" }, "result": { "type": "string" }, "pass": { "type": "boolean" } } } },
-        "exclusions": { "type": "array", "items": { "type": "object", "required": ["id", "what", "count"], "properties": { "id": { "type": "string" }, "what": { "type": "string" }, "count": { "type": "integer", "minimum": 0 } } } }
+        "pass": {
+          "type": "boolean"
+        },
+        "report": {
+          "type": "string"
+        },
+        "criteria": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "text",
+              "result",
+              "pass"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "result": {
+                "type": "string"
+              },
+              "pass": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "exclusions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "what",
+              "count"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "what": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
       }
     },
     "build": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "description": "the packaged build in Build/ (full variant); null in the repo Dataset/",
-      "required": ["config", "commit", "exe"],
-      "properties": { "config": { "enum": ["Shipping"] }, "commit": { "$ref": "#/$defs/sha1" }, "exe": { "type": "string", "pattern": "\\.exe$" }, "source": { "type": "string" } }
+      "required": [
+        "config",
+        "commit",
+        "exe"
+      ],
+      "properties": {
+        "config": {
+          "enum": [
+            "Shipping"
+          ]
+        },
+        "commit": {
+          "$ref": "#/$defs/sha1"
+        },
+        "exe": {
+          "type": "string",
+          "pattern": "\\.exe$"
+        },
+        "source": {
+          "type": "string"
+        }
+      }
     },
     "scenarios": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["file", "scenario", "name", "result", "seconds"],
+        "required": [
+          "file",
+          "scenario",
+          "name",
+          "result",
+          "seconds"
+        ],
         "properties": {
-          "file": { "type": "string", "pattern": "^Gameplay/[a-z0-9-]+_S[0-9]+\\.mp4$" },
-          "scenario": { "type": "integer", "minimum": 1 },
-          "name": { "type": "string", "minLength": 1 },
-          "result": { "enum": ["win", "lose", "timeout", "abort"] },
-          "seconds": { "type": "number", "minimum": 0 },
-          "source_run": { "type": "string" },
-          "audio_offset_s": { "type": "number" }
+          "file": {
+            "type": "string",
+            "pattern": "^Gameplay/[a-z0-9-]+_S[0-9]+\\.mp4$"
+          },
+          "scenario": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "result": {
+            "enum": [
+              "win",
+              "lose",
+              "timeout",
+              "abort"
+            ]
+          },
+          "seconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "source_run": {
+            "type": "string"
+          },
+          "audio_offset_s": {
+            "type": "number"
+          }
         }
       }
     },
-    "totals": { "type": "object", "required": ["files", "bytes"], "properties": { "files": { "type": "integer", "minimum": 0 }, "bytes": { "type": "integer", "minimum": 0 } } },
+    "totals": {
+      "type": "object",
+      "required": [
+        "files",
+        "bytes"
+      ],
+      "properties": {
+        "files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
     "files": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["path", "bytes", "sha256"],
-        "properties": { "path": { "type": "string", "minLength": 1 }, "bytes": { "type": "integer", "minimum": 0 }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" } },
+        "required": [
+          "path",
+          "bytes",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
         "additionalProperties": false
+      }
+    },
+    "history": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "v1.2 full variant: the git history in History/; null in a repo Dataset/ (the repo is its own history)",
+      "required": [
+        "bundle",
+        "head",
+        "commits",
+        "refs",
+        "lfs_objects",
+        "lfs_bytes",
+        "authors_anonymised"
+      ],
+      "properties": {
+        "bundle": {
+          "type": "string",
+          "pattern": "^History/[^/]+\\.bundle$"
+        },
+        "head": {
+          "$ref": "#/$defs/sha1"
+        },
+        "commits": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "lfs_objects": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lfs_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "authors_anonymised": {
+          "const": true
+        }
+      }
+    },
+    "brief": {
+      "type": "object",
+      "description": "v1.2: the Brief/ files",
+      "required": [
+        "brief",
+        "design"
+      ],
+      "properties": {
+        "brief": {
+          "const": "Brief/brief.md"
+        },
+        "design": {
+          "const": "Brief/design.md"
+        }
       }
     }
   },
-  "$defs": { "sha1": { "type": "string", "pattern": "^[0-9a-f]{40}$" } }
+  "$defs": {
+    "sha1": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    }
+  }
 }
