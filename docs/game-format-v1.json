@@ -56,10 +56,6 @@
       {
         "pattern": "^ReplayConfig\\.json$",
         "what": "creation replay config (ReplayScripts/ of the dataset)"
-      },
-      {
-        "pattern": "^Tasks/[a-z0-9][a-z0-9-]{1,62}\\.json$",
-        "what": "the game's tasks, one GameTask per file (docs/schemas/game-task.schema.json); about 10 recommended, at least one"
       }
     ],
     "engine_associations": [

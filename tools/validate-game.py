@@ -381,7 +381,7 @@ def check_dataset(rep, path, area='dataset'):
             if m.get('history') is not None or v.has_dir('History'):
                 rep.error(area, 'a repo Dataset/ has no History/ and history null (the repo is its own history)')
             if v.has_dir('Tasks'):
-                rep.error(area, 'a repo Dataset/ has no Tasks/ (tasks live in the game environment)')
+                rep.error(area, 'a repo Dataset/ has no Tasks/ (tasks live on the game repo\'s tasks branch)')
     # full variant: every asset file listed by the project's assets.manifest.json is inside UEProject/
     if m['variant'] == 'full':
         am = 'UEProject/assets.manifest.json'
@@ -538,36 +538,67 @@ def check_task(rep, a, label, t, game, has_commit):
         for k in ('commit', 'reference'):
             c = s.get(k)
             if c and has_commit is not None and not has_commit(c):
-                rep.error(a, f'{label}: seed.{k} {str(c)[:12]} is not a commit of this game\'s history')
+                rep.error(a, f'{label}: seed.{k} {str(c)[:12]} is not a commit of this game\'s history'
+                             + (' (an ancestor of main\'s head)' if a.startswith('repo') else ''))
 
 
-def check_repo_tasks(rep, repo, files):
-    """The repo's Tasks/<name>.json: one GameTask each, name = file stem, seeds on this repo's commits."""
+TASKS_REFS = ('tasks', 'origin/tasks')   # where a game's tasks live: its orphan tasks branch, never main
+
+
+def _git(repo, *args):
+    return subprocess.run(['git', '-C', repo, *args], capture_output=True)
+
+
+def check_repo_tasks(rep, repo, files=None):
+    """The game's tasks on its orphan `tasks` branch (`tasks`, else `origin/tasks`): Tasks/<name>.json, one GameTask
+    each, name = file stem, seeds on commits of main's history (ancestors of HEAD, the main branch in a game checkout).
+    The branch shares no history with main, and main's HEAD tracks nothing under Tasks/. Read from git, not the
+    working tree (`files` is unused)."""
     a = 'repo: Tasks'
     game = os.path.basename(os.path.normpath(repo))
-    paths = [f for f in files if re.fullmatch(r'Tasks/[^/]+\.json', f)]
+    on_main = [p for p in _git(repo, '-c', 'core.quotepath=off', 'ls-tree', '-r', '--name-only', 'HEAD', '--', 'Tasks')
+               .stdout.decode('utf-8', 'replace').splitlines() if p.strip()]
+    if on_main:
+        rep.error(a, f'main tracks {len(on_main)} path(s) under Tasks/ (e.g. {on_main[0]}): '
+                     'tasks live on the tasks branch, never on main')
+    ref = next((r for r in TASKS_REFS if _git(repo, 'rev-parse', '--verify', '-q', r + '^{commit}').returncode == 0), None)
+    if not ref:
+        rep.error(a, 'no tasks branch (neither tasks nor origin/tasks): a game ships at least one task, '
+                     'on its orphan tasks branch')
+        return
+    if _git(repo, 'merge-base', ref, 'HEAD').returncode == 0:
+        rep.error(a, f'{ref} shares history with main: tasks must be an orphan branch')
+    names = [n for n in _git(repo, '-c', 'core.quotepath=off', 'ls-tree', '--name-only', ref + ':Tasks')
+             .stdout.decode('utf-8', 'replace').splitlines() if n.strip()]
+    paths = ['Tasks/' + n for n in names if n.endswith('.json')]
     if not paths:
-        return   # the required-files rule already reports a game without tasks
+        rep.error(a, f'no task files in Tasks/ on {ref} (a game ships at least one; about 10 recommended)')
+        return
     known = {}
 
-    def has_commit(c):
+    def has_commit(c):   # a commit of main's history: an ancestor of main's head
         if c not in known:
-            known[c] = subprocess.run(['git', '-C', repo, 'cat-file', '-e', c + '^{commit}'], capture_output=True).returncode == 0
+            known[c] = _git(repo, 'merge-base', '--is-ancestor', c, 'HEAD').returncode == 0
         return known[c]
     for f in paths:
         stem = f[len('Tasks/'):-len('.json')]
+        label = f'{ref}:{f}'
+        r = _git(repo, 'show', label)
+        if r.returncode != 0:
+            rep.error(a, f'{label}: cannot read ({r.stderr.decode("utf-8", "replace").strip()[:120]})')
+            continue
         try:
-            t = json.load(open(os.path.join(repo, f), encoding='utf-8-sig'))
+            t = json.loads(r.stdout.decode('utf-8-sig'))
         except ValueError as e:
-            rep.error(a, f'{f}: not JSON ({e})')
+            rep.error(a, f'{label}: not JSON ({e})')
             continue
         if not isinstance(t, dict):
-            rep.error(a, f'{f}: not a task object')
+            rep.error(a, f'{label}: not a task object')
             continue
         if t.get('name') != stem:
-            rep.error(a, f'{f}: name {t.get("name")!r} differs from the file name')
-        check_task(rep, a, f, t, game, has_commit)
-    rep.note(a, f'{len(paths)} task(s) (about 10 recommended)')
+            rep.error(a, f'{label}: name {t.get("name")!r} differs from the file name')
+        check_task(rep, a, label, t, game, has_commit)
+    rep.note(a, f'{len(paths)} task(s) on {ref} (about 10 recommended)')
 
 
 def check_tasks(rep, area, v, m):
