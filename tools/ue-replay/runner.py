@@ -432,6 +432,24 @@ def build_editor(ctx, label):
         os.replace(log, log[:-4] + ".locked.log")
         code, secs2 = heavy("ue-replay %s build %s (retry)" % (cfg["game"], label), [bat])
         secs += secs2
+    if code != 0 and re.search(r": (?:fatal )?error C\d{4}", open(log, encoding="utf-8", errors="replace").read()):
+        # Compile errors that the original build did not have: UBT's adaptive unity build compiles the files git reports
+        # as modified on their own and the rest in unity blobs. The session building the game was editing those files,
+        # so they compiled alone; in the replay's project other files share their blob (a global of another .cpp
+        # shadows a local, C4459: rts-command w06; an include order hides a missing include: battle-boats w25). Once
+        # more with unity off, every file on its own as the session's edited files were.
+        nu_label = label + "_nounity"
+        nu_log = os.path.join(ctx.logs, "build_%s.log" % nu_label)
+        nu_bat = os.path.join(ctx.logs, "build_%s.bat" % nu_label)
+        with open(nu_bat, "w", encoding="utf-8") as f:
+            f.write('@echo off\r\ncall "%s\\Engine\\Build\\BatchFiles\\Build.bat" %s Win64 Development -Project="%s" -WaitMutex '
+                    '-NoHotReloadFromIDE -DisableUnity -Log="%s" > "%s" 2>&1\r\nexit /b %%ERRORLEVEL%%\r\n' % (
+                        ctx.engine.replace("/", "\\"), cfg["editor_target"], ctx.uproject.replace("/", "\\"),
+                        os.path.join(ctx.logs, "ubt_%s.txt" % nu_label), nu_log))
+        print("build %s: compile errors; once more without unity (-DisableUnity)" % label)
+        code, secs2 = heavy("ue-replay %s build %s (no unity)" % (cfg["game"], label), [nu_bat])
+        secs += secs2
+        log = nu_log
     return code, secs, log
 
 
