@@ -155,10 +155,11 @@ private:
 	FVector2D VirtualCursor = FVector2D::ZeroVector;
 
 	TMap<FString, IConsoleVariable*> CVarCache;
-	// Master-submix capture (audio render thread). Never deleted: the audio thread may still call it after unregistering.
+	// Master-submix capture (audio render thread), cleared once unregistered. On UE 5.3 never deleted: the audio thread
+	// may still call it after unregistering.
 	AutoPlay::FAudioCapture* AudioCapture = nullptr;
 	// UE 5.4+: submix listeners are TSharedFromThis (thread-safe) and registered by shared reference; the raw-pointer
-	// overload asserts (SharedThis.Get() == this) on an object made with new. Keeps the capture alive as before.
+	// overload asserts (SharedThis.Get() == this) on an object made with new. Owns the capture until it is unregistered.
 	TSharedPtr<AutoPlay::FAudioCapture, ESPMode::ThreadSafe> AudioCaptureRef;
 	int64 LastAudioSize = -1;
 	double AudioStableSince = 0.0;

@@ -420,6 +420,8 @@ void UAutoPlaySubsystem::Deinitialize()
 			if (FAudioDevice* AudioDevice = GetGameWorld() ? GetGameWorld()->GetAudioDeviceRaw() : nullptr) { AutoPlayUnregisterCapture(AudioDevice, AudioCapture, AudioCaptureRef); }
 			AudioCapture->Close();
 		}
+		AudioCapture = nullptr;
+		AudioCaptureRef.Reset(); // before the audio device shuts down; the mixer keeps its own reference while it needs one
 		if (Phase != EPhase::Done)
 		{
 			// Quit before the run finished (crash path, window closed): keep what we have.
@@ -654,6 +656,10 @@ void UAutoPlaySubsystem::StartExport()
 		}
 		AudioCapture->Close(); // stops accepting buffers first; the object stays alive for late audio-thread calls
 		AudioFrames = AudioCapture->GetWrittenFrames(); AudioSilence = AudioCapture->GetSilenceFrames(); AudioGaps = AudioCapture->GetGaps();
+		// Drop our reference now rather than at subsystem teardown (UE 5.4+: the mixer holds its own while it needs one;
+		// UE 5.3: the object is left alive for late audio-thread calls).
+		AudioCapture = nullptr;
+		AudioCaptureRef.Reset();
 	}
 	ClockSamples.Add(ClockSample(TEXT("audio_stop")));
 
