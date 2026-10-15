@@ -62,7 +62,11 @@ param(
     [switch]$DryRun,                # print the store-content split, build and gameplay selection; write nothing
     [string]$Rescan,                # an existing package folder: check it against the current rules, write <dir>.rescan-hits.tsv; changes nothing
     [string]$ScrubDir,              # a folder joining a delivery: apply the scrub rules to its text files in place (<dir>.scrub.json)
-    [switch]$Dataset,               # after packaging, build the dataset layout v1.1 delivery (package-dataset.ps1); see the end of this file
+    [string]$BriefFile,             # the original brief (Brief/brief.md); default docs/briefs/original/game-<game>.md, else docs/briefs/games/<game>.md
+    [string]$DesignFile,            # the design doc (Brief/design.md); default docs/games/<game>.md
+    [switch]$NoGitHistory,          # skip GitHistory\ (the rewritten full history for dataset layout v1.2: bundle + every LFS object)
+    [switch]$LfsUnpatchableUseHead, # an LFS object naming the account outside a safe context: HEAD's clean version of its path stands in
+    [switch]$Dataset,               # after packaging, build the dataset delivery (package-dataset.ps1, layout v1.2); see the end of this file
     [string]$ReplayScripts          # with -Dataset: ReplayScripts\ from the replay session
 )
 
@@ -697,7 +701,9 @@ public static class Tools {
                     else if (line.StartsWith("Author: ") || line.StartsWith("Committer: ")) {
                         int sp = line.IndexOf(": "); string who = line.Substring(sp + 2);
                         int lt = who.LastIndexOf(" <"); if (lt > 0) who = who.Substring(0, lt);   // identities by name
-                        string anon; if (!authors.TryGetValue(who, out anon)) { anon = "dev_" + (authors.Count + 1).ToString("00"); authors[who] = anon; }
+                        string anon;
+                        if (Regex.IsMatch(who, @"^dev_\d+$")) anon = who;   // already anonymised (the delivered history)
+                        else if (!authors.TryGetValue(who, out anon)) { anon = "dev_" + (authors.Count + 1).ToString("00"); authors[who] = anon; }
                         line = line.Substring(0, sp + 2) + anon;
                     }
                     w.WriteLine(line); continue;
@@ -763,6 +769,157 @@ public static class Tools {
             }
         }
         sec.Clear();
+    }
+
+    // ---- delivered git history (dataset layout v1.2 History/) ----
+    // Streams `git fast-export --all` of repo into `git fast-import` of the new bare repo outBare, rewriting on the way:
+    // author / committer / tagger -> dev_NN (the git.log numbering in `authors`; names not in it continue it), commit and
+    // tag messages -> agent trailer lines dropped, then the scrub rules; text blobs (by the path that first holds them:
+    // BinaryExt and NUL test as for files) -> the scrub rules; Git LFS pointers of objects patched for delivery (lfsMap:
+    // old oid -> {new oid, size}) -> the new pointer. Returns the original -> rewritten commit sha map.
+    public static int HistoryBlobsScrubbed = 0, HistoryMessagesScrubbed = 0, HistoryPointersSwapped = 0;
+    static string ApplyRules(string s, Regex[] rx, string[] reps, string[] scopes, string[] hints, bool json, ref bool changed) {
+        for (int i = 0; i < rx.Length; i++) {
+            if (scopes[i] == "json" && !json) continue;
+            if (scopes[i] == "lines" && json) continue;
+            if (!string.IsNullOrEmpty(hints[i]) && s.IndexOf(hints[i], StringComparison.OrdinalIgnoreCase) < 0) continue;
+            string rep = reps[i]; bool hit = false;
+            string t = rx[i].Replace(s, m => { hit = true; return rep == "<<BASE64>>" ? Base64Placeholder(m.Value) : (rep.IndexOf('$') >= 0 ? m.Result(rep) : rep); });
+            if (hit) { s = t; changed = true; }
+        }
+        return s;
+    }
+    static byte[] ReadExact(Stream s, int n) {
+        byte[] b = new byte[n]; int off = 0;
+        while (off < n) { int r = s.Read(b, off, n - off); if (r <= 0) throw new Exception("fast-export stream ended inside a data block"); off += r; }
+        return b;
+    }
+    static void WriteAscii(Stream s, string line) { byte[] b = Latin1.GetBytes(line + "\n"); s.Write(b, 0, b.Length); }
+    public static Dictionary<string, string> RewriteHistory(string repo, string outBare, Dictionary<string, string> authors,
+            Dictionary<string, string[]> lfsMap, string[] patterns, string[] reps, string[] scopes, string[] hints, List<string> problems) {
+        var rx = new Regex[patterns.Length];
+        for (int i = 0; i < patterns.Length; i++) rx[i] = new Regex(patterns[i], RegexOptions.Compiled);
+        var trailer = new Regex(@"^\s*(Co-Authored-By:\s*Claude\b|.*Generated with \[?Claude Code\b)", RegexOptions.IgnoreCase);
+        var devRx = new Regex(@"^dev_\d+$");
+        // blob sha -> the first path that holds it (decides text vs binary like IsText does for files)
+        var blobPath = new Dictionary<string, string>();
+        var lp = new ProcessStartInfo(Git, "-C \"" + repo + "\" -c core.quotepath=off rev-list --objects --all");
+        lp.UseShellExecute = false; lp.RedirectStandardOutput = true; lp.CreateNoWindow = true; lp.StandardOutputEncoding = Encoding.UTF8;
+        using (var lpp = Process.Start(lp)) {
+            string l; while ((l = lpp.StandardOutput.ReadLine()) != null) { int sp = l.IndexOf(' '); if (sp == 40 && !blobPath.ContainsKey(l.Substring(0, 40))) blobPath[l.Substring(0, 40)] = l.Substring(41); }
+            lpp.WaitForExit();
+        }
+        string marksOut = Path.Combine(outBare, "import.marks");
+        var ex = new ProcessStartInfo(Git, "-C \"" + repo + "\" fast-export --all --show-original-ids --signed-tags=strip --tag-of-filtered-object=rewrite --reencode=yes");
+        ex.UseShellExecute = false; ex.RedirectStandardOutput = true; ex.RedirectStandardError = true; ex.CreateNoWindow = true;
+        var im = new ProcessStartInfo(Git, "-C \"" + outBare + "\" fast-import --quiet --force \"--export-marks=" + marksOut + "\"");
+        im.UseShellExecute = false; im.RedirectStandardInput = true; im.RedirectStandardOutput = true; im.RedirectStandardError = true; im.CreateNoWindow = true;
+        var errEx = new StringBuilder(); var errIm = new StringBuilder();
+        // .NET Framework wraps a child's stdin in a StreamWriter with Console.InputEncoding and flushes its preamble at
+        // once: a UTF-8 console would put a BOM before the stream, which fast-import refuses. No preamble, then restore.
+        Encoding inEnc = null; try { inEnc = Console.InputEncoding; Console.InputEncoding = new UTF8Encoding(false); } catch { }
+        var pex = Process.Start(ex); var pim = Process.Start(im);
+        try { if (inEnc != null) Console.InputEncoding = inEnc; } catch { }
+        pex.ErrorDataReceived += (s, e) => { if (e.Data != null) lock (errEx) errEx.AppendLine(e.Data); }; pex.BeginErrorReadLine();
+        pim.ErrorDataReceived += (s, e) => { if (e.Data != null) lock (errIm) errIm.AppendLine(e.Data); }; pim.BeginErrorReadLine();
+        pim.OutputDataReceived += (s, e) => { }; pim.BeginOutputReadLine();
+        var origToMark = new Dictionary<string, string>();
+        var input = new BufferedStream(pex.StandardOutput.BaseStream, 1 << 20);
+        var output = new BufferedStream(pim.StandardInput.BaseStream, 1 << 20);
+        string ctx = "", mark = null, orig = null; var sb = new StringBuilder(); string line; bool afterData = false;
+        try {
+            while ((line = ReadLineLF(input, sb)) != null) {
+                // the export's optional LF after a data block: ours is already written
+                if (afterData) { afterData = false; if (line.Length == 0) continue; }
+                if (line == "blob") { ctx = "blob"; mark = null; orig = null; }
+                else if (line.StartsWith("commit ")) { ctx = "commit"; mark = null; orig = null; }
+                else if (line.StartsWith("tag ")) { ctx = "tag"; mark = null; orig = null; }
+                else if (line.StartsWith("reset ")) { ctx = "reset"; }
+                else if (line.StartsWith("mark :")) { mark = line.Substring(5); }
+                else if (line.StartsWith("original-oid ")) { orig = line.Substring(13).Trim(); if (ctx == "commit" && mark != null) origToMark[orig] = mark; }
+                else if ((ctx == "commit" || ctx == "tag") && (line.StartsWith("author ") || line.StartsWith("committer ") || line.StartsWith("tagger "))) {
+                    int sp = line.IndexOf(' '); int lt = line.IndexOf(" <", sp); int gt = lt < 0 ? -1 : line.IndexOf("> ", lt);
+                    if (lt > 0 && gt > 0) {
+                        string who = line.Substring(sp + 1, lt - sp - 1);
+                        string anon;
+                        if (devRx.IsMatch(who)) anon = who;
+                        else if (!authors.TryGetValue(who, out anon)) { anon = "dev_" + (authors.Count + 1).ToString("00"); authors[who] = anon; }
+                        line = line.Substring(0, sp + 1) + anon + " <" + anon + "@example.invalid" + line.Substring(gt);
+                    }
+                }
+                else if (line.StartsWith("data ")) {
+                    int n = int.Parse(line.Substring(5));
+                    byte[] d = ReadExact(input, n);
+                    if (ctx == "blob") {
+                        string path = (orig != null && blobPath.ContainsKey(orig)) ? blobPath[orig] : "";
+                        if (n < 300 && n > 40 && Latin1.GetString(d, 0, Math.Min(n, 41)).StartsWith("version https://git-lfs.github.com/spec/")) {
+                            string ptr = Latin1.GetString(d);
+                            var pm = Regex.Match(ptr, @"oid sha256:([0-9a-f]{64})");
+                            string[] nv;
+                            if (pm.Success && lfsMap.TryGetValue(pm.Groups[1].Value, out nv)) {
+                                d = Latin1.GetBytes("version https://git-lfs.github.com/spec/v1\noid sha256:" + nv[0] + "\nsize " + nv[1] + "\n");
+                                HistoryPointersSwapped++;
+                            }
+                        } else if (n > 0 && n < (256 << 20) && !BinaryExt.Contains(Path.GetExtension(path))) {
+                            bool bom16 = n >= 2 && ((d[0] == 0xFF && d[1] == 0xFE) || (d[0] == 0xFE && d[1] == 0xFF));
+                            bool nul = false; if (!bom16) for (int i = 0; i < Math.Min(n, 8000); i++) if (d[i] == 0) { nul = true; break; }
+                            if (!nul) {
+                                Encoding enc = bom16 ? (d[0] == 0xFF ? Encoding.Unicode : Encoding.BigEndianUnicode) : Latin1;
+                                string ext = Path.GetExtension(path).ToLowerInvariant();
+                                bool json = ext == ".json" || ext == ".jsonl";
+                                bool changed = false;
+                                string s = ApplyRules(enc.GetString(d), rx, reps, scopes, hints, json, ref changed);
+                                if (changed) { d = enc.GetBytes(s); HistoryBlobsScrubbed++; }
+                            }
+                        }
+                    } else if (ctx == "commit" || ctx == "tag") {
+                        string msg = Latin1.GetString(d);
+                        var kept = new StringBuilder(); bool changed = false;
+                        foreach (string ml in msg.Split('\n')) { if (trailer.IsMatch(ml)) { changed = true; continue; } kept.Append(ml).Append('\n'); }
+                        string m2 = kept.ToString(); if (!msg.EndsWith("\n") && m2.EndsWith("\n")) m2 = m2.Substring(0, m2.Length - 1);
+                        m2 = ApplyRules(m2, rx, reps, scopes, hints, false, ref changed);
+                        if (changed) { d = Latin1.GetBytes(m2); HistoryMessagesScrubbed++; }
+                    }
+                    WriteAscii(output, "data " + d.Length); output.Write(d, 0, d.Length); WriteAscii(output, "");
+                    afterData = true;
+                    continue;
+                }
+                WriteAscii(output, line);
+            }
+            output.Flush(); pim.StandardInput.Close();
+        } catch (Exception e) {
+            try { pex.Kill(); } catch { } try { pim.Kill(); } catch { }
+            throw new Exception("history rewrite failed: " + e.Message + " / " + errEx + " / " + errIm);
+        }
+        pex.WaitForExit(); pim.WaitForExit();
+        if (pex.ExitCode != 0) throw new Exception("git fast-export failed: " + errEx);
+        if (pim.ExitCode != 0) throw new Exception("git fast-import failed: " + errIm);
+        var markToNew = new Dictionary<string, string>();
+        foreach (string ml in File.ReadAllLines(marksOut)) { int sp = ml.IndexOf(' '); if (sp > 0) markToNew[ml.Substring(0, sp)] = ml.Substring(sp + 1).Trim(); }
+        File.Delete(marksOut);
+        var map = new Dictionary<string, string>();
+        foreach (var kv in origToMark) { string nw; if (markToNew.TryGetValue(kv.Value, out nw)) map[kv.Key] = nw; else problems.Add("error: history rewrite lost commit " + kv.Key); }
+        return map;
+    }
+
+    // Every full commit sha of the map in the text files (rels) -> its rewritten sha. Returns the files changed.
+    public static List<string> RemapShas(string root, IList<string> rels, Dictionary<string, string> map) {
+        root = Path.GetFullPath(root).TrimEnd('\\') + "\\";
+        var rx = new Regex(@"(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])", RegexOptions.Compiled);
+        var changedFiles = new List<string>();
+        Parallel.ForEach(rels, new ParallelOptions { MaxDegreeOfParallelism = 6 }, rel => {
+            string full = root + rel.Replace('/', '\\');
+            var fi = new FileInfo(full);
+            if (fi.Length == 0 || fi.Length >= (256L << 20) || !IsText(full)) return;
+            byte[] d = File.ReadAllBytes(full);
+            Encoding enc = (d.Length >= 2 && d[0] == 0xFF && d[1] == 0xFE) ? Encoding.Unicode
+                         : (d.Length >= 2 && d[0] == 0xFE && d[1] == 0xFF) ? Encoding.BigEndianUnicode : Latin1;
+            string s = enc.GetString(d); bool any = false;
+            string t = rx.Replace(s, m => { string nw; if (map.TryGetValue(m.Value, out nw)) { any = true; return nw; } return m.Value; });
+            if (any) { File.WriteAllBytes(full, enc.GetBytes(t)); lock (changedFiles) changedFiles.Add(rel); }
+        });
+        changedFiles.Sort(StringComparer.Ordinal);
+        return changedFiles;
     }
 
     // ---- zip ----
@@ -1296,6 +1453,18 @@ $glHeader = "GIT-LOG 1`n# Project $($info.ProjectName) ($Game): the original git
 $commitCount = [GameDeliverable.Tools]::WriteGitLog($repo, $sha, (Join-Path $stage 'git.log'), $glHeader, $authors, $problems)
 
 # ---------------------------------------------------------------------------------------------------------------------
+# Brief: the original brief the game was built from and its design doc (dataset layout v1.2 Brief/; scrubbed below
+# like every text file). Brief: -BriefFile, else the verbatim original (docs/briefs/original/game-<game>.md), else the
+# fill-in (docs/briefs/games/<game>.md). Design: -DesignFile, else docs/games/<game>.md.
+# ---------------------------------------------------------------------------------------------------------------------
+$briefDir = Join-Path $stage 'Brief'; New-Item -ItemType Directory -Force $briefDir | Out-Null
+$gfDocs = Join-Path (Split-Path $PSScriptRoot -Parent) 'docs'
+$briefSrc = @($BriefFile, (Join-Path $gfDocs "briefs\original\game-$Game.md"), (Join-Path $gfDocs "briefs\games\$Game.md")) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+$designSrc = @($DesignFile, (Join-Path $gfDocs "games\$Game.md")) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+if ($briefSrc) { Copy-Item -LiteralPath $briefSrc (Join-Path $briefDir 'brief.md') } else { [void]$warnings.Add('Brief/brief.md: no original brief found (pass -BriefFile); dataset layout v1.2 requires it') }
+if ($designSrc) { Copy-Item -LiteralPath $designSrc (Join-Path $briefDir 'design.md') } else { [void]$warnings.Add('Brief/design.md: no design doc found (pass -DesignFile); dataset layout v1.2 requires it') }
+
+# ---------------------------------------------------------------------------------------------------------------------
 # History
 # ---------------------------------------------------------------------------------------------------------------------
 $histDir = Join-Path $stage 'History'; New-Item -ItemType Directory -Force $histDir | Out-Null
@@ -1656,22 +1825,23 @@ $leakRx = New-Object System.Text.RegularExpressions.Regex(('[A-Za-z]:[\\/]{1,2}U
 
 $scrubReport = [ordered]@{ schema = 'scrub-report/1'; applied = (-not $NoScrub) }
 $touched = @{}
+# a literal each rule cannot match without (the rule is skipped where it is absent); also used for the git history
+$hints = [string[]]@($Rules | ForEach-Object {
+        $m = $_.match
+        switch ($_.id) {
+            'agent-trailer' { if ($m -match 'Co-Authored') { 'co-authored-by' } else { 'generated with' } }
+            'banned-name' { if ($m -match '(?i)superposition') { 'superposition' } else { 'factory' } }
+            'username' { $UserName }
+            'email' { '@' }
+            'git-identity' { '' }
+            'session-path' { '' }   # no single word marks these files (the profile name may already be gone)
+            default {
+                if ($m -match '(?i)anthropic' -and $m -notmatch '(?i)claude') { 'anthropic' }
+                elseif ($m -match '(?i)opus' -and $m -notmatch '(?i)claude') { 'opus' } else { 'claude' } }
+        } })
 if (-not $NoScrub) {
     Write-Step "scrubbing every text file of the package ($($Rules.Count) rules)"
-    $hints = [string[]]@($Rules | ForEach-Object {
-            $m = $_.match
-            switch ($_.id) {
-                'agent-trailer' { if ($m -match 'Co-Authored') { 'co-authored-by' } else { 'generated with' } }
-                'banned-name' { if ($m -match '(?i)superposition') { 'superposition' } else { 'factory' } }
-                'username' { $UserName }
-                'email' { '@' }
-                'git-identity' { '' }
-                'session-path' { '' }   # no single word marks these files (the profile name may already be gone)
-                default {
-                    if ($m -match '(?i)anthropic' -and $m -notmatch '(?i)claude') { 'anthropic' }
-                    elseif ($m -match '(?i)opus' -and $m -notmatch '(?i)claude') { 'opus' } else { 'claude' } }
-            } })
-    $res = [GameDeliverable.Tools]::ScrubAll($stage, [string[]](Get-Rels), [string[]]@($Rules | ForEach-Object { $_.match }),
+    $res =[GameDeliverable.Tools]::ScrubAll($stage, [string[]](Get-Rels), [string[]]@($Rules | ForEach-Object { $_.match }),
         [string[]]@($Rules | ForEach-Object { $_.replace }), [string[]]@($Rules | ForEach-Object { $_.scope }), $hints)
     $perRule = [ordered]@{}; foreach ($k in $RuleText.Keys) { $perRule[$k] = [ordered]@{ id = $k; description = $RuleText[$k]; replacements = 0; files = 0 } }
     $filesOut = New-Object System.Collections.ArrayList
@@ -1703,6 +1873,55 @@ if (-not $NoScrub) {
     $scrubReport.files_touched = @($filesOut)
     $scrubReport.gameplay_manifests = 'entries of rewritten bundle files carry the new bytes and sha256'
     Write-Step "scrubbed $($touched.Count) files: $(@($perRule.Values | Where-Object { $_.replacements } | ForEach-Object { "$($_.id) $($_.replacements)" }) -join ', ')"
+}
+# ---------------------------------------------------------------------------------------------------------------------
+# GitHistory: the full git history rewritten for delivery (dataset layout v1.2 History/; package-dataset.ps1 renames it).
+# Every commit of every ref, with authors dev_NN (git.log's numbering), agent trailers dropped, the scrub rules on
+# messages and text blobs, and every Git LFS object (patched same-length where it names the account; pointers follow).
+# Commit shas change, so git.log is rewritten from the new history and every full sha in the package's text (except the
+# recording logs in History\ and the gameplay bundles) is mapped to its new value; the map stays next to the package.
+# ---------------------------------------------------------------------------------------------------------------------
+$gitHistory = $null
+if (-not $NoGitHistory) {
+    $ghDir = Join-Path $stage 'GitHistory'; New-Item -ItemType Directory -Force $ghDir | Out-Null
+    Write-Step 'exporting every Git LFS object of the whole history (patched where it names the account)'
+    $py = (Get-Command python -ErrorAction SilentlyContinue | Where-Object { $_.Source -notmatch 'WindowsApps' } | Select-Object -First 1).Source
+    if (-not $py) { $py = 'py' }
+    $ea = @((Join-Path $PSScriptRoot 'ue-pipeline\export-lfs-history.py'), $repo, (Join-Path $ghDir 'lfs\objects'))
+    if ($LfsUnpatchableUseHead) { $ea += '--unpatchable-use-head' }
+    $lfsOut = & $py @ea 2>&1 | ForEach-Object { "$_" }
+    $lfsRes = $null; try { $lfsRes = ($lfsOut | Where-Object { $_ -match '^\{' } | Select-Object -Last 1) | ConvertFrom-Json } catch { }
+    if (-not $lfsRes) { throw "export-lfs-history.py failed: $($lfsOut -join ' ')" }
+    foreach ($x in @($lfsRes.missing)) { if ($x) { $problems.Add("error: LFS object $($x.oid) ($($x.path)) is not in the local store: git lfs fetch --all first") } }
+    foreach ($x in @($lfsRes.unpatchable)) { if ($x) { $problems.Add("error: LFS object $($x.oid) ($($x.path)) names the account outside a safe context (-LfsUnpatchableUseHead uses HEAD's version)") } }
+    $lfsMap = New-Object 'System.Collections.Generic.Dictionary[string,string[]]'
+    foreach ($p in $lfsRes.map.PSObject.Properties) { $lfsMap[$p.Name] = [string[]]@([string]$p.Value[0], [string]$p.Value[1]) }
+    Write-Step "rewriting the history ($($lfsRes.objects) LFS objects, $($lfsRes.patched) patched)"
+    $bare = Join-Path $gameOut "$name.history.git"
+    if (Test-Path $bare) { Remove-Item -Recurse -Force $bare }
+    Invoke-Git $gameOut @('init', '--quiet', '--bare', $bare) | Out-Null
+    $commitMap = [GameDeliverable.Tools]::RewriteHistory($repo, $bare, $authors, $lfsMap, [string[]]@($Rules | ForEach-Object { $_.match }),
+        [string[]]@($Rules | ForEach-Object { $_.replace }), [string[]]@($Rules | ForEach-Object { $_.scope }), $hints, $problems)
+    $newSha = $null; if (-not $commitMap.TryGetValue($sha, [ref]$newSha)) { throw "the rewritten history has no commit for $sha" }
+    Invoke-Git $bare @('bundle', 'create', (Join-Path $ghDir "$Game.bundle"), '--all') | Out-Null
+    $refs = @(Invoke-Git $bare @('for-each-ref', '--format=%(refname)') | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    $nCommits = [int]((Invoke-Git $bare @('rev-list', '--all', '--count')) | Select-Object -First 1)
+    Write-Step 'rewriting git.log from the delivered history'
+    $glHeader2 = "GIT-LOG 1`n# Project $($info.ProjectName) ($Game): the git history up to commit $newSha, oldest first (History/ holds every commit).`n" +
+        "# Recorded as it happened (not reconstructed). Authors and committers are anonymised as dev_NN.`n" +
+        "# Text changes are full unified diffs; binary files and Git LFS files are given as path + sha256 + bytes (old -> new).`n`n"
+    $commitCount = [GameDeliverable.Tools]::WriteGitLog($bare, $newSha, (Join-Path $stage 'git.log'), $glHeader2, $authors, $problems)
+    $remapRels = @(Get-Rels | Where-Object { $_ -notlike 'GitHistory/*' -and $_ -notlike 'History/*' -and $_ -notlike 'Gameplay/*' -and $_ -ne 'git.log' })
+    $remapped = [GameDeliverable.Tools]::RemapShas($stage, [string[]]$remapRels, $commitMap)
+    foreach ($r in $remapped) { $touched[$r] = 1 }
+    $mapTsv = Join-Path $gameOut "$name.commit-map.tsv"
+    Write-Utf8 $mapTsv (("original`tdelivered`n") + (($commitMap.GetEnumerator() | ForEach-Object { "$($_.Key)`t$($_.Value)" }) -join "`n") + "`n")
+    Remove-Item -Recurse -Force $bare
+    $gitHistory = [ordered]@{ bundle = "GitHistory/$Game.bundle"; head = $newSha; commits = $nCommits; refs = $refs
+        lfs_objects = [int]$lfsRes.objects; lfs_bytes = [long]$lfsRes.bytes; lfs_patched = [int]$lfsRes.patched; authors_anonymised = $true
+        blobs_scrubbed = [GameDeliverable.Tools]::HistoryBlobsScrubbed; messages_scrubbed = [GameDeliverable.Tools]::HistoryMessagesScrubbed
+        lfs_pointers_swapped = [GameDeliverable.Tools]::HistoryPointersSwapped; files_remapped = $remapped.Count; commit_map = (Split-Path $mapTsv -Leaf) }
+    Write-Step "history: $nCommits commits, $($refs.Count) refs, head $($newSha.Substring(0, 12)); $($gitHistory.blobs_scrubbed) blobs and $($gitHistory.messages_scrubbed) messages scrubbed; $($remapped.Count) files remapped"
 }
 Write-Step 'scanning every file (paths, text; binaries ASCII/UTF-16)'
 $leaks = New-Object 'System.Collections.Generic.List[GameDeliverable.Hit]'
@@ -1785,6 +2004,7 @@ $manifest = [ordered]@{
     status = $(if ($pendingClean) { 'pending clean build' } else { 'complete' })
     screenshots = @($shots | ForEach-Object { "Screenshots/$($_.file)" })
     commit = $sha; commit_time = $commitTime; commits = $commitCount; variant = $variant
+    commit_delivered = $(if ($gitHistory) { $gitHistory.head } else { $sha }); git_history = $gitHistory
     created = (Get-IsoNow); tool_version = $ToolVersion
     store_content = [ordered]@{ included_files = @($storeRows | Where-Object status -eq 'included').Count; dropped_files = @($storeRows | Where-Object status -eq 'dropped').Count
         dropped_bytes = [long](($storeRows | Where-Object status -eq 'dropped' | ForEach-Object { $_.f.Bytes } | Measure-Object -Sum).Sum) }
