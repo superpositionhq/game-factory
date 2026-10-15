@@ -26,7 +26,8 @@ param(
     [string]$OutRoot,               # default: the game's folder (Dataset.zip + .dataset\); a path puts both under <path>\<game>\ (tests)
     [switch]$NoDataset,
     [switch]$NoZip,
-    [switch]$RebuildVideos
+    [switch]$RebuildVideos,
+    [switch]$NoTasks                # build layout v1.2 (no Tasks/) from a package with a git history
 )
 
 . (Join-Path $PSScriptRoot 'ue-pipeline\common.ps1')
@@ -263,6 +264,7 @@ if ($gh) {
     if (-not (Test-Path -LiteralPath $mapTsv)) { throw "the package has a git history but no commit map next to it ($mapTsv)" }
     foreach ($line in [IO.File]::ReadAllLines($mapTsv) | Select-Object -Skip 1) { $p = $line -split "`t"; if ($p.Count -eq 2) { $commitMap[$p[0]] = $p[1] } }
 }
+if ($gh -and -not $NoTasks) { $layout = 'dataset-layout/v1.3' }
 function Invoke-ShaRemap([string]$Dir) {
     # every full commit sha of the map in the text files under $Dir -> its delivered sha
     if (-not $commitMap.Count) { return 0 }
@@ -299,6 +301,59 @@ if (-not $OutRoot) {
 $lockPath = Join-Path $outDir '_dataset.lock'
 try { $script:Lock = [System.IO.File]::Open($lockPath, 'OpenOrCreate', 'ReadWrite', 'None') }
 catch [System.IO.IOException] { throw "another package-dataset run for $Game is in progress ($lockPath is held); wait for it to finish" }
+# ---- Tasks/ (layout v1.3): the game's tasks from its repo (package-game.ps1 staged Tasks/ at the commit, scrubbed,
+# seed commits mapped to the delivered history), each split into the agent's part and the grader's part ---------------
+$taskNames = @(); $taskRows = @(); $tasksDir = Join-Path $outDir '_tasks'
+if ($layout -eq 'dataset-layout/v1.3') {
+    $pkgTasks = Join-Path $pkg 'Tasks'
+    $srcTasks = @(Get-ChildItem -LiteralPath $pkgTasks -Filter *.json -File -ErrorAction SilentlyContinue)
+    if (-not $srcTasks.Count) { throw "the package has no tasks (the game repo's Tasks/ at the commit is empty): layout v1.3 needs at least one (about 10 recommended); -NoTasks builds v1.2" }
+    $delivered = @{}; foreach ($v in $commitMap.Values) { $delivered[$v] = 1 }
+    foreach ($f in $srcTasks) {
+        $j = [IO.File]::ReadAllText($f.FullName) | ConvertFrom-Json
+        if ($j.PSObject.Properties['seed'] -and $j.seed) {
+            foreach ($k in 'commit', 'reference') {
+                $c = [string](Get-Prop $j.seed $k)
+                if ($c -and -not $delivered.ContainsKey($c)) { throw "task $($f.BaseName): seed.$k $c is not a commit of the delivered history (package without a commit map, or a commit outside the game's history)" }
+            }
+        }
+    }
+    if (Test-Path $tasksDir) { Remove-Item -Recurse -Force $tasksDir }
+    New-Item -ItemType Directory -Force $tasksDir | Out-Null
+    $py = (Get-Command python -ErrorAction SilentlyContinue | Where-Object { $_.Source -notmatch 'WindowsApps' } | Select-Object -First 1).Source
+    if (-not $py) { $py = 'py' }
+    $splitOut = & $py (Join-Path $PSScriptRoot 'split-tasks.py') $pkgTasks $tasksDir 2>&1 | ForEach-Object { "$_" }
+    if ($LASTEXITCODE -ne 0) { throw "split-tasks.py failed: $($splitOut -join ' ')" }
+    $taskRows = @(($splitOut | Where-Object { $_ -match '^\[' } | Select-Object -Last 1) | ConvertFrom-Json)
+    $taskNames = @($taskRows | ForEach-Object { $_.name })
+    # Tasks/README.md: what a task is, the split, the harness rule, how a seed is checked out of History/
+    $tr = New-Object System.Text.StringBuilder; function TA([string]$s = '') { [void]$tr.Append($s + "`n") }
+    TA '# Tasks'; TA ''
+    TA "Tasks an agent can be given on this game, in a game-creation environment's task format (GameTask, game-task/1)."
+    TA 'Each task is split in two, so the grader''s half is never handed to an agent by mistake:'; TA ''
+    TA '| File | Holds |'; TA '|---|---|'
+    TA '| `<name>/task.json` | what the agent may see: `name`, `title`, `instruction` (the brief), `seed` (`game`, `commit`: where it starts, `kind`: bug_fix, feature, change or correction), `play_map` (the map graders open), `asset_packs`, `difficulty`, `tags`, `limits` (turns, minutes, cost, tool timeout) |'
+    TA '| `<name>/grader.json` | the grader''s half: `milestones` (ordered groups of checks: build, boot, logs, files, package, and judged questions with rubrics) and `seed.reference` (a later commit whose change solves the task) |'
+    TA ''
+    TA 'Merging `grader.json` into `task.json` (its `seed` into the task''s `seed`) gives the whole task.'; TA ''
+    TA '**The harness rule.** An agent given a task starts from a snapshot of the game at `seed.commit` with no git history and'
+    TA 'without `Tasks/`, `History/` and `Dataset/` (they hold every task''s rubrics and the reference fixes). It sees the brief'
+    TA 'and that snapshot only; `grader.json` and `seed.reference` are for grading.'; TA ''
+    TA "The seed commits are commits of ``History/$Game.bundle``. Make a task's start:"; TA ''
+    TA '```'
+    TA "git clone History/$Game.bundle work"
+    TA 'robocopy History\lfs work\.git\lfs /E          # or: cp -r History/lfs work/.git/'
+    TA 'cd work'
+    TA 'git lfs install --local'
+    TA 'git checkout <seed.commit>'
+    TA 'git lfs checkout'
+    TA '```'; TA ''
+    TA 'then copy the working tree, without `.git`, `Tasks/`, `History/` and `Dataset/`, to where the agent works.'; TA ''
+    TA '| Task | Kind | Difficulty | Title |'; TA '|---|---|---|---|'
+    foreach ($r in $taskRows) { TA "| ``$($r.name)`` | $($r.kind) | $($r.difficulty) | $($r.title) |" }
+    Write-Utf8 (Join-Path $tasksDir 'README.md') $tr.ToString()
+    Write-Step "tasks: $($taskNames.Count) from the package, split into task.json / grader.json"
+}
 $haveReplay = [bool]($ReplayScripts -and (Test-Path $ReplayScripts))
 # A dataset is COMPLETE only with a passing creation-replay verification (ReplayScripts/Verification/report.json,
 # verdict.pass; tools/ue-replay/verify.py): no verification, no COMPLETE.
@@ -406,6 +461,7 @@ function New-Delivery([string]$Src, [string]$Dest, [string]$Variant) {
         $null = Copy-TreeChecked (Join-Path $Src 'UEProject') (Join-Path $Dest 'UEProject') $false '' 'UEProject/'
         $null = Copy-TreeChecked (Join-Path $Src 'Build') (Join-Path $Dest 'Build') $false '.pdb' 'Build/'
         if ($gh) { $null = Copy-TreeChecked (Join-Path $Src 'GitHistory') (Join-Path $Dest 'History') $false '' 'History/' }
+        if ($taskNames.Count) { $null = Copy-TreeChecked $tasksDir (Join-Path $Dest 'Tasks') $true '' 'Tasks/' }
     }
     if ($haveReplay) {
         $rs = Join-Path $Dest 'ReplayScripts'
@@ -437,6 +493,9 @@ function New-Delivery([string]$Src, [string]$Dest, [string]$Variant) {
         $mj['history'] = if ($repo) { $null } else { [ordered]@{ bundle = "History/$Game.bundle"; head = $sha; commits = [int]$gh.commits; refs = @($gh.refs)
                 lfs_objects = [int]$gh.lfs_objects; lfs_bytes = [long]$gh.lfs_bytes; authors_anonymised = $true } }
         $mj['brief'] = [ordered]@{ brief = 'Brief/brief.md'; design = 'Brief/design.md' }
+    }
+    if ($layout -eq 'dataset-layout/v1.3') {
+        $mj['tasks'] = if ($repo) { $null } else { [ordered]@{ count = $taskNames.Count; names = @($taskNames); schema = 'game-task/1' } }
     }
     Write-JsonFile (Join-Path $Dest 'manifest.json') $mj
 }
@@ -485,6 +544,7 @@ function Write-Readme([string]$Dest, [string]$Variant) {
     if ($gh) {
         if (-not $repo) { A "- ``History/`` — the full git history: ``History/$Game.bundle`` (every commit of every branch) and ``History/lfs/objects/`` (every Git LFS file of every commit). Authors are anonymised as dev_NN." }
         A '- `Brief/` — the original brief the game was built from (`Brief/brief.md`) and its design doc with story bible and status (`Brief/design.md`).'
+        if ($layout -eq 'dataset-layout/v1.3' -and -not $repo) { A "- ``Tasks/`` — $($taskNames.Count) tasks on this game for a game-creation environment (``Tasks/README.md``)." }
     }
     A "- ``Gameplay/`` — one video per scenario of this version ($($scen.Count)), played through with the game audio."
     if (-not $repo) { A "- ``Build/`` — the packaged Windows Shipping build$(if ($exe) { " (``Build/$exe``)" })." }
@@ -524,6 +584,19 @@ function Write-Readme([string]$Dest, [string]$Variant) {
             A 'git lfs checkout'
             A '```'; A ''
             A "The release commit is ``$sha``; ``git.log`` and ``ReplayScripts/`` use the same commit ids."
+        }
+        A ''
+    }
+    if ($layout -eq 'dataset-layout/v1.3') {
+        A '## Tasks'; A ''
+        if ($repo) { A 'The game''s tasks are in the repository''s own `Tasks/` (one task per file); the dataset zip ships them split into the agent''s and the grader''s parts.' }
+        else {
+            A "``Tasks/`` holds $($taskNames.Count) tasks on this game in a game-creation environment's format, each split into ``<name>/task.json``"
+            A '(what the agent sees) and `<name>/grader.json` (milestones with rubrics, and `seed.reference`). A task starts the project at a'
+            A 'commit of `History/` (its `seed`); `Tasks/README.md` explains the fields. **An agent starts from a snapshot at `seed.commit`'
+            A 'with no history and without `Tasks/`, `History/` and `Dataset/`, and never sees `grader.json`.**'; A ''
+            A '| Task | Kind | Difficulty | Title |'; A '|---|---|---|---|'
+            foreach ($r in $taskRows) { A "| ``$($r.name)`` | $($r.kind) | $($r.difficulty) | $($r.title) |" }
         }
         A ''
     }

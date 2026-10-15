@@ -233,7 +233,7 @@ public static class Tools {
                 string entry = Encoding.UTF8.GetString(lst, start, i - start); start = i + 1;
                 int tab = entry.IndexOf('\t'); string[] meta = entry.Substring(0, tab).Split(' '); string path = entry.Substring(tab + 1);
                 string mode = meta[0], type = meta[1], oid = meta[2];
-                if (IsExcluded(path, excludeTop)) { problems.Add("note: tracked path left out (build output folder): " + path); continue; }
+                if (IsExcluded(path, excludeTop)) { if (!path.StartsWith("Tasks/")) problems.Add("note: tracked path left out (build output folder): " + path); continue; }
                 if (type == "commit") { problems.Add("note: submodule left out: " + path); continue; }
                 if (type != "blob") continue;
                 string t; byte[] data = gb.Read(oid, out t);
@@ -1413,7 +1413,7 @@ New-Item -ItemType Directory -Force $ueDir | Out-Null
 $dropped = New-Object 'System.Collections.Generic.List[GameDeliverable.PkgFile]'
 Write-Step 'exporting the tree at the commit (git + local Git LFS store)'
 $exported = [GameDeliverable.Tools]::ExportTree($repo, $sha, $ueDir, $matcher, (-not $WithoutStoreContent), $lfsDir,
-    [string[]]@('Binaries', 'Intermediate', 'Saved', 'DerivedDataCache'), $dropped, $problems)
+    [string[]]@('Binaries', 'Intermediate', 'Saved', 'DerivedDataCache', 'Tasks'), $dropped, $problems)
 $storeRows = New-Object System.Collections.ArrayList
 foreach ($f in $exported) { if ($f.Store) { [void]$storeRows.Add([pscustomobject]@{ status = 'included'; f = $f }) } }
 foreach ($f in $dropped) { [void]$storeRows.Add([pscustomobject]@{ status = 'dropped'; f = $f }) }
@@ -1445,6 +1445,14 @@ $storeByFolder = $storeRows | Group-Object { $p = $_.f.Path -split '/'; if ($p.C
 if (-not [GameDeliverable.Tools]::WriteBlob($repo, "${sha}:workflow.jsonl", (Join-Path $stage 'workflow.jsonl'))) {
     $problems.Add('error: no workflow.jsonl at the commit')
 }
+# Tasks/: the game's tasks at the commit (one GameTask per <name>.json), kept out of UEProject/ (they hold every task's
+# grader answers); scrubbed and seed-mapped with the package, split into agent / grader parts by package-dataset.ps1
+$taskFiles = @(Invoke-Git $repo @('-c', 'core.quotepath=off', 'ls-tree', '--name-only', "${sha}:Tasks") -AllowFail | ForEach-Object { "$_".Trim() } | Where-Object { $_ -like '*.json' })
+if ($taskFiles.Count) {
+    $tasksStage = Join-Path $stage 'Tasks'; New-Item -ItemType Directory -Force $tasksStage | Out-Null
+    foreach ($tf in $taskFiles) { [void][GameDeliverable.Tools]::WriteBlob($repo, "${sha}:Tasks/$tf", (Join-Path $tasksStage $tf)) }
+    Write-Step "tasks: $($taskFiles.Count) from Tasks/ at the commit"
+} else { [void]$warnings.Add('Tasks/: no tasks at the commit (dataset layout v1.3 needs at least one; about 10 recommended)') }
 Write-Step 'writing git.log'
 $authors = New-Object 'System.Collections.Generic.Dictionary[string,string]'
 $glHeader = "GIT-LOG 1`n# Project $($info.ProjectName) ($Game): the original git history up to commit $sha, oldest first.`n" +
@@ -2005,6 +2013,7 @@ $manifest = [ordered]@{
     screenshots = @($shots | ForEach-Object { "Screenshots/$($_.file)" })
     commit = $sha; commit_time = $commitTime; commits = $commitCount; variant = $variant
     commit_delivered = $(if ($gitHistory) { $gitHistory.head } else { $sha }); git_history = $gitHistory
+    tasks = @($taskFiles | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) })
     created = (Get-IsoNow); tool_version = $ToolVersion
     store_content = [ordered]@{ included_files = @($storeRows | Where-Object status -eq 'included').Count; dropped_files = @($storeRows | Where-Object status -eq 'dropped').Count
         dropped_bytes = [long](($storeRows | Where-Object status -eq 'dropped' | ForEach-Object { $_.f.Bytes } | Measure-Object -Sum).Sum) }
