@@ -413,7 +413,7 @@ def apply_run_code(ctx, w, want):
     return True
 
 
-def build_editor(ctx, label):
+def build_editor(ctx, label, sha=None):
     cfg = ctx.cfg
     log = os.path.join(ctx.logs, "build_%s.log" % label)
     bat = os.path.join(ctx.logs, "build_%s.bat" % label)
@@ -433,40 +433,72 @@ def build_editor(ctx, label):
         code, secs2 = heavy("ue-replay %s build %s (retry)" % (cfg["game"], label), [bat])
         secs += secs2
     if code != 0 and re.search(r": (?:fatal )?error C\d{4}", open(log, encoding="utf-8", errors="replace").read()):
-        # Compile errors that the original build did not have: UBT's adaptive unity build compiles the files git reports
-        # as modified on their own and the rest in unity blobs. The session building the game was editing those files,
-        # so they compiled alone; in the replay's project other files share their blob (a global of another .cpp
-        # shadows a local, C4459: rts-command w06; an include order hides a missing include: battle-boats w25). Once
-        # more with unity off for the game's own module, every file on its own as the session's edited files were. Not
-        # -DisableUnity: on an installed engine that asks for a unique build environment (the engine's own modules would
-        # have to be rebuilt); the project's Saved/UnrealBuildTool/BuildConfiguration.xml ModuleConfiguration/
-        # DisableUnityBuild changes only the listed module, and is removed again after the build.
-        nu_label = label + "_nounity"
-        nu_log = os.path.join(ctx.logs, "build_%s.log" % nu_label)
-        nu_bat = os.path.join(ctx.logs, "build_%s.bat" % nu_label)
-        with open(nu_bat, "w", encoding="utf-8") as f:
-            f.write('@echo off\r\ncall "%s\\Engine\\Build\\BatchFiles\\Build.bat" %s Win64 Development -Project="%s" -WaitMutex '
-                    '-NoHotReloadFromIDE -Log="%s" > "%s" 2>&1\r\nexit /b %%ERRORLEVEL%%\r\n' % (
-                        ctx.engine.replace("/", "\\"), cfg["editor_target"], ctx.uproject.replace("/", "\\"),
-                        os.path.join(ctx.logs, "ubt_%s.txt" % nu_label), nu_log))
-        xml = os.path.join(ctx.proj, "Saved", "UnrealBuildTool", "BuildConfiguration.xml")
-        os.makedirs(os.path.dirname(xml), exist_ok=True)
-        old = open(xml, "rb").read() if os.path.isfile(xml) else None
-        with open(xml, "w", encoding="utf-8") as f:
-            f.write('<?xml version="1.0" encoding="utf-8" ?>\n<Configuration xmlns="https://www.unrealengine.com/BuildConfiguration">\n'
-                    '  <ModuleConfiguration>\n    <DisableUnityBuild>\n      <Item>%s</Item>\n    </DisableUnityBuild>\n'
-                    '  </ModuleConfiguration>\n</Configuration>\n' % cfg.get("module", cfg["editor_target"].replace("Editor", "")))
-        print("build %s: compile errors; once more with unity off for module %s" % (label, cfg.get("module")))
-        try:
-            code, secs2 = heavy("ue-replay %s build %s (no unity)" % (cfg["game"], label), [nu_bat])
-        finally:
-            if old is None:
-                os.remove(xml)
-            else:
-                with open(xml, "wb") as f:
-                    f.write(old)
-        secs += secs2
-        log = nu_log
+        # Compile errors the original build did not have. UBT's adaptive unity build compiles the files git reports as
+        # modified on their own and the rest in unity blobs. The replay project's HEAD is the game's first commit, so
+        # nearly every file counts as modified there; the session building the game had HEAD at the previous commit,
+        # and only the files it was editing were. Which grouping a file needs differs: rts-command w06 broke in a
+        # unity blob (a global of another .cpp shadows a local, C4459), battle-boats w25 alone (an include another
+        # file supplied in the blob). So: (1) the session's working set: HEAD and index at the window's parent for this
+        # build only (the working tree is not touched); (2) every file in unity blobs (-DisableAdaptiveUnity).
+        # -DisableUnity is not an option on an installed engine (a unique build environment the engine's own modules
+        # cannot be rebuilt for), and UBT reads no project-level BuildConfiguration.xml for builds.
+        parent = None
+        if sha:
+            try:
+                parent = git(ctx.proj, "rev-parse", "%s^" % sha).strip()
+            except Exception:
+                parent = None
+        attempts = ([("_workset", [], parent)] if parent else []) + [("_unity", ["-DisableAdaptiveUnity"], None),
+                                                                       ("_nounity", [], "build.cs")]
+        for suffix, extra, base in attempts:
+            # (3) every file of the game's module on its own: bUseUnity = false in the module's .Build.cs for this build
+            # only (a module rule, not a target one, so no unique build environment), restored afterwards
+            buildcs, buildcs_old = None, None
+            if base == "build.cs":
+                base = None
+                mod = cfg.get("module") or cfg["editor_target"].replace("Editor", "")
+                buildcs = os.path.join(ctx.proj, "Source", mod, mod + ".Build.cs")
+                if not os.path.isfile(buildcs):
+                    continue
+                buildcs_old = open(buildcs, "rb").read()
+                txt = buildcs_old.decode("utf-8", "surrogateescape")
+                m = re.search(r"(:\s*base\s*\(\s*\w+\s*\)\s*\{)", txt)
+                if not m:
+                    continue
+                with open(buildcs, "wb") as f:
+                    f.write((txt[:m.end()] + "\n\t\tbUseUnity = false;   // replay build only" + txt[m.end():]).encode("utf-8", "surrogateescape"))
+            nu_label = label + suffix
+            nu_log = os.path.join(ctx.logs, "build_%s.log" % nu_label)
+            nu_bat = os.path.join(ctx.logs, "build_%s.bat" % nu_label)
+            with open(nu_bat, "w", encoding="utf-8") as f:
+                f.write('@echo off\r\ncall "%s\\Engine\\Build\\BatchFiles\\Build.bat" %s Win64 Development -Project="%s" -WaitMutex '
+                        '-NoHotReloadFromIDE %s-Log="%s" > "%s" 2>&1\r\nexit /b %%ERRORLEVEL%%\r\n' % (
+                            ctx.engine.replace("/", "\\"), cfg["editor_target"], ctx.uproject.replace("/", "\\"),
+                            "".join(x + " " for x in extra), os.path.join(ctx.logs, "ubt_%s.txt" % nu_label), nu_log))
+            saved_head = saved_index = None
+            index = os.path.join(ctx.proj, ".git", "index")
+            if base:
+                saved_head = git(ctx.proj, "rev-parse", "HEAD").strip()
+                saved_index = index + ".replay-saved"
+                shutil.copy2(index, saved_index)
+                git(ctx.proj, "update-ref", "--no-deref", "HEAD", base)
+                git(ctx.proj, "read-tree", base)
+            how = ("with the session's working set (HEAD at %s)" % base[:8] if base else
+                   "with every file of the module on its own" if buildcs else "with every file in unity blobs")
+            print("build %s: compile errors; once more %s" % (label, how), flush=True)
+            try:
+                code, secs2 = heavy("ue-replay %s build %s (%s)" % (cfg["game"], label, suffix.strip("_")), [nu_bat])
+            finally:
+                if base:
+                    git(ctx.proj, "update-ref", "--no-deref", "HEAD", saved_head)
+                    os.replace(saved_index, index)
+                if buildcs_old is not None:
+                    with open(buildcs, "wb") as f:
+                        f.write(buildcs_old)
+            secs += secs2
+            log = nu_log
+            if code == 0:
+                break
     return code, secs, log
 
 
@@ -914,7 +946,7 @@ def cmd_run(cfg, a):
                     rec["code_at_run_time"] = rec.get("code_at_run_time") or (
                         "%d file(s) as at the run's start" % len(want) if want else "commit code again")
                 if ctx.state.get("code_dirty") or ctx.state.get("built") is None:
-                    code, secs, log = build_editor(ctx, "w%02d_%s" % (i, r["id"]))
+                    code, secs, log = build_editor(ctx, "w%02d_%s" % (i, r["id"]), sha=w["sha"])
                     jappend(runs_log, {"window": i, "kind": "build", "step": "w%02d.build.%s" % (i, r["id"]), "exit_code": code,
                                        "seconds": secs, "code_files": len(want), "log": os.path.relpath(log, ctx.work)})
                     print("   build: exit %s (%.0f s)%s" % (code, secs, " with %d run-time code file(s)" % len(want) if want else ""), flush=True)
@@ -924,7 +956,7 @@ def cmd_run(cfg, a):
                         ctx.state.setdefault("code_failed", []).append(json.dumps(want, sort_keys=True))
                         rec["code_at_run_time"] = "commit code (the run-time code did not build: %s)" % os.path.relpath(log, ctx.work)
                         apply_run_code(ctx, w, {})
-                        code, secs2, log = build_editor(ctx, "w%02d_%s_commit" % (i, r["id"]))
+                        code, secs2, log = build_editor(ctx, "w%02d_%s_commit" % (i, r["id"]), sha=w["sha"])
                         jappend(runs_log, {"window": i, "kind": "build", "step": "w%02d.build.%s.commit" % (i, r["id"]),
                                            "exit_code": code, "seconds": secs2, "log": os.path.relpath(log, ctx.work)})
                         print("   build with the commit's code: exit %s (%.0f s)" % (code, secs2), flush=True)
