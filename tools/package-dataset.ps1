@@ -590,7 +590,7 @@ function Write-Readme([string]$Dest, [string]$Variant) {
     }
     if ($layout -eq 'dataset-layout/v1.3') {
         A '## Tasks'; A ''
-        if ($repo) { A 'The game''s tasks are in the repository''s own `Tasks/` (one task per file); the dataset zip ships them split into the agent''s and the grader''s parts.' }
+        if ($repo) { A 'The game''s tasks are kept out of this history, on a separate orphan branch of the repository (`Tasks/`, one task per file); the dataset zip ships them split into the agent''s and the grader''s parts.' }
         else {
             A "``Tasks/`` holds $($taskNames.Count) tasks on this game in a game-creation environment's format, each split into ``<name>/task.json``"
             A '(what the agent sees) and `<name>/grader.json` (milestones with rubrics, and `seed.reference`). A task starts the project at a'

@@ -43,8 +43,16 @@ Everything needed to rebuild the game from the repo alone, tracked in git (binar
 | `Docs/ThirdPartyNotices.md` | credits and licences |
 | `ReplayConfig.json` | creation replay config ([ue-replay.md](ue-replay.md)) |
 | `.gitattributes`, `.gitignore` | LFS for every binary type; `/Dataset.zip`, `/Dataset.pending.zip`, `/.dataset/` ignored; `Content/` never ignored |
-| `Tasks/` | the game's tasks: `<game>-<kind>-<slug>.json`, one task each in the game environment's format ([schemas/game-task.schema.json](schemas/game-task.schema.json)); at least one, about 10 recommended; written with the `write-tasks` skill |
 | `Dataset/` | the dataset minus `UEProject/`, `Build/`, `History/` and `Tasks/` (written by the packager) |
+
+**Tasks live on the orphan `tasks` branch, never on main.** The same repo has a branch `tasks` that shares no history
+with main: `Tasks/<game>-<kind>-<slug>.json` (one task each in the game environment's format,
+[schemas/game-task.schema.json](schemas/game-task.schema.json); at least one, about 10 recommended; written with the
+`write-tasks` skill), a short `README.md`, optionally `tasks-workflow.jsonl`. It is checked out as a git worktree
+outside the game folder (e.g. `<root>/tasks/<slug>`), committed and pushed there. Task work never enters the game's
+history: main never tracks `Tasks/` and never references the tasks branch, the recording and live-replay hooks ignore
+commits on it, and the delivered history leaves it out. Seeds (`seed.commit`, `seed.reference`) point at commits of
+main's history.
 
 No tool, vendor or owner names anywhere in the repo's text (the validator scans tracked text files; the packager
 scans binaries too). The build machine's account name (machine paths carry it) counts too: the validator reads it at
@@ -86,7 +94,7 @@ lists what needs a person).
 | `git.log` | yes | every commit up to the release, oldest first: message, `dev_NN` authors, dates, full text diff; binaries as path + sha256 |
 | `workflow.jsonl` | yes | the creation record; **the person's directions are `user.direction` rows** (they replace conversation transcripts) |
 | `Brief/` | yes | `brief.md`, the original brief; `design.md`, the design doc with story bible and status |
-| `History/` | no | `<game>.bundle` (every commit of every ref) and `lfs/objects/<aa>/<bb>/<sha256>` (every Git LFS object of every commit) |
+| `History/` | no | `<game>.bundle` (every commit of every ref except the tasks branch) and `lfs/objects/<aa>/<bb>/<sha256>` (every Git LFS object of every commit) |
 | `Tasks/` | no | the game's tasks, each split: `Tasks/<name>/task.json` (the agent's part) and `Tasks/<name>/grader.json` (milestones, `seed.reference`), plus a generated `README.md` |
 | `UEProject/` | no | the project at the release commit, store content included |
 | `ReplayScripts/` | yes | the creation replayed headless, with `Verification/report.json` (PASS required for complete) |
@@ -107,17 +115,18 @@ git clone History/<game>.bundle <game>
 
 then copy `History/lfs` into `<game>/.git/lfs`, `git lfs install --local`, `git checkout <commit>`, `git lfs checkout`.
 
-**Tasks.** A game is complete when its repo has `Tasks/`: tasks an agent can be given on this game (a bug fix
-from its history, a correction from a person's direction, a feature, a look or content change), in the game
-environment's task format (`GameTask`, game-task/1), one file per task named `<game>-<kind>-<slug>.json` with
-`name` equal to the file name. About 10 are recommended; the count is reported, and only a game with none fails.
-The repo's `Tasks/` is the single source: the environment loads `Tasks/*.json` from the repos. How to write them:
-the `write-tasks` skill. The validator checks each task against
-[schemas/game-task.schema.json](schemas/game-task.schema.json) (vendored from the environment), that its seed is
-on this game, and that its seed commits exist.
+**Tasks.** A game is complete when its repo's orphan `tasks` branch has `Tasks/`: tasks an agent can be given on
+this game (a bug fix from its history, a correction from a person's direction, a feature, a look or content change),
+in the game environment's task format (`GameTask`, game-task/1), one file per task named
+`<game>-<kind>-<slug>.json` with `name` equal to the file name. About 10 are recommended; the count is reported,
+and only a game with none fails. The tasks branch is the single source: the environment loads `Tasks/*.json` from
+the repos' tasks branches. How to write them: the `write-tasks` skill. The validator reads the tasks from `tasks`
+(else `origin/tasks`) and checks each against [schemas/game-task.schema.json](schemas/game-task.schema.json)
+(vendored from the environment), that its seed is on this game and its seed commits are ancestors of main's head,
+that the branch shares no history with main, and that main tracks nothing under `Tasks/`.
 
-In a dataset (layout v1.3) the packager copies the repo's tasks, maps each seed's commits through the history
-rewrite, scrubs them, and splits each into `Tasks/<name>/task.json` (what the agent may see) and
+In a dataset (layout v1.3) the packager copies the tasks from the tip of the tasks branch, maps each seed's commits
+through the history rewrite, scrubs them, and splits each into `Tasks/<name>/task.json` (what the agent may see) and
 `Tasks/<name>/grader.json` (the grader's half: `milestones` with their rubrics, judge and code-judge questions and
 log patterns, and `seed.reference`); merging the two gives the task. `Tasks/README.md` explains it.
 
@@ -136,6 +145,6 @@ Deliver the repo (private, with Git LFS) and run the packager, or deliver the sa
 2. `workflow.jsonl` from the first operation, with every direction you were given as a `user.direction` row
    (neutral wording, what and why) before the work it caused, and `"direction": "<id>"` on the rows that act on it.
 3. `Brief/brief.md` (the brief you were given) and `Brief/design.md` (your design doc).
-4. `Tasks/` with your game's tasks (about 10; the `write-tasks` skill, or the format and examples it points to), each
-   seeded on commits of your own history.
+4. Your game's tasks in `Tasks/` on an orphan `tasks` branch of the repo, never on main (about 10; the
+   `write-tasks` skill, or the format and examples it points to), each seeded on commits of main's history.
 5. `python tools/validate-game.py <repo>` VALID, and the same for the `Dataset.zip`.

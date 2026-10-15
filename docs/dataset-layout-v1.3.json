@@ -1,7 +1,7 @@
 {
   "schema": "dataset-layout/v1.3",
   "approved": "2026-10-15",
-  "changes": "v1.3 (2026-10-15, user): Tasks/ with the game's tasks (from the game repo's Tasks/, about 10 recommended, at least one), each split into the agent's part and the grader's part, plus a generated Tasks/README.md. v1.2 (2026-10-15, user): the dataset carries the full git history (History/: a git bundle of every commit and every Git LFS object) and the original brief and design doc (Brief/); workflow.jsonl is the record of the person's directions (user.direction rows), no conversation transcripts. v1.1 (2026-10-12): no replay video; ReplayScripts/ only; Dataset.zip next to Dataset/.",
+  "changes": "v1.3 (2026-10-15, user): Tasks/ with the game's tasks (from Tasks/ on the game repo's orphan tasks branch, never on main; about 10 recommended, at least one), each split into the agent's part and the grader's part, plus a generated Tasks/README.md. v1.2 (2026-10-15, user): the dataset carries the full git history (History/: a git bundle of every commit and every Git LFS object) and the original brief and design doc (Brief/); workflow.jsonl is the record of the person's directions (user.direction rows), no conversation transcripts. v1.1 (2026-10-12): no replay video; ReplayScripts/ only; Dataset.zip next to Dataset/.",
   "description": "Our standard delivery layout for every game: the creation record (git.log, workflow.jsonl, ReplayScripts/, the full git history in History/, the brief and design doc in Brief/), the game's tasks in Tasks/, the project, per-scenario gameplay videos, README screenshots and the packaged build. docs/game-format.md is the prose version of this file (v1.1: docs/game-deliverable.md); tools/validate-dataset.ps1 checks against this file.",
   "names": {
     "zip": "Dataset.zip",
@@ -49,7 +49,7 @@
       "kind": "dir",
       "required": true,
       "in_repo_dataset": false,
-      "what": "the full git history: <game>.bundle (git bundle --all; scrubbed: anonymised authors, no tool or vendor names) and lfs/objects/<aa>/<bb>/<sha256> (every Git LFS object of every commit, in git's own layout). Restore: git clone <game>.bundle <dir>, copy lfs/ into <dir>/.git/lfs/, git lfs checkout",
+      "what": "the full git history: <game>.bundle (every commit of every ref except the tasks branch, which never enters the delivered history; scrubbed: anonymised authors, no tool or vendor names) and lfs/objects/<aa>/<bb>/<sha256> (every Git LFS object of every commit, in git's own layout). Restore: git clone <game>.bundle <dir>, copy lfs/ into <dir>/.git/lfs/, git lfs checkout",
       "must_contain": [
         "*.bundle"
       ]
@@ -59,7 +59,7 @@
       "kind": "dir",
       "required": true,
       "in_repo_dataset": false,
-      "what": "the game's tasks in the game environment's task format (GameTask, docs/schemas/game-task.schema.json), copied from the game repo's Tasks/ with seed commits mapped to the delivered history: Tasks/<name>/task.json (the agent's part: everything but the grader's) and Tasks/<name>/grader.json (the grader's part: milestones, seed.reference), plus Tasks/README.md (what a task is, the split, the harness rule, how a seed is checked out of History/)",
+      "what": "the game's tasks in the game environment's task format (GameTask, docs/schemas/game-task.schema.json), copied from Tasks/ at the tip of the game repo's orphan tasks branch (never on main) with seed commits mapped to the delivered history: Tasks/<name>/task.json (the agent's part: everything but the grader's) and Tasks/<name>/grader.json (the grader's part: milestones, seed.reference), plus Tasks/README.md (what a task is, the split, the harness rule, how a seed is checked out of History/)",
       "must_contain": [
         "README.md"
       ]
