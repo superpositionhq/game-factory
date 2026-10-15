@@ -1,21 +1,63 @@
 ---
 name: write-tasks
-description: How to write the tasks a game ships with (the repo's Tasks/, one GameTask JSON per task, about 10 per game) so an agent can be given them in the game-creation environment: the four kinds (bug_fix from real fixes in the history, correction from user.direction rows, feature, change), picking seed.commit and seed.reference, writing the instruction from context, play_map, milestones, checks and judge rubrics, difficulty and limits, and what keeps a task gradable and unleaked. Use when a game session writes, moves or reviews tasks, and before calling a game complete.
+description: How to write the tasks a game ships with (Tasks/ on the repo's orphan tasks branch, never on main, one GameTask JSON per task, about 10 per game) so an agent can be given them in the game-creation environment: the tasks branch and its worktree, the four kinds (bug_fix from real fixes in the history, correction from user.direction rows, feature, change), picking seed.commit and seed.reference, writing the instruction from context, play_map, milestones, checks and judge rubrics, difficulty and limits, and what keeps a task gradable and unleaked. Use when a game session writes, moves or reviews tasks, and before calling a game complete.
 ---
 
 # Writing a game's tasks
 
-A game is complete when its repo has `Tasks/`: tasks an LLM agent can be given on this game, fair, checkable and not
-leaked. One file per task, `Tasks/<game>-<kind>-<slug>.json` (`kind`: `fix`, `corr`, `feat`, `change`), in the game
-environment's format `GameTask` ([docs/schemas/game-task.schema.json](../../../docs/schemas/game-task.schema.json),
-game-task/1), with `"name"` equal to the file stem (run and grade ids depend on it; never rename a shipped task).
-About 10 per game is the recommendation; a mix of kinds. The repo's `Tasks/` is the single source: the environment
-loads `Tasks/*.json` from the repos, and the packager ships them in the dataset split into the agent's and the
-grader's halves (docs/game-format.md).
+A game is complete when its repo's orphan `tasks` branch has `Tasks/`: tasks an LLM agent can be given on this game,
+fair, checkable and not leaked. One file per task, `Tasks/<game>-<kind>-<slug>.json` (`kind`: `fix`, `corr`, `feat`,
+`change`), in the game environment's format `GameTask`
+([docs/schemas/game-task.schema.json](../../../docs/schemas/game-task.schema.json), game-task/1), with `"name"` equal
+to the file stem (run and grade ids depend on it; never rename a shipped task). About 10 per game is the
+recommendation; a mix of kinds. The tasks branch is the single source: the environment loads `Tasks/*.json` from the
+repos' tasks branches, and the packager ships them in the dataset split into the agent's and the grader's halves
+(docs/game-format.md).
 
-Check every task before committing: `python <GF_ROOT>/game-factory/tools/validate-game.py <GF_ROOT>/games/<slug>`
-(schema, the environment's extra rules, name = file name, seed commits exist). Commit tasks like any work (commit-always
-skill), with one `workflow.jsonl` row per task written (`op:"task.write"`, `target:"Tasks/<name>.json"`).
+## 0. Where tasks live: the orphan `tasks` branch
+
+**Task work never goes into the game's history.** Tasks live on a branch `tasks` of the game repo that shares no
+history with main, checked out as a git worktree **outside** the game folder (`<root>/tasks/<slug>`). The branch holds
+`Tasks/<game>-<kind>-<slug>.json`, a short `README.md` (what the branch is), and optionally `tasks-workflow.jsonl`
+(one row per task written, `op:"task.write"`, `target:"Tasks/<name>.json"`; never in main's `workflow.jsonl`).
+
+Create the worktree once. When the branch does not exist yet (on origin either):
+
+```bash
+git -C <root>/games/<slug> worktree add --orphan -b tasks <root>/tasks/<slug>
+```
+
+With an older git that lacks `worktree add --orphan`:
+
+```bash
+git -C <root>/games/<slug> worktree add --detach <root>/tasks/<slug>
+git -C <root>/tasks/<slug> checkout --orphan tasks
+git -C <root>/tasks/<slug> rm -rf .
+```
+
+When the branch already exists on origin (another machine or session made it):
+
+```bash
+git -C <root>/games/<slug> fetch origin tasks
+git -C <root>/games/<slug> worktree add <root>/tasks/<slug> tasks    # creates local tasks tracking origin/tasks
+```
+
+Then write the tasks in `<root>/tasks/<slug>/Tasks/`, commit there (`git -C <root>/tasks/<slug> commit`) and push:
+`git -C <root>/tasks/<slug> push -u origin tasks` the first time, `git push` after.
+
+- Never add `Tasks/` (or any task file) to main, never merge or cherry-pick between `tasks` and main, never point
+  main's code, docs, README or `workflow.jsonl` at the tasks branch. The validator fails a repo whose main tracks
+  anything under `Tasks/` or whose `tasks` branch shares history with main.
+- The recording and live-replay hooks ignore commits on the `tasks` branch, and the delivered history leaves it out,
+  so committing tasks costs the game's record nothing.
+- Seeds (`seed.commit`, `seed.reference`) are commits of main's history (ancestors of main's head); pick them in the
+  game checkout (`git -C <root>/games/<slug> log`), never on the tasks branch.
+
+Check every task after committing it on the tasks branch:
+`python <GF_ROOT>/game-factory/tools/validate-game.py <GF_ROOT>/games/<slug>` (it reads the committed `tasks`
+branch, else `origin/tasks`, through git: schema, the environment's extra rules, name = file name, seed commits on
+main, the branch an orphan, nothing under `Tasks/` on main). Commit tasks as you go, like any work (commit-always
+skill), but on the tasks branch only.
 
 ## 1. The four kinds
 
@@ -97,14 +139,14 @@ unique and `needs` only names earlier checks; a `code_judge` or a `"reference": 
 
 ## 7. What must never reach the agent
 
-The agent sees only the brief and the game at `seed.commit` as a fresh repository without history, `Tasks/`,
-`History/` or `Dataset/` (the harness rule: those hold every task's rubrics and the reference fixes). The grader's
+The agent sees only the brief and the game at `seed.commit` (a commit of main, so without the tasks branch) as a fresh
+repository without history, `Tasks/`, `History/` or `Dataset/` (the harness rule: those hold every task's rubrics and the reference fixes). The grader's
 half (`milestones`: rubrics, questions, `log_absent` patterns; and `seed.reference`) never reaches it. So:
 
 - the instruction holds nothing of the grader's half and does not describe the fix;
 - nothing else at `seed.commit` should spell out the answer (a design-doc "known issues" line naming the cause, a
   comment saying how to fix it): if it does, pick another seed or another task;
-- never point the game's code, docs or README at `Tasks/`.
+- never point the game's code, docs or README at `Tasks/` or the tasks branch.
 
 ## 8. Pitfalls already hit
 
@@ -121,5 +163,5 @@ half (`milestones`: rubrics, questions, `log_absent` patterns; and `seed.referen
 
 ## 9. Examples
 
-One of each kind, in the game repos' `Tasks/` once moved there: `duo-kart-fix-wheels-turned-sideways.json` (bug_fix),
+One of each kind, in `Tasks/` on the game repos' tasks branches once moved there: `duo-kart-fix-wheels-turned-sideways.json` (bug_fix),
 `rally-racer-corr-steering-and-chase-camera.json` (correction), `battle-boats-feat-coal-burst.json` (feature).
