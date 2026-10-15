@@ -204,7 +204,18 @@ def check_assets_manifest(rep, area, data, present):
     if not isinstance(data, dict) or data.get('schema') != 'assets-manifest/v1':
         rep.error(area, 'not in the unified format (schema "assets-manifest/v1"): convert with tools/migrate-assets-manifest.py')
         return
-    if not schema_errors(rep, area, data, 'assets-manifest'):
+    schema_ok = schema_errors(rep, area, data, 'assets-manifest')
+    # the schema's if/then/else (the small validator above does not evaluate it): in-house assets (origin "studio")
+    # carry a description instead of a url; every other asset needs an https url
+    for i, a in enumerate(data.get('assets') if isinstance(data.get('assets'), list) else []):
+        if not isinstance(a, dict):
+            continue
+        if a.get('origin') == 'studio':
+            if not str(a.get('description', '')).strip():
+                rep.error(area, f'$.assets[{i}] ({a.get("name")}): origin studio needs a "description"')
+        elif not str(a.get('url', '')).startswith('https://'):
+            rep.error(area, f'$.assets[{i}] ({a.get("name")}): needs an https "url" (or origin "studio" with a description, for in-house assets)')
+    if not schema_ok:
         return
     missing, outside, n = [], [], 0
     for a in data['assets']:

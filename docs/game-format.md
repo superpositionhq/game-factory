@@ -62,6 +62,10 @@ matters is that every file the game uses is committed, so a clone builds the gam
     "files": ["Content/Warehouse/"], "used_for": "level kit", "changes": "materials re-tinted" } ] }
 ```
 
+Every asset needs an https `url` (its listing or source page), except one made in-house by the studio (e.g. the
+studio's own earlier project): that one has `"origin": "studio"` and a short `description` (what it is, where it comes
+from inside the studio) instead of a url.
+
 `files` are repo paths; one ending in `/` stands for every file under it. Each must be committed (repo check) and be
 inside `UEProject/` of `Dataset.zip` (dataset check). Content shipped with the engine and content made by the game's
 own scripts are not listed. `tools/migrate-assets-manifest.py <repo>` converts the earlier shapes (dry run first; it
