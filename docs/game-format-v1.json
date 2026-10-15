@@ -127,11 +127,7 @@
       ],
       "skip_paths": [
         "^Dataset/"
-      ],
-      "warn_paths": [
-        "^workflow\\.jsonl$"
-      ],
-      "warn_why": "workflow.jsonl rows are append-only (never edited after they are written); the packager scrubs workflow.jsonl and rewrites the history (commit messages) for every delivery, so a banned name there is a warning \"scrubbed at packaging\", in the repo check only. The legacy row schema id \"superposition.ue-workflow/v0\" is accepted with the same warning."
+      ]
     },
     "dataset_folder": "Dataset/ (variant repo-dataset): checked as a dataset when manifest.json is there; a game that is not packaged yet has none"
   },

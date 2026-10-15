@@ -102,7 +102,7 @@ def schema_errors(rep, area, value, name, limit=20):
 # ---- shared content checks ---------------------------------------------------------------------------------------------
 def check_workflow(rep, area, lines, allow_schema=None):
     """lines: iterable of text lines of a workflow.jsonl. Returns ids of user.direction rows."""
-    seen, directions, prev_seq, bad_rows, n, empty_reason, legacy = set(), set(), None, 0, 0, 0, 0
+    seen, directions, prev_seq, bad_rows, n, empty_reason = set(), set(), None, 0, 0, 0
     problems = []
     grouped = {}  # schema problem (row-independent text) -> [count, first line]
     for i, line in enumerate(lines, 1):
@@ -117,7 +117,6 @@ def check_workflow(rep, area, lines, allow_schema=None):
             continue
         if allow_schema and isinstance(row, dict) and row.get('schema') in allow_schema:
             row = dict(row, schema='ue-workflow/v0')
-            legacy += 1
         errs = list(check_schema(row, SCHEMAS['workflow-row']))
         if errs:
             bad_rows += 1
@@ -147,8 +146,6 @@ def check_workflow(rep, area, lines, allow_schema=None):
         rep.error(area, f'... {len(problems) - 25} more')
     if empty_reason:
         rep.warn(area, f'{empty_reason} row(s) with an empty reason')
-    if legacy:
-        rep.warn(area, f'{legacy} row(s) with the legacy schema id (banned prefix): scrubbed at packaging')
     if n == 0:
         rep.error(area, 'no rows')
     else:
@@ -566,16 +563,10 @@ def check_repo(rep, repo):
             n = len(rx.findall(text))
             if n:
                 hits.setdefault(f, []).append(f'{rx.pattern} x{n}')
-    # append-only records (workflow.jsonl rows) are scrubbed by the packager in every delivery: a warning here
-    warn_rx = [re.compile(p) for p in bn.get('warn_paths', [])]
-    hard = {f: h for f, h in hits.items() if not any(w.search(f) for w in warn_rx)}
-    for f, h in hits.items():
-        if f not in hard:
-            rep.warn('repo: banned names', f'{f}: {", ".join(h)} (append-only rows: scrubbed at packaging)')
-    for f, h in list(hard.items())[:15]:
+    for f, h in list(hits.items())[:15]:
         rep.error('repo: banned names', f'{f}: {", ".join(h)}')
-    if len(hard) > 15:
-        rep.error('repo: banned names', f'... {len(hard) - 15} more files')
+    if len(hits) > 15:
+        rep.error('repo: banned names', f'... {len(hits) - 15} more files')
     # assets.manifest.json: unified format, every listed file committed under Content/ or RawAssets/
     if 'assets.manifest.json' in tracked:
         try:
@@ -589,8 +580,7 @@ def check_repo(rep, repo):
     # workflow.jsonl: same row schema as the dataset copy (the packager rewrites nothing else)
     if 'workflow.jsonl' in tracked:
         with open(os.path.join(repo, 'workflow.jsonl'), encoding='utf-8-sig', errors='replace') as f:
-            # the first games' rows carry the legacy schema id with a banned prefix: accepted (scrubbed at packaging)
-            check_workflow(rep, 'repo: workflow.jsonl', f, allow_schema={'superposition.ue-workflow/v0'})
+            check_workflow(rep, 'repo: workflow.jsonl', f)
 
 
 def main():
