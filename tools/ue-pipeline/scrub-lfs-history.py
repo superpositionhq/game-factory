@@ -51,14 +51,20 @@ def lfs_path(repo, oid):
     return os.path.join(repo, ".git", "lfs", "objects", oid[:2], oid[2:4], oid)
 
 
-def live_refs(repo):
-    """Every ref except filter-branch's backups (refs/original/*)."""
-    return [r for r in git(repo, "for-each-ref", "--format=%(refname)").decode().split() if not r.startswith("refs/original/")]
+def live_refs(repo, exclude_tasks=False):
+    """Every ref except filter-branch's backups (refs/original/*); with exclude_tasks also without the game's tasks
+    branch (refs/heads/tasks, refs/remotes/<remote>/tasks: package-game.ps1's --exclude patterns), which never enters
+    a delivered history."""
+    def is_tasks(r):
+        return r == "refs/heads/tasks" or (r.startswith("refs/remotes/") and r.endswith("/tasks"))
+    return [r for r in git(repo, "for-each-ref", "--format=%(refname)").decode().split()
+            if not r.startswith("refs/original/") and not (exclude_tasks and is_tasks(r))]
 
 
-def referenced_pointers(repo):
-    """{pointer blob sha: (oid, size, {paths})} for every LFS pointer blob reachable from any ref (refs/original excluded)."""
-    objs = git(repo, "rev-list", "--objects", *live_refs(repo)).decode("utf-8", "replace")
+def referenced_pointers(repo, exclude_tasks=False):
+    """{pointer blob sha: (oid, size, {paths})} for every LFS pointer blob reachable from any ref (refs/original excluded;
+    the tasks branch too with exclude_tasks)."""
+    objs = git(repo, "rev-list", "--objects", *live_refs(repo, exclude_tasks)).decode("utf-8", "replace")
     chk = git(repo, "cat-file", "--batch-check=%(objecttype) %(objectname) %(objectsize) %(rest)", inp=objs.encode()).decode("utf-8", "replace")
     cand = []
     for line in chk.splitlines():

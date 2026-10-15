@@ -2,7 +2,8 @@
 
   python export-lfs-history.py <repo> <out lfs dir> [--unpatchable-use-head]
 
-Every LFS object any commit references (all refs) is scanned with the same terms and safe-context rules as
+Every LFS object any commit references (all refs except the game's tasks branch, which never enters the delivered
+history; the same refs as package-game.ps1's history export) is scanned with the same terms and safe-context rules as
 scrub-lfs-history.py / scrub-import-paths.py (the user name in path segments and author FStrings, ASCII and UTF-16LE).
 Clean objects are hard-linked (copied when linking fails) into <out>/<aa>/<bb>/<oid>; objects with matches are patched
 byte for byte (same length) into a new object under its new oid. The repo and its LFS store are never changed.
@@ -47,7 +48,7 @@ def main():
     a = ap.parse_args()
     repo, out = os.path.abspath(a.repo), os.path.abspath(a.out)
     pats = slh.sip.byte_patterns()
-    pointers = slh.referenced_pointers(repo)          # {pointer blob sha: (oid, size, {paths})}
+    pointers = slh.referenced_pointers(repo, exclude_tasks=True)   # {pointer blob sha: (oid, size, {paths})}
     by_oid = {}
     for _sha, (oid, size, paths) in pointers.items():
         e = by_oid.setdefault(oid, [size, set()])

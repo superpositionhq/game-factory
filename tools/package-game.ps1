@@ -164,6 +164,12 @@ public class GitBatch : IDisposable {
 public static class Tools {
     static readonly Encoding Latin1 = Encoding.GetEncoding(28591);
     public static string Git = "git";
+    // The refs of the delivered history: every ref except the game's tasks branch (local and remote-tracking), which
+    // holds task work that must never enter the dataset's history (docs/game-format.md). rev-list's --exclude applies
+    // to the --all after it; --single-worktree keeps --all from adding the HEADs of other worktrees (the tasks worktree's
+    // HEAD is the tasks branch, and --exclude does not filter worktree HEADs). HistoryRefArgs in the script body is the
+    // same list for PowerShell callers.
+    public const string HistoryRefs = "--single-worktree --exclude=refs/heads/tasks --exclude=refs/remotes/*/tasks --all";
 
     public static bool ContainsAscii(string path, string needle) {
         byte[] n = Encoding.ASCII.GetBytes(needle); byte[] d = File.ReadAllBytes(path);
@@ -772,7 +778,8 @@ public static class Tools {
     }
 
     // ---- delivered git history (dataset layout v1.2 History/) ----
-    // Streams `git fast-export --all` of repo into `git fast-import` of the new bare repo outBare, rewriting on the way:
+    // Streams `git fast-export <HistoryRefs>` (every ref but the tasks branch) of repo into `git fast-import` of the new
+    // bare repo outBare, rewriting on the way:
     // author / committer / tagger -> dev_NN (the git.log numbering in `authors`; names not in it continue it), commit and
     // tag messages -> agent trailer lines dropped, then the scrub rules; text blobs (by the path that first holds them:
     // BinaryExt and NUL test as for files) -> the scrub rules; Git LFS pointers of objects patched for delivery (lfsMap:
@@ -803,14 +810,14 @@ public static class Tools {
         var devRx = new Regex(@"^dev_\d+$");
         // blob sha -> the first path that holds it (decides text vs binary like IsText does for files)
         var blobPath = new Dictionary<string, string>();
-        var lp = new ProcessStartInfo(Git, "-C \"" + repo + "\" -c core.quotepath=off rev-list --objects --all");
+        var lp = new ProcessStartInfo(Git, "-C \"" + repo + "\" -c core.quotepath=off rev-list --objects " + HistoryRefs);
         lp.UseShellExecute = false; lp.RedirectStandardOutput = true; lp.CreateNoWindow = true; lp.StandardOutputEncoding = Encoding.UTF8;
         using (var lpp = Process.Start(lp)) {
             string l; while ((l = lpp.StandardOutput.ReadLine()) != null) { int sp = l.IndexOf(' '); if (sp == 40 && !blobPath.ContainsKey(l.Substring(0, 40))) blobPath[l.Substring(0, 40)] = l.Substring(41); }
             lpp.WaitForExit();
         }
         string marksOut = Path.Combine(outBare, "import.marks");
-        var ex = new ProcessStartInfo(Git, "-C \"" + repo + "\" fast-export --all --show-original-ids --signed-tags=strip --tag-of-filtered-object=rewrite --reencode=yes");
+        var ex = new ProcessStartInfo(Git, "-C \"" + repo + "\" fast-export " + HistoryRefs + " --show-original-ids --signed-tags=strip --tag-of-filtered-object=rewrite --reencode=yes");
         ex.UseShellExecute = false; ex.RedirectStandardOutput = true; ex.RedirectStandardError = true; ex.CreateNoWindow = true;
         var im = new ProcessStartInfo(Git, "-C \"" + outBare + "\" fast-import --quiet --force \"--export-marks=" + marksOut + "\"");
         im.UseShellExecute = false; im.RedirectStandardInput = true; im.RedirectStandardOutput = true; im.RedirectStandardError = true; im.CreateNoWindow = true;
@@ -1148,6 +1155,9 @@ function Set-ReviewedHits($HitList, [string]$Root) {
 # Long terms (user name, anthropic, superposition, game-factory) stay blocking everywhere.
 foreach ($t in @('claude', 'opus')) { [void][GameDeliverable.Tools]::StreamTerms.Add($t) }
 $Banned = New-Object System.Text.RegularExpressions.Regex($BannedPattern, 'IgnoreCase')
+# The refs of the delivered history: all but the tasks branch (local and remote-tracking; tasks never enter the dataset's
+# history), and not the HEADs of other worktrees (a tasks worktree's HEAD). Same as [GameDeliverable.Tools]::HistoryRefs.
+$HistoryRefArgs = @('--single-worktree', '--exclude=refs/heads/tasks', '--exclude=refs/remotes/*/tasks', '--all')
 
 # ---------------------------------------------------------------------------------------------------------------------
 # resolve inputs
@@ -1159,7 +1169,7 @@ $repo = if ($RepoPath) { (Resolve-Path $RepoPath).Path } else { $info.Dir }
 # Opus-codec allowlist, account name, e-mail addresses, git identity names) without changing it.
 if ($Rescan) {
     $pkg = (Resolve-Path $Rescan).Path
-    $terms = @(Invoke-Git $repo @('log', '--all', '--format=%an%n%cn') | ForEach-Object { "$_".Trim() } | Where-Object { $_ -and $_ -notmatch '(?i)^(claude|agent|dev_\d+)$' } | Sort-Object -Unique)
+    $terms = @(Invoke-Git $repo (@('log') + $HistoryRefArgs + @('--format=%an%n%cn')) | ForEach-Object { "$_".Trim() } | Where-Object { $_ -and $_ -notmatch '(?i)^(claude|agent|dev_\d+)$' } | Sort-Object -Unique)
     $parts = @($BannedPattern, 'claude', 'anthropic', 'opus', $UserAnyRx, $EmailRx) + @($terms | ForEach-Object { "$WordStart$([regex]::Escape($_))(?![A-Za-z0-9])" })
     $rx = New-Object System.Text.RegularExpressions.Regex(($parts -join '|'), 'IgnoreCase')
     $rels = [string[]]@(Get-ChildItem $pkg -Recurse -File | ForEach-Object { $_.FullName.Substring($pkg.Length + 1).Replace('\', '/') })
@@ -1190,7 +1200,7 @@ if ($Rescan) {
 if ($ScrubDir) {
     $sd = (Resolve-Path $ScrubDir).Path
     $ids = New-Object System.Collections.ArrayList; $seen = @{}
-    foreach ($line in (Invoke-Git $repo @('log', '--all', '--reverse', '--topo-order', '--format=%an%x09%ae%n%cn%x09%ce'))) {
+    foreach ($line in (Invoke-Git $repo (@('log') + $HistoryRefArgs + @('--reverse', '--topo-order', '--format=%an%x09%ae%n%cn%x09%ce')))) {
         $parts = "$line" -split "`t"; if ($parts.Count -lt 2) { continue }
         $nm = $parts[0].Trim(); if ($nm -match '(?i)^(claude|agent|dev_\d+)$') { continue }
         if (-not $seen.ContainsKey($nm)) { $seen[$nm] = 'dev_' + ($seen.Count + 1).ToString('00') }
@@ -1884,7 +1894,8 @@ if (-not $NoScrub) {
 }
 # ---------------------------------------------------------------------------------------------------------------------
 # GitHistory: the full git history rewritten for delivery (dataset layout v1.2 History/; package-dataset.ps1 renames it).
-# Every commit of every ref, with authors dev_NN (git.log's numbering), agent trailers dropped, the scrub rules on
+# Every commit of every ref except the tasks branch (task work never enters it; a guard refuses a tasks ref in the
+# rewritten repo), with authors dev_NN (git.log's numbering), agent trailers dropped, the scrub rules on
 # messages and text blobs, and every Git LFS object (patched same-length where it names the account; pointers follow).
 # Commit shas change, so git.log is rewritten from the new history and every full sha in the package's text (except the
 # recording logs in History\ and the gameplay bundles) is mapped to its new value; the map stays next to the package.
@@ -1911,6 +1922,8 @@ if (-not $NoGitHistory) {
     $commitMap = [GameDeliverable.Tools]::RewriteHistory($repo, $bare, $authors, $lfsMap, [string[]]@($Rules | ForEach-Object { $_.match }),
         [string[]]@($Rules | ForEach-Object { $_.replace }), [string[]]@($Rules | ForEach-Object { $_.scope }), $hints, $problems)
     $newSha = $null; if (-not $commitMap.TryGetValue($sha, [ref]$newSha)) { throw "the rewritten history has no commit for $sha" }
+    $tasksRefs = @(Invoke-Git $bare @('for-each-ref', '--format=%(refname)') | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match '/tasks$' })
+    if ($tasksRefs.Count) { throw "the rewritten history carries the tasks branch ($($tasksRefs -join ', ')): task work must never enter the delivered history" }
     Invoke-Git $bare @('bundle', 'create', (Join-Path $ghDir "$Game.bundle"), '--all') | Out-Null
     $refs = @(Invoke-Git $bare @('for-each-ref', '--format=%(refname)') | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
     $nCommits = [int]((Invoke-Git $bare @('rev-list', '--all', '--count')) | Select-Object -First 1)
