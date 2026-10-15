@@ -725,7 +725,11 @@ def cmd_release(cfg, a):
             runner.cmd_dump(rcfg, type("A", (), {"which": which, "only": None}))
         v = verify.cmd_verify(rcfg, a)
         if v != 0:
-            raise SystemExit("release: verification FAIL (work/Verification/report.md)")
+            if not getattr(a, "force", False):
+                raise SystemExit("release: verification FAIL (work/Verification/report.md); --force packages it anyway")
+            # --force: ReplayScripts/ with the FAIL report (no READY): the replay is there, and its verdict says how far
+            # it matches the game
+            print("release: verification FAIL; --force: packaging ReplayScripts/ with the FAIL report (no READY)")
         return package.cmd_package(rcfg, a)
     finally:
         lock.release()
