@@ -1,0 +1,172 @@
+{
+  "schema": "game-format/v1",
+  "description": "The final format of a game: its released repo and its dataset. Prose: docs/game-format.md. Validator: tools/validate-game.py (repo + dataset contents) with tools/validate-dataset.ps1 (dataset layout). Severity: error = not in the format; warning = a quality rule or something to look at.",
+  "repo": {
+    "what": "the game's git repo at its release commit (tracked files only)",
+    "required_files": [
+      {
+        "pattern": "^[^/]+\\.uproject$",
+        "count": 1,
+        "what": "the project; EngineAssociation names the engine"
+      },
+      {
+        "pattern": "^Source/[^/]+/AutoPlay/AutoPlaySubsystem\\.h$",
+        "what": "AutoPlay drop-in (docs/autoplay-contract.md)"
+      },
+      {
+        "pattern": "^Source/[^/]+/AutoPlay/AutoPlaySubsystem\\.cpp$",
+        "what": "AutoPlay drop-in"
+      },
+      {
+        "pattern": "^Config/DefaultEngine\\.ini$",
+        "what": "project config"
+      },
+      {
+        "pattern": "^Content/.+\\.(uasset|umap)$",
+        "what": "game content, store packs included"
+      },
+      {
+        "pattern": "^Scripts/.+",
+        "what": "every editor script that was run, kept unchanged"
+      },
+      {
+        "pattern": "^workflow\\.jsonl$",
+        "what": "the creation record; every row matches docs/schemas/workflow-row.schema.json"
+      },
+      {
+        "pattern": "^README\\.md$",
+        "what": "hero image + captioned gallery of real gameplay stills"
+      },
+      {
+        "pattern": "^assets\\.manifest\\.json$",
+        "what": "every external asset; matches docs/schemas/assets-manifest.schema.json, every listed file committed"
+      },
+      {
+        "pattern": "^Docs/ThirdPartyNotices\\.md$",
+        "what": "credits and licences"
+      },
+      {
+        "pattern": "^\\.gitattributes$",
+        "what": "Git LFS for every binary type"
+      },
+      {
+        "pattern": "^\\.gitignore$",
+        "what": "build output and the local dataset zip"
+      },
+      {
+        "pattern": "^ReplayConfig\\.json$",
+        "what": "creation replay config (ReplayScripts/ of the dataset)"
+      }
+    ],
+    "engine_associations": [
+      "5.3",
+      "5.7"
+    ],
+    "gitignore_must_contain": [
+      "/Dataset.zip",
+      "/Dataset.pending.zip",
+      "/.dataset/"
+    ],
+    "gitignore_must_not_ignore": [
+      "Content/"
+    ],
+    "lfs_required_extensions": [
+      "uasset",
+      "umap",
+      "uexp",
+      "ubulk",
+      "fbx",
+      "glb",
+      "abc",
+      "blend",
+      "png",
+      "jpg",
+      "jpeg",
+      "tga",
+      "exr",
+      "hdr",
+      "psd",
+      "dds",
+      "bmp",
+      "tif",
+      "tiff",
+      "wav",
+      "ogg",
+      "mp3",
+      "flac",
+      "mp4",
+      "mov",
+      "mkv",
+      "ttf",
+      "otf",
+      "zip",
+      "7z",
+      "pdf"
+    ],
+    "readme": {
+      "images_committed": true,
+      "gameplay_images": {
+        "min": 1,
+        "recommended_min": 5,
+        "recommended_max": 7
+      },
+      "image_extensions": [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp"
+      ]
+    },
+    "banned_names": {
+      "what": "never inside a game: tool, vendor and owner names (text files of the repo; LFS and binary files are scanned by tools/package-game.ps1 -Rescan)",
+      "patterns": [
+        "(?i)superposition",
+        "(?i)game[-_ ]?factory",
+        "(?i)\\banthropic\\b",
+        "(?i)\\bclaude\\b"
+      ],
+      "skip_paths": [
+        "^Dataset/"
+      ]
+    },
+    "dataset_folder": "Dataset/ (variant repo-dataset): checked as a dataset when manifest.json is there; a game that is not packaged yet has none"
+  },
+  "dataset": {
+    "layout": "docs/dataset-layout-v1.json (entries, names, video format, manifest keys, README sections; tools/validate-dataset.ps1)",
+    "content_schemas": {
+      "manifest.json": "docs/schemas/dataset-manifest.schema.json",
+      "workflow.jsonl": "docs/schemas/workflow-row.schema.json (each line)",
+      "ReplayScripts/Verification/report.json": "docs/schemas/replay-report.schema.json"
+    },
+    "manifest": [
+      "game equals the zip's top folder (full variant)",
+      "every files[] entry exists with that size (sha256 checked by validate-dataset.ps1)",
+      "totals.files = number of files[]; totals.bytes = sum of their bytes",
+      "every scenarios[].file is in files[]",
+      "status complete: pending empty, replay_verification.pass true, report.json verdict.pass true",
+      "variant full: build is an object; repo-dataset: build is null",
+      "commit equals the last commit in git.log and report.json final_commit"
+    ],
+    "workflow": [
+      "every line is one JSON object matching the row schema",
+      "ids unique; seq strictly increasing",
+      "a row's direction names an earlier op user.direction row",
+      "user.direction rows: actor user, reason_source user_direction, params.direction a non-empty string"
+    ],
+    "git_log": {
+      "first_line": "GIT-LOG 1",
+      "header_comment_prefix": "# ",
+      "commit_line": "^commit [0-9a-f]{40}$",
+      "fields_in_order": [
+        "Parents",
+        "Author",
+        "AuthorDate",
+        "Committer",
+        "CommitDate"
+      ],
+      "author_pattern": "^dev_[0-9]+$",
+      "date_pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([+-][0-9]{2}:[0-9]{2}|Z)$",
+      "order": "oldest first; commits unique"
+    }
+  }
+}
