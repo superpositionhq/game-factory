@@ -1,7 +1,7 @@
 # game-factory: instructions for every session
 
 This repo coordinates Claude Code sessions that build Unreal Engine 5.7 games (`%GF_ROOT%\games\<slug>`, private
-`superpositionhq/game-<slug>` repos) and turn them into game-creation datasets. `%GF_ROOT%` is the machine root
+`<org>/game-<slug>` repos, `<org>` = `github_org` in the machine config) and turn them into game-creation datasets. `%GF_ROOT%` is the machine root
 (env `GF_ROOT`, else `%USERPROFILE%\.game-factory\config.json`, else `%USERPROFILE%\Work`); see
 [machine/README.md](machine/README.md).
 
