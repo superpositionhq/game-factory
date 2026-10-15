@@ -77,6 +77,14 @@ function Get-GFOrg($Cfg = (Get-GFConfig)) {
     return ''
 }
 
+# The game environment's task folder (<name>.json per task; dataset layout v1.3 Tasks/): $env:GF_TASKS_SOURCE, else
+# "tasks_source" in the config file, else ''.
+function Get-GFTasksSource($Cfg = (Get-GFConfig)) {
+    if ($env:GF_TASKS_SOURCE) { return $env:GF_TASKS_SOURCE.Trim() }
+    if ($Cfg.PSObject.Properties['tasks_source'] -and $Cfg.tasks_source) { return ([string]$Cfg.tasks_source).Trim() }
+    return ''
+}
+
 # Output root for packages, dataset zips and their staging folders: $env:GF_OUT, else "out" in the config file, else
 # <root>\deliverables. Point it at a roomy drive (packages and zips run to tens of GB per game).
 function Get-GFOut {

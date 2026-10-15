@@ -61,6 +61,19 @@ def check_schema(value, schema, root=None, path='$'):
         if not any(_is(value, t) for t in ts):
             yield f'{path}: expected {"/".join(ts)}, got {type(value).__name__}'
             return
+    # combinators (the game environment's task schema uses them: optional fields, check kinds)
+    if 'allOf' in schema:
+        for sub in schema['allOf']:
+            yield from check_schema(value, sub, root, path)
+    for key in ('anyOf', 'oneOf'):
+        if key in schema:
+            fits = [list(check_schema(value, sub, root, path)) for sub in schema[key]]
+            ok = sum(1 for f in fits if not f)
+            if ok == 0:
+                best = min(fits, key=len)
+                yield f'{path}: matches none of the allowed shapes ({best[0] if best else "?"})'
+            elif key == 'oneOf' and ok > 1 and 'discriminator' not in schema:
+                yield f'{path}: matches more than one of the allowed shapes'
     if 'const' in schema and value != schema['const']:
         yield f'{path}: must be {json.dumps(schema["const"])}, got {json.dumps(value)[:80]}'
     if 'enum' in schema and value not in schema['enum']:
@@ -68,10 +81,19 @@ def check_schema(value, schema, root=None, path='$'):
     if isinstance(value, str):
         if 'minLength' in schema and len(value) < schema['minLength']:
             yield f'{path}: empty'
+        if 'maxLength' in schema and len(value) > schema['maxLength']:
+            yield f'{path}: longer than {schema["maxLength"]}'
         if 'pattern' in schema and not re.search(schema['pattern'], value):
             yield f'{path}: {value[:80]!r} does not match {schema["pattern"]}'
-    if _is(value, 'number') and 'minimum' in schema and value < schema['minimum']:
-        yield f'{path}: {value} < {schema["minimum"]}'
+    if _is(value, 'number'):
+        if 'minimum' in schema and value < schema['minimum']:
+            yield f'{path}: {value} < {schema["minimum"]}'
+        if 'maximum' in schema and value > schema['maximum']:
+            yield f'{path}: {value} > {schema["maximum"]}'
+        if 'exclusiveMinimum' in schema and value <= schema['exclusiveMinimum']:
+            yield f'{path}: {value} <= {schema["exclusiveMinimum"]}'
+        if 'exclusiveMaximum' in schema and value >= schema['exclusiveMaximum']:
+            yield f'{path}: {value} >= {schema["exclusiveMaximum"]}'
     if isinstance(value, dict):
         for k in schema.get('required', []):
             if k not in value:
@@ -85,6 +107,8 @@ def check_schema(value, schema, root=None, path='$'):
     if isinstance(value, list):
         if 'minItems' in schema and len(value) < schema['minItems']:
             yield f'{path}: needs at least {schema["minItems"]} item(s)'
+        if 'maxItems' in schema and len(value) > schema['maxItems']:
+            yield f'{path}: more than {schema["maxItems"]} item(s)'
         if 'items' in schema:
             for i, v in enumerate(value):
                 yield from check_schema(v, schema['items'], root, f'{path}[{i}]')
@@ -338,7 +362,7 @@ def check_dataset(rep, path, area='dataset'):
     else:
         rep.warn(a, f'status pending: {", ".join(m["pending"]) or "(nothing listed)"}')
     # v1.2: Brief/, the person's directions, History/
-    if m['layout'] == 'dataset-layout/v1.2':
+    if m['layout'] in ('dataset-layout/v1.2', 'dataset-layout/v1.3'):
         b = m.get('brief')
         if not isinstance(b, dict):
             rep.error(a, 'layout v1.2 needs brief {"brief": "Brief/brief.md", "design": "Brief/design.md"}')
@@ -351,8 +375,13 @@ def check_dataset(rep, path, area='dataset'):
             rep.warn(f'{area}: workflow.jsonl', "no user.direction rows: the person's directions are recorded nowhere else")
         if m['variant'] == 'full':
             check_history(rep, area, v, m)
-        elif m.get('history') is not None or v.has_dir('History'):
-            rep.error(area, 'a repo Dataset/ has no History/ and history null (the repo is its own history)')
+            if m['layout'] == 'dataset-layout/v1.3':
+                check_tasks(rep, area, v, m)
+        else:
+            if m.get('history') is not None or v.has_dir('History'):
+                rep.error(area, 'a repo Dataset/ has no History/ and history null (the repo is its own history)')
+            if v.has_dir('Tasks'):
+                rep.error(area, 'a repo Dataset/ has no Tasks/ (tasks live in the game environment)')
     # full variant: every asset file listed by the project's assets.manifest.json is inside UEProject/
     if m['variant'] == 'full':
         am = 'UEProject/assets.manifest.json'
@@ -410,6 +439,7 @@ def check_history(rep, area, v, m):
             bare = os.path.join(tmp, 'repo.git')
             git_out('clone', '--quiet', '--bare', '--mirror', bundle, bare)
             commits = git_out('-C', bare, 'rev-list', '--all').decode().split()
+            v.commits = set(commits)   # for the tasks' seed commits (layout v1.3)
             if len(commits) != h['commits']:
                 rep.error(a, f'the bundle holds {len(commits)} commits, manifest history says {h["commits"]}')
             idents = set(git_out('-C', bare, 'log', '--all', '--format=%an%n%cn%n%ae%n%ce').decode('utf-8', 'replace').split('\n')) - {''}
@@ -463,6 +493,105 @@ def check_history(rep, area, v, m):
             rep.note(a, f'{len(commits)} commits, {len(heads) // 2} ref(s), {len(need)} LFS objects referenced, {len(objs)} present')
         except (RuntimeError, ValueError, IndexError) as e:
             rep.error(a, f'cannot read the bundle: {e}')
+
+
+TASK_NAME = re.compile(r'^[a-z0-9][a-z0-9-]{1,62}$')
+SHA1 = re.compile(r'^[0-9a-f]{40}$')
+
+
+def task_schema():
+    """The game environment's published task schema (machine config tasks_schema / tasks_source), or None."""
+    try:
+        sys.path.insert(0, os.path.join(REPO, 'machine', 'lib'))
+        import gfroot
+        p = gfroot.tasks_schema()
+    except Exception:
+        p = ''
+    if not p:
+        return None, None
+    import hashlib
+    data = open(p, 'rb').read()
+    return json.loads(data.decode('utf-8-sig')), hashlib.sha256(data).hexdigest()
+
+
+def loose_task_errors(t):
+    """Structure of a task without the environment's schema: the fields every task has and their basic shapes."""
+    errs = []
+    if not isinstance(t, dict):
+        return ['not an object']
+    for k in ('name', 'title', 'instruction', 'milestones'):
+        if k not in t:
+            errs.append(f'missing "{k}"')
+    if 'name' in t and not (isinstance(t['name'], str) and TASK_NAME.match(t['name'])):
+        errs.append('name is not a lowercase slug')
+    if 'instruction' in t and not (isinstance(t['instruction'], str) and t['instruction'].strip()):
+        errs.append('empty instruction')
+    ms = t.get('milestones')
+    if not (isinstance(ms, list) and ms and all(isinstance(m, dict) and isinstance(m.get('checks'), list) and m['checks'] for m in ms)):
+        errs.append('milestones must be a non-empty list, each with a non-empty checks list')
+    s = t.get('seed')
+    if s is not None:
+        if not isinstance(s, dict):
+            errs.append('seed is not an object')
+        else:
+            if not SHA1.match(str(s.get('commit', ''))):
+                errs.append('seed.commit is not a full commit id')
+            if s.get('reference') is not None and not SHA1.match(str(s['reference'])):
+                errs.append('seed.reference is not a full commit id')
+            if s.get('kind') not in ('bug_fix', 'feature', 'change', 'correction'):
+                errs.append(f'seed.kind {s.get("kind")!r} is not bug_fix/feature/change/correction')
+    return errs
+
+
+def check_tasks(rep, area, v, m):
+    """Layout v1.3 Tasks/: exactly 10 tasks, each valid (environment schema, else loosely), name = file name,
+    seed on this game and on commits of the delivered history."""
+    a = f'{area}: Tasks'
+    files = sorted(r for r in v.names if r.startswith('Tasks/') and r.endswith('.json'))
+    if not v.has('Tasks/README.md'):
+        rep.error(a, 'no Tasks/README.md')
+    if len(files) != 10:
+        rep.error(a, f'{len(files)} task files, the layout needs exactly 10')
+    schema, sha = task_schema()
+    if schema is None:
+        rep.warn(a, "the game environment's task schema (tasks.schema.json) was not found (machine config tasks_source / "
+                    "tasks_schema): tasks checked loosely")
+    names = []
+    commits = getattr(v, 'commits', None)
+    for rel in files:
+        try:
+            t = v.json(rel)
+        except ValueError as e:
+            rep.error(a, f'{rel}: not JSON ({e})')
+            continue
+        errs = list(check_schema(t, schema)) if schema is not None else loose_task_errors(t)
+        for e in errs[:5]:
+            rep.error(a, f'{rel}: {e}')
+        if not isinstance(t, dict):
+            continue
+        stem = rel[len('Tasks/'):-len('.json')]
+        if t.get('name') != stem:
+            rep.error(a, f'{rel}: name {t.get("name")!r} differs from the file name')
+        names.append(t.get('name'))
+        s = t.get('seed')
+        if isinstance(s, dict):
+            if s.get('game') != m['game']:
+                rep.error(a, f'{rel}: seed.game {s.get("game")!r} is not this game ({m["game"]})')
+            for k in ('commit', 'reference'):
+                c = s.get(k)
+                if c and commits is not None and c not in commits:
+                    rep.error(a, f'{rel}: seed.{k} {str(c)[:12]} is not a commit of History/')
+    if commits is None and files:
+        rep.note(a, 'seed commits not checked against History/ (bundle not unpacked: --quick, or no history)')
+    mt = m.get('tasks')
+    if not isinstance(mt, dict):
+        rep.error(a, 'layout v1.3 needs manifest tasks {"count": 10, "names": [...]}')
+    else:
+        if sorted(mt.get('names') or []) != sorted(n for n in names if n):
+            rep.error(a, 'manifest tasks.names differs from the task files')
+        if schema is not None and mt.get('schema_sha256') and mt['schema_sha256'] != sha:
+            rep.warn(a, 'the tasks were packaged against another version of the task schema than the one found now')
+    rep.note(a, f'{len(files)} tasks checked {"against the environment schema" if schema is not None else "loosely"}')
 
 
 def run_layout_validator(rep, path, repo_dataset):

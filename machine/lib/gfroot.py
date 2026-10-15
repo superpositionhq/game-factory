@@ -68,6 +68,25 @@ def org():
     return (os.environ.get("GF_ORG") or config().get("github_org") or "").strip()
 
 
+def tasks_source():
+    """The game environment's task folder (<name>.json per task): env GF_TASKS_SOURCE, else "tasks_source" in the
+    config file, else ""."""
+    return (os.environ.get("GF_TASKS_SOURCE") or config().get("tasks_source") or "").strip()
+
+
+def tasks_schema():
+    """The game environment's published task JSON Schema: env GF_TASKS_SCHEMA, else "tasks_schema" in the config,
+    else tasks.schema.json in the task folder or next to it; "" when none exists."""
+    p = (os.environ.get("GF_TASKS_SCHEMA") or config().get("tasks_schema") or "").strip()
+    if p:
+        return p if os.path.isfile(p) else ""
+    src = tasks_source()
+    for c in ([os.path.join(src, "tasks.schema.json"), os.path.join(os.path.dirname(os.path.abspath(src)), "tasks.schema.json")] if src else []):
+        if os.path.isfile(c):
+            return c
+    return ""
+
+
 def out():
     """Output root for packages and dataset zips: env GF_OUT, else "out" in the config file, else <root>/deliverables."""
     o = os.environ.get("GF_OUT") or config().get("out")

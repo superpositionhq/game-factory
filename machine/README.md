@@ -17,7 +17,10 @@ All machine paths hang off one root, the "Work" folder that holds `game-factory\
 The config also holds `ueb` (default `C:\UEB`: private build clones and build temp, outside the user profile so the
 user name is not compiled into Shipping exes), `engine` (default `C:\Program Files\Epic Games\UE_5.7`: the engine new
 games use), `github_org` (the GitHub organisation or user that owns game-factory and the private `game-<slug>`
-repos: `bootstrap.ps1 -Org` writes it, env `GF_ORG` overrides it; new-game.ps1, `-CloneGames` and check.ps1 read it) and `record_extra_projects` (default `[]`: extra top-level folders the recording hooks treat as projects besides
+repos: `bootstrap.ps1 -Org` writes it, env `GF_ORG` overrides it; new-game.ps1, `-CloneGames` and check.ps1 read it),
+`tasks_source` (the game environment's task folder, one `<name>.json` per task, for the datasets' `Tasks/`; env
+`GF_TASKS_SOURCE` overrides it; `tasks_schema` / `GF_TASKS_SCHEMA` name its published `tasks.schema.json` when it is not
+in or next to that folder) and `record_extra_projects` (default `[]`: extra top-level folders the recording hooks treat as projects besides
 `games\<slug>`). Optional: `out` (env `GF_OUT`; default `<root>\deliverables`: packages, dataset zips and replay
 packages, tens of GB per game, so point it at a roomy drive) and `min_free_gb` (env `GF_MIN_FREE_GB`, default 50:
 packaging and creation replay refuse to start on a drive with less free).

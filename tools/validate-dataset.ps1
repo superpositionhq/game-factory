@@ -63,8 +63,9 @@ else {
     try { $man = Read-Text 'manifest.json' | ConvertFrom-Json } catch { E "manifest.json is not valid JSON: $($_.Exception.Message)" }
 }
 # The spec follows the delivery's own layout version unless -SpecFile names one (v1.1 deliveries stay valid as v1.1).
-if (-not $PSBoundParameters.ContainsKey('SpecFile') -and $man -and (Get-Prop $man 'layout') -eq 'dataset-layout/v1.2') {
-    $SpecFile = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) '..\docs\dataset-layout-v1.2.json'
+$layoutFiles = @{ 'dataset-layout/v1.2' = 'dataset-layout-v1.2.json'; 'dataset-layout/v1.3' = 'dataset-layout-v1.3.json' }
+if (-not $PSBoundParameters.ContainsKey('SpecFile') -and $man -and $layoutFiles.ContainsKey([string](Get-Prop $man 'layout'))) {
+    $SpecFile = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) ('..\docs\' + $layoutFiles[[string](Get-Prop $man 'layout')])
     $L = Get-Content $SpecFile -Raw -Encoding UTF8 | ConvertFrom-Json
 }
 $unlisted = Get-Prop (Get-Prop $L 'unlisted_allowed') 'prefix'   # v1.2: History/lfs/objects/ (content-addressed, not in files[])
