@@ -27,7 +27,7 @@ and wait for my answer.
 Read first: {{GF_ROOT}}\game-factory\CLAUDE.md, README.md, AGENTS.md, docs/autoplay-contract.md, docs/ue-pipeline.md,
 and the game-session and commit-always skills (~\.claude\skills\). They hold the rules; in short:
 - every editor, build, cook or GPU job through {{GF_ROOT}}\tools\ue-heavy.ps1; Live Coding never on;
-- premium art from store packs (Content/Fab/<Pack>/, committed through Git LFS, never git-ignored; the repo stays
+- premium art from store packs (any folder under Content/, committed through Git LFS, never git-ignored; the repo stays
   private), styled UI with no plain text, story embedded in play, gentle camera; never the names of the toolkit or
   its owners inside the game;
 - one workflow.jsonl row per operation at the moment you act; commit after every meaningful step, never end a turn

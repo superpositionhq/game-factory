@@ -33,7 +33,7 @@ game-factory/.claude/skills/). In short: every heavy or GPU job through {{GF_ROO
 never on; premium art from the bought/downloaded Fab packs and animation packs, styled UI with no plain text, story
 embedded in play, gentle camera; never the names Superposition or game-factory anywhere in the game; one
 workflow.jsonl row per operation at the moment you act; commit after every meaningful step and never end a turn with
-uncommitted work; LFS for every binary; commit the store packs you use (Content/Fab/<Pack>/, LFS, never
+uncommitted work; LFS for every binary; commit the store packs you use (any folder under Content/, LFS, never
 git-ignored; the repo stays private, never public or shared outside the org); never enqueue recordings yourself (send me the commit + framing screenshots);
 push only when I say. Your game's full dataset is {{GF_ROOT}}\games\{{SLUG}}\Dataset.zip, made by the packager:
 keep /Dataset.zip, /Dataset.pending.zip and /.dataset/ in your .gitignore and never commit them; Dataset/ you commit.
@@ -98,7 +98,8 @@ Steps:
 6) Finish with a playtest checklist pass and a status section in the design doc (what works, what's left, built vs
    store assets, stats: workflow rows, commits, hours). Before calling the game content-complete: Docs/screenshots/
    holds 5-7 real gameplay stills (JPG, Git LFS), the README shows them as a hero image plus a captioned gallery, and
-   after the push every image renders on the github.com repo page (game-session skill, "README screenshots"). Report back with a short summary and the commit sha when done
+   after the push every image renders on the github.com repo page (game-session skill, "README screenshots"); and
+   tools/validate-game.py on your repo says VALID (docs/game-format.md). Report back with a short summary and the commit sha when done
    or blocked.
 
 Shared notes folder for this group of sessions (outside the repo; read siblings' notes there, leave hand-over notes

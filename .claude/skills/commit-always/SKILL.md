@@ -67,12 +67,13 @@ The user's standing rule: **every session commits its work continuously.**
 ## What to commit
 
 Everything needed to rebuild the game from the repo alone: `Source/`, `Config/`, the `.uproject`, `Content/`
-(including store packs under `Content/Fab/<Pack>/`), `Scripts/`, `RawAssets/` used for imports, `workflow.jsonl`,
+(including the store packs, in any folder under `Content/`), `Scripts/`, `RawAssets/` used for imports, `workflow.jsonl`,
 `assets.manifest.json`, `Docs/` (ThirdPartyNotices, screenshots), `README.md`, `Dataset/`. Nothing stays git-ignored
 except build output and the local dataset zip with its scratch (`/Dataset.zip`, `/Dataset.pending.zip`, `/.dataset/`).
 
 **Store packs are committed, the repo stays private (user rule).** Every Fab / marketplace pack the game uses is
-committed under `Content/Fab/<Pack>/` through Git LFS: never git-ignore store content (no `.gitignore` entry, no
+committed (any folder under `Content/`, e.g. `Content/Fab/<Pack>/`) through Git LFS and listed in
+`assets.manifest.json` (one format for every game: `assets-manifest/v1`, docs/game-format.md): never git-ignore store content (no `.gitignore` entry, no
 "download it yourself" step), so a clone builds the game. The licences allow that only in a private repo: game repos
 are never made public, forked to a public place or shared outside the org, and store files are never uploaded
 anywhere else.

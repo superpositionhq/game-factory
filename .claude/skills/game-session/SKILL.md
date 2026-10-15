@@ -64,9 +64,9 @@ started you. Use the **commit-always** skill for every commit.
   idle), or use the clip's NoAdditive variant.
 - **Art (user rule):** premium, coherent, never primitives or flat colours in the final game. Use the bought and
   downloaded Fab packs and the animation packs (catalogue `docs/asset-library.md`, library `<GF_ROOT>\asset-library\`);
-  characters and creatures animated. Store content under `Content/Fab/<Pack>/`, committed through Git LFS and never
+  characters and creatures animated. Store content in any folder under `Content/` (e.g. `Content/Fab/<Pack>/`), committed through Git LFS and never
   git-ignored (the repo stays private; commit-always skill, "Store packs are committed"); adapt it (materials, kitbash, set
-  dressing, lighting). Record every external asset in `assets.manifest.json` (URL, licence, version, files used,
+  dressing, lighting). Record every external asset in `assets.manifest.json` (format `assets-manifest/v1`, docs/game-format.md: URL, licence, version, the repo paths of its files,
   changes) and credits in `Docs/ThirdPartyNotices.md`, written as a normal developer would. Need more? Write a "Fab
   requests" list (URL, price, licence, UE 5.7 support, what it replaces) in your design doc and message the coordinator.
 - **UI (user rule):** matches the game's art style: kit frames, icons, display fonts, styled numbers. No plain or
@@ -163,6 +163,11 @@ from extra GPU launches; no editor views, debug overlays or placeholder art). Th
 plus a captioned gallery (one line per image saying what it shows). Every image the README links must be committed:
 after pushing, open the repo page on github.com and check that each image renders (a link to a file that was never
 committed shows as a broken image).
+
+**Game format (docs/game-format.md).** Before calling the game content-complete, `python <GF_ROOT>/game-factory/tools/validate-game.py
+<GF_ROOT>/games/<slug>` must say VALID: required files, `assets.manifest.json` in `assets-manifest/v1` with every
+listed file committed (`tools/migrate-assets-manifest.py` converts an older file), `workflow.jsonl` rows, README
+images, no banned names. The dataset adds your design doc and the original brief (`Brief/`) and the full history.
 
 ## Working with the coordinator
 
