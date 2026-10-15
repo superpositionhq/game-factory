@@ -7,6 +7,7 @@ follows are in the skills (`.claude/skills/`: commit-always, game-session); the 
 |---|---|
 | [coordinator.md](coordinator.md) | the coordinator (parent) session: role and the user's standing decisions |
 | [game-session.md](game-session.md) | template for a game-building session (placeholders) |
+| [solo-game.md](solo-game.md) | one game with one plain Claude Code session (terminal, no desktop app, no coordinator): paste and fill |
 | [games/](games/) | one fill-in per game: title, project name, pitch, brief, scenarios, story, art packs, known facts |
 | [helpers/](helpers/README.md) | ue-pipeline, asset-scout, packager, creation-replay |
 | [original/](original/) | historical prompts from the first build, verbatim (scrubbed); not instructions |
