@@ -134,6 +134,8 @@ Try-Check 'Primary display' {
 Try-Check 'Display refresh rate' {
     $rates = @(Get-CimInstance Win32_VideoController | Where-Object { $_.CurrentRefreshRate } | ForEach-Object { "$($_.Name): $($_.CurrentHorizontalResolution)x$($_.CurrentVerticalResolution) @ $($_.CurrentRefreshRate) Hz" })
     $max = (@(Get-CimInstance Win32_VideoController | ForEach-Object { [int]$_.CurrentRefreshRate }) | Measure-Object -Maximum).Maximum
+    # Fractional rates (59.94, 119.88 Hz) are reported rounded down (59, 119): treat them as the 60-multiple they are.
+    if ($max -ge 59 -and ($max + 1) % 60 -eq 0) { $rates = @($rates) + "reported $max Hz = a fractional $($max + 1)-class rate (e.g. 59.94), counted as $($max + 1)"; $max = $max + 1 }
     if ($max -ge 60 -and $max % 60 -eq 0) { Add-Result PASS 'Display refresh rate' ($rates -join '; ') }
     elseif ($max -ge 60) { Add-Result WARN 'Display refresh rate' ($rates -join '; ') 'recordings are 60 fps CFR: pick a multiple of 60 (60/120/240 Hz) for recording, or frames repeat/skip (Settings > Display > Advanced display)' }
     else { Add-Result FAIL 'Display refresh rate' $(if ($rates) { $rates -join '; ' } else { 'no active display' }) 'recording captures the desktop at 60 fps: needs a display at >= 60 Hz' }
