@@ -131,6 +131,12 @@ length is 700"); mark the actual complaint `"required": true`; ask only what the
 for a mouse-only outcome; HUD items need the HUD in screenshots; motion needs the drive or a route). Check names are
 unique and `needs` only names earlier checks; a `code_judge` or a `"reference": true` judge needs `seed.reference`.
 
+Visual items name the thing and its place, so a screenshot judge can't mistake one element for another: what it looks
+like (shape, colour, label or text on it) and where it is (e.g. "the round meter at the bottom centre of the HUD, under
+the score"), read from the seed's HUD or level, not guessed. Ask the outcome as presence or absence at that place
+against BEFORE ("in AFTER, the round meter at the bottom centre of the HUD is gone; it is present in BEFORE; the other
+HUD elements remain"), never as a vague "the gauge no longer shows".
+
 ## 6. Difficulty and limits
 
 - `easy`: one obvious cause or setting, visible at once. `medium`: investigation across a few files or an asset (the
@@ -155,6 +161,7 @@ half (`milestones`: rubrics, questions, `log_absent` patterns; and `seed.referen
 | rubric or log patterns shown in the brief | the agent gets the brief only |
 | a win the grader never saw | `required` items; the agent's route, played by the grader |
 | the brief said "scenario 1" but not `?Scenario=1` | `play_map` always set and checked at the seed |
+| a judge saw a removed HUD meter as "still visible" | name the element's look and place; ask presence or absence there vs BEFORE |
 | HUD items guessed | screenshots include the HUD; ask only what the evidence shows |
 | camera/HUD changes read as "nothing changed" | judge from camera measures and side-by-side screenshots, track only for motion |
 | quoting the person | write from context |
