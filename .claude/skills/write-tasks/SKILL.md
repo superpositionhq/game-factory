@@ -1,6 +1,6 @@
 ---
 name: write-tasks
-description: How to write the tasks a game ships with (Tasks/ on the repo's orphan tasks branch, never on main, one GameTask JSON per task, about 10 per game) so an agent can be given them in the game-creation environment: the tasks branch and its worktree, the four kinds (bug_fix from real fixes in the history, correction from user.direction rows, feature, change), picking seed.commit and seed.reference, writing the instruction from context, play_map, milestones, checks and judge rubrics, difficulty and limits, and what keeps a task gradable and unleaked. Use when a game session writes, moves or reviews tasks, and before calling a game complete.
+description: How to write the tasks a game ships with (Tasks/ on the repo's orphan tasks branch, never on main, one GameTask JSON per task, about 10 per game) so an agent can be given them in the game-creation environment: the tasks branch and its worktree, the four kinds (bug_fix from real fixes in the history, correction from user.direction rows, feature, change), picking seed.commit and seed.reference, writing the instruction from context, play_map, milestones, checks and judge rubrics, difficulty and limits, the hard tier (about 2-3 per game: long threads, far causes, compound tickets, observation-only briefs), and what keeps a task gradable and unleaked. Use when a game session writes, moves or reviews tasks, and before calling a game complete.
 ---
 
 # Writing a game's tasks
@@ -143,6 +143,35 @@ HUD elements remain"), never as a vague "the gauge no longer shows".
   usual case). `hard`: a cause far from the symptom, editor work (rebuilding assets through scripts), or a broad change.
 - `limits`: 120 turns, 180 min, 40 USD, 1800 s tool timeout unless the task needs otherwise.
 
+### The hard tier
+
+Each game also ships about 2-3 hard-tier tasks: `"difficulty": "hard"` and the tag `hard-tier`. A task with one cause
+in one place and a brief that names the system is not hard, however long the fix took; strong agents finish those in
+minutes. A hard-tier task has at least one of these traits, and its brief gives nothing away:
+
+1. **A long thread in the real history.** Pick stretches where the game's own sessions needed many commits or
+   several rounds of directions before the fix held. `seed.commit` is the parent of the first attempt;
+   `seed.reference` is the final accepted fix. A chain whose first fix didn't hold is one task, not two. Prefer
+   causes spread over several files, systems and assets (C++ plus Blueprint or data plus assets built by editor
+   scripts).
+2. **The cause is far from the symptom:** a HUD symptom caused by a data asset, a camera symptom caused by collision
+   channels, a crash only in the packaged build, an intermittent or timing bug, a regression from an earlier change.
+3. **A compound ticket:** several real issues in one task, each a `required` judge item (or its own code-judge
+   item), so partial work earns partial credit.
+4. **A brief that is only an observation:** a player or QA report of what is seen, in plain words. It names no
+   cause, no place to look, no file, system or asset, and no mechanism ("the camera feels jammed against the ship",
+   not "the obstruction sweep counts the sea"). It says only what a player knows. Leave out the play_map line,
+   which the harness adds. The code-judge rubric still names the cause, since the agent never sees it.
+5. **Checkable by the grader:** every required outcome must show in the grader's own evidence. Use a scenario
+   (`play_map` options at the seed) that triggers the moment, or ask the agent for a `route` that reaches it. The
+   brief then says what the route must show: where to go and what to do, never why. Set `"reference": true`, so the
+   judge sees the real fix playing, and phrase items by look and place (section 5). A bug that never shows in the
+   grader's plays leaves the task to the code judge alone; that is not good enough for the hard tier.
+
+Wording: neutral and technical, for the game's people and creatures as for the rest. Describe meshes, bones, poses,
+hits and reactions. Never use gore, injury or body-horror words ("crumpled body", "cut neck"); a cloud content
+filter rejects such briefs and rubrics.
+
 ## 7. What must never reach the agent
 
 The agent sees only the brief and the game at `seed.commit` (a commit of main, so without the tasks branch) as a fresh
@@ -167,6 +196,9 @@ half (`milestones`: rubrics, questions, `log_absent` patterns; and `seed.referen
 | quoting the person | write from context |
 | two directions answered by one commit | each code-judge question names the other's part |
 | a reference that crashed | the reference must build and run |
+| "hard" tasks solved in minutes: one cause, one place, the brief named the system | hard tier: long threads, far causes, compound tickets, observation-only briefs |
+| a bug that never shows in the grader's plays, graded by the code judge alone | a scenario or route that triggers the moment, plus `"reference": true` |
+| a brief rejected by a content filter (injury wording) | neutral technical words: mesh, bones, pose, hit, reaction |
 
 ## 9. Examples
 
