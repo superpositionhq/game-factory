@@ -164,9 +164,12 @@ minutes. A hard-tier task has at least one of these traits, and its brief gives 
    which the harness adds. The code-judge rubric still names the cause, since the agent never sees it.
 5. **Checkable by the grader:** every required outcome must show in the grader's own evidence. Use a scenario
    (`play_map` options at the seed) that triggers the moment, or ask the agent for a `route` that reaches it. The
-   brief then says what the route must show: where to go and what to do, never why. Set `"reference": true`, so the
-   judge sees the real fix playing, and phrase items by look and place (section 5). A bug that never shows in the
-   grader's plays leaves the task to the code judge alone; that is not good enough for the hard tier.
+   brief then says what the route must show: where to go and what to do, never why. A route holds key names,
+   mouse buttons included (`LeftMouseButton`), but no mouse movement, so the camera's pitch and the menu cursor
+   stay where they start. The grader plays it on AFTER and BEFORE, never on REFERENCE, so the moment a route
+   reaches is compared against BEFORE only. Set `"reference": true` as well, so the judge sees the real fix in the
+   idle and drive plays, and phrase items by look and place (section 5). A bug that never shows in the grader's
+   plays leaves the task to the code judge alone; that is not good enough for the hard tier.
 
 Wording: neutral and technical, for the game's people and creatures as for the rest. Describe meshes, bones, poses,
 hits and reactions. Never use gore, injury or body-horror words ("crumpled body", "cut neck"); a cloud content
