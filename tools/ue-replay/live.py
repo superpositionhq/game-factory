@@ -451,6 +451,9 @@ def sync_truth(cfg, sha):
 
 def build_truth(cfg, label, since=None, sha=None):
     """Build the truth project's editor unless no code changed since the last truth build (since -> sha)."""
+    marker = os.path.join(cfg["truth_dir"], "Saved", "replay-truth-engine.txt")
+    if not os.path.exists(marker):
+        since = None   # never built in this clone (re-cloned after a cleanup): build it, whatever truth_built says
     if since and sha and since != sha:
         changed = runner.git(cfg["repo"], "diff", "--name-only", since, sha).splitlines()
         if not any(ledger.is_code(p) for p in changed):
@@ -462,7 +465,6 @@ def build_truth(cfg, label, since=None, sha=None):
     # the engine the truth commit names; build output of another engine (truth checked out across a port) goes first
     eng = ctx.engine_for(ctx.uproject)
     ctx.set_engine(eng)
-    marker = os.path.join(cfg["truth_dir"], "Saved", "replay-truth-engine.txt")
     old = open(marker, encoding="utf-8").read().strip() if os.path.exists(marker) else None
     if old and old != eng:
         for d in ("Binaries", "Intermediate"):
@@ -619,6 +621,9 @@ def catch_up(cfg, lst):
     ue_replay.save_ledger(cfg, new, blobs)
     if not have_project:
         runner.cmd_prepare(cfg, RunArgs)
+        # the project was removed (disk cleanup) while state.json kept its windows: replay again from the first commit
+        if runner.Ctx(cfg).state.get("window", 0) > 0:
+            rep["reset"] = reset_to(cfg, old, new, -1, "the replay project was removed: replaying from the first commit")
     elif k < done:
         why = ("the first commit changed" if k < 0 else
                "replay again from window %d (requested: --restart)" % (k + 1) if forced is not None and k == forced else
