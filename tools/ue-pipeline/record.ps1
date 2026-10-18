@@ -406,8 +406,17 @@ for ($i = 0; $i -lt $Runs; $i++) {
             if ((Get-Date) -gt $deadline) { throw 'no ready.json within 180 s' }
             Start-Sleep -Milliseconds 200
         }
-        $ready = Read-JsonFile (Join-Path $rawDir 'ready.json')
-        $hwnd = [UePipeline.Win]::FindWindowOfPid([uint32]$ready.pid, '[AutoPlay]')
+        # The game may still hold ready.json open (sharing violation) or have written it only partly: retry for 10 s.
+        $ready = $null; $readyDeadline = (Get-Date).AddSeconds(10)
+        while (-not $ready) {
+            try { $ready = Read-JsonFile (Join-Path $rawDir 'ready.json') }
+            catch { if ((Get-Date) -gt $readyDeadline) { throw } }
+            if (-not $ready) {
+                if ((Get-Date) -gt $readyDeadline) { throw 'ready.json stayed empty or unreadable for 10 s' }
+                Start-Sleep -Milliseconds 200
+            }
+        }
+        $hwnd =[UePipeline.Win]::FindWindowOfPid([uint32]$ready.pid, '[AutoPlay]')
         if ($hwnd -eq [IntPtr]::Zero) { $hwnd = [UePipeline.Win]::FindWindowOfPid([uint32]$ready.pid, $null) }
         if ($hwnd -eq [IntPtr]::Zero) { throw "no visible window for pid $($ready.pid)" }
         $title = [UePipeline.Win]::Title($hwnd)
