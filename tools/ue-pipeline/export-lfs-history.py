@@ -60,6 +60,17 @@ def main():
             meta, path = line.split("\t", 1)
             head[path] = meta.split()[2]
     tmp = tempfile.mkdtemp(prefix="export-lfs-")
+    # objects/bytes count the distinct objects written: a patched object can come out identical to another object
+    # (a clean one, or another patched one), and the delivered History/lfs/objects holds it once
+    written = set()
+
+    def add(src, oid):
+        place(src, out, oid)
+        if oid not in written:
+            written.add(oid)
+            res["objects"] += 1
+            res["bytes"] += os.path.getsize(src)
+
     try:
         for oid, (size, paths) in sorted(by_oid.items()):
             src = slh.lfs_path(repo, oid)
@@ -69,9 +80,7 @@ def main():
                 continue
             counts, unpatchable, _rw = slh.sip._stream(src, pats)
             if not counts:
-                place(src, out, oid)
-                res["objects"] += 1
-                res["bytes"] += os.path.getsize(src)
+                add(src, oid)
                 continue
             patched = os.path.join(tmp, oid)
             _c, unpatchable, rewritten = slh.sip._stream(src, pats, patch_to=patched)
@@ -79,10 +88,8 @@ def main():
                 res["unpatchable"].append({"oid": oid, "path": path})
                 continue
             new = slh.sha256_file(patched)
-            place(patched, out, new)
             res["map"][oid] = [new, os.path.getsize(patched)]
-            res["objects"] += 1
-            res["bytes"] += os.path.getsize(patched)
+            add(patched, new)
             res["patched"] += 1
         if res["unpatchable"] and a.unpatchable_use_head:
             # HEAD's clean version of the same path stands in (its object is exported like every other)
