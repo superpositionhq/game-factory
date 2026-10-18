@@ -183,6 +183,30 @@ function Get-CapturedFrameCount([string]$LogPath) {
     } catch { return 0 }
 }
 
+# Background Unreal build/cook/replay work (headless commandlets, UBT, UBA hosts) runs at BelowNormal while a run is
+# recorded, so a busy CPU does not drop the recorded game below 60 fps (siege-catapult ran at 13 fps beside builds and
+# creation replays, 2026-10-18). Only these process names are touched; their previous priority is restored after the run.
+$script:LoweredProcs = @{}
+$script:BackgroundUeNames = @('UnrealEditor-Cmd', 'UnrealBuildTool', 'UbaHost')
+function Set-BackgroundUeLow {
+    # UE 5.7's UBT runs as "dotnet ...UnrealBuildTool.dll": dotnet processes count only with that on the command line.
+    $ubt = @(Get-CimInstance Win32_Process -Filter "Name='dotnet.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'UnrealBuildTool' } | ForEach-Object { Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue })
+    foreach ($p in @(@(Get-Process -Name $script:BackgroundUeNames -ErrorAction SilentlyContinue) + $ubt | Where-Object { $_ })) {
+        try {
+            if ($p.PriorityClass -in @([Diagnostics.ProcessPriorityClass]::Normal, [Diagnostics.ProcessPriorityClass]::AboveNormal, [Diagnostics.ProcessPriorityClass]::High)) {
+                if (-not $script:LoweredProcs.ContainsKey($p.Id)) { $script:LoweredProcs[$p.Id] = @{ prio = $p.PriorityClass; start = $p.StartTime } }
+                $p.PriorityClass = 'BelowNormal'
+            }
+        } catch { }
+    }
+}
+function Restore-BackgroundUe {
+    foreach ($id in @($script:LoweredProcs.Keys)) {
+        try { $p = Get-Process -Id $id -ErrorAction Stop; if ($p.StartTime -eq $script:LoweredProcs[$id].start) { $p.PriorityClass = $script:LoweredProcs[$id].prio } } catch { }
+    }
+    $script:LoweredProcs = @{}
+}
+
 function Get-PtsUs([string]$LogPath) {
     # Microseconds per pts unit, from showinfo's "config in time_base: a/b" line: ddagrab and gdigrab use 1/1000000,
     # gfxcapture 1/10000000 (reading its pts as us made a 60 fps capture look like 6 fps and broke the start estimate).
@@ -407,7 +431,8 @@ for ($i = 0; $i -lt $Runs; $i++) {
         $psi.WorkingDirectory = Split-Path $exe
         $proc = [System.Diagnostics.Process]::Start($psi)
         $proc.BeginOutputReadLine(); $proc.BeginErrorReadLine()   # drain and discard
-        try { $proc.PriorityClass = 'AboveNormal' } catch { }
+        try { $proc.PriorityClass = 'High' } catch { try { $proc.PriorityClass = 'AboveNormal' } catch { } }
+        Set-BackgroundUeLow; $lastLow = Get-Date
 
         # ---- wait for ready.json, find the window ----
         $deadline = (Get-Date).AddSeconds(180)
@@ -517,6 +542,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
         while (-not (Test-Path $outcomePath) -and -not $proc.HasExited) {
             if ((Get-Date) -gt $deadline) { $killed = $true; [void]$problems.Add("timeout: killed after $($MaxSeconds + 90) s"); break }
             if ($cap.Process.HasExited) { [void]$problems.Add('ffmpeg exited during the run'); break }
+            if (((Get-Date) - $lastLow).TotalSeconds -ge 5) { Set-BackgroundUeLow; $lastLow = Get-Date }   # jobs started meanwhile
             $now = [UePipeline.Win]::ClientRectOnScreen($hwnd)
             if ($now -and ($now[2] -ne 1920 -or $now[3] -ne 1080)) { [void]$problems.Add("game window client area changed to $($now[2])x$($now[3])"); break }
             if ([UePipeline.Win]::IsIconic($hwnd)) { [void]$problems.Add('game window was minimized (no frames)'); break }
@@ -575,6 +601,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
     } finally {
         if ($hwnd -ne [IntPtr]::Zero -and [UePipeline.Win]::IsWindow($hwnd)) { [void][UePipeline.Win]::SetTopmost($hwnd, $false) }
         [void]$clock.Add((Get-ClockSample 'record_end'))
+        Restore-BackgroundUe
         [UePipeline.Win]::KeepDisplayOn($false)
         Exit-PipelineLock
         Exit-GpuSlot $gpuSlot
