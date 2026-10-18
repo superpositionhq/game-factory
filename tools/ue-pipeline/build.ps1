@@ -101,7 +101,12 @@ try {
     if (-not (Test-Path (Join-Path $src '.git'))) {
         Write-Step "cloning $($info.Dir) -> $src"
         New-Item -ItemType Directory -Force (Split-Path $src) | Out-Null
-        Invoke-Git $WorkRoot @('clone', '--quiet', '--no-checkout', '--local', $info.Dir, $src) | Out-Null
+        # --local hard-links the object files, which fails across volumes ("Improper link"): a game folder that is a
+        # junction to another drive (tower-defense -> D:) is cloned with copies instead
+        $it = Get-Item $info.Dir; $repoDrive = if ($it.LinkType -and $it.Target) { ([string]@($it.Target)[0]).Substring(0, 1) } else { $info.Dir.Substring(0, 1) }
+        $cloneArgs = @('clone', '--quiet', '--no-checkout', '--local')
+        if ($repoDrive -ne $src.Substring(0, 1)) { $cloneArgs += '--no-hardlinks' }
+        Invoke-Git $WorkRoot ($cloneArgs + @($info.Dir, $src)) | Out-Null
     }
     Invoke-Git $src @('fetch', '--quiet', '--force', '--tags', 'origin', '+refs/heads/*:refs/remotes/origin/*') | Out-Null
     Invoke-Git $src @('-c', 'advice.detachedHead=false', 'checkout', '--quiet', '--force', $sha) | Out-Null
