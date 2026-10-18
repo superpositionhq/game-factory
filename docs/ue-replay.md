@@ -214,6 +214,15 @@ whose code text the recording cannot rebuild (a shell edit the ledger does not f
 (`code_unknown`). Deviations: `code_at_run_time`, `code_at_run_time_not_buildable`, `code_at_run_time_unknown`.
 Settings `"code_at_run_time": false` turns it off.
 
+Sometimes a window's commit code does not compile on its engine with any build fallback. This happens at a mid-port
+commit: island-survival w48, "Port to UE 5.7, step 3", whose later port steps fixed the C++. In that case the runner
+takes the code (`Source/`, plugin sources and `.uplugin`, the `.uproject`, every `.Build.cs`/`.Target.cs`) from the
+nearest later commit on the replayed chain whose code builds. It tries the commits in order and never goes past the
+final commit. The window's scripts run with that code, and the window commit's code comes back at the boundary. The
+window's `windows.jsonl` row and the report list it as deviation `code_from_commit`, with the reason "commit's code does
+not compile on this engine". It is not a verdict rule: the file, asset and map checks decide as always. Settings
+`"code_from_later_commit": false` turns it off.
+
 ### 2.8 Engine per commit
 
 With `"engine": "{engine}"` (the template's setting), every window uses the engine its commit's `.uproject` names

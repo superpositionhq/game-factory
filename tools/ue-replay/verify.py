@@ -446,7 +446,13 @@ def deviations(ctx, report):
     add("code_at_run_time_not_buildable", "runs whose run-time C++ did not compile here: they got the window's commit code",
         [{"run": x.get("run"), "script": x.get("script"), "detail": x["code_at_run_time"]} for x in retried
          if str(x.get("code_at_run_time") or "").startswith("commit code (")])
-    add("code_at_run_time_unknown", "runs whose C++ at that moment the recording cannot rebuild (a shell edit it cannot "
+    add("code_from_commit", "windows whose commit's C++ does not compile on this engine with any build fallback (a mid-port "
+        "commit): the editor was built with the code (Source/, plugin sources, .uproject) of the nearest later commit whose "
+        "code builds, the window's scripts ran with it, and the window commit's code came back at the boundary",
+        [{"window": x.get("window"), "commit": (x.get("commit") or "")[:10], "code_commit": (x.get("code_commit") or "")[:10],
+          "code_window": x.get("code_window"), "files": x.get("files"), "reason": x.get("reason")}
+         for x in retried if x.get("kind") == "code_from_commit"])
+    add("code_at_run_time_unknown","runs whose C++ at that moment the recording cannot rebuild (a shell edit it cannot "
         "follow): they got the window's commit code", [{"run": r["id"], "script": r["script"], "files": r["code_unknown"]}
                                                       for r in runs if r.get("code_unknown") and not r.get("readonly")])
     add("runs_retried_after_engine_crash", "runs the engine crashed in before the script finished, run once more",

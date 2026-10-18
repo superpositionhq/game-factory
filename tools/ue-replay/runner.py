@@ -502,6 +502,87 @@ def build_editor(ctx, label, sha=None):
     return code, secs, log
 
 
+CODE_FROM_COMMIT_REASON = "commit's code does not compile on this engine"
+
+
+def is_code_path(p):
+    """The project's code: Source/, plugin sources and descriptors, the root .uproject (and every .Build.cs/.Target.cs)."""
+    return (p.startswith("Source/") or p.endswith((".Build.cs", ".Target.cs")) or ("/" not in p and p.endswith(".uproject"))
+            or (p.startswith("Plugins/") and ("/Source/" in p or p.endswith(".uplugin"))))
+
+
+def code_tree(ctx, sha):
+    """path -> blob id of every code file (is_code_path) in the commit's tree."""
+    out = {}
+    for line in git(ctx.proj, "ls-tree", "-r", sha).splitlines():
+        meta, _, p = line.partition("\t")
+        parts = meta.split()
+        if len(parts) == 3 and parts[1] == "blob" and is_code_path(p):
+            out[p] = parts[2]
+    return out
+
+
+def put_code(ctx, sha, want, have):
+    """Make the project's code files those of tree `want` (commit sha), starting from tree `have`."""
+    changed = sorted(p for p, b in want.items() if have.get(p) != b)
+    for k in range(0, len(changed), 500):
+        git(ctx.proj, "checkout", sha, "--pathspec-from-file=-", inp="\n".join(changed[k:k + 500]).encode("utf-8"))
+    for p in sorted(set(have) - set(want)):
+        if os.path.exists(ctx.p(p)):
+            os.remove(ctx.p(p))
+    return changed
+
+
+def restore_code_from_commit(ctx, w):
+    """Window end (or before trying another commit): the window commit's code back where a later commit's stood."""
+    cf = ctx.state.get("code_from_commit")
+    if not cf or cf.get("window") != w["index"]:
+        return None
+    put_code(ctx, w["sha"], code_tree(ctx, w["sha"]), code_tree(ctx, cf["commit"]))
+    ctx.state.pop("code_from_commit", None)
+    ctx.state["code_dirty"] = True
+    ctx.state["built"] = None
+    ctx.save()
+    return cf
+
+
+def build_with_later_code(ctx, wins, i, r, runs_log):
+    """The window commit's C++ does not compile on this engine with any build fallback (a mid-port commit: island-
+    survival w48, "Port to UE 5.7, step 3"; the next port steps fixed it). Build with the code of the nearest LATER
+    commit on the replayed chain (never beyond the final commit, HEAD for a release) whose code builds, and run the
+    window's scripts with it; the window commit's code comes back at the boundary. A deviation (code_from_commit),
+    never a verdict rule: the file, asset and map checks decide as always. Returns (code, log, commit or None)."""
+    w = wins[i]
+    base = code_tree(ctx, w["sha"])
+    tried = set()
+    code, log = 1, None
+    for j in range(i + 1, len(wins)):
+        cand = wins[j]["sha"]
+        want = code_tree(ctx, cand)
+        key = json.dumps(sorted(want.items()))
+        if want == base or key in tried:
+            continue
+        tried.add(key)
+        restore_code_from_commit(ctx, w)
+        changed = put_code(ctx, cand, want, base)
+        ctx.state["code_from_commit"] = {"window": w["index"], "commit": cand, "files": len(changed)}
+        ctx.state["code_dirty"] = True
+        ctx.save()
+        print("   build with the code of later commit %s (w%02d, %d code file(s) differ): %s" % (
+            cand[:8], j, len(changed), CODE_FROM_COMMIT_REASON), flush=True)
+        code, secs, log = build_editor(ctx, "w%02d_%s_code_%s" % (i, r["id"], cand[:8]))
+        jappend(runs_log, {"window": i, "kind": "build", "step": "w%02d.build.%s.code_%s" % (i, r["id"], cand[:8]),
+                           "exit_code": code, "seconds": secs, "code_from_commit": cand, "log": os.path.relpath(log, ctx.work)})
+        print("   build: exit %s (%.0f s)" % (code, secs), flush=True)
+        if code == 0:
+            jappend(runs_log, {"window": i, "kind": "code_from_commit", "step": "w%02d.code_from_commit" % i, "commit": w["sha"],
+                               "code_commit": cand, "code_window": j, "files": len(changed), "reason": CODE_FROM_COMMIT_REASON,
+                               "log": os.path.relpath(log, ctx.work), "time": now()})
+            return code, log, cand
+    restore_code_from_commit(ctx, w)
+    return code, log, None
+
+
 def materialize_scripts(ctx, run):
     """Script files as they stood when the run started (ledger texts); unknown ones keep the commit's version."""
     n = 0
@@ -942,6 +1023,11 @@ def cmd_run(cfg, a):
                 if want and json.dumps(want, sort_keys=True) in ctx.state.get("code_failed", []):
                     want = {}
                     rec["code_at_run_time"] = "commit code (the run-time code did not build)"
+                cff = ctx.state.get("code_from_commit")
+                if cff and cff.get("window") == i:
+                    # this window builds only with a later commit's code (build_with_later_code): every run keeps it
+                    want = {}
+                    rec["code_from_commit"] = {"commit": cff["commit"], "reason": CODE_FROM_COMMIT_REASON}
                 if apply_run_code(ctx, w, want):
                     rec["code_at_run_time"] = rec.get("code_at_run_time") or (
                         "%d file(s) as at the run's start" % len(want) if want else "commit code again")
@@ -960,6 +1046,10 @@ def cmd_run(cfg, a):
                         jappend(runs_log, {"window": i, "kind": "build", "step": "w%02d.build.%s.commit" % (i, r["id"]),
                                            "exit_code": code, "seconds": secs2, "log": os.path.relpath(log, ctx.work)})
                         print("   build with the commit's code: exit %s (%.0f s)" % (code, secs2), flush=True)
+                    if code != 0 and cfg.get("code_from_later_commit", True):
+                        code, log, later = build_with_later_code(ctx, wins, i, r, runs_log)
+                        if later:
+                            rec["code_from_commit"] = {"commit": later, "reason": CODE_FROM_COMMIT_REASON}
                     if code != 0:
                         sys.exit("editor build failed in window %d, see %s" % (i, log))
                     ctx.state["built"] = w["sha"]
@@ -1021,13 +1111,16 @@ def cmd_run(cfg, a):
             jappend(runs_log, rec)
             ctx.state["done"].append(sid)
             ctx.save()
-        # boundary (code files a run had at their earlier text go back to the commit first)
+        # boundary (code files a run had at their earlier text, or a later commit's code, go back to the commit first)
         apply_run_code(ctx, w, {})
+        cff = restore_code_from_commit(ctx, w)
         res = boundary(ctx, w)
         summ = {"window": i, "commit": w["sha"], "subject": w["subject"], "time": now(), "seconds": round(time.time() - t_w, 1),
                 "runs": len(w["runs"]), "reconstruction": {"checks": len(w["reconstruction"]),
                                                            "match": sum(1 for c in w["reconstruction"] if c["match"])},
                 "content": {k: (len(v) if isinstance(v, list) else v) for k, v in res.items()}, "detail": res}
+        if cff:
+            summ["code_from_commit"] = {"commit": cff["commit"], "files": cff.get("files"), "reason": CODE_FROM_COMMIT_REASON}
         jappend(win_log, summ)
         print("   boundary: content %s" % json.dumps(summ["content"]), flush=True)
         ctx.state["window"] = i
