@@ -62,6 +62,7 @@ param(
     [switch]$DryRun,                # print the store-content split, build and gameplay selection; write nothing
     [string]$Rescan,                # an existing package folder: check it against the current rules, write <dir>.rescan-hits.tsv; changes nothing
     [string]$ScrubDir,              # a folder joining a delivery: apply the scrub rules to its text files in place (<dir>.scrub.json)
+    [switch]$SelfCheck,             # regression check of the scan/scrub rules on built-in samples (package-game.ps1 _ -SelfCheck)
     [string]$BriefFile,             # the original brief (Brief/brief.md); default docs/briefs/original/game-<game>.md, else docs/briefs/games/<game>.md
     [string]$DesignFile,            # the design doc (Brief/design.md); default docs/games/<game>.md
     [switch]$NoGitHistory,          # skip GitHistory\ (the rewritten full history for dataset layout v1.2: bundle + every LFS object)
@@ -375,6 +376,26 @@ public static class Tools {
         return LocaleNeedle != null && len == LocaleNeedle.Length && at >= 3 && string.Equals(s.Substring(at, len), LocaleNeedle, StringComparison.OrdinalIgnoreCase)
             && (s[at - 3] == 'z' || s[at - 3] == 'Z') && (s[at - 2] == 'h' || s[at - 2] == 'H') && (s[at - 1] == '_' || s[at - 1] == '-');
     }
+    // Random bytes written out as escapes (a Python bytes repr \xHH, JSON \uHHHH, any number of backslashes) print a few
+    // literal characters between the escapes, which can spell the account name (\x86NxiAngd\x1c). Such a hit is allowed
+    // when its literal run is short (<= 16), bounded on both sides directly by escapes, and has at least 3 escapes on
+    // each side within 64 characters; a real path in such a dump has separators or longer runs and still blocks.
+    static readonly Regex EscTok = new Regex(@"\\+(?:x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4})");
+    public static bool EscapedBytes(string s, int at, int len) {
+        int lo = Math.Max(0, at - 64), hi = Math.Min(s.Length, at + len + 64);
+        while (lo < at && s[lo] != '\\') lo++;
+        while (lo > 0 && s[lo - 1] == '\\') lo--;
+        string w = s.Substring(lo, hi - lo);
+        int hs = at - lo, he = hs + len, before = 0, after = 0, runStart = -1, runEnd = -1;
+        foreach (Match e in EscTok.Matches(w)) {
+            if (e.Index + e.Length <= hs) { before++; runStart = e.Index + e.Length; }
+            else if (e.Index >= he) { after++; if (runEnd < 0) runEnd = e.Index; }
+            else return false;   // the hit overlaps an escape
+        }
+        if (before < 3 || after < 3 || runEnd - runStart > 16) return false;
+        for (int p = runStart; p < runEnd; p++) if (w[p] == '\\' || char.IsWhiteSpace(w[p])) return false;
+        return true;
+    }
     public static List<Hit> Scan(string root, IList<string> rels, Regex banned, Regex leak, List<Hit> leaks, int maxPerFile,
                                  string[] needles, bool[] refuse, string[] category) {
         root = Path.GetFullPath(root).TrimEnd('\\') + "\\";
@@ -399,6 +420,9 @@ public static class Tools {
                             && !OpusToken(m.Index > 0 ? s[m.Index - 1] : -1, s[m.Index], s[m.Index + 1], s[m.Index + 2], s[m.Index + 3],
                                           m.Index + 4 < s.Length ? s[m.Index + 4] : -1)) continue;
                         if (LocaleHit(s, m.Index, m.Length)) { var lh = new Hit(); lh.Path = rel; lh.Kind = "allowed-text"; lh.Where = line; lh.Text = "zh_" + m.Value; mine.Add(lh); continue; }
+                        if (LocaleNeedle != null && string.Equals(m.Value, LocaleNeedle, StringComparison.OrdinalIgnoreCase) && EscapedBytes(s, m.Index, m.Length)) {
+                            var eh = new Hit(); eh.Path = rel; eh.Kind = "allowed-escaped-bytes"; eh.Where = line; eh.Text = "username:" + m.Value; mine.Add(eh); continue;
+                        }
                         if (Allow != null) {
                             string w = WordAt(s, m.Index, m.Length);
                             if (Allow.IsMatch(w)) { var ah = new Hit(); ah.Path = rel; ah.Kind = "allowed-text"; ah.Where = line; ah.Text = w; mine.Add(ah); continue; }
@@ -1031,8 +1055,12 @@ if (-not $UserName) { throw 'cannot tell the Windows user name (USERNAME unset):
 $WordStart = '(?:(?<=\\[nrtfb])|(?<=\\u[0-9a-fA-F]{4})|(?<![A-Za-z0-9_]))'
 $UserRx = "$WordStart$([regex]::Escape($UserName))(?![A-Za-z0-9_])"
 $MachineName = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { [Environment]::MachineName }
-# enforcement: the account name as any substring (only the allowlisted exact tokens pass)
-$UserAnyRx = [regex]::Escape($UserName)
+# enforcement (text and paths): the account name as a word or path segment of its own: not inside a longer word (a place
+# name such as wuxiangshan_bgm). A segment ends at anything but a letter (digits, _ . / \ - and JSON escapes such as \n
+# count as separators, so Name2 and Name_x still block) or at a lower->upper camel boundary (FooName, NameBar).
+# Binaries keep the substring needle (Scan's needles).
+$UserSegRx = '(?:(?<=\\[nrtfb])|(?<=\\u[0-9a-fA-F]{4})|(?<![A-Za-z])|(?-i:(?<=[a-z])(?=[A-Z])))' + [regex]::Escape($UserName) +
+    '(?:(?![A-Za-z])|(?-i:(?<=[a-z])(?=[A-Z])))'
 $EmailRx = '(?:(?<=\\u[0-9a-fA-F]{4})|(?<=\\[nrtfb"/])|(?<![A-Za-z0-9._%+\\-]))(?!(?:git@(?:github|gitlab|bitbucket)\.(?:com|org)|noreply@github\.com)\b)' +
     '[A-Za-z0-9._%+-]+@(?!(?:[A-Za-z0-9-]+\.)*(?:example\.(?:com|org|net)|invalid|test|localhost)\b)(?:[A-Za-z0-9-]+\.)+' +
     '(?!(?:png|jpe?g|tga|gif|svg|webp|exr|hdr|bmp|dds|uasset|umap|wav|ogg|mp3|flac|fbx|glb|gltf|obj|json|jsonl|txt|md|ini|py|ps1|sh|cpp|h|cs|bin|zip)\b)[A-Za-z]{2,}\b'
@@ -1164,6 +1192,56 @@ $Banned = New-Object System.Text.RegularExpressions.Regex($BannedPattern, 'Ignor
 # history), and not the HEADs of other worktrees (a tasks worktree's HEAD). Same as [GameDeliverable.Tools]::HistoryRefs.
 $HistoryRefArgs = @('--single-worktree', '--exclude=refs/heads/tasks', '--exclude=refs/remotes/*/tasks', '--all')
 
+# -SelfCheck: regression check of the scan (and scrub) rules on built-in samples; the game argument is ignored. Samples
+# that name the account are built from this machine's account name at run time (never written in the repo).
+# "scan" cases go straight to the scan; "scrub" cases go through the package scrub first, as a delivery does.
+if ($SelfCheck) {
+    $u = $UserName.ToLowerInvariant(); $U1 = $u.Substring(0, 1).ToUpperInvariant() + $u.Substring(1)
+    $mixed = -join @(for ($i = 0; $i -lt $u.Length; $i++) { if ($i % 2) { [char]::ToUpperInvariant($u[$i]) } else { $u[$i] } })
+    $cases = @(
+        # account name: a word or path segment blocks; inside a longer word (a place name) it does not
+        @{ id = 'user-place-name'; mode = 'scan'; expect = 'pass'; text = "music: wu${u}shan_bgm.wav, \\t1\\tnwu${u}shan.bnk, Wu${U1}ShanBoss1" }
+        @{ id = 'user-random-bytes-in-word'; mode = 'scan'; expect = 'pass'; text = "b'\\x962\\xe6-\\xd8O\\xb5e\\x8c\\x19:\\xc1r\\x86N${mixed}d\\x1c6\\xa0\\x86\\x97'" }
+        @{ id = 'user-escaped-bytes'; mode = 'scan'; expect = 'pass'; text = "b'\\x00\\x13\\xe6\\x86${mixed}\\x1c\\x9f\\x00\\xa0'" }
+        @{ id = 'user-path'; mode = 'scan'; expect = 'refuse'; text = "C:\\Users\\${U1}\\Work\\games" }
+        @{ id = 'user-underscore'; mode = 'scan'; expect = 'refuse'; text = "backup at ${u}_old/" }
+        @{ id = 'user-digit'; mode = 'scan'; expect = 'refuse'; text = "login ${u}2 failed" }
+        @{ id = 'user-camel'; mode = 'scan'; expect = 'refuse'; text = "Owner${U1}Desktop" }
+        @{ id = 'user-path-in-escaped-dump'; mode = 'scan'; expect = 'refuse'; text = "b'\\x00\\x01\\x02C:\\\\Users\\\\${U1}\\\\Work\\x00\\x01\\x02'" }
+        @{ id = 'user-path-scrubbed'; mode = 'scrub'; expect = 'pass'; text = "C:\\Users\\${U1}\\Work\\games" }
+    )
+    $dir = Join-Path ([IO.Path]::GetTempPath()) ('pkg-selfcheck-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    try {
+        foreach ($m in 'scan', 'scrub') { New-Item -ItemType Directory -Force (Join-Path $dir $m) | Out-Null }
+        foreach ($c in $cases) {
+            $p = Join-Path $dir "$($c.mode)\$($c.id)$(if ($c.ContainsKey('bin')) { '.bin' } else { '.jsonl' })"
+            if ($c.ContainsKey('bin')) { [IO.File]::WriteAllBytes($p, $c.bin) } else { [IO.File]::WriteAllText($p, $c.text + "`n", (New-Object System.Text.UTF8Encoding $false)) }
+        }
+        $sd = Join-Path $dir 'scrub'; $srels = [string[]]@(Get-ChildItem $sd -File | ForEach-Object Name)
+        $shints = [string[]]@(($RulesHead + $RulesTail) | ForEach-Object { '' })
+        [void][GameDeliverable.Tools]::ScrubAll($sd, $srels, [string[]]@(($RulesHead + $RulesTail) | ForEach-Object { $_.match }),
+            [string[]]@(($RulesHead + $RulesTail) | ForEach-Object { $_.replace }), [string[]]@(($RulesHead + $RulesTail) | ForEach-Object { $_.scope }), $shints)
+        $rx = New-Object System.Text.RegularExpressions.Regex((@($BannedPattern, 'claude', 'anthropic', 'opus', $UserSegRx, $EmailRx) -join '|'), 'IgnoreCase')
+        $lk = New-Object 'System.Collections.Generic.List[GameDeliverable.Hit]'
+        $hitsBy = @{}
+        foreach ($m in 'scan', 'scrub') {
+            $d = Join-Path $dir $m
+            $rels = [string[]]@(Get-ChildItem $d -File | ForEach-Object Name)
+            foreach ($h in @([GameDeliverable.Tools]::Scan($d, $rels, $rx, $null, $lk, 20, [string[]]$BinNeedles, [bool[]]$BinRefuse, [string[]]$BinCats))) {
+                if ($h.Kind -notlike 'binary-info*' -and $h.Kind -notlike 'allowed*') { $hitsBy["$m/$([IO.Path]::GetFileNameWithoutExtension($h.Path))"] = 1 }
+            }
+        }
+        $bad = 0
+        foreach ($c in $cases) {
+            $got = if ($hitsBy.ContainsKey("$($c.mode)/$($c.id)")) { 'refuse' } else { 'pass' }
+            if ($got -ne $c.expect) { $bad++ }
+            Write-Host ("  {0}  {1,-34} {2,-5} expected {3}, got {4}" -f $(if ($got -eq $c.expect) { 'ok  ' } else { 'FAIL' }), $c.id, $c.mode, $c.expect, $got)
+        }
+        Write-Host "$(if ($bad) { 'FAIL' } else { 'PASS' })  self-check: $($cases.Count - $bad) of $($cases.Count) cases as expected"
+    } finally { Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue }
+    exit $(if ($bad) { 2 } else { 0 })
+}
+
 # ---------------------------------------------------------------------------------------------------------------------
 # resolve inputs
 # ---------------------------------------------------------------------------------------------------------------------
@@ -1175,7 +1253,7 @@ $repo = if ($RepoPath) { (Resolve-Path $RepoPath).Path } else { $info.Dir }
 if ($Rescan) {
     $pkg = (Resolve-Path $Rescan).Path
     $terms = @(Invoke-Git $repo (@('log') + $HistoryRefArgs + @('--format=%an%n%cn')) | ForEach-Object { "$_".Trim() } | Where-Object { $_ -and $_ -notmatch '(?i)^(claude|agent|dev_\d+)$' } | Sort-Object -Unique)
-    $parts = @($BannedPattern, 'claude', 'anthropic', 'opus', $UserAnyRx, $EmailRx) + @($terms | ForEach-Object { "$WordStart$([regex]::Escape($_))(?![A-Za-z0-9])" })
+    $parts = @($BannedPattern, 'claude', 'anthropic', 'opus', $UserSegRx, $EmailRx) + @($terms | ForEach-Object { "$WordStart$([regex]::Escape($_))(?![A-Za-z0-9])" })
     $rx = New-Object System.Text.RegularExpressions.Regex(($parts -join '|'), 'IgnoreCase')
     $rels = [string[]]@(Get-ChildItem $pkg -Recurse -File | ForEach-Object { $_.FullName.Substring($pkg.Length + 1).Replace('\', '/') })
     $lk = New-Object 'System.Collections.Generic.List[GameDeliverable.Hit]'
@@ -1851,7 +1929,7 @@ function Get-IdentityRx([string]$t) {
 }
 $idRules = @($identityTerms | Sort-Object { - $_[0].Length } | ForEach-Object { @{ id = 'git-identity'; scope = 'all'; match = (Get-IdentityRx $_[0]); replace = $_[1] } })
 $Rules = @($RulesHead) + $idRules + @($RulesTail)
-$enforcedParts = @($BannedPattern, 'claude', 'anthropic', 'opus', $UserAnyRx, $EmailRx) +
+$enforcedParts = @($BannedPattern, 'claude', 'anthropic', 'opus', $UserSegRx, $EmailRx) +
     @($identityTerms | ForEach-Object { (Get-IdentityRx $_[0]) -replace '^\(\?i\)', '' })
 $Enforced = New-Object System.Text.RegularExpressions.Regex(($enforcedParts -join '|'), 'IgnoreCase')
 $needles = $BinNeedles; $refuse = $BinRefuse; $cats = $BinCats
