@@ -25,7 +25,8 @@ param(
     [int]$MaxVramInUseMB = 0,   # before launch, wait while more VRAM than this is in use by other processes (nvidia-smi total); 0: half the GPU's VRAM
     [int]$OutputIndex = 0,
     [int]$CaptureRate = 240,
-    [string]$ExtraArgs = ''
+    [string]$ExtraArgs = '',
+    [string]$CaptureNote = ''   # what the recording does differently (e.g. a lower scalability preset); metadata.json capture_notes, then the dataset's manifest and README
 )
 
 . (Join-Path $PSScriptRoot 'common.ps1')
@@ -804,6 +805,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
         run_id = $runId; game = $Game; project = $info.ProjectName
         scenario = $Scenario; scenario_name = (Get-OutcomeValue $outcome 'scenario_name' 'level_name')
         seed = $runSeed; skill = $runSkill; max_seconds = $MaxSeconds
+        extra_args = $(if ($ExtraArgs) { $ExtraArgs } else { $null }); capture_notes = $(if ($CaptureNote) { $CaptureNote } else { $null })
         result = $(if ($outcome) { $outcome.result } else { $null }); score = $(if ($outcome) { $outcome.score } else { $null })
         player = [ordered]@{ kind = 'bot'; name = 'autoplay'; input_injection = 'UE Enhanced Input (InjectInputForAction)' }
         build = [ordered]@{ commit = $buildInfo.commit; short_sha = $buildInfo.short_sha; config = $buildConfig; path = $Build; exe = $exe; autoplay_version = $autoplayVersion; output_dir_flag = "-$outDirFlag"; hydrated_content = $(if ($buildInfo.PSObject.Properties.Name -contains 'hydrated_content') { @($buildInfo.hydrated_content) } else { $null }); content_check = $contentCheck }

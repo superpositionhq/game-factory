@@ -366,6 +366,13 @@ powershell -ExecutionPolicy Bypass -File %GF_ROOT%\game-factory\tools\ue-pipelin
 
 **Priorities (user decision).** What ships is what matters, in this order: the game plays; the game builds (editor and packaged Shipping); the dataset holds the replay scripts and the git log. The AutoPlay bot should still play like a human (human-like input, aim and camera), but bot work never blocks a release: one recording per scenario that shows the game running is enough, whatever the result (win/lose/timeout is metadata). No tuning for win rates, seed sweeps or "clean" runs, and no re-runs or re-recordings to improve how the bot plays. No retest loops: every GPU or editor run costs about 30 minutes of the shared machine and holds up delivery, so run the minimum once and report; re-run only when the user asks. Game-session work never blocks dataset packaging or sharing.
 
+**A game that is GPU-bound at its default preset** (coordinator rule 2026-10-18: the GPU 3D engine above ~95 % with the
+game under ~55 fps, so the capture fails on duplicated frames) is recorded one preset lower and says so:
+`record.ps1 ... -ExtraArgs "-ExecCmds=\"scalability 2\"" -CaptureNote "scalability 2 (High) for 60 fps capture"`. The
+note goes to the run's `metadata.json` (`extra_args`, `capture_notes`), then to the dataset's manifest
+(`scenarios[].capture_notes`) and a "Recording note" line under the README's Scenarios table. Nothing else changes (no
+game repo edit, no bot change, same validation).
+
 AutoPlay time limit: 600 s per run by default (the game gets `-MaxSeconds`, the recorder kills it 90 s later).
 `-MaxSeconds "1=300,2=600,3=900"` sets it per scenario (unlisted ones keep 600; `*=700` changes the rest), a plain
 `-MaxSeconds 900` sets it for every scenario; values 30..7200. The request stores it as `max_seconds`, and the job's

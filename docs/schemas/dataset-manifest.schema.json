@@ -207,6 +207,10 @@
           },
           "audio_offset_s": {
             "type": "number"
+          },
+          "capture_notes": {
+            "type": "string",
+            "description": "what the recording did differently from the game's defaults, e.g. a lower scalability preset (record.ps1 -CaptureNote); absent when nothing"
           }
         }
       },

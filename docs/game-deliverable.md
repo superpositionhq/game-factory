@@ -300,7 +300,7 @@ layout     "dataset-layout/v1.1"        game, title, version, commit (full sha)
 status     "complete" | "pending"       pending: the missing entries ("ReplayScripts/")
 variant    "full" | "repo-dataset"
 created, source_package, build {config, commit, exe, source} (null in the repo Dataset)
-scenarios  [{file, scenario, name, result, seconds, source_run, audio_offset_s}]
+scenarios  [{file, scenario, name, result, seconds, source_run, audio_offset_s, capture_notes?}]   (capture_notes: what the recording did differently, e.g. "scalability 2 (High) for 60 fps capture"; also a "Recording note" line under the README's Scenarios table)
 totals     {files, bytes}
 files      [{path, bytes, sha256}]      every file except manifest.json (and .gitattributes in the repo Dataset)
 replay_verification  {pass, report, criteria [{id, text, result, pass}], exclusions [{id, what, count}]}  (null while pending)

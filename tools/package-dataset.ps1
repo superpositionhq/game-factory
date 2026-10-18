@@ -389,7 +389,7 @@ $runs = @(Get-ChildItem (Join-Path $pkg 'Gameplay') -Directory | ForEach-Object 
         $v = Get-Content (Join-Path $_.FullName 'validation.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         $sc = Get-Prop $m 'scenario'; if ($null -eq $sc) { $sc = Get-Prop $m 'level' }
         [pscustomobject]@{ dir = $_.FullName; name = $_.Name; scenario = [int]$sc; scenario_name = (Get-Prop $m 'scenario_name'); dur = [double]$v.checks.video.duration_s
-            offset = (([double]$m.system_audio.start_offset_ns - [double]$m.video_start_offset_ns) / 1e9); result = $m.result; status = $v.status; build = $m.build.commit }
+            offset = (([double]$m.system_audio.start_offset_ns - [double]$m.video_start_offset_ns) / 1e9); result = $m.result; status = $v.status; build = $m.build.commit; note = (Get-Prop $m 'capture_notes') }
     })
 if ($runs.Count -eq 0) {
     # no recordings of this commit: a pending delivery without Gameplay/ when asked for (-GameplayPending), else an error
@@ -495,8 +495,10 @@ function New-Delivery([string]$Src, [string]$Dest, [string]$Variant) {
             pending = $pendingList; created = (Get-IsoNow); source_package = (Split-Path $Src -Leaf)
             replay_verification = $replayVerification
             build = $(if ($repo) { $null } else { [ordered]@{ config = $man.build.config; commit = $buildCommit; exe = $exe; source = $man.build.source } })
-            scenarios = @($scen | ForEach-Object { [ordered]@{ file = "Gameplay/$($Game)_S$($_.scenario).mp4"; scenario = $_.scenario; name = $_.scenario_name; result = $_.result
-                        seconds = [math]::Round($_.dur, 3); source_run = $_.name; audio_offset_s = [math]::Round($_.offset, 3) } })
+            scenarios = @($scen | ForEach-Object { $o = [ordered]@{ file = "Gameplay/$($Game)_S$($_.scenario).mp4"; scenario = $_.scenario; name = $_.scenario_name; result = $_.result
+                        seconds = [math]::Round($_.dur, 3); source_run = $_.name; audio_offset_s = [math]::Round($_.offset, 3) }
+                    if ($_.note) { $o.capture_notes = [string]$_.note }   # e.g. a lower scalability preset used for the recording
+                    $o })
             totals = [ordered]@{ files = $all.Count; bytes = [long](($all | Measure-Object Bytes -Sum).Sum) }
             files = @($all | ForEach-Object { [ordered]@{ path = $_.Path; bytes = $_.Bytes; sha256 = $_.Sha256 } })
         }
@@ -617,6 +619,9 @@ function Write-Readme([string]$Dest, [string]$Variant) {
     A '| Video | # | Scenario | Result | Length |'; A '|---|---|---|---|---|'
     foreach ($r in $scen) { A "| ``Gameplay/$($Game)_S$($r.scenario).mp4`` | $($r.scenario) | $($r.scenario_name) | $($r.result) | $([math]::Round($r.dur, 1)) s |" }
     A ''
+    # what a recording did differently (manifest scenarios[].capture_notes), e.g. a lower scalability preset
+    $notes = @($scen | Where-Object { $_.note })
+    if ($notes.Count) { foreach ($r in $notes) { A "Recording note, scenario $($r.scenario): $($r.note)." }; A '' }
     $s = Get-MdSection $pkgReadme '^Scenarios'
     if ($s -and $s -notmatch 'documents no scenario table') { A (($s -split "`n" | Where-Object { $_ -notmatch 'Gameplay/' }) -join "`n").Trim(); A '' }
     A '## Screenshots'; A ''
