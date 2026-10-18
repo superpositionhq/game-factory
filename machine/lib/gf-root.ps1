@@ -94,6 +94,11 @@ function Assert-GFFreeSpace([string]$Path, [string]$What = 'this job') {
     if ($cfg.PSObject.Properties['min_free_gb'] -and $cfg.min_free_gb) { $min = [double]$cfg.min_free_gb }
     if ($env:GF_MIN_FREE_GB) { $min = [double]$env:GF_MIN_FREE_GB }
     $full = [IO.Path]::GetFullPath($Path)
+    # a game folder may be a junction to another drive (games\<game> -> D:\...): count the drive the data lands on
+    for ($d = $full; $d; $d = Split-Path $d -Parent) {
+        $it = Get-Item -LiteralPath $d -Force -ErrorAction SilentlyContinue
+        if ($it -and $it.LinkType -and $it.Target) { $full = [IO.Path]::GetFullPath([string]@($it.Target)[0] + $full.Substring($d.Length)); break }
+    }
     $drive = New-Object IO.DriveInfo ([IO.Path]::GetPathRoot($full))
     $free = [math]::Round($drive.AvailableFreeSpace / 1GB, 1)
     if ($free -lt $min) {
