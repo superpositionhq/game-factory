@@ -465,12 +465,15 @@ public static class Tools {
                         string kind = refuse[k] ? "binary" : "binary-info";
                         bool a8 = Eq(buf, i, len, asc[k], false), a16 = !a8 && Eq(buf, i, len, u16[k], true);
                         if (!a8 && !a16) continue;
-                        if (asc[k].Length == 4 && asc[k][0] == 'o' && asc[k][1] == 'p' && asc[k][2] == 'u' && asc[k][3] == 's') {
+                        bool isOpus = asc[k].Length == 4 && asc[k][0] == 'o' && asc[k][1] == 'p' && asc[k][2] == 'u' && asc[k][3] == 's';
+                        int opusRun = 0;
+                        if (isOpus) {
                             int prev, next, st = a8 ? 1 : 2;
                             if (a8) { prev = i > 0 ? buf[i - 1] : -1; next = i + 4 < len ? buf[i + 4] : -1; }
                             else { prev = (i >= 2 && buf[i - 1] == 0) ? buf[i - 2] : -1; next = (i + 9 < len && buf[i + 9] == 0) ? buf[i + 8] : -1; }
                             if (!OpusToken(prev, buf[i], buf[i + st], buf[i + 2 * st], buf[i + 3 * st], next)) continue;
-                            if (PrintRun(buf, i, a8 ? 4 : 8, len, !a8) < 8) continue;
+                            opusRun = PrintRun(buf, i, a8 ? 4 : 8, len, !a8);
+                            if (opusRun < 8) continue;
                         }
                         if (LocaleNeedle != null && category[k] == "username") {   // zh_<name> / zh-<name> locale ids, also glued in locale tables
                             int st2 = a8 ? 1 : 2; int p3 = i - 3 * st2;
@@ -489,6 +492,11 @@ public static class Tools {
                                         sh.Text = category[k] + ":" + Encoding.ASCII.GetString(asc[k]) + " in " + w; hits.Add(sh); streamHits++; }
                             continue;
                         }
+                        // opus spelled by random bytes in a compressed payload (a cooked .ucas: ...\xf3\xf2k3opusSe\xa0\x12...): a
+                        // short printable run in a high-entropy window, and not a form of the model's name -> allowed, listed
+                        if (isOpus && opusRun <= 16 && !ModelForm.IsMatch(w) && Entropy(buf, i, len) >= MinEntropy) {
+                            AddAllowed(hits, rel, (a8 ? "allowed-entropy-ascii" : "allowed-entropy-utf16"), baseOff + i, category[k] + ":" + w); continue;
+                        }
                         Add(hits, rel, kind + (a8 ? "-ascii" : "-utf16"), baseOff + i, category[k] + ":" + w, ref found);
                     }
                     if (found >= maxPerFile) return;
@@ -499,6 +507,19 @@ public static class Tools {
             }
         }
     }
+    // Compressed or encrypted data is near 8 bits per byte; text, code and tables are well below (ASCII text ~4.5). The
+    // window is 512 bytes around the hit (at least 256 inside the buffer); a uniform random 512-byte window gives ~7.6.
+    public const double MinEntropy = 7.0;
+    public static double Entropy(byte[] b, int at, int len) {
+        int lo = Math.Max(0, at - 256), hi = Math.Min(len, at + 256);
+        if (hi - lo < 256) return 0;
+        var c = new int[256]; for (int p = lo; p < hi; p++) c[b[p]]++;
+        double e = 0, n = hi - lo;
+        foreach (int x in c) if (x > 0) { double q = x / n; e -= q * Math.Log(q, 2); }
+        return e;
+    }
+    // forms of the model's name around an opus hit: never allowed as random bytes
+    static readonly Regex ModelForm = new Regex(@"(?i)claude|anthropic|opus[-_ .]?v?\d");
     static bool Eq(byte[] buf, int i, int len, byte[] needle, bool wide) {
         if (i + needle.Length > len) return false;
         for (int k = 0; k < needle.Length; k++) {
@@ -1232,6 +1253,18 @@ if ($SelfCheck) {
         @{ id = 'model-opus-field'; mode = 'scan'; expect = 'refuse'; text = 'passed hard.opus of 11' }
         # the Opus audio codec in text (documentation of the codec allowlist) and the reviewed random-byte words
         @{ id = 'codec-forms'; mode = 'scan'; expect = 'pass'; text = 'libopus, Ogg/Opus, *.opus, Content/Audio/theme.opus, Opus-codec, `opus_*` and `OPUS_*`, `WebRtcOpus_*`, audio_encoder_opus.cc' }
+    )
+    # binaries: opus spelled by random bytes in compressed data passes (listed as allowed-entropy); the model's name, or
+    # the same word among text bytes, blocks
+    $rnd = New-Object System.Random 7
+    $mkBin = { param([byte[]]$Ins, [bool]$Random)
+        $b = New-Object byte[] 4096
+        if ($Random) { $rnd.NextBytes($b) } else { $t = [Text.Encoding]::ASCII.GetBytes(('the value of the field is stored next to the name of the asset ' * 70)); [Array]::Copy($t, $b, 4096) }
+        $b[0] = 0; $b[1] = 0; [Array]::Copy($Ins, 0, $b, 2048, $Ins.Length); , $b }
+    $cases += @(
+        @{ id = 'bin-random-bytes'; mode = 'scan'; expect = 'pass'; bin = (& $mkBin ([byte[]](@(0xf3, 0xf2) + [Text.Encoding]::ASCII.GetBytes('k3opusSe') + @(0xa0, 0x12))) $true) }
+        @{ id = 'bin-random-model'; mode = 'scan'; expect = 'refuse'; bin = (& $mkBin ([byte[]](@(0xf3) + [Text.Encoding]::ASCII.GetBytes('ai=Opus4.5;') + @(0xa0))) $true) }
+        @{ id = 'bin-text-bytes'; mode = 'scan'; expect = 'refuse'; bin = (& $mkBin ([byte[]](@(0x20) + [Text.Encoding]::ASCII.GetBytes('k3opusSe') + @(0x20))) $false) }
     )
     if ($Reviewed.Values -contains 'opusWTTj') { $cases += @{ id = 'codec-reviewed-word'; mode = 'scan'; expect = 'pass'; text = 'the first: `opusWTTj` in the raw pixels' } }
     $dir = Join-Path ([IO.Path]::GetTempPath()) ('pkg-selfcheck-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
