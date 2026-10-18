@@ -264,13 +264,21 @@ With NVENC the D3D11 frames go to the encoder without any download (command abov
 Fallbacks (`-Capture`), measured on the test project: `gdigrab-region` (`-f gdigrab -framerate 60 -offset_x
 -offset_y -video_size 1920x1080 -i desktop`) captures real content but only ~44 fps (24 % duplicates);
 `gdigrab-window` (`-i title="<Project> [AutoPlay]"`) ~56 fps (8 % duplicates, 23 % gap time). Both fail validation,
-so they are for emergencies; `auto` tries ddagrab, then (after waking the display) ddagrab once more, and gdigrab-region
-only if both get fewer than 30 frames in 10 s. Each failed attempt is logged with its frame count, whether ffmpeg hung or
-exited (exit code) and the tail of its stderr log (`raw\ffmpeg-<attempt>.log`).
+so they are for emergencies; `auto` tries ddagrab, then (after waking the display) ddagrab once more, then gfxcapture,
+and gdigrab-region last, each only if the one before got fewer than 30 frames in 10 s. Each failed attempt is logged with
+its frame count, whether ffmpeg hung or exited (exit code) and the tail of its stderr log (`raw\ffmpeg-<attempt>.log`).
 
-`-Capture gfxcapture` (Windows.Graphics.Capture of the game window by `hwnd`, ffmpeg 8 `gfxcapture` filter) would avoid
-the screen-region problems (other windows never reach the video, no topmost needed), but in tests it delivered
-2–6 frames/s for an unfocused game window and its timestamps don't fit the start-time estimate, so it is opt-in only.
+`gfxcapture` (Windows.Graphics.Capture of the game window by `hwnd`, ffmpeg 8 `gfxcapture` filter, max 120 fps, then
+the same `fps=60` CFR + NVENC path) records only the game window, so other windows never reach the video and the privacy
+guard does not apply; record.ps1 still makes the window topmost and brings it to the foreground (a synthetic Alt tap
+lifts the foreground lock). It needs no live display: on a PC whose only monitor is off or unplugged and which is
+reached over remote desktop (2026-10-18: Dell on DP gone, desktop 3840x2160 kept, Desktop Duplication hangs waiting for
+its first frame, gdigrab-region reaches ~38 fps), it delivered 3350 frames in 57 s (~59 fps, 3.6 % CFR duplicates)
+for a UE 5.7 game at ~57 fps. Its showinfo pts are in 1/10^7 s, not us: record.ps1 reads the unit from showinfo's
+`config in time_base` line (Get-PtsUs) for the start-time estimate and the input-gap check. The "2–6 frames/s for an
+unfocused window" measured earlier was that unit misread, which also broke the start estimate ("video does not cover
+the scenario"). If the game window stays covered for 240 s before capture (e.g. a not-responding ghost window), `auto`
+skips the screen-region modes and uses gfxcapture.
 
 ### Measured quality (pipeline test project on the first machine, busy with several game sessions)
 

@@ -183,16 +183,26 @@ function Get-CapturedFrameCount([string]$LogPath) {
     } catch { return 0 }
 }
 
+function Get-PtsUs([string]$LogPath) {
+    # Microseconds per pts unit, from showinfo's "config in time_base: a/b" line: ddagrab and gdigrab use 1/1000000,
+    # gfxcapture 1/10000000 (reading its pts as us made a 60 fps capture look like 6 fps and broke the start estimate).
+    foreach ($line in [System.IO.File]::ReadLines($LogPath)) {
+        if ($line -match 'Parsed_showinfo[^\]]*\] \[info\] config in time_base: (\d+)/(\d+)') { if ([double]$matches[2] -gt 0) { return [double]$matches[1] * 1e6 / [double]$matches[2] } }
+        if ($line -match 'Parsed_showinfo[^\]]*\] \[info\] n:') { break }
+    }
+    return 1.0
+}
+
 function Get-VideoStart([string]$LogPath, $ClockSamples) {
     # First captured frame's wall time = min over frames of (log time - pts), plus half a millisecond for the log's
     # truncation to ms. ffmpeg logs local time from av_gettime (GetSystemTimePreciseAsFileTime); map it to QPC with
     # the pipeline's QPC/UTC pairs.
-    $best = [long]::MaxValue; $n = 0
+    $best = [long]::MaxValue; $n = 0; $ptsUs = Get-PtsUs $LogPath
     foreach ($line in [System.IO.File]::ReadLines($LogPath)) {
         if ($line -match '^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}) \[Parsed_showinfo[^\]]*\] \[info\] n:\s*(\d+) pts:\s*(-?\d+)') {
             $local = [datetime]::ParseExact($matches[1], 'yyyy-MM-dd HH:mm:ss.fff', [Globalization.CultureInfo]::InvariantCulture, 'AssumeLocal')
             $unixNs = ($local.ToUniversalTime().Ticks - 621355968000000000) * 100
-            $d = $unixNs - [long]$matches[3] * 1000   # wall time of frame 0 implied by this frame (pts is in us)
+            $d = $unixNs - [long]([double]$matches[3] * $ptsUs * 1000)   # wall time of frame 0 implied by this frame
             if ($d -lt $best) { $best = $d }
             $n++
             if ($n -ge 1800) { break }   # first 30 s are plenty
@@ -208,10 +218,10 @@ function Get-VideoStart([string]$LogPath, $ClockSamples) {
 
 function Get-InputGaps([string]$LogPath, [long]$FromUs = 0, [long]$ToUs = [long]::MaxValue) {
     # Capture input timing from showinfo: count, rate, and frames missing in gaps longer than 25 ms.
-    $prev = $null; $n = 0; $missed = 0; $gaps = 0; $first = $null
+    $prev = $null; $n = 0; $missed = 0; $gaps = 0; $first = $null; $ptsUs = Get-PtsUs $LogPath
     foreach ($line in [System.IO.File]::ReadLines($LogPath)) {
         if ($line -match 'Parsed_showinfo[^\]]*\] \[info\] n:\s*\d+ pts:\s*(\d+)') {
-            $pts = [long]$matches[1]
+            $pts = [long]([double]$matches[1] * $ptsUs)   # in us
             if ($pts -lt $FromUs -or $pts -gt $ToUs) { continue }
             $n++
             if ($null -eq $first) { $first = $pts }
@@ -432,11 +442,13 @@ for ($i = 0; $i -lt $Runs; $i++) {
         if ($rect[0] -lt 0 -or $rect[1] -lt 0 -or $rect[0] + 1920 -gt $screen[0] -or $rect[1] + 1080 -gt $screen[1]) { throw "window not fully on the primary screen: $($rect -join ',')" }
 
         # ---- start capture (ddagrab, falling back to gdigrab) ----
-        # gfxcapture is opt-in only: in tests it delivered ~6 frames/s for an unfocused window and its timestamps did
-        # not fit the start-time estimate. ddagrab (topmost window + privacy guard) is the default.
-        # ddagrab is tried twice: a display that went off delivers no Desktop Duplication frames, so the second try
-        # follows a display wake (attempt files are named ddagrab and ddagrab-retry).
-        $modes = if ($Capture -eq 'auto') { @('ddagrab', 'ddagrab-retry', 'gdigrab-region') } else { @($Capture) }
+        # ddagrab (topmost window + privacy guard) is the default. It is tried twice: a display that went off delivers
+        # no Desktop Duplication frames, so the second try follows a display wake (attempt files are named ddagrab and
+        # ddagrab-retry). Then gfxcapture (Windows.Graphics.Capture of the game window): it needs no live display
+        # (a PC whose only monitor is off or unplugged, reached over remote desktop: ddagrab hangs there, gdigrab-region
+        # reaches ~38 fps) and delivers ~59 fps with the window topmost and in the foreground. Its pts are in 1/10^7 s
+        # (Get-PtsUs); the "~6 frames/s" once measured for it was that unit read as us. gdigrab-region is the last resort.
+        $modes = if ($Capture -eq 'auto') { @('ddagrab', 'ddagrab-retry', 'gfxcapture', 'gdigrab-region') } else { @($Capture) }
         if ($modes[0] -ne 'gfxcapture') {
             # A first-run Windows Firewall prompt (or anything else) on top of the game would trip the privacy guard:
             # wait for the client area to be clear (the game waits for 'go' up to -GoTimeout=300).
@@ -446,13 +458,33 @@ for ($i = 0; $i -lt $Runs; $i++) {
                 if (-not $said) { Write-Step 'game window is covered (Windows Firewall prompt for a new program path?): waiting for it to clear'; $said = $true }
                 Start-Sleep -Milliseconds 500
             }
-            if (-not [UePipeline.Win]::IsClientUncovered($hwnd)) { throw "game window stayed covered for 240 s by $([UePipeline.Win]::CoveringWindow($hwnd)); not recording" }
+            if (-not [UePipeline.Win]::IsClientUncovered($hwnd)) {
+                $coveredBy = [UePipeline.Win]::CoveringWindow($hwnd)
+                # Window capture never records other windows: fall back to it instead of giving up.
+                if ($modes -notcontains 'gfxcapture') { throw "game window stayed covered for 240 s by $coveredBy; not recording" }
+                [void]$warnings.Add("game window stayed covered for 240 s by ${coveredBy}: screen-region capture skipped, window capture (gfxcapture) used")
+                Write-Step "game window stayed covered by ${coveredBy}: using gfxcapture"
+                $modes = @('gfxcapture')
+            }
         }
         foreach ($m in $modes) {
             $mode = if ($m -eq 'ddagrab-retry') { 'ddagrab' } else { $m }
             if ($m -eq 'ddagrab-retry') { Write-Step 'ddagrab got no frames: waking the display and trying ddagrab once more'; Invoke-WakeDisplay 5 }
-            # Screen-region modes record whatever is on screen there: keep the game on top. gfxcapture doesn't need it.
-            [void][UePipeline.Win]::SetTopmost($hwnd, ($m -ne 'gfxcapture'))
+            # Screen-region modes record whatever is on screen there: keep the game on top. gfxcapture records only the
+            # game window, but it too is kept on top and brought to the foreground, so the compositor keeps delivering
+            # every frame of it (the user's input still goes wherever they click).
+            [void][UePipeline.Win]::SetTopmost($hwnd, $true)
+            if ($m -eq 'gfxcapture') {
+                Add-Type -Namespace RecordFg -Name W -ErrorAction SilentlyContinue -MemberDefinition @'
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+[DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+'@
+                # A background process may not take the foreground; a synthetic Alt tap lifts the foreground lock.
+                [RecordFg.W]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero); [void][RecordFg.W]::SetForegroundWindow($hwnd); [RecordFg.W]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+                Start-Sleep -Milliseconds 300
+                if ([RecordFg.W]::GetForegroundWindow() -ne $hwnd) { [void]$warnings.Add('gfxcapture: the game window could not be brought to the foreground') }
+            }
             # One set of files per attempt: a failed attempt's ffmpeg must never block the next attempt's files.
             $videoPath = Join-Path $runDir "video.$m.mkv"
             $ffLog = Join-Path $rawDir "ffmpeg-$m.log"
