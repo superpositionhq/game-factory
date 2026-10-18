@@ -1414,6 +1414,10 @@ if (Test-Path $contentDir) {
     foreach ($d in Get-ChildItem $contentDir -Directory) {
         $rel = "Content/$($d.Name)"
         if ($trackedTop.ContainsKey($rel)) { continue }
+        # the editor's own per-user folders (Content/Developers, Content/Collections; git-ignored, never cooked) and empty
+        # folders hold no store pack: counting them made every build "lack" them (battle-boats)
+        if ($d.Name -in @('Developers', 'Collections')) { continue }
+        if (-not (Get-ChildItem $d.FullName -Recurse -File -Force -ErrorAction SilentlyContinue | Select-Object -First 1)) { continue }
         # store when git-ignored now, or when the commit's manifest calls it store content (the working tree's .gitignore
         # may have changed since the commit, e.g. once the packs were committed later)
         $null = Invoke-Git $info.Dir @('check-ignore', '-q', "$rel/") -AllowFail
