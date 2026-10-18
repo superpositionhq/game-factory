@@ -103,9 +103,11 @@ try {
         New-Item -ItemType Directory -Force (Split-Path $src) | Out-Null
         # --local hard-links the object files, which fails across volumes ("Improper link"): a game folder that is a
         # junction to another drive (tower-defense -> D:) is cloned with copies instead
-        $it = Get-Item $info.Dir; $repoDrive = if ($it.LinkType -and $it.Target) { ([string]@($it.Target)[0]).Substring(0, 1) } else { $info.Dir.Substring(0, 1) }
+        # Both sides may be junctions (the game folder, or a clone folder pre-made as a junction to another drive).
+        function Get-RealDrive([string]$Path) { $i = Get-Item $Path -Force -ErrorAction SilentlyContinue; if ($i -and $i.LinkType -and $i.Target) { ([string]@($i.Target)[0]).Substring(0, 1) } else { $Path.Substring(0, 1) } }
+        $repoDrive = Get-RealDrive $info.Dir
         $cloneArgs = @('clone', '--quiet', '--no-checkout', '--local')
-        if ($repoDrive -ne $src.Substring(0, 1)) { $cloneArgs += '--no-hardlinks' }
+        if ($repoDrive -ne (Get-RealDrive $src)) { $cloneArgs += '--no-hardlinks' }
         Invoke-Git $WorkRoot ($cloneArgs + @($info.Dir, $src)) | Out-Null
     }
     Invoke-Git $src @('fetch', '--quiet', '--force', '--tags', 'origin', '+refs/heads/*:refs/remotes/origin/*') | Out-Null
