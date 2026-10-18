@@ -847,6 +847,14 @@ public static class Tools {
         while (off < n) { int r = s.Read(b, off, n - off); if (r <= 0) throw new Exception("fast-export stream ended inside a data block"); off += r; }
         return b;
     }
+    static void CopyExact(Stream from, Stream to, long n) {
+        byte[] b = new byte[1 << 20];
+        while (n > 0) {
+            int r = from.Read(b, 0, (int)Math.Min(b.Length, n));
+            if (r <= 0) throw new Exception("fast-export stream ended inside a data block");
+            to.Write(b, 0, r); n -= r;
+        }
+    }
     static void WriteAscii(Stream s, string line) { byte[] b = Latin1.GetBytes(line + "\n"); s.Write(b, 0, b.Length); }
     public static Dictionary<string, string> RewriteHistory(string repo, string outBare, Dictionary<string, string> authors,
             Dictionary<string, string[]> lfsMap, string[] patterns, string[] reps, string[] scopes, string[] hints, List<string> problems) {
@@ -901,7 +909,15 @@ public static class Tools {
                     }
                 }
                 else if (line.StartsWith("data ")) {
-                    int n = int.Parse(line.Substring(5));
+                    long nl = long.Parse(line.Substring(5));
+                    if (nl >= (256L << 20)) {
+                        // a blob of 256 MB or more (stealth's history holds a 3.7 GB zip): never an LFS pointer nor text the rules
+                        // rewrite (both checks stop below 256 MB), and over 2 GB it fits no int or array: copied through in chunks
+                        WriteAscii(output, "data " + nl); CopyExact(input, output, nl); WriteAscii(output, "");
+                        afterData = true;
+                        continue;
+                    }
+                    int n = (int)nl;
                     byte[] d = ReadExact(input, n);
                     if (ctx == "blob") {
                         string path = (orig != null && blobPath.ContainsKey(orig)) ? blobPath[orig] : "";
