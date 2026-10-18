@@ -357,14 +357,17 @@ if ($layout -eq 'dataset-layout/v1.3') {
     Write-Step "tasks: $($taskNames.Count) from the package, split into task.json / grader.json"
 }
 $haveReplay = [bool]($ReplayScripts -and (Test-Path $ReplayScripts))
-# A dataset is COMPLETE only with a passing creation-replay verification (ReplayScripts/Verification/report.json,
-# verdict.pass; tools/ue-replay/verify.py): no verification, no COMPLETE.
+# The replay is required but need not pass (user rule): a FAIL verdict is kept as metadata (manifest
+# replay_verification.pass false, README "FAIL"), like a gameplay run's result. A dataset is still COMPLETE only with a
+# passing verification (validate-dataset.ps1, validate-game.py): a FAIL replay goes into a delivery that is pending for
+# another reason (-GameplayPending), and is refused below when it would be the only thing short of COMPLETE.
 $verdict = $null
 if ($haveReplay) {
     $vr = Join-Path $ReplayScripts 'Verification\report.json'
     if (-not (Test-Path $vr)) { throw "ReplayScripts has no Verification\report.json: run ue_replay.py verify, then package" }
     $verdict = (Get-Content -Raw -Encoding UTF8 $vr | ConvertFrom-Json).verdict
-    if (-not $verdict -or -not $verdict.pass) { throw "the creation replay's verification is not PASS ($vr): no COMPLETE dataset from it" }
+    if (-not $verdict) { throw "ReplayScripts\Verification\report.json has no verdict ($vr): run ue_replay.py verify, then package" }
+    if (-not $verdict.pass) { Write-Step "creation replay verification FAIL ($vr): kept as metadata (replay_verification.pass false)" }
 }
 $replayVerification = if ($verdict) {
     [ordered]@{ pass = [bool]$verdict.pass; report = 'ReplayScripts/Verification/report.md'
@@ -394,6 +397,9 @@ if ($runs.Count -eq 0) {
     if (-not $GameplayPending) { throw "no gameplay runs in $pkg (-GameplayPending builds a pending delivery without Gameplay/)" }
     $status = 'pending'; $pending = @($pending) + @('Gameplay/')
     Write-Step 'no gameplay runs: Gameplay/ pending (-GameplayPending)'
+}
+if ($status -eq 'complete' -and $verdict -and -not $verdict.pass) {
+    throw "the creation replay's verification is FAIL and nothing else is pending: a COMPLETE dataset needs a PASS (deliver it pending with -GameplayPending, or verify again)"
 }
 $other = @($runs | Where-Object { $_.build -ne $origSha })
 if ($other.Count) { throw "the package has runs of other commits ($(@($other | ForEach-Object name) -join ', ')): package it with -OnlyCommitRuns" }

@@ -276,3 +276,8 @@ horror-escape, island-survival, stealth) keep the end-of-game replay of sections
 
 The packager waits for `READY`, then passes the folder of section 2.6 to `tools/package-dataset.ps1 -ReplayScripts
 <dir>\ReplayScripts`. Without it, the dataset zip stays `Dataset.pending.zip`.
+
+The replay is required but need not pass. A verification FAIL (`release --force`: `ReplayScripts/` with the FAIL
+report, no `READY`) is packaged as metadata: manifest `replay_verification.pass` false and the README says FAIL. A
+COMPLETE dataset still needs PASS, so the packager takes a FAIL replay only into a delivery that is pending for another
+reason (`-GameplayPending`).
