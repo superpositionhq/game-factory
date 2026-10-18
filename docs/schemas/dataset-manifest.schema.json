@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "dataset-layout/v1.1/manifest",
   "title": "Dataset manifest.json",
-  "description": "Metadata of one game's dataset and the path, size and sha256 of every other file in it. Cross-file rules (files exist and match, status complete needs a passing replay report, commit = last git.log commit) are in docs/game-format-v1.json, dataset.manifest. v1.2 (2026-10-15) adds history and brief (required when layout is v1.2; checked by tools/validate-game.py). v1.3 (2026-10-15) adds tasks.",
+  "description": "Metadata of one game's dataset and the path, size and sha256 of every other file in it. Cross-file rules (files exist and match, status complete needs the replay report, whose verdict PASS or FAIL is metadata, commit = last git.log commit) are in docs/game-format-v1.json, dataset.manifest. v1.2 (2026-10-15) adds history and brief (required when layout is v1.2; checked by tools/validate-game.py). v1.3 (2026-10-15) adds tasks.",
   "type": "object",
   "required": [
     "layout",

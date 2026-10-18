@@ -350,15 +350,19 @@ def check_dataset(rep, path, area='dataset'):
         if schema_errors(rep, f'{area}: report.json', r, 'replay-report'):
             if r['final_commit'] != m['commit']:
                 rep.error(f'{area}: report.json', f'final_commit {r["final_commit"][:12]} differs from manifest commit {m["commit"][:12]}')
-            if m['status'] == 'complete' and not r['verdict']['pass']:
-                rep.error(f'{area}: report.json', 'status complete but the replay verdict did not pass')
+            # the verdict is metadata (user rule: the replay is required but need not pass); manifest and report agree
+            rv = m.get('replay_verification')
+            if isinstance(rv, dict) and 'pass' in rv and bool(rv['pass']) != bool(r['verdict']['pass']):
+                rep.error(f'{area}: report.json', f'verdict pass {r["verdict"]["pass"]} differs from manifest replay_verification.pass {rv["pass"]}')
+            if not r['verdict']['pass']:
+                rep.note(f'{area}: report.json', 'creation replay verification FAIL (metadata)')
     elif m['status'] == 'complete':
         rep.error(area, f'status complete but no {rp}')
     if m['status'] == 'complete':
         if m['pending']:
             rep.error(a, 'status complete with pending entries')
-        if not (m.get('replay_verification') or {}).get('pass'):
-            rep.error(a, 'status complete needs replay_verification.pass = true')
+        if not isinstance(m.get('replay_verification'), dict) or not isinstance(m['replay_verification'].get('pass'), bool):
+            rep.error(a, 'status complete needs replay_verification with pass true or false')
     else:
         rep.warn(a, f'status pending: {", ".join(m["pending"]) or "(nothing listed)"}')
     # replay_verification is null only while ReplayScripts/ is pending (docs/game-deliverable.md: "null while pending")

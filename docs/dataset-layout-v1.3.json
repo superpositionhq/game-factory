@@ -80,7 +80,7 @@
       "required": true,
       "in_repo_dataset": true,
       "pending_allowed": true,
-      "what": "scripts that replay the creation headless, with Verification/ (report.json verdict PASS required for complete)"
+      "what": "scripts that replay the creation headless, with Verification/ (report.json with a verdict required for complete; PASS or FAIL is metadata)"
     },
     {
       "name": "Gameplay",
@@ -153,7 +153,7 @@
       "complete",
       "pending"
     ],
-    "complete_requires": "replay_verification.pass = true in manifest.json and verdict.pass = true in ReplayScripts/Verification/report.json (the creation replay run end to end, headless, from ReplayScripts/ and verified: files outside Content/ byte-identical, assets equal by structure, game maps equal by actors; known non-content differences listed)",
+    "complete_requires": "ReplayScripts/ with Verification/report.json (the creation replay run end to end, headless, from ReplayScripts/ and verified: files outside Content/ byte-identical, assets equal by structure, game maps equal by actors; known non-content differences listed) and manifest.json replay_verification from it; the verdict is metadata (user rule: the replay is required but need not pass): replay_verification.pass equals the report verdict.pass, true or false, and the README says PASS or FAIL",
     "replay_verification_keys": [
       "pass",
       "report",

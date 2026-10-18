@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "ue-replay.verification/v1",
   "title": "ReplayScripts/Verification/report.json",
-  "description": "The creation replay's verification: the project rebuilt headless from ReplayScripts/ and compared with the game at its final commit (files outside Content/ byte-identical, assets equal by structure, maps equal by actors). Written by tools/ue-replay (verify.py). A complete dataset needs verdict.pass = true.",
+  "description": "The creation replay's verification: the project rebuilt headless from ReplayScripts/ and compared with the game at its final commit (files outside Content/ byte-identical, assets equal by structure, maps equal by actors). Written by tools/ue-replay (verify.py). A complete dataset needs this report; verdict.pass (true or false) is metadata.",
   "type": "object",
   "required": [
     "schema",

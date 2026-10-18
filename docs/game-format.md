@@ -97,7 +97,7 @@ lists what needs a person).
 | `History/` | no | `<game>.bundle` (every commit of every ref except the tasks branch) and `lfs/objects/<aa>/<bb>/<sha256>` (every Git LFS object of every commit) |
 | `Tasks/` | no | the game's tasks, each split: `Tasks/<name>/task.json` (the agent's part) and `Tasks/<name>/grader.json` (milestones, `seed.reference`), plus a generated `README.md` |
 | `UEProject/` | no | the project at the release commit, store content included |
-| `ReplayScripts/` | yes | the creation replayed headless, with `Verification/report.json` (PASS required for complete) |
+| `ReplayScripts/` | yes | the creation replayed headless, with `Verification/report.json` (required for complete; its verdict PASS or FAIL is metadata) |
 | `Gameplay/<game>_S<n>.mp4` | yes | one video per scenario, 1920x1080 h264 + aac |
 | `Screenshots/` | yes | the README's images |
 | `Build/` | no | the packaged Windows Shipping build, no `.pdb` |
@@ -134,8 +134,11 @@ log patterns, and `seed.reference`); merging the two gives the task. `Tasks/READ
 `Tasks/`, `History/` and `Dataset/` removed (every task's answers are in them, and the reference fixes are in the
 history); it sees only the brief and that snapshot. The grader's half never reaches the agent.
 
-**Complete vs pending.** `status` is `complete` only with a passing replay verification; `pending` while
-`ReplayScripts/` is missing (the zip is then `Dataset.pending.zip`).
+**Complete vs pending.** `status` is `complete` when every entry is there, `ReplayScripts/` with its
+`Verification/report.json` included; `pending` while `ReplayScripts/` or `Gameplay/` is missing (the zip is then
+`Dataset.pending.zip`). The replay is required but need not pass (user rule): a FAIL verdict is metadata, like a
+gameplay run's result: manifest `replay_verification.pass` false (equal to the report's `verdict.pass`) and the README
+says FAIL.
 
 ## For a contractor
 

@@ -157,7 +157,7 @@
       "every files[] entry exists with that size (sha256 checked by validate-dataset.ps1)",
       "totals.files = number of files[]; totals.bytes = sum of their bytes",
       "every scenarios[].file is in files[]",
-      "status complete: pending empty, replay_verification.pass true, report.json verdict.pass true",
+      "status complete: pending empty, replay_verification present with pass equal to report.json verdict.pass (PASS or FAIL: the verdict is metadata, the replay is required but need not pass)",
       "replay_verification is null only while ReplayScripts/ is pending (listed in pending): the delivery is then pending, not invalid",
       "variant full: build is an object; repo-dataset: build is null",
       "commit equals the last commit in git.log and report.json final_commit"

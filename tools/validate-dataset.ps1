@@ -100,14 +100,18 @@ if ($man) {
     foreach ($m in $missingPending) { if ($declared -notcontains $m) { E "$m is missing but not listed in manifest.json pending" } }
     if ($status -eq 'complete' -and $declared.Count) { E "status complete but pending lists $($declared -join ', ')" }
     if ($status -eq 'complete') {
-        # COMPLETE needs a passing creation-replay verification, in the manifest and in ReplayScripts/Verification/report.json
+        # COMPLETE needs the creation replay's verification, in the manifest and in ReplayScripts/Verification/report.json.
+        # The verdict itself (PASS or FAIL) is metadata (user rule: the replay is required but need not pass); the two
+        # must agree.
         $rv = Get-Prop $man 'replay_verification'
-        if (-not $rv -or -not (Get-Prop $rv 'pass')) { E 'status complete but manifest.json replay_verification is missing or not pass' }
+        if (-not $rv -or $null -eq (Get-Prop $rv 'pass')) { E 'status complete but manifest.json replay_verification is missing or has no pass' }
         $vrel = 'ReplayScripts/Verification/report.json'
         if (-not $files.ContainsKey($vrel)) { E "status complete but $vrel is missing" }
         else {
             $vd = (Read-Text $vrel | ConvertFrom-Json).verdict
-            if (-not $vd -or -not $vd.pass) { E "status complete but $vrel verdict is not PASS" }
+            if (-not $vd -or $null -eq (Get-Prop $vd 'pass')) { E "status complete but $vrel has no verdict" }
+            elseif ($rv -and $null -ne (Get-Prop $rv 'pass') -and [bool](Get-Prop $rv 'pass') -ne [bool]$vd.pass) { E "manifest.json replay_verification.pass ($([bool](Get-Prop $rv 'pass'))) differs from the $vrel verdict ($([bool]$vd.pass))" }
+            elseif (-not $vd.pass) { N "creation replay verification FAIL (metadata; $vrel)" }
         }
     }
     if ($status -eq 'pending' -and $missingPending.Count -eq 0) { N 'status is pending although every entry is present' }

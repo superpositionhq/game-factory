@@ -306,14 +306,16 @@ files      [{path, bytes, sha256}]      every file except manifest.json (and .gi
 replay_verification  {pass, report, criteria [{id, text, result, pass}], exclusions [{id, what, count}]}  (null while pending)
 ```
 
-**COMPLETE needs a passing replay verification.** A dataset is `complete` only when `ReplayScripts/` comes from a
-creation replay that ran end to end, headless, from those scripts and whose verification verdict is PASS
-([ue-replay.md](ue-replay.md) 2.4): every file outside `Content/` byte-identical to the release commit, every asset
-equal by structure, every game map equal by actors, with the known non-content differences (random GUIDs, printed
-memory addresses, derived compression sizes, Content/ bytes, store-pack demo maps) listed and counted. `ue_replay.py
-package` writes `READY` only then, `package-dataset.ps1` refuses scripts without it, and the validator checks
-`replay_verification.pass` and `ReplayScripts/Verification/report.json`. The README's "Replay the creation
-process" section shows the criteria, the results and the exclusions. No verification, no COMPLETE.
+**COMPLETE needs a verified replay; its verdict is metadata.** A dataset is `complete` only when `ReplayScripts/`
+comes from a creation replay that ran end to end, headless, from those scripts and was verified
+([ue-replay.md](ue-replay.md) 2.4): every file outside `Content/` compared with the release commit, every asset by
+structure, every game map by actors, with the known non-content differences (random GUIDs, printed memory addresses,
+derived compression sizes, Content/ bytes, store-pack demo maps) listed and counted. The replay is required but need
+not pass (user rule): PASS or FAIL is recorded as `replay_verification.pass` (equal to the report's `verdict.pass`)
+and in the README, and a FAIL dataset is COMPLETE too. `package-dataset.ps1` refuses scripts without
+`Verification/report.json` or without a verdict, and the validator checks that `replay_verification` and the report
+are there and agree. The README's "Replay the creation process" section shows PASS or FAIL, the criteria, the
+results and the exclusions. No verification, no COMPLETE.
 
 **README template.** Title (the game's name), hero image (`Screenshots/...`), the pending banner while pending, a
 version and commit line, then these sections in this order: Requirements, Package contents, Play the game, Replay the
