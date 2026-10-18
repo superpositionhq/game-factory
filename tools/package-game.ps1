@@ -1128,10 +1128,15 @@ $RulesTail = @(
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bclaude[-_ ]?(?:opus|sonnet|haiku|fable|instant)(?:[-_ ]?[0-9]+(?:[._-][0-9]+)*)?[\w.-]*'; replace = 'agent-model' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bopus[-_ ]?[0-9]+(?:\.[0-9]+)*\b'; replace = 'agent-model' },
     # the word opus on its own in prose, any case (quoted policy text "Agent/Provider/Opus", "agent or opus or ..."; also
-    # "the Opus audio codec", which the rescan would block too); codec identifiers (libopus, opus_*, AudioFormatOPUS) stay
-    @{ id = 'agent-mention'; scope = 'all'; match = '(?:(?<=\\u00[0-9a-fA-F]{2})|(?<![\w.-]))(?<!audio/)OPUS(?![\w.-]|/\d)'; replace = 'MODEL' },
-    @{ id = 'agent-mention'; scope = 'all'; match = '(?:(?<=\\u00[0-9a-fA-F]{2})|(?<![\w.-]))(?<!audio/)Opus(?![\w.-]|/\d)'; replace = 'Model' },
-    @{ id = 'agent-mention'; scope = 'all'; match = '(?i)(?:(?<=\\u00[0-9a-fA-F]{2})|(?<![\w.-]))(?<!audio/)opus(?![\w.-]|/\d)'; replace = 'model' },
+    # "the Opus audio codec", which the rescan would block too); codec identifiers (libopus, opus_*, AudioFormatOPUS) stay.
+    # The neighbours are ASCII classes: the scrub reads files as Latin-1, where the bytes of a UTF-8 "…" are letters to
+    # \w and hid "…Opus…" from the rule (the scan decodes UTF-8 and saw it). Also right after a JSON escape (\nOpus).
+    @{ id = 'agent-mention'; scope = 'all'; match = '(?:(?<=\\u00[0-9a-fA-F]{2})|(?<=\\[nrtfb])|(?<![A-Za-z0-9_.-]))(?<!audio/)OPUS(?![A-Za-z0-9_.-]|/\d)'; replace = 'MODEL' },
+    @{ id = 'agent-mention'; scope = 'all'; match = '(?:(?<=\\u00[0-9a-fA-F]{2})|(?<=\\[nrtfb])|(?<![A-Za-z0-9_.-]))(?<!audio/)Opus(?![A-Za-z0-9_.-]|/\d)'; replace = 'Model' },
+    @{ id = 'agent-mention'; scope = 'all'; match = '(?i)(?:(?<=\\u00[0-9a-fA-F]{2})|(?<=\\[nrtfb])|(?<![A-Za-z0-9_.-]))(?<!audio/)opus(?![A-Za-z0-9_.-]|/\d)'; replace = 'model' },
+    # the model's name as a segment of a run or file name or a field in the session logs (pilot-2c-opus-siege,
+    # run-opus-win.png, metro_opus_ramp.jpg, agent-opus-..., {hard.opus}): JSON files only (History/*.jsonl)
+    @{ id = 'agent-mention'; scope = 'json'; match = '(?i)(?<=[A-Za-z0-9][-_.])opus(?=[-_}])'; replace = 'model' },
     @{ id = 'agent-mention'; scope = 'all'; match = 'CLAUDE'; replace = 'AGENT' }, @{ id = 'agent-mention'; scope = 'all'; match = 'Claude'; replace = 'Agent' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)claude'; replace = 'agent' },
     @{ id = 'agent-mention'; scope = 'all'; match = 'ANTHROPIC'; replace = 'PROVIDER' }, @{ id = 'agent-mention'; scope = 'all'; match = 'Anthropic'; replace = 'Provider' },
@@ -1150,8 +1155,10 @@ $BinCats = @('banned-name', 'banned-name', 'banned-name', 'banned-name', 'userna
 $OpusCodec = @(
     '(?:^|.*/)third_party/opus/.*',                                   # codec source paths
     'libopus(?:file|enc|dec)?(?:\.(?:dll|lib|so|a|h))?', 'opus(?:file|enc|dec)(?:\.(?:dll|lib|so|a|h))?',
-    'opus_[a-z][a-z0-9_]*', 'OPUS_[A-Z][A-Z0-9_]*',                   # C API symbols and constants
-    '\w*WebRtcOpus_\w+', 'WebRTC-[\w-]*Opus[\w-]*', 'OpusCustom\w*',
+    'opus_(?:[a-z][a-z0-9_]*)?', 'OPUS_(?:[A-Z][A-Z0-9_]*)?',         # C API symbols and constants (also as globs: opus_*, OPUS_*)
+    '\w*WebRtcOpus_\w*', 'WebRTC-[\w-]*Opus[\w-]*', 'OpusCustom\w*',
+    'opus[-_]codecs?', 'ogg[/_-]opus',                                # Opus-codec, Ogg/Opus
+    '\.opus', '[\w./-]*/[\w-]+\.opus',                               # the .opus extension, a path to a .opus file (a bare x.opus may be the model: {hard.opus})
     '\w*Audio(?:En|De)coder\w*Opus\w*', '\w*Opus(?:Impl|Config|Decoder|Encoder|AudioInfo|Format|Codec|Header|Head|Tags|File)\w*',
     '[\w./-]*opus[\w.-]*\.(?:c|cc|cpp|h)',                            # codec source file names
     'opus/\d+(?:/\d+)?', 'audio/opus', 'A_OPUS',
@@ -1163,14 +1170,18 @@ $OpusCodec = @(
 )
 $Locale = @('zh[-_]xiang',                                           # UE's Xiang Chinese locale ids
     'wuxiangshan[\w.]*')                                              # 无相山 (WuXiangShan), a place name in game content, and asset names built on it (WuXiangShanBoss1, ...)
-# the word may carry other segments joined by : or / (C++ scopes, paths): one segment must be an allowed form
-$OpusAllowText = '(?i)^(?:[\w./:-]*?[:/])?(?:' + (($OpusCodec + $Locale) -join '|') + ')(?:[:/.][\w./:-]*)?$'
-$OpusAllowBin = $OpusAllowText + '|(?i)^(?:[\w./:-]*?/)?opus$'   # binaries: also the bare codec name, exactly
 # Reviewed exceptions (tools\package-reviewed-hits.tsv): single binary hits judged by a person to be data, not text,
 # keyed by the file's sha256 + byte offset + word, so another file or another version of it still blocks.
 $Reviewed = @{}
 $ReviewedPath = Join-Path $PSScriptRoot 'package-reviewed-hits.tsv'
 if (Test-Path $ReviewedPath) { foreach ($r in (Import-Csv $ReviewedPath -Delimiter "`t")) { $Reviewed["$($r.sha256)`t$($r.offset)"] = $r.word } }
+# Text that quotes one of those reviewed random-byte words (notes about the review: `opusWTTj`, `OPUSOb`) passes too:
+# exactly that word, case included.
+$ReviewedWords = @($Reviewed.Values | Where-Object { $_ -match '^[A-Za-z0-9]+$' } | Sort-Object -Unique | ForEach-Object { '(?-i:' + [regex]::Escape($_) + ')' })
+# the word may carry other segments joined by : or / (C++ scopes, paths): one segment must be an allowed form
+$OpusAllowBase = '(?i)^(?:[\w./:-]*?[:/])?(?:' + (($OpusCodec + $Locale) -join '|') + ')(?:[:/.][\w./:-]*)?$'
+$OpusAllowText = if ($ReviewedWords) { $OpusAllowBase + '|^(?:' + ($ReviewedWords -join '|') + ')$' } else { $OpusAllowBase }
+$OpusAllowBin = $OpusAllowBase + '|(?i)^(?:[\w./:-]*?/)?opus$'   # binaries: also the bare codec name, exactly (reviewed words stay keyed by file + offset)
 function Set-ReviewedHits($HitList, [string]$Root) {
     $cache = @{}
     foreach ($h in $HitList) {
@@ -1209,12 +1220,27 @@ if ($SelfCheck) {
         @{ id = 'user-camel'; mode = 'scan'; expect = 'refuse'; text = "Owner${U1}Desktop" }
         @{ id = 'user-path-in-escaped-dump'; mode = 'scan'; expect = 'refuse'; text = "b'\\x00\\x01\\x02C:\\\\Users\\\\${U1}\\\\Work\\x00\\x01\\x02'" }
         @{ id = 'user-path-scrubbed'; mode = 'scrub'; expect = 'pass'; text = "C:\\Users\\${U1}\\Work\\games" }
+        # the model's name blocks in every form; the scrub replaces it
+        @{ id = 'model-claude-opus'; mode = 'scan'; expect = 'refuse'; text = 'written with Claude Opus' }
+        @{ id = 'model-opus-version'; mode = 'scan'; expect = 'refuse'; text = 'model: opus-5' }
+        @{ id = 'model-claude-opus-id'; mode = 'scan'; expect = 'refuse'; text = 'id claude-opus-5-5' }
+        @{ id = 'model-opus-glued'; mode = 'scan'; expect = 'refuse'; text = 'ran Opus4 and ClaudeOpus' }
+        @{ id = 'model-opus-bare'; mode = 'scan'; expect = 'refuse'; text = 'the Opus run' }
+        @{ id = 'model-opus-segment'; mode = 'scan'; expect = 'refuse'; text = 'batch pilot-2c-opus-siege' }
+        @{ id = 'model-opus-scrubbed'; mode = 'scrub'; expect = 'pass'; text = "Claude Opus wrote it; opus-5; claude-opus-5-5; \\r\\nOpus run\\u0027s project; …Opus…" }
+        @{ id = 'model-opus-segment-scrubbed'; mode = 'scrub'; expect = 'pass'; text = "pilot-2c-opus-siege, img/run-opus-win.png, metro_opus_ramp.jpg, \u0027agent-opus-...\u0027, passed {hard.opus} of 11" }
+        @{ id = 'model-opus-field'; mode = 'scan'; expect = 'refuse'; text = 'passed hard.opus of 11' }
+        # the Opus audio codec in text (documentation of the codec allowlist) and the reviewed random-byte words
+        @{ id = 'codec-forms'; mode = 'scan'; expect = 'pass'; text = 'libopus, Ogg/Opus, *.opus, Content/Audio/theme.opus, Opus-codec, `opus_*` and `OPUS_*`, `WebRtcOpus_*`, audio_encoder_opus.cc' }
     )
+    if ($Reviewed.Values -contains 'opusWTTj') { $cases += @{ id = 'codec-reviewed-word'; mode = 'scan'; expect = 'pass'; text = 'the first: `opusWTTj` in the raw pixels' } }
     $dir = Join-Path ([IO.Path]::GetTempPath()) ('pkg-selfcheck-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     try {
         foreach ($m in 'scan', 'scrub') { New-Item -ItemType Directory -Force (Join-Path $dir $m) | Out-Null }
-        foreach ($c in $cases) {
-            $p = Join-Path $dir "$($c.mode)\$($c.id)$(if ($c.ContainsKey('bin')) { '.bin' } else { '.jsonl' })"
+        # files are named c<n> (a case id may hold a blocked term, and the scan checks file names too)
+        for ($i = 0; $i -lt $cases.Count; $i++) {
+            $c = $cases[$i]; $c.file = "c$i"
+            $p = Join-Path $dir "$($c.mode)\$($c.file)$(if ($c.ContainsKey('bin')) { '.bin' } else { '.jsonl' })"
             if ($c.ContainsKey('bin')) { [IO.File]::WriteAllBytes($p, $c.bin) } else { [IO.File]::WriteAllText($p, $c.text + "`n", (New-Object System.Text.UTF8Encoding $false)) }
         }
         $sd = Join-Path $dir 'scrub'; $srels = [string[]]@(Get-ChildItem $sd -File | ForEach-Object Name)
@@ -1228,14 +1254,15 @@ if ($SelfCheck) {
             $d = Join-Path $dir $m
             $rels = [string[]]@(Get-ChildItem $d -File | ForEach-Object Name)
             foreach ($h in @([GameDeliverable.Tools]::Scan($d, $rels, $rx, $null, $lk, 20, [string[]]$BinNeedles, [bool[]]$BinRefuse, [string[]]$BinCats))) {
-                if ($h.Kind -notlike 'binary-info*' -and $h.Kind -notlike 'allowed*') { $hitsBy["$m/$([IO.Path]::GetFileNameWithoutExtension($h.Path))"] = 1 }
+                if ($h.Kind -notlike 'binary-info*' -and $h.Kind -notlike 'allowed*') { $hitsBy["$m/$([IO.Path]::GetFileNameWithoutExtension($h.Path))"] = $h.Text }
             }
         }
         $bad = 0
         foreach ($c in $cases) {
-            $got = if ($hitsBy.ContainsKey("$($c.mode)/$($c.id)")) { 'refuse' } else { 'pass' }
+            $got = if ($hitsBy.ContainsKey("$($c.mode)/$($c.file)")) { 'refuse' } else { 'pass' }
             if ($got -ne $c.expect) { $bad++ }
-            Write-Host ("  {0}  {1,-34} {2,-5} expected {3}, got {4}" -f $(if ($got -eq $c.expect) { 'ok  ' } else { 'FAIL' }), $c.id, $c.mode, $c.expect, $got)
+            Write-Host ("  {0}  {1,-34} {2,-5} expected {3}, got {4}{5}" -f $(if ($got -eq $c.expect) { 'ok  ' } else { 'FAIL' }), $c.id, $c.mode, $c.expect, $got,
+                $(if ($got -ne $c.expect -and $got -eq 'refuse') { ': ' + ($hitsBy["$($c.mode)/$($c.file)"] -replace '\s+', ' ') } else { '' }))
         }
         Write-Host "$(if ($bad) { 'FAIL' } else { 'PASS' })  self-check: $($cases.Count - $bad) of $($cases.Count) cases as expected"
     } finally { Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue }
