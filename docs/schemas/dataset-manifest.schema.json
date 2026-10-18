@@ -68,7 +68,11 @@
       "type": "string"
     },
     "replay_verification": {
-      "type": "object",
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "the creation replay's verification (from ReplayScripts/Verification/report.json); null while ReplayScripts/ is pending (listed in pending)",
       "required": [
         "pass",
         "report",

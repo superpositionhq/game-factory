@@ -158,6 +158,7 @@
       "totals.files = number of files[]; totals.bytes = sum of their bytes",
       "every scenarios[].file is in files[]",
       "status complete: pending empty, replay_verification.pass true, report.json verdict.pass true",
+      "replay_verification is null only while ReplayScripts/ is pending (listed in pending): the delivery is then pending, not invalid",
       "variant full: build is an object; repo-dataset: build is null",
       "commit equals the last commit in git.log and report.json final_commit"
     ],
