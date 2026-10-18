@@ -283,6 +283,8 @@ function Get-AudioStats([string]$WavPath) {
     $ErrorActionPreference = $eap
     $mean = ($vol | Select-String 'mean_volume: (-?[\d\.]+|-inf) dB' | Select-Object -First 1)
     $max = ($vol | Select-String 'max_volume: (-?[\d\.]+|-inf) dB' | Select-Object -First 1)
+    # A WAV the game never finalised (run stopped early) probes as {} with no streams: same as no audio.
+    if (-not $probe -or $probe.PSObject.Properties.Name -notcontains 'streams' -or @($probe.streams).Count -eq 0) { return $null }
     $s = $probe.streams[0]
     return [ordered]@{
         sample_rate = [int]$s.sample_rate; channels = [int]$s.channels; duration_s = [double]$s.duration
