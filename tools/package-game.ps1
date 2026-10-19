@@ -1162,6 +1162,11 @@ $RulesTail = @(
     @{ id = 'username'; scope = 'all'; match = "(?i)$UserRx"; replace = 'dev' },
     @{ id = 'email'; scope = 'all'; match = $EmailRx; replace = '<redacted-email>' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bclaude[-_ ]code\b'; replace = 'agent-tool' },
+    # Codex (OpenAI): the tool's names, model ids and the provider; a bare "codex" stays (games have lore codices)
+    @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\b(?:openai[-_ ])?codex[-_ ](?:cli|exec)\b|\bopenai[-_ ]codex\b'; replace = 'agent-tool' },
+    @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bgpt-\d+(?:\.\d+)?(?:-[a-z0-9]+)*\b'; replace = 'agent-model' },
+    @{ id = 'agent-mention'; scope = 'all'; match = 'OPENAI'; replace = 'PROVIDER' }, @{ id = 'agent-mention'; scope = 'all'; match = 'OpenAI'; replace = 'Provider' },
+    @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bopenai\b'; replace = 'provider' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bclaude[-_ ]?(?:opus|sonnet|haiku|fable|instant)(?:[-_ ]?[0-9]+(?:[._-][0-9]+)*)?[\w.-]*'; replace = 'agent-model' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bopus[-_ ]?[0-9]+(?:\.[0-9]+)*\b'; replace = 'agent-model' },
     # the word opus on its own in prose, any case (quoted policy text "Agent/Provider/Opus", "agent or opus or ..."; also

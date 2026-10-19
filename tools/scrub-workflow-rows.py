@@ -54,6 +54,10 @@ def rules():
         ('agent', re.compile(r'(?i)noreply@anthropic\.com'), 'agent@example.invalid'),
         ('agent', re.compile(r'(?i)\bclaude(?:[ -](?:opus|sonnet|haiku|fable|code)(?:[ -][0-9.]+)?)?\b'), 'agent'),
         ('provider', re.compile(r'(?i)\banthropic\b'), 'provider'),
+        # Codex (OpenAI): the tool's own names and model ids; a bare "codex" stays (games have lore codices)
+        ('agent', re.compile(r'(?i)\b(?:openai[ -])?codex[ -](?:cli|exec)\b|\bopenai codex\b'), 'agent'),
+        ('agent', re.compile(r'(?i)\bgpt-\d+(?:\.\d+)?(?:-[a-z0-9]+)*\b'), 'agent-model'),
+        ('provider', re.compile(r'(?i)\bopenai\b'), 'provider'),
         ('email', re.compile(r'(?<![A-Za-z0-9._%+-])(?!git@|noreply@github\.com)[A-Za-z0-9._%+-]+@'
                              r'(?!(?:[A-Za-z0-9-]+\.)*(?:example\.(?:com|org|net)|invalid|test|localhost)\b)'
                              r'(?:[A-Za-z0-9-]+\.)+(?!(?:png|jpe?g|uasset|umap|json|py|ps1|md|txt)\b)[A-Za-z]{2,}\b'), '<email>'),
