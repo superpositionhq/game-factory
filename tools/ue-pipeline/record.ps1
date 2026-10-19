@@ -26,6 +26,7 @@ param(
     [int]$OutputIndex = 0,
     [int]$CaptureRate = 240,
     [string]$ExtraArgs = '',
+    [ValidateSet(30, 60)][int]$OutputFps = 60,   # video frame rate (CFR); 30 only for a game that cannot hold 60 (note it with -CaptureNote)
     [string]$CaptureNote = ''   # what the recording does differently (e.g. a lower scalability preset); metadata.json capture_notes, then the dataset's manifest and README
 )
 
@@ -141,7 +142,7 @@ function Start-Capture([string]$Mode, [int[]]$Rect, [string]$Title, [string]$Vid
             $capIn = "-f gdigrab -framerate 60 -draw_mouse 0 -i `"title=$Title`" -vf showinfo"
         }
     }
-    $tags = '-color_primaries bt709 -color_trc bt709 -colorspace bt709 -color_range tv -fps_mode cfr -r 60 -an'
+    $tags = '-color_primaries bt709 -color_trc bt709 -colorspace bt709 -color_range tv -fps_mode cfr -r ' + $OutputFps + ' -an'
     if ($Encoder -eq 'h264_nvenc') {
         $encode = "-c:v h264_nvenc -preset p5 -tune hq -rc vbr -cq 19 -b:v 0 -maxrate 60M -bufsize 120M -g 120 -bf 0 $tags"
         if ($Mode -notin @('ddagrab', 'gfxcapture')) { $encode = "-pix_fmt yuv420p $encode" }   # ddagrab: D3D11 frames go to NVENC as they are
@@ -150,7 +151,7 @@ function Start-Capture([string]$Mode, [int[]]$Rect, [string]$Title, [string]$Vid
         # frames a second are downloaded from the GPU and converted with an explicit BT.709 matrix.
         $pix = if ($Encoder -eq 'h264_amf') { 'nv12' } else { 'yuv420p' }
         $conv = "scale=out_color_matrix=bt709:out_range=tv,format=$pix"
-        if ($Mode -in @('ddagrab', 'gfxcapture')) { $capIn = $capIn.TrimEnd('"') + ",fps=60,hwdownload,format=bgra,$conv" + '"' }
+        if ($Mode -in @('ddagrab', 'gfxcapture')) { $capIn = $capIn.TrimEnd('"') + ",fps=$OutputFps,hwdownload,format=bgra,$conv" + '"' }
         else { $capIn += ",$conv" }
         $encode = if ($Encoder -eq 'h264_amf') { "-c:v h264_amf -quality quality -rc cqp -qp_i 18 -qp_p 20 -g 120 -bf 0 $tags" }
                    else { "-c:v libx264 -preset ultrafast -crf 17 -g 120 -bf 0 -pix_fmt yuv420p $tags" }
@@ -805,7 +806,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
         run_id = $runId; game = $Game; project = $info.ProjectName
         scenario = $Scenario; scenario_name = (Get-OutcomeValue $outcome 'scenario_name' 'level_name')
         seed = $runSeed; skill = $runSkill; max_seconds = $MaxSeconds
-        extra_args = $(if ($ExtraArgs) { $ExtraArgs } else { $null }); capture_notes = $(if ($CaptureNote) { $CaptureNote } else { $null })
+        output_fps = $OutputFps; extra_args = $(if ($ExtraArgs) { $ExtraArgs } else { $null }); capture_notes = $(if ($CaptureNote) { $CaptureNote } else { $null })
         result = $(if ($outcome) { $outcome.result } else { $null }); score = $(if ($outcome) { $outcome.score } else { $null })
         player = [ordered]@{ kind = 'bot'; name = 'autoplay'; input_injection = 'UE Enhanced Input (InjectInputForAction)' }
         build = [ordered]@{ commit = $buildInfo.commit; short_sha = $buildInfo.short_sha; config = $buildConfig; path = $Build; exe = $exe; autoplay_version = $autoplayVersion; output_dir_flag = "-$outDirFlag"; hydrated_content = $(if ($buildInfo.PSObject.Properties.Name -contains 'hydrated_content') { @($buildInfo.hydrated_content) } else { $null }); content_check = $contentCheck }
