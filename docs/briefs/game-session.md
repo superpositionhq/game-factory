@@ -28,8 +28,8 @@ solved problems. The asset-scout session ({{ASSET_SCOUT_ID}}) keeps the asset li
 ({{MACHINE}}). I am the coordinator ({{COORDINATOR_ID}}): I own the recording queue and the GPU slots, review your
 commits and tell you when to push.
 
-Rules: follow the game-session and commit-always skills (installed in ~\.claude\skills\, source
-game-factory/.claude/skills/). In short: every heavy or GPU job through {{GF_ROOT}}\tools\ue-heavy.ps1, Live Coding
+Rules: follow the game-session and commit-always skills (installed in ~\.claude\skills\ or ~\.agents\skills\, source
+game-factory/skills/). In short: every heavy or GPU job through {{GF_ROOT}}\tools\ue-heavy.ps1, Live Coding
 never on; premium art from the bought/downloaded Fab packs and animation packs, styled UI with no plain text, story
 embedded in play, gentle camera; never the names Superposition or game-factory anywhere in the game; one
 workflow.jsonl row per operation at the moment you act (rows never edited, except to remove a banned name with

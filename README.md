@@ -11,17 +11,19 @@ timestamps, screen video, inputs, code commits and a playtest with inputs.
 
 On a fresh Windows 11 PC (8+ threads, 16 GB RAM or more, 300 GB free; an NVIDIA GPU only for recording), with a
 GitHub account in `<org>` (the organisation that owns this repo and the private `game-<slug>` repos), an Epic Games
-account and a Claude account:
+account and an account for the coding agent (Claude Code, or OpenAI Codex CLI with a ChatGPT account or API key):
 
 1. Get `machine/setup.ps1` (Download ZIP on github.com, or `gh api`; [docs/new-machine.md](docs/new-machine.md)) and
-   run the one command: `powershell -ExecutionPolicy Bypass -File setup.ps1 -Org <org>`. It installs the toolchain
-   through winget, asks before changing Windows settings, signs in to GitHub, clones this repo into the root, runs
+   run the one command: `powershell -ExecutionPolicy Bypass -File setup.ps1 -Org <org>` (add `-Agent codex` or
+   `-Agent both`; it asks otherwise). It installs the toolchain (and the Codex CLI for Codex)
+   through winget, asks before changing Windows settings, signs in to GitHub (and Codex), clones this repo into the root, runs
    `machine/bootstrap.ps1` (which asks before installing the recording hooks) and `machine/check.ps1`, and ends with a
    PASS / TODO list.
-2. Do the TODOs only you can do (Epic sign-in + Unreal Engine 5.7 in the Launcher, the NVIDIA driver, Fab and Claude
-   sign-in) and run setup again until nothing is left.
-3. Start the first session: with the desktop app, the coordinator ([docs/briefs/coordinator.md](docs/briefs/coordinator.md));
-   or solo in a terminal, one game with [docs/briefs/solo-game.md](docs/briefs/solo-game.md).
+2. Do the TODOs only you can do (Epic sign-in + Unreal Engine 5.7 in the Launcher, the NVIDIA driver, Fab, and
+   signing in to Claude Code or Codex) and run setup again until nothing is left.
+3. Start the first session: with the Claude desktop app, the coordinator ([docs/briefs/coordinator.md](docs/briefs/coordinator.md));
+   or solo in a terminal (`claude`, or `codex -s danger-full-access`), one game with
+   [docs/briefs/solo-game.md](docs/briefs/solo-game.md).
 
 ## How a game goes from idea to dataset
 
@@ -29,8 +31,8 @@ account and a Claude account:
    duplicate check against the games already made.
 2. **New project**: `templates/new-game.ps1` creates `%GF_ROOT%\games\<slug>` from the UE 5.7 template: hooks that
    record every action and commit, `ReplayConfig.json` (`"live": true`), `Scripts/ue.ps1`, a private GitHub repo.
-3. **Build**: the session follows the `commit-always` and `game-session` skills; every action is recorded
-   (`workflow.jsonl`, the action hooks, git history).
+3. **Build**: the session (Claude Code or Codex) follows the `commit-always` and `game-session` skills; every action
+   is recorded (`workflow.jsonl`, the action hooks of either agent, git history).
 4. **Creation replay in the background**: after every commit, the post-commit hook starts the live replay
    (`tools/ue-replay`, `ue_replay.py live`). It replays the new commits into an isolated copy of the project at low
    priority and checks them against the commit. Anything that keeps the history from replaying comes back to the
@@ -79,9 +81,9 @@ follows the same format's repo rules (one `assets.manifest.json` format, every a
 - [docs/ue-pipeline.md](docs/ue-pipeline.md): build, package, smoke-test and gameplay recording pipeline (`tools/ue-pipeline/`).
 - [docs/game-format.md](docs/game-format.md): the final game format (repo + Dataset.zip layout v1.3), its schemas and `tools/validate-game.py`.
 - [docs/game-deliverable.md](docs/game-deliverable.md): the per-game deliverable (`tools/package-game.ps1`): layout, store-content variants, scrub.
-- [AGENTS.md](AGENTS.md): rules for agents working here (each with the failure behind it).
-- [CLAUDE.md](CLAUDE.md): what every Claude session reads first; points at the skills in `.claude/skills/`
-  (commit-always, game-session).
+- [AGENTS.md](AGENTS.md): what every session reads first (Claude Code through [CLAUDE.md](CLAUDE.md), Codex
+  directly): the skills in `skills/` (commit-always, game-session, write-tasks), the priorities, how the two agents
+  differ, and the rules for agents working here (each with the failure behind it).
 - [docs/new-machine.md](docs/new-machine.md): setting up another Windows machine (`machine/setup.ps1`, which runs `machine/bootstrap.ps1` and `machine/check.ps1`).
 - [docs/briefs/](docs/briefs/README.md): the prompts that start the coordinator, game and helper sessions (templates + originals).
 
@@ -93,7 +95,7 @@ tools/package-game.ps1, package-dataset.ps1   per-game deliverables and dataset 
 tools/ue-replay/                    creation replay: per-commit (live) and at release; ReplayScripts/ of the dataset
 machine/                            machine setup: setup (entry point), bootstrap/check, ue-heavy limiter, recording hooks, ffmpeg, asset-scout
 templates/                          UE 5.7 game skeleton + new-game.ps1
-.claude/skills/                     commit-always, game-session
+skills/                             commit-always, game-session, write-tasks (agent-neutral; bootstrap installs them for each agent)
 docs/                               everything learned so far; docs/briefs/ = session prompts
 ```
 

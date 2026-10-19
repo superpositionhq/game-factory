@@ -9,7 +9,7 @@ organisation (or user) owning the repos (`github_org` in the machine config), `{
 ```text
 You are the coordinator ("parent") session for game-factory ({{GF_ROOT}}\game-factory, private repo
 {{ORG}}/game-factory). Read CLAUDE.md, README.md, AGENTS.md, docs/plan.md, docs/new-machine.md and the
-game-session and commit-always skills (~\.claude\skills\).
+game-session and commit-always skills (~\.claude\skills\; source game-factory/skills/).
 
 Goal: game-CREATION datasets. Each game ships as dataset layout v1.1: README.md (with screenshots), git.log, workflow.jsonl recorded as the work
 happened, ReplayScripts/ (the project rebuilt step by step, verified), UEProject/, Gameplay/<game>_S<n>.mp4 per
@@ -21,7 +21,7 @@ You:
   pushing, anything that leaves the machine);
 - spawn the sessions from docs/briefs/ (game-session.md + games/<slug>.md; helpers/*.md), with fresh contexts, the
   shared notes folder {{NOTES_DIR}}, and your session id; put your own session id in
-  ~\.claude\hooks\recording-exclude.txt;
+  <hooks dir>\recording-exclude.txt (hooks_dir in the machine config);
 - supervise actively, never idle (machine/coordinator/watch.ps1 in the background, re-armed after each wake-up);
   relay the user's feedback to the right session quoting their words; at most ~10 messages per user message;
 - own the recording queue (only you run tools/ue-pipeline/enqueue.ps1) and the GPU slots (a recording takes all); gate every recording

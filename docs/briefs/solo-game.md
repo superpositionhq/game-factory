@@ -1,13 +1,21 @@
-# Solo game brief (plain Claude Code)
+# Solo game brief (plain Claude Code or Codex)
 
-For one person building one game with one Claude Code session in a terminal: no desktop app, no coordinator, no
-other sessions. The rules are the same as for a coordinated game session (the `game-session` and `commit-always`
+For one person building one game with one coding-agent session in a terminal, Claude Code (`claude`) or OpenAI Codex
+CLI (`codex`): no desktop app, no coordinator, no other sessions. The rules are the same as for a coordinated game session (the `game-session` and `commit-always`
 skills, installed by `machine/setup.ps1`); what the coordinator would do (queue recordings, decide pushes, relay
 directions, hand out store packs) is done by you, the person at the keyboard. With the desktop app and several games
 at once, use [coordinator.md](coordinator.md) and [game-session.md](game-session.md) instead.
 
-Start: open a terminal in the machine root (`cd <root>`; its `CLAUDE.md` loads the game-factory rules), run `claude`,
-and paste the `text` block below with the placeholders filled. For a game that has a fill-in in [games/](games/),
+Start: open a terminal in the machine root (`cd <root>`) and run one of
+
+- `claude` (its `<root>\CLAUDE.md` loads the game-factory rules), or
+- `codex -s danger-full-access` (its `<root>\AGENTS.md` names the rules; the full-access sandbox is needed because
+  builds write to `C:\UEB` and `%LOCALAPPDATA%`, the job limiter uses machine-wide mutexes, and git / gh need the
+  network; `codex` asks once to trust the folder),
+
+then paste the `text` block below with the placeholders filled. Stay in this one session for the whole game where you
+can (resume it with `claude --continue` or `codex resume --last`): the recording follows the session, and a new session
+is filed under the game only from its first tool call that names the game folder. For a game that has a fill-in in [games/](games/),
 take the pitch, scenarios and story from it; for a new game, write them in a few lines each.
 
 | Placeholder | From |
@@ -24,8 +32,9 @@ There is no coordinator and there are no other sessions: never start, spawn or m
 skills say to send to "the coordinator" (recording requests, push requests, Fab requests, blockers), tell me here
 and wait for my answer.
 
-Read first: {{GF_ROOT}}\game-factory\CLAUDE.md, README.md, AGENTS.md, docs/autoplay-contract.md, docs/ue-pipeline.md,
-and the game-session and commit-always skills (~\.claude\skills\). They hold the rules; in short:
+Read first: {{GF_ROOT}}\game-factory\AGENTS.md, README.md, docs/autoplay-contract.md, docs/ue-pipeline.md,
+and the game-session and commit-always skills ({{GF_ROOT}}\game-factory\skills\<name>\SKILL.md; installed for your
+agent too). They hold the rules; in short:
 - every editor, build, cook or GPU job through {{GF_ROOT}}\tools\ue-heavy.ps1; Live Coding never on;
 - premium art from store packs (any folder under Content/, committed through Git LFS, never git-ignored; the repo stays
   private), styled UI with no plain text, story embedded in play, gentle camera; never the names of the toolkit or

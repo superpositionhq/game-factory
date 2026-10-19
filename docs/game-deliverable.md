@@ -128,7 +128,7 @@ JSON-escaped forms; `lines` = other text files except `git.log`; `logs` = `.json
 | `git-identity` | the repo's git author/committer names, their words of 4+ letters and e-mail handles → the same `dev_NN` as in `git.log`; a term containing a digit (a handle) also takes letters/digits glued to its end, so account names built on it go too |
 | `username` | the account name (`$env:USERNAME`) as a word, including inside user paths (`C:\Users\<name>`, `C:\\Users\\…`, `c:/users/…`, `/c/Users/…`, `/Users/…`) → `dev` |
 | `email` | e-mail addresses → `<redacted-email>`, except placeholders (`example.com/org/net`, `*.invalid`, `*.test`, `localhost`) and `git@github.com`-style service addresses; file names such as `icon@2x.png` are not addresses |
-| `agent-mention` | `claude code` → `agent-tool`, `claude-<model>…` → `agent-model`, then remaining Claude → Agent/agent, Anthropic → Provider/provider (case kept) |
+| `agent-mention` | `claude code` → `agent-tool`, `Codex CLI` / `OpenAI Codex` / `codex exec` → `agent-tool`, `gpt-<n>…` → `agent-model`, OpenAI → Provider/provider, `claude-<model>…` → `agent-model`, then remaining Claude → Agent/agent, Anthropic → Provider/provider (case kept) |
 
 `agent-mention` also covers model names: `Claude Opus 5.5`, `claude-opus-5-5`, and a bare `Opus <version>` → `agent-model`;
 a standalone capitalized `Opus` in prose → `Model` (codec identifiers such as `libopus`, `opus_*`, `AudioFormatOPUS` stay).

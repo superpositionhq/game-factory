@@ -32,4 +32,4 @@ What the skeleton carries, and why:
 | `Dataset/` | dataset layout v1.1 placeholder (`Gameplay/`, `Screenshots/`, `ReplayScripts/`, README) |
 
 `workflow.jsonl` conventions (schema `ue-workflow/v0`, one row per operation at the moment it happens, id prefix per
-game, row ids in commit messages) are in the commit-always and game-session skills (`.claude/skills/`).
+game, row ids in commit messages) are in the commit-always and game-session skills (`skills/`).
