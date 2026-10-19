@@ -1172,8 +1172,8 @@ $RulesTail = @(
     @{ id = 'agent-mention'; scope = 'all'; match = '(?:(?<=\\u00[0-9a-fA-F]{2})|(?<=\\[nrtfb])|(?<![A-Za-z0-9_.-]))(?<!audio/)Opus(?![A-Za-z0-9_.-]|/\d)'; replace = 'Model' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)(?:(?<=\\u00[0-9a-fA-F]{2})|(?<=\\[nrtfb])|(?<![A-Za-z0-9_.-]))(?<!audio/)opus(?![A-Za-z0-9_.-]|/\d)'; replace = 'model' },
     # the model's name as a segment of a run or file name or a field in the session logs (pilot-2c-opus-siege,
-    # run-opus-win.png, metro_opus_ramp.jpg, agent-opus-..., {hard.opus}): JSON files only (History/*.jsonl)
-    @{ id = 'agent-mention'; scope = 'json'; match = '(?i)(?<=[A-Za-z0-9][-_.])opus(?=[-_}])'; replace = 'model' },
+    # run-opus-win.png, metro_opus_ramp.jpg, agent-opus-..., {hard.opus}, giant_opus.jpg): JSON files only (History/*.jsonl)
+    @{ id = 'agent-mention'; scope = 'json'; match = '(?i)(?<=[A-Za-z0-9][-_.])opus(?=[-_}]|\.[A-Za-z]{2,4}\b)'; replace = 'model' },
     @{ id = 'agent-mention'; scope = 'all'; match = 'CLAUDE'; replace = 'AGENT' }, @{ id = 'agent-mention'; scope = 'all'; match = 'Claude'; replace = 'Agent' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)claude'; replace = 'agent' },
     @{ id = 'agent-mention'; scope = 'all'; match = 'ANTHROPIC'; replace = 'PROVIDER' }, @{ id = 'agent-mention'; scope = 'all'; match = 'Anthropic'; replace = 'Provider' },
@@ -1269,6 +1269,7 @@ if ($SelfCheck) {
         @{ id = 'model-opus-scrubbed'; mode = 'scrub'; expect = 'pass'; text = "Claude Opus wrote it; opus-5; claude-opus-5-5; \\r\\nOpus run\\u0027s project; …Opus…" }
         @{ id = 'model-opus-segment-scrubbed'; mode = 'scrub'; expect = 'pass'; text = "pilot-2c-opus-siege, img/run-opus-win.png, metro_opus_ramp.jpg, \u0027agent-opus-...\u0027, passed {hard.opus} of 11" }
         @{ id = 'model-opus-field'; mode = 'scan'; expect = 'refuse'; text = 'passed hard.opus of 11' }
+        @{ id = 'model-opus-file-scrubbed'; mode = 'scrub'; expect = 'pass'; text = '{"cmd":"W.save(\\u0027D:/runs/tools/giant_opus.jpg\\u0027)","file_path":"D:\\\\runs\\\\stealth_route_opus.jpg"}' }
         # the Opus audio codec in text (documentation of the codec allowlist) and the reviewed random-byte words
         @{ id = 'codec-forms'; mode = 'scan'; expect = 'pass'; text = 'libopus, Ogg/Opus, *.opus, Content/Audio/theme.opus, Opus-codec, `opus_*` and `OPUS_*`, `WebRtcOpus_*`, audio_encoder_opus.cc' }
     )
