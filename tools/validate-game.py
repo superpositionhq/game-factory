@@ -593,6 +593,15 @@ def check_task(rep, a, label, t, game, has_commit):
         rep.error(a, f'{label}: {e}')
     for e in task_semantic_errors(t)[:5]:
         rep.error(a, f'{label}: {e}')
+    gated = [c for m in t.get('milestones') or [] if isinstance(m, dict) for c in m.get('checks') or []
+             if isinstance(c, dict) and c.get('kind') == 'probe' and c.get('required', True)]
+    judged = [c.get('name') for m in t.get('milestones') or [] if isinstance(m, dict) for c in m.get('checks') or []
+              if isinstance(c, dict) and c.get('kind') in ('judge', 'code_judge', 'actions_judge')
+              and c.get('required', True)]
+    if not gated:
+        rep.error(a, f'{label}: no required probe check: pass/fail must be deterministic (write-tasks section 5)')
+    if judged:
+        rep.note(a, f'{label}: required judge check(s) {judged}: judges should be "required": false quality checks')
     s = t.get('seed')
     if isinstance(s, dict):
         if s.get('game') != game:

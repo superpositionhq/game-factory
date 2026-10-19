@@ -1,5 +1,5 @@
 {
-  "$comment": "Vendored, unchanged except this comment, from the game environment's published GameTask schema (backend/app/factory/game_env/tasks.schema.json at commit 854a4fe3, 2026-10-19, branch feat/game-env-probe-checks; the probe check kind from bfd46540; identical to tasks.schema_text() run from that commit). Update it from there; tools/validate-game.py checks every task in a game repo's Tasks/ and in a dataset against it.",
+  "$comment": "Vendored, unchanged except this comment, from the game environment's published GameTask schema (backend/app/factory/game_env/tasks.schema.json at commit 60914179 on feat/game-env-probe-checks, 2026-10-19: the deterministic `probe` check kind, every task seeded). Update it from there; tools/validate-game.py checks every task in a game repo's Tasks/ and in a dataset against it.",
   "$defs": {
     "ActionsJudge": {
       "additionalProperties": false,
@@ -168,6 +168,20 @@
           "default": null,
           "title": "To Angle"
         },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
+        },
         "window": {
           "anyOf": [
             {
@@ -273,6 +287,34 @@
             }
           ],
           "default": null
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
         }
       },
       "required": [
@@ -607,6 +649,20 @@
           "default": null,
           "title": "To Angle"
         },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
+        },
         "window": {
           "anyOf": [
             {
@@ -727,6 +783,19 @@
           "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,120}$",
           "title": "Class",
           "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9_.*? -]{1,120}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
         },
         "near": {
           "anyOf": [
@@ -855,6 +924,20 @@
           ],
           "default": null,
           "title": "To Angle"
+        },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
         },
         "window": {
           "anyOf": [
@@ -1056,6 +1139,20 @@
           ],
           "default": null,
           "title": "To Angle"
+        },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
         },
         "window": {
           "anyOf": [
@@ -1289,6 +1386,20 @@
           ],
           "default": null,
           "title": "To Angle"
+        },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
         },
         "window": {
           "anyOf": [
@@ -1674,6 +1785,20 @@
           ],
           "default": null,
           "title": "To Angle"
+        },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
         },
         "window": {
           "anyOf": [
@@ -2084,6 +2209,20 @@
           "default": null,
           "title": "To Angle"
         },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
+        },
         "window": {
           "anyOf": [
             {
@@ -2375,7 +2514,7 @@
         "slate": {
           "anyOf": [
             {
-              "pattern": "^S[A-Za-z0-9_]{1,120}$",
+              "pattern": "^S[A-Za-z0-9_*?]{1,120}$",
               "type": "string"
             },
             {
@@ -2523,6 +2662,20 @@
           "default": null,
           "title": "To Angle"
         },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
+        },
         "window": {
           "anyOf": [
             {
@@ -2617,15 +2770,7 @@
       "title": "Play Map"
     },
     "seed": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/Seed"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null
+      "$ref": "#/$defs/Seed"
     },
     "tags": {
       "items": {
@@ -2637,7 +2782,7 @@
     },
     "template": {
       "const": "blank-cpp",
-      "default": "blank-cpp",
+      "description": "Read past: every task starts from its seed (2026-10-18).",
       "title": "Template",
       "type": "string"
     },
@@ -2652,6 +2797,7 @@
     "name",
     "title",
     "instruction",
+    "seed",
     "milestones"
   ],
   "title": "game-task/1",

@@ -1,6 +1,6 @@
 ---
 name: write-tasks
-description: How to write the tasks a game ships with (Tasks/ on the repo's orphan tasks branch, never on main, one GameTask JSON per task, about 10 per game) so an agent can be given them in the game-creation environment: the tasks branch and its worktree, the four kinds (bug_fix from real fixes in the history, correction from user.direction rows, feature, change), picking seed.commit and seed.reference, writing the instruction from context, play_map, milestones, checks and judge rubrics, difficulty and limits, the hard tier (about 2-3 per game: long threads, far causes, compound tickets, observation-only briefs), and what keeps a task gradable and unleaked. Use when a game session writes, moves or reviews tasks, and before calling a game complete.
+description: How to write the tasks a game ships with (Tasks/ on the repo's orphan tasks branch, never on main, one GameTask JSON per task, about 10 per game) so an agent can be given them in the game-creation environment: the tasks branch and its worktree, the four kinds (bug_fix from real fixes in the history, correction from user.direction rows, feature, change), picking seed.commit and seed.reference, writing the instruction from context, play_map, milestones and deterministic probe checks (pass/fail never by a model judge or pixels), difficulty and limits, the hard tier (about 2-3 per game: long threads, far causes, compound tickets, observation-only briefs), and what keeps a task gradable and unleaked. Use when a game session writes, moves or reviews tasks, and before calling a game complete.
 ---
 
 # Writing a game's tasks
@@ -108,34 +108,60 @@ The game's default map is usually a title menu that simulated keys cannot leave,
 `/Game/Maps/L_Level?Scenario=2`). Read the GameMode's option parsing at `seed.commit` and check the map exists there.
 Every grader play opens it (boots, idle and drive, the route, the before and reference plays).
 
-## 5. Milestones and checks
+## 5. Milestones and checks: deterministic probes decide
+
+**Pass/fail is decided only by checks the grader computes itself** (the owner, 2026-10-19): `build`, `boot`,
+`log_absent` and **`probe`** checks. A model judge (`judge`, `code_judge`, `actions_judge`) never decides pass/fail
+and nothing is graded from pixel statistics of the game's frames. Judges may stay as `"required": false` quality
+checks (taste, readability, how the agent worked). The probe language is the environment's contract:
+`docs/planning/2026-10-13_game-creation-env/probes.md` in superposition-training, mirrored by the schema in
+[docs/schemas/game-task.schema.json](../../../docs/schemas/game-task.schema.json).
 
 Each milestone is a reward group; a run that gets part of the way earns part of the reward. The usual order:
 
 1. `builds`: `build` (`editor_builds`).
 2. `boots`: `boot` 60 s (`boots_clean`), `needs` the build.
-3. `fixed` (bug_fix, correction): `code_judge` against the reference: does the change address the request at its
-   cause, as the reference does, without unrelated changes. 3-4 rubric items, phrased as outcomes; it may describe the
-   cause plainly for the reviewer (the agent never sees it) and should note unrelated changes in the reference the
-   agent is not expected to make.
-4. `looks_right` / `plays`: a `judge` over the grader's own plays, only when play can show the outcome. Seeded tasks
-   use `"before": true`; corrections also `"reference": true`. Rubric items must be judgeable from a 20 s idle play,
-   the 22 s scripted drive (W, D, W with a Space jump, A, W), screenshots including the HUD, the player's position
-   track, and the camera's measures (height, distance, pitch, FOV). A feature that needs other keys asks the agent for
-   a route file (`route`), which the grader plays.
-5. `worked`: the standard `actions_judge` `worked_well` (copy it from an existing task): looked before editing, kept
-   the game building, checked the result in the running game after its last change (required), stayed on task.
+3. `fixed` (bug_fix, correction) / `done` (feature, change): `probe` checks of the reported outcome, `required`,
+   `needs` `boots_clean`. Every bug_fix and correction has at least one required probe that the start fails for the
+   reported reason and the reference passes.
+4. `still_works`: probes that what must keep working still does (the player still moves, the HUD still shows, the
+   level still loads its scenario).
+5. `quality` (optional, never required): a `judge` for taste items no probe can capture ("reads as a castle",
+   readability of text over the scene), a `code_judge` for code quality, and the standard `actions_judge`
+   `worked_well` (or `trace` probes, `"required": false`).
 
-Rubrics: outcomes, never the reference's implementation ("the chase camera shows the road ahead", not "SpringArm
-length is 700"); mark the actual complaint `"required": true`; ask only what the evidence can show (no `looks_right`
-for a mouse-only outcome; HUD items need the HUD in screenshots; motion needs the drive or a route). Check names are
-unique and `needs` only names earlier checks; a `code_judge` or a `"reference": true` judge needs `seed.reference`.
+A probe names one measurement and its threshold:
 
-Visual items name the thing and its place, so a screenshot judge can't mistake one element for another: what it looks
-like (shape, colour, label or text on it) and where it is (e.g. "the round meter at the bottom centre of the HUD, under
-the score"), read from the seed's HUD or level, not guessed. Ask the outcome as presence or absence at that place
-against BEFORE ("in AFTER, the round meter at the bottom centre of the HUD is gone; it is present in BEFORE; the other
-HUD elements remain"), never as a vague "the gauge no longer shows".
+```json
+{"name": "hero_on_ground", "kind": "probe", "required": true, "weight": 3, "needs": ["boots_clean"],
+ "describe": "After the scenario starts, the hero stays on ground near the west kiln tower instead of falling under the town.",
+ "play": "look",
+ "measure": {"probe": "pawn", "field": "z", "window": [3, 18], "agg": "min"},
+ "expect": {"op": ">=", "calibrate": 0.5}}
+```
+
+- `play`: `look` (20 s idle), `drive` (22 s: W 1-6 s, D 6-8 s, W 8-13 s with a jump at 9 s, A 13-15 s, W 15-21 s),
+  a task play `{"name": ..., "seconds": ..., "inputs": [{"t", "key", "press"}]}` when the outcome needs other keys
+  (F2, a fire button, a menu key), or `editor` for asset facts.
+- `measure.probe`: `pawn` (track: x/y/z/speed/moved/dist), `camera` (distance/height/pitch/fov/occluded/
+  pawn_on_screen), `actors` (select by class, tag, name, near; count, transform, extent, hidden, collision, speed,
+  `prop:<Component>.<Property>` by reflection), `widgets` (visible, text, percent, has_brush), `light` (illuminance,
+  exposure, brightness at a point), `grading` (the colour pipeline: cast, warmth, tint, saturation, contrast, grey),
+  `spawns`, `log`, `asset` (editor: material_default, material:<prop>, mesh_collision, asset properties).
+- `expect`: a literal (`{"op": ">=", "value": 1}`) for facts (counts, booleans, "not the default material"), or
+  `{"op": ">=", "calibrate": 0.5}` for continuous quantities: the grader measures the start and the reference in the
+  grading environment and puts the threshold that fraction of the way from start to fix; `op` points to the fix's side.
+
+Write probes from the game's own code at `seed.commit` and `seed.reference`: the real class names, actor tags, map
+paths, widget names and components. **Test the outcome a player sees, never the implementation**: another valid fix
+must pass ("the hero stands on ground", "the stone breaks the wall piece it hits", "the light reaching the tunnel
+floor times the camera's exposure is brighter", not "SpawnZ is 92" or "the function was changed"). Lighting and
+colour are measured from the engine (`light`, `grading`), never from screenshots. `describe` says the assertion in
+plain words; it is shown in the grade, never to the agent. Check names are unique and `needs` only names earlier
+checks; calibrated probes, `code_judge` and `"reference": true` judges need `seed.reference`.
+
+A task is valid only when the grader's golden check passes in the grading environment: the reference passes every
+required probe and the start fails at least one.
 
 ## 6. Difficulty and limits
 
@@ -156,20 +182,16 @@ minutes. A hard-tier task has at least one of these traits, and its brief gives 
    scripts).
 2. **The cause is far from the symptom:** a HUD symptom caused by a data asset, a camera symptom caused by collision
    channels, a crash only in the packaged build, an intermittent or timing bug, a regression from an earlier change.
-3. **A compound ticket:** several real issues in one task, each a `required` judge item (or its own code-judge
-   item), so partial work earns partial credit.
+3. **A compound ticket:** several real issues in one task, each its own `required` probe, so partial work earns
+   partial credit.
 4. **A brief that is only an observation:** a player or QA report of what is seen, in plain words. It names no
    cause, no place to look, no file, system or asset, and no mechanism ("the camera feels jammed against the ship",
    not "the obstruction sweep counts the sea"). It says only what a player knows. Leave out the play_map line,
-   which the harness adds. The code-judge rubric still names the cause, since the agent never sees it.
-5. **Checkable by the grader:** every required outcome must show in the grader's own evidence. Use a scenario
-   (`play_map` options at the seed) that triggers the moment, or ask the agent for a `route` that reaches it. The
-   brief then says what the route must show: where to go and what to do, never why. A route holds key names,
-   mouse buttons included (`LeftMouseButton`), but no mouse movement, so the camera's pitch and the menu cursor
-   stay where they start. The grader plays it on AFTER and BEFORE, never on REFERENCE, so the moment a route
-   reaches is compared against BEFORE only. Set `"reference": true` as well, so the judge sees the real fix in the
-   idle and drive plays, and phrase items by look and place (section 5). A bug that never shows in the grader's
-   plays leaves the task to the code judge alone; that is not good enough for the hard tier.
+   which the harness adds. Probes may measure the cause's effect directly, since the agent never sees them.
+5. **Checkable by the grader:** every required outcome must be measurable in the grader's own plays. Use a scenario
+   (`play_map` options at the seed) that triggers the moment, or a task play whose scripted keys reach it (key
+   names, mouse buttons included, but no mouse movement). A bug no probe can measure in the grader's plays or the
+   editor pass is not a hard-tier task.
 
 Wording: neutral and technical, for the game's people and creatures as for the rest. Describe meshes, bones, poses,
 hits and reactions. Never use gore, injury or body-horror words ("crumpled body", "cut neck"); a cloud content
@@ -178,8 +200,8 @@ filter rejects such briefs and rubrics.
 ## 7. What must never reach the agent
 
 The agent sees only the brief and the game at `seed.commit` (a commit of main, so without the tasks branch) as a fresh
-repository without history, `Tasks/`, `History/` or `Dataset/` (the harness rule: those hold every task's rubrics and the reference fixes). The grader's
-half (`milestones`: rubrics, questions, `log_absent` patterns; and `seed.reference`) never reaches it. So:
+repository without history, `Tasks/`, `History/` or `Dataset/` (the harness rule: those hold every task's checks and the reference fixes). The grader's
+half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed.reference`) never reaches it. So:
 
 - the instruction holds nothing of the grader's half and does not describe the fix;
 - nothing else at `seed.commit` should spell out the answer (a design-doc "known issues" line naming the cause, a
@@ -190,17 +212,17 @@ half (`milestones`: rubrics, questions, `log_absent` patterns; and `seed.referen
 
 | pitfall | rule |
 |---|---|
-| rubric or log patterns shown in the brief | the agent gets the brief only |
-| a win the grader never saw | `required` items; the agent's route, played by the grader |
+| checks or log patterns shown in the brief | the agent gets the brief only |
+| a model judge misread screenshots and failed a correct fix (or passed a wrong one) | pass/fail by probes only; judges are `"required": false` |
+| a fix made only in binary assets failed the code review | the cause is checked by its measured effect (a probe), never by reading the diff |
+| a pixel threshold moved between GPUs | light and colour from the engine (`light`, `grading`), never screenshot statistics |
+| a probe that tests the reference's implementation ("SpawnZ = 92") | measure the outcome; another valid fix must pass |
 | the brief said "scenario 1" but not `?Scenario=1` | `play_map` always set and checked at the seed |
-| a judge saw a removed HUD meter as "still visible" | name the element's look and place; ask presence or absence there vs BEFORE |
-| HUD items guessed | screenshots include the HUD; ask only what the evidence shows |
-| camera/HUD changes read as "nothing changed" | judge from camera measures and side-by-side screenshots, track only for motion |
+| a HUD widget or class name guessed | read the names from the code and assets at `seed.commit` and `seed.reference` |
 | quoting the person | write from context |
-| two directions answered by one commit | each code-judge question names the other's part |
 | a reference that crashed | the reference must build and run |
 | "hard" tasks solved in minutes: one cause, one place, the brief named the system | hard tier: long threads, far causes, compound tickets, observation-only briefs |
-| a bug that never shows in the grader's plays, graded by the code judge alone | a scenario or route that triggers the moment, plus `"reference": true` |
+| a bug that never shows in the grader's plays | a scenario or a task play that triggers the moment |
 | a brief rejected by a content filter (injury wording) | neutral technical words: mesh, bones, pose, hit, reaction |
 
 ## 9. Examples
