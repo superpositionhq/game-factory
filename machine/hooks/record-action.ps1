@@ -1,18 +1,25 @@
-# Claude Code hook (PostToolUse / PostToolUseFailure / Stop): append every tool call of a
-# game-building or replay session to <root>\.recording\<project>\actions.jsonl.
+# Agent hook (Claude Code: PostToolUse / PostToolUseFailure / Stop; Codex: PostToolUse / Stop, with -Agent codex):
+# append every tool call of a game-building or replay session to <root>\.recording\<project>\actions.jsonl.
+# Both agents send the same hook JSON on stdin (session_id, transcript_path, cwd, hook_event_name, tool_name,
+# tool_input, tool_response, tool_use_id). Codex names its shell tool "Bash" (tool_input.command, a string) and its
+# file edits "apply_patch" (tool_input.command = the patch text); it has no PostToolUseFailure (a failed call is a
+# PostToolUse whose response carries the exit code). Every row says which agent made it ("agent").
 # A session is tied to a project the first time one of its tool calls names a path under
 # <root>\games\<slug> or <root>\<extra project> (config "record_extra_projects", default none);
 # after that, all its calls are recorded there.
 # Backfill: at that first mapping, the session's earlier tool calls are imported once from its transcript
-# (transcript_path in the hook input; subagent transcripts beside it), in order, before the mapping call's own row,
+# (transcript_path in the hook input; Claude Code: subagent transcripts beside it; Codex: the rollout file's completed
+# CommandExecution / FileChange / McpToolCall items), in order, before the mapping call's own row,
 # with status "from_transcript". Calls older than the transcript file (copied context of a fork) are not imported.
 # `record-action.ps1 -Backfill <session id> [-TranscriptPath <file>]` does the same for a session mapped before this
 # existed: the rows go in just before that session's first row. Each session is backfilled at most once
 # (recording-backfill.json next to this file), and a call already in actions.jsonl is never written twice.
 # On Stop, leftover changes in a game repo are committed ("WIP") so no work stays uncommitted.
 # <root> = the machine root (gf-root.ps1 next to this file; machine/lib/gf-root.ps1 in the repo).
-# machine/bootstrap.ps1 installs this into ~\.claude\hooks\ and wires it with machine/hooks/settings-hooks.json.
-param([switch]$Stop, [string]$Backfill, [string]$TranscriptPath)
+# machine/bootstrap.ps1 installs this into the hooks dir (config "hooks_dir") and wires it into Claude Code
+# (machine/hooks/settings-hooks.json -> ~\.claude\settings.json) and Codex (machine/hooks/codex-hooks.json ->
+# ~\.codex\hooks.json, pre-trusted in ~\.codex\config.toml).
+param([switch]$Stop, [string]$Backfill, [string]$TranscriptPath, [ValidateSet('claude', 'codex')][string]$Agent = 'claude')
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.Encoding]::UTF8
 $utf8 = New-Object Text.UTF8Encoding($false)
@@ -46,13 +53,60 @@ function Get-RecordedIds([string]$File) {   # tool_use_ids already in actions.js
   if (Test-Path $File) { foreach ($l in [IO.File]::ReadLines($File)) { $m = [regex]::Match($l, '"tool_use_id":"([^"]+)"'); if ($m.Success) { [void]$ids.Add($m.Groups[1].Value) } } }
   return , $ids
 }
+function Get-CodexHome { if ($env:CODEX_HOME) { return $env:CODEX_HOME } return (Join-Path $env:USERPROFILE '.codex') }
 function Find-Transcript([string]$Sid) {
-  $p = Get-ChildItem (Join-Path $env:USERPROFILE '.claude\projects') -Recurse -Filter "$Sid.jsonl" -ErrorAction SilentlyContinue | Select-Object -First 1
+  $p = if ($Agent -eq 'codex') {   # Codex: <CODEX_HOME>\sessions\YYYY\MM\DD\rollout-<time>-<thread id>.jsonl
+    Get-ChildItem (Join-Path (Get-CodexHome) 'sessions') -Recurse -Filter "rollout-*$Sid*.jsonl" -ErrorAction SilentlyContinue | Select-Object -First 1
+  } else { Get-ChildItem (Join-Path $env:USERPROFILE '.claude\projects') -Recurse -Filter "$Sid.jsonl" -ErrorAction SilentlyContinue | Select-Object -First 1 }
   if ($p) { return $p.FullName } else { return $null }
+}
+# Codex rollout (one JSON object per line: timestamp, type, payload): each finished tool call is an event_msg
+# "item_completed" whose item.id is the tool_use_id the hooks see. Shell commands -> tool "Bash" with input.command
+# (the command string the shell ran), file edits -> "apply_patch" with input.changes (path -> kind and content or diff;
+# the rollout keeps no patch text for them), MCP calls -> "mcp__<server>__<tool>" with their arguments.
+function Get-CodexTranscriptCalls([string]$Sid, [string]$Path, [string]$Until) {
+  $created = (Get-Item $Path).CreationTimeUtc.AddSeconds(-5)
+  $calls = [ordered]@{}; $results = @{}; $bad = 0; $n = 0
+  foreach ($line in [IO.File]::ReadLines($Path)) {
+    if ($line -notmatch '"item_completed"') { continue }
+    try { $o = $line | ConvertFrom-Json } catch { $bad++; continue }
+    $p = $o.payload
+    if ($o.type -ne 'event_msg' -or $p.type -ne 'item_completed' -or -not $p.item -or -not $o.timestamp) { continue }
+    if ($p.thread_id -and [string]$p.thread_id -ne $Sid) { continue }
+    $ts = [DateTimeOffset]::Parse([string]$o.timestamp, [Globalization.CultureInfo]::InvariantCulture)
+    if ($ts.UtcDateTime -lt $created) { continue }
+    $it = $p.item; $id = [string]$it.id
+    if (-not $id -or $calls.Contains($id)) { continue }
+    $cwd = if ($it.cwd) { ([string]$it.cwd -replace '^file:///(?=[A-Za-z]:)', '' -replace '^file://', '') } else { $null }
+    $name = $null   # (a `continue` inside switch only leaves the switch, so unknown item types leave $name empty)
+    switch ([string]$it.type) {
+      'CommandExecution' {
+        $c = @($it.command)
+        $cmd = if ($c.Count -ge 3 -and [string]$c[-2] -match '^(-lc|-c|/c|-Command|-NoProfile)$') { [string]$c[-1] } else { ($c | ForEach-Object { [string]$_ }) -join ' ' }
+        $name = 'Bash'; $inp = [pscustomobject]@{ command = $cmd }
+        $resp = [string]$it.aggregated_output; $err = ($null -ne $it.exit_code -and [int]$it.exit_code -ne 0) -or [string]$it.status -eq 'failed'
+      }
+      'FileChange' {
+        $name = 'apply_patch'; $inp = [pscustomobject]@{ changes = $it.changes }
+        $resp = (@([string]$it.stdout, [string]$it.stderr) | Where-Object { $_ }) -join "`n"; $err = [string]$it.status -ne 'completed'
+      }
+      'McpToolCall' {
+        $name = "mcp__$($it.server)__$($it.tool)"; $inp = if ($it.arguments) { $it.arguments } else { [pscustomobject]@{} }
+        $resp = if ($it.result) { $it.result | ConvertTo-Json -Depth 8 -Compress } else { [string]$it.error }; $err = [bool]$it.error
+      }
+    }
+    if (-not $name) { continue }   # reasoning, messages, web searches, plans: not tool calls with effects
+    $calls[$id] = [pscustomobject]@{ id = $id; name = $name; input = $inp; ts = $ts; cwd = $cwd; agent = $null; n = $n++ }
+    $results[$id] = [pscustomobject]@{ resp = $resp; error = $err; text = $resp; ts = $ts }
+  }
+  $stop = if ($Until -and $calls.Contains($Until)) { $calls[$Until].ts } else { $null }
+  $out = @($calls.Values | Where-Object { $_.id -ne $Until -and (-not $stop -or $_.ts -le $stop) } | Sort-Object ts, n)
+  return [pscustomobject]@{ calls = $out; results = $results; unparsed_lines = $bad }
 }
 # The session's tool calls from its transcript (and its subagents' transcripts), oldest first. Only calls with a result,
 # made by this session, and no older than the transcript file. -Until: stop before this tool_use_id (the mapping call).
 function Get-TranscriptCalls([string]$Sid, [string]$Path, [string]$Until) {
+  if ($Agent -eq 'codex') { return (Get-CodexTranscriptCalls $Sid $Path $Until) }
   $files = @($Path)
   $sub = Join-Path (Join-Path (Split-Path $Path) $Sid) 'subagents'
   if (Test-Path $sub) { $files += @(Get-ChildItem $sub -Filter '*.jsonl' | ForEach-Object FullName) }
@@ -92,7 +146,8 @@ function New-BackfillRows([string]$Sid, [string]$Project, $Got, $Skip) {
       time       = $c.ts.ToLocalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffzzz')
       project    = $Project
       session_id = $Sid
-      event      = $(if ($r.error) { 'PostToolUseFailure' } else { 'PostToolUse' })
+      agent      = $Agent
+      event      = $(if ($r.error -and $Agent -ne 'codex') { 'PostToolUseFailure' } else { 'PostToolUse' })
       cwd        = $c.cwd
       status     = 'from_transcript'
       tool       = $c.name
@@ -154,6 +209,8 @@ $e = $raw | ConvertFrom-Json
 $sid = [string]$e.session_id
 if ((Test-Path $excludeFile) -and ((Get-Content $excludeFile) -contains $sid)) { exit 0 }
 
+# One mutex for every writer of the recording (both agents' hooks, record-commit.ps1); the name predates Codex support
+# and stays so that older and newer copies still exclude each other.
 $mutex = New-Object Threading.Mutex($false, 'Global\claude-recording-hooks')
 [void]$mutex.WaitOne(30000)
 try {
@@ -197,6 +254,7 @@ try {
     time       = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz')
     project    = $project
     session_id = $sid
+    agent      = $Agent
     event      = [string]$e.hook_event_name
     cwd        = [string]$e.cwd
   }

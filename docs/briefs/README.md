@@ -1,13 +1,15 @@
 # Session briefs
 
-The prompts that start each Claude Code session of game-factory, as reusable templates. The rules every session
-follows are in the skills (`.claude/skills/`: commit-always, game-session); the briefs carry the task.
+The prompts that start each session of game-factory (Claude Code or Codex), as reusable templates. The rules every
+session follows are in the skills (`skills/`: commit-always, game-session, write-tasks); the briefs carry the task.
+The coordinator and its helper and game sessions use the Claude desktop app's side sessions; a solo game runs in a
+terminal with either agent.
 
 | File | For |
 |---|---|
 | [coordinator.md](coordinator.md) | the coordinator (parent) session: role and the user's standing decisions |
 | [game-session.md](game-session.md) | template for a game-building session (placeholders) |
-| [solo-game.md](solo-game.md) | one game with one plain Claude Code session (terminal, no desktop app, no coordinator): paste and fill |
+| [solo-game.md](solo-game.md) | one game with one plain `claude` or `codex` session (terminal, no desktop app, no coordinator): paste and fill |
 | [games/](games/) | one fill-in per game: title, project name, pitch, brief, scenarios, story, art packs, known facts |
 | [helpers/](helpers/README.md) | ue-pipeline, asset-scout, packager, creation-replay |
 | [original/](original/) | historical prompts from the first build, verbatim (scrubbed); not instructions |

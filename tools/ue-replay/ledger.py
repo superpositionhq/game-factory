@@ -1,7 +1,8 @@
 """Ledger: what the builder of a game ran, window by window, from three records.
 
   git history          the commits on the first-parent chain up to the final commit (the windows' boundaries)
-  actions.jsonl        the agent's tool calls: editor-script runs (command lines), Write/Edit of files, shell commands
+  actions.jsonl        the agent's tool calls: editor-script runs (command lines), Write/Edit of files (Claude Code) or
+                       apply_patch (Codex), shell commands
   workflow.jsonl       the rows each script run logged (op, target, status, params) at the final commit
 
 Output (work/ledger.json, schema ue-replay.ledger/v1):
@@ -20,6 +21,7 @@ import re
 import shlex
 import subprocess
 
+import patchfx
 import shellfx
 import ue_replay
 
@@ -559,6 +561,40 @@ def build(cfg):
             if p:
                 ok = fs.edit(p, inp.get("old_string", ""), inp.get("new_string", ""), inp.get("replace_all", False))
                 w["events"]["edit" if ok else "edit_unapplied"] += 1
+        elif tool == "apply_patch" and isinstance(inp.get("command"), str):
+            # Codex: one patch adds, deletes, updates or moves files (patchfx.py); a patch that does not parse or a
+            # hunk that does not apply leaves the file unknown, like an Edit whose old text is not there
+            try:
+                ops = patchfx.parse(inp["command"])
+            except ValueError:
+                ops = None
+                w["events"]["patch_unparsed"] += 1
+            for op, path, data in ops or []:
+                full = patchfx.resolve(path, a.get("cwd") or "")
+                p = repo_rel(full, repo_abs)
+                if op == "add":
+                    if p:
+                        fs.write(p, data)
+                        w["events"]["patch"] += 1
+                    else:
+                        aux[full] = data
+                elif op == "delete" and p:
+                    fs.put(p, ABSENT, "apply_patch")
+                    w["events"]["patch"] += 1
+                elif op == "update" and p:
+                    cur = fs.get(p)
+                    new = patchfx.apply_update(cur.decode("utf-8", "replace"), data["hunks"]) \
+                        if isinstance(cur, bytes) else None
+                    dest = repo_rel(patchfx.resolve(data["move"], a.get("cwd") or ""), repo_abs) if data["move"] else p
+                    if new is None:
+                        fs.put(p, None, "apply_patch")
+                        w["events"]["patch_unapplied"] += 1
+                        continue
+                    if dest != p:
+                        fs.put(p, ABSENT, "apply_patch")
+                    if dest:
+                        fs.write(dest, new)
+                    w["events"]["patch"] += 1
         elif tool in ("Bash", "PowerShell"):
             cmd = inp.get("command", "")
             for d in drops.values():

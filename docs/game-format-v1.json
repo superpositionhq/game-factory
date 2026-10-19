@@ -123,7 +123,8 @@
         "(?i)superposition",
         "(?i)game[-_ ]?factory",
         "(?i)\\banthropic\\b",
-        "(?i)\\bclaude\\b"
+        "(?i)\\bclaude\\b",
+        "(?i)\\bopenai\\b"
       ],
       "skip_paths": [
         "^Dataset/"
@@ -141,7 +142,7 @@
       "the validator and the packager read the tasks from `tasks`, else `origin/tasks`; a missing tasks branch is an error",
       "at least one task (none is an error); about 10 recommended (the count is reported, never an error or warning)",
       "seed.game is the repo's slug; seed.commit and seed.reference are commits of main's history (ancestors of main's head)",
-      "written with the write-tasks skill (.claude/skills/write-tasks)",
+      "written with the write-tasks skill (skills/write-tasks)",
       "An agent given a task starts from a history-less snapshot of the game at seed.commit with Tasks/, History/ and Dataset/ removed (they hold every task's rubrics and references): only the brief and that snapshot. The grader's half (milestones: rubrics, judge and code-judge questions, log_absent patterns; and seed.reference) never reaches the agent."
     ]
   },

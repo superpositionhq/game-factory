@@ -9,8 +9,9 @@
 # into Shipping exes), "engine" (the UE root new games use; Get-GFEngine picks each project's own), optional "engines"
 # ({"5.3": "<UE root>", ...}) and "record_extra_projects" (top-level folders under the root that the recording hooks
 # treat as projects besides games\<slug>), and "github_org" (the GitHub organisation or user that owns game-factory and
-# the private game-<slug> repos; Get-GFOrg). Installed copies of the hooks and ue-heavy.ps1 carry a copy of this file
-# next to them.
+# the private game-<slug> repos; Get-GFOrg), "agents" (the coding agents bootstrap.ps1 wired up: "claude", "codex") and
+# "hooks_dir" (where the recording hooks live, shared by both agents; Get-GFHooksDir). Installed copies of the hooks and
+# ue-heavy.ps1 carry a copy of this file next to them.
 
 function Get-GFConfigPath {
     if ($env:GF_CONFIG) { return $env:GF_CONFIG }
@@ -40,6 +41,28 @@ function Get-GFConfig {
 }
 
 function Get-GFRoot { return (Get-GFConfig).root }
+
+# The coding agents this machine is set up for ("claude", "codex"): "agents" in the config (bootstrap.ps1 -Agent writes
+# it); else the ones found installed (the claude / codex command or their home folder); else both.
+function Get-GFAgents($Cfg = (Get-GFConfig)) {
+    if ($Cfg.PSObject.Properties['agents'] -and @($Cfg.agents | Where-Object { $_ }).Count) { return @($Cfg.agents | ForEach-Object { ([string]$_).ToLower() } | Where-Object { $_ -in 'claude', 'codex' } | Select-Object -Unique) }
+    $found = @()
+    if ((Get-Command claude -ErrorAction SilentlyContinue) -or (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.claude'))) { $found += 'claude' }
+    $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE '.codex' }
+    if ((Get-Command codex -ErrorAction SilentlyContinue) -or (Test-Path -LiteralPath $codexHome)) { $found += 'codex' }
+    if (-not $found) { $found = @('claude', 'codex') }
+    return $found
+}
+
+# The recording hooks' folder (record-action.ps1, record-commit.ps1, the session map), one for every agent: "hooks_dir"
+# in the config; else ~\.claude\hooks where an earlier bootstrap installed them there (machines set up before Codex
+# support; their game repos' post-commit hooks point there); else %USERPROFILE%\.game-factory\hooks.
+function Get-GFHooksDir($Cfg = (Get-GFConfig)) {
+    if ($Cfg.PSObject.Properties['hooks_dir'] -and $Cfg.hooks_dir) { return [IO.Path]::GetFullPath([string]$Cfg.hooks_dir) }
+    $legacy = Join-Path $env:USERPROFILE '.claude\hooks'
+    if (Test-Path -LiteralPath (Join-Path $legacy 'record-action.ps1')) { return $legacy }
+    return (Join-Path $env:USERPROFILE '.game-factory\hooks')
+}
 
 # The UE root for a project: its .uproject's EngineAssociation ("5.3", "5.7", ...) picks the install, so a game made on
 # an older engine keeps building, recording and replaying on it. Order: "engines" in the config, then the UE_<version>

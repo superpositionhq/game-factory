@@ -8,29 +8,39 @@
      builds\_logs, recordings, .recording, deliverables, asset-library, tools) plus <ueb>\src and <ueb>\tmp.
   2. Tools: <root>\tools\ue-heavy.ps1 (+ gf-root.ps1), <root>\tools\asset-scout\, and the pinned ffmpeg
      (machine\get-ffmpeg.ps1, downloaded and SHA-256 verified, never committed).
-  3. Claude Code: the recording hooks into <ClaudeDir>\hooks\, their entries merged into <ClaudeDir>\settings.json
-     (backup settings.json.bak-<time> first; other settings and hooks are kept; before adding or changing them it
-     prints what they record and asks, -Yes skips the question, a non-interactive run without -Yes leaves them out), the repo's skills into
-     <ClaudeDir>\skills\, and <root>\CLAUDE.md importing game-factory\CLAUDE.md (sessions start in the root).
+  3. Coding agents (-Agent claude|codex|both; default: the config's "agents", else the ones installed, else both;
+     written to the config): the recording hooks into the hooks dir (config "hooks_dir": ~\.claude\hooks on machines
+     set up before Codex support, else ~\.game-factory\hooks), their entries merged into each agent's settings
+     (Claude Code: <ClaudeDir>\settings.json; Codex: <CodexDir>\hooks.json plus the trust entries in config.toml; a backup
+     .bak-<time> first; other settings and hooks are kept; before adding or changing them it prints what they record
+     and asks, -Yes skips the question, a non-interactive run without -Yes leaves them out), the repo's skills (skills\)
+     into each agent's personal skills folder (<ClaudeDir>\skills\, ~\.agents\skills\), and the root instructions
+     (Claude Code: <root>\CLAUDE.md importing game-factory\CLAUDE.md; Codex: <root>\AGENTS.md naming game-factory\AGENTS.md;
+     sessions start in the root).
   4. Git: git-lfs filters (git lfs install --skip-repo), gh login check, the commit recorder in every
      <root>\games\*\.git (machine\install-git-hook.ps1); -CloneGames clones every <org>/game-* repo first.
   The GitHub organisation (or user) that owns game-factory and the game repos is "github_org" in the config: -Org sets
   it, else the config's value is kept, else bootstrap asks (non-interactive runs warn and leave it unset).
-  Any file it replaces is copied to a backup first (<root>\tools\_backup\<time>\, <ClaudeDir>\hooks\_backup\<time>\,
-  <ClaudeDir>\skills\_backup\<time>\). It never pushes, never changes Windows settings and never signs in for you.
+  Any file it replaces is copied to a backup first (<root>\tools\_backup\<time>\, <hooks dir>\_backup\<time>\,
+  <skills folder>\_backup\<time>\). It never pushes, never changes Windows settings and never signs in for you.
   Then run machine\check.ps1. Manual steps (Epic/Fab sign-in, gh login, display sleep): docs\new-machine.md.
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File machine\bootstrap.ps1
   powershell -ExecutionPolicy Bypass -File machine\bootstrap.ps1 -Root D:\Work -CloneGames
   # scratch test that leaves the real profile alone:
   powershell -ExecutionPolicy Bypass -File machine\bootstrap.ps1 -Root C:\gf-test\Work -Ueb C:\gf-test\UEB `
-      -ClaudeDir C:\gf-test\home\.claude -ConfigPath C:\gf-test\home\.game-factory\config.json -FfmpegArchive <.7z>
+      -ClaudeDir C:\gf-test\home\.claude -CodexDir C:\gf-test\home\.codex -AgentsSkillsDir C:\gf-test\home\.agents\skills `
+      -HooksDir C:\gf-test\home\.game-factory\hooks -ConfigPath C:\gf-test\home\.game-factory\config.json -Agent both -FfmpegArchive <.7z>
 #>
 param(
     [string]$Root,                                              # default: GF_ROOT / existing config / %USERPROFILE%\Work
     [string]$Ueb,                                               # default: config / C:\UEB
     [string]$Engine,                                            # default: config / C:\Program Files\Epic Games\UE_5.7 (new games)
+    [ValidateSet('auto', 'claude', 'codex', 'both')][string]$Agent = 'auto',   # which coding agents to wire up
     [string]$ClaudeDir = (Join-Path $env:USERPROFILE '.claude'),
+    [string]$CodexDir,                                          # default: CODEX_HOME / %USERPROFILE%\.codex
+    [string]$AgentsSkillsDir = (Join-Path $env:USERPROFILE '.agents\skills'),   # Codex's personal skills folder
+    [string]$HooksDir,                                          # default: config hooks_dir (lib\gf-root.ps1 Get-GFHooksDir)
     [string]$ConfigPath,                                        # default: GF_CONFIG / %USERPROFILE%\.game-factory\config.json
     [string]$FfmpegArchive,                                     # a downloaded ffmpeg-8.1.2-full_build.7z (still verified)
     [switch]$SkipFfmpeg,
@@ -43,12 +53,17 @@ $hooksDeclined = $false
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'lib\gf-root.ps1')
+. (Join-Path $PSScriptRoot 'lib\codex-hooks.ps1')
 if ($ConfigPath) { $env:GF_CONFIG = $ConfigPath }
 if ($Root) { $env:GF_ROOT = $Root }      # this process (and the scripts it starts) use the chosen root
 $cfg = Get-GFConfig
 $Root = $cfg.root
 if (-not $Ueb) { $Ueb = $cfg.ueb }
 if (-not $Engine) { $Engine = $cfg.engine }
+if (-not $CodexDir) { $CodexDir = Get-GFCodexHome }
+if (-not $HooksDir) { $HooksDir = Get-GFHooksDir $cfg }
+$HooksDir = [IO.Path]::GetFullPath($HooksDir)
+$Agents = switch ($Agent) { 'claude' { @('claude') } 'codex' { @('codex') } 'both' { @('claude', 'codex') } default { @(Get-GFAgents $cfg) } }
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $utf8 = New-Object Text.UTF8Encoding($false)
 $report = New-Object Collections.Generic.List[object]
@@ -96,7 +111,7 @@ function Write-JsonFile([string]$Path, $Object) {
     [IO.File]::WriteAllText($Path, ($Object | ConvertTo-Json -Depth 32) + "`n", $utf8)
 }
 
-Write-Host "game-factory bootstrap: root $Root, repo $repo, Claude dir $ClaudeDir"
+Write-Host "game-factory bootstrap: root $Root, repo $repo, agents $($Agents -join ' + '), hooks dir $HooksDir"
 
 # --- 1. config + layout -------------------------------------------------------------------------------------------
 Write-Host "1. config and layout"
@@ -105,11 +120,13 @@ if (-not $Org) { $Org = Get-GFOrg $cfg }
 if (-not $Org -and [Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
     $Org = (Read-Host 'GitHub organisation (or user) that owns game-factory and the game-<slug> repos').Trim()
 }
-$want = [ordered]@{ root = $Root; ueb = $Ueb; engine = $Engine; record_extra_projects = @($cfg.record_extra_projects) }
+$want = [ordered]@{ root = $Root; ueb = $Ueb; engine = $Engine; record_extra_projects = @($cfg.record_extra_projects)
+    agents = @($Agents); hooks_dir = $HooksDir }
 if ($Org) { $want['github_org'] = $Org }
 $have = if (Test-Path -LiteralPath $cfgPath) { [IO.File]::ReadAllText($cfgPath) | ConvertFrom-Json } else { $null }
 $same = $have -and ($have.root -eq $want.root) -and ($have.ueb -eq $want.ueb) -and ($have.engine -eq $want.engine) -and
     ((@($have.record_extra_projects) -join '|') -eq (@($want.record_extra_projects) -join '|')) -and
+    ((@($have.agents) -join '|') -eq (@($want.agents) -join '|')) -and ($have.hooks_dir -eq $want.hooks_dir) -and
     (-not $Org -or ($have.PSObject.Properties['github_org'] -and $have.github_org -eq $Org))
 if ($same) { Note ok "config $cfgPath" }
 else {
@@ -118,7 +135,7 @@ else {
         Copy-Item -LiteralPath $cfgPath "$cfgPath.bak-$stamp"
     }
     Write-JsonFile $cfgPath $want
-    Note $(if ($have) { 'changed' } else { 'added' }) "config $cfgPath" "root=$Root ueb=$Ueb github_org=$Org"
+    Note $(if ($have) { 'changed' } else { 'added' }) "config $cfgPath" "root=$Root ueb=$Ueb github_org=$Org agents=$($Agents -join ',') hooks_dir=$HooksDir"
 }
 if (-not $Org) { Note warn 'github_org' 'not set: run bootstrap.ps1 -Org <GitHub org or user> (new-game.ps1, -CloneGames and check.ps1 need it)' }
 # Job slots from the hardware (lib\gf-root.ps1 Get-GFComputedSlots; ue-heavy.ps1 and the pipeline read the config).
@@ -176,9 +193,11 @@ else {
     Note $(if ($had) { 'ok' } else { 'added' }) 'ffmpeg 8.1.2 (pinned, SHA-256 verified)' ([string]($out | Select-Object -Last 1))
 }
 
-# --- 3. Claude Code: hooks, settings, skills, CLAUDE.md --------------------------------------------------------------
-Write-Host "3. Claude Code"
-$hooksDir = Join-Path $ClaudeDir 'hooks'
+# --- 3. coding agents: recording hooks, skills, root instructions ---------------------------------------------------
+# One copy of the recording hooks (the hooks dir) serves every agent; each selected agent gets the hook entries, the
+# skills and the root instructions file it reads.
+Write-Host "3. coding agents ($($Agents -join ', '))"
+$hooksDir = $HooksDir
 $hooksBackup = Join-Path $hooksDir "_backup\$stamp"
 foreach ($f in 'record-action.ps1', 'record-commit.ps1') {
     Sync-File (Join-Path $PSScriptRoot "hooks\$f") (Join-Path $hooksDir $f) $hooksBackup "hooks\$f"
@@ -191,70 +210,140 @@ $map = Join-Path $hooksDir 'recording-sessions.json'
 if (Test-Path -LiteralPath $map) { Note ok 'hooks\recording-sessions.json' 'kept as is' }
 else { [IO.File]::WriteAllText($map, '{}', $utf8); Note added 'hooks\recording-sessions.json' }
 
-# settings.json: add or update the three recording hooks; everything else stays.
-$settingsPath = Join-Path $ClaudeDir 'settings.json'
-$fragText = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'hooks\settings-hooks.json')).Replace('{{HOOKS_DIR}}', ($hooksDir -replace '\\', '/'))
-$frag = $fragText | ConvertFrom-Json
-$settings = if (Test-Path -LiteralPath $settingsPath) { [IO.File]::ReadAllText($settingsPath) | ConvertFrom-Json } else { New-Object psobject }
-if (-not $settings) { $settings = New-Object psobject }
-$changed = $false
-if (-not ($settings.PSObject.Properties.Name -contains 'hooks')) { $settings | Add-Member hooks (New-Object psobject); $changed = $true }
-foreach ($ev in $frag.hooks.PSObject.Properties) {
-    $wantGroup = @($ev.Value)[0]
-    $wantCmd = @($wantGroup.hooks)[0].command
-    if (-not ($settings.hooks.PSObject.Properties.Name -contains $ev.Name)) { $settings.hooks | Add-Member $ev.Name @() }
-    $groups = @($settings.hooks.($ev.Name))
-    $found = $false
-    foreach ($g in $groups) {
-        foreach ($h in @($g.hooks)) {
-            if ([string]$h.command -match 'record-action\.ps1') {
-                $found = $true
-                if ($h.command -ne $wantCmd) { $h.command = $wantCmd; $changed = $true }
+# Merge a hook fragment ({{HOOKS_DIR}} filled in) into a parsed settings/hooks object: every handler whose command runs
+# record-action.ps1 becomes the fragment's handler for that event, a missing one is added; everything else stays.
+# Returns $true when something changed.
+function Merge-RecordingHooks($Target, $Frag) {
+    $changed = $false
+    if (-not ($Target.PSObject.Properties.Name -contains 'hooks')) { $Target | Add-Member hooks (New-Object psobject); $changed = $true }
+    foreach ($ev in $Frag.hooks.PSObject.Properties) {
+        $wantGroup = @($ev.Value)[0]
+        $want = @($wantGroup.hooks)[0]
+        if (-not ($Target.hooks.PSObject.Properties.Name -contains $ev.Name)) { $Target.hooks | Add-Member $ev.Name @() }
+        $groups = @($Target.hooks.($ev.Name))
+        $found = $false
+        foreach ($g in $groups) {
+            $hs = @($g.hooks)
+            for ($i = 0; $i -lt $hs.Count; $i++) {
+                if ([string]$hs[$i].command -match 'record-action\.ps1') {
+                    $found = $true
+                    if (($hs[$i] | ConvertTo-Json -Compress) -ne ($want | ConvertTo-Json -Compress)) { $hs[$i] = $want; $changed = $true }
+                }
             }
+            $g.hooks = [object[]]$hs
         }
+        if (-not $found) { $groups += $wantGroup; $changed = $true }
+        $Target.hooks.($ev.Name) = [object[]]$groups
     }
-    if (-not $found) { $groups += $wantGroup; $changed = $true }
-    $settings.hooks.($ev.Name) = [object[]]$groups
+    return $changed
 }
-if ($changed -and -not $Yes) {
-    # Say plainly what the hooks do before wiring them into every Claude Code session of this Windows account.
+function Read-JsonOrEmpty([string]$Path) {
+    $o = if (Test-Path -LiteralPath $Path) { [IO.File]::ReadAllText($Path) | ConvertFrom-Json } else { $null }
+    if (-not $o) { $o = New-Object psobject }
+    return $o
+}
+$hooksSlash = ($hooksDir -replace '\\', '/')
+
+# Claude Code: ~\.claude\settings.json gets PostToolUse, PostToolUseFailure and Stop.
+$claudeChanged = $false
+if ($Agents -contains 'claude') {
+    $settingsPath = Join-Path $ClaudeDir 'settings.json'
+    $settings = Read-JsonOrEmpty $settingsPath
+    $frag = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'hooks\settings-hooks.json')).Replace('{{HOOKS_DIR}}', $hooksSlash) | ConvertFrom-Json
+    $claudeChanged = Merge-RecordingHooks $settings $frag
+}
+# Codex: ~\.codex\hooks.json gets PostToolUse and Stop (Codex has no PostToolUseFailure), and config.toml the trust
+# entries for exactly those handlers (machine/lib/codex-hooks.ps1: Codex skips an untrusted hook silently).
+$codexChanged = $false; $codexTrustChanged = $false; $codexTrust = @()
+if ($Agents -contains 'codex') {
+    $codexHooksPath = Join-Path $CodexDir 'hooks.json'
+    $codexToml = Join-Path $CodexDir 'config.toml'
+    $codexHooks = Read-JsonOrEmpty $codexHooksPath
+    $cfrag = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'hooks\codex-hooks.json')).Replace('{{HOOKS_DIR}}', $hooksSlash) | ConvertFrom-Json
+    $codexChanged = Merge-RecordingHooks $codexHooks $cfrag
+    # The key holds the hooks.json path as Codex prints it. With CODEX_HOME set, Codex canonicalizes the folder, which on
+    # Windows can add the \\?\ prefix: both spellings are trusted then (an unused entry does nothing).
+    $codexTrust = @(Get-GFCodexHookTrust $codexHooksPath $codexHooks)
+    if ($env:CODEX_HOME -and $codexHooksPath -match '^[A-Za-z]:\\') {
+        $codexTrust += @($codexTrust | ForEach-Object { [pscustomobject]@{ event = $_.event; key = "\\?\$($_.key)"; hash = $_.hash } })
+    }
+    $have = Get-GFCodexTrustState $codexToml
+    $codexTrustChanged = @($codexTrust | Where-Object { $have[$_.key] -ne $_.hash }).Count -gt 0
+}
+
+if (($claudeChanged -or $codexChanged -or $codexTrustChanged) -and -not $Yes) {
+    # Say plainly what the hooks do before wiring them into every session of the chosen agents on this Windows account.
     Write-Host ""
-    Write-Host "  About to add recording hooks to $settingsPath (a backup .bak-$stamp is kept):" -ForegroundColor Yellow
-    Write-Host "    - PostToolUse, PostToolUseFailure and Stop run $hooksDir\record-action.ps1 after every tool call of every"
-    Write-Host "      Claude Code session on this account."
+    Write-Host "  About to add the game-factory recording hooks (a backup .bak-$stamp of each file is kept):" -ForegroundColor Yellow
+    if ($claudeChanged) { Write-Host "    - Claude Code: PostToolUse, PostToolUseFailure and Stop in $ClaudeDir\settings.json" }
+    if ($codexChanged -or $codexTrustChanged) { Write-Host "    - Codex: PostToolUse and Stop in $CodexDir\hooks.json, marked trusted in $CodexDir\config.toml" }
+    Write-Host "    They run $hooksDir\record-action.ps1 after every tool call of every session of that agent on this account."
     Write-Host "    - A session that works on a game (a tool call naming $Root\games\<slug>) has every tool call recorded"
     Write-Host "      (command, file paths, inputs, results, times) to $Root\.recording\<slug>\actions.jsonl, including its"
     Write-Host "      earlier calls, imported from its transcript; at the end of each turn its uncommitted work is committed as WIP."
     Write-Host "    - Each game repo's post-commit hook records commits to $Root\.recording\<slug>\commits.jsonl."
     Write-Host "    - Sessions that never touch a game folder are not recorded; session ids in hooks\recording-exclude.txt never are."
-    Write-Host "    These records become the game-creation dataset. Remove the three entries from settings.json to stop recording."
+    Write-Host "    These records become the game-creation dataset. Remove the entries from those files to stop recording."
     $ok = $false
     if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) { $ok = (Read-Host '  Install the recording hooks? [y/N]') -match '^(y|yes)$' }
-    if (-not $ok) { $changed = $false; $hooksDeclined = $true; Note warn 'settings.json hooks' 'not installed (declined or non-interactive; -Yes installs them without asking)' }
+    if (-not $ok) {
+        $hooksDeclined = $true
+        if ($claudeChanged) { Note warn 'Claude Code hooks' 'not installed (declined or non-interactive; -Yes installs them without asking)' }
+        if ($codexChanged -or $codexTrustChanged) { Note warn 'Codex hooks' 'not installed (declined or non-interactive; -Yes installs them without asking)' }
+        $claudeChanged = $false; $codexChanged = $false; $codexTrustChanged = $false
+    }
 }
-if ($changed) {
+if ($claudeChanged) {
     if (Test-Path -LiteralPath $settingsPath) { Copy-Item -LiteralPath $settingsPath "$settingsPath.bak-$stamp" }
     Write-JsonFile $settingsPath $settings
-    Note changed "settings.json hooks" "PostToolUse/PostToolUseFailure/Stop -> $hooksDir\record-action.ps1 (backup .bak-$stamp)"
-} elseif (-not $hooksDeclined) { Note ok 'settings.json hooks' }
+    Note changed 'Claude Code hooks' "settings.json PostToolUse/PostToolUseFailure/Stop -> $hooksDir\record-action.ps1 (backup .bak-$stamp)"
+} elseif ($Agents -contains 'claude' -and -not $hooksDeclined) { Note ok 'Claude Code hooks' }
+if ($codexChanged) {
+    if (Test-Path -LiteralPath $codexHooksPath) { Copy-Item -LiteralPath $codexHooksPath "$codexHooksPath.bak-$stamp" }
+    Write-JsonFile $codexHooksPath $codexHooks
+    Note changed 'Codex hooks' "hooks.json PostToolUse/Stop -> $hooksDir\record-action.ps1 -Agent codex (backup .bak-$stamp)"
+} elseif ($Agents -contains 'codex' -and -not $hooksDeclined) { Note ok 'Codex hooks' }
+if ($codexTrustChanged) {
+    if (Test-Path -LiteralPath $codexToml) { Copy-Item -LiteralPath $codexToml "$codexToml.bak-$stamp" }
+    Set-GFCodexTrustState $codexToml $codexTrust
+    Note changed 'Codex hook trust' "config.toml [hooks.state] for $(@($codexTrust).Count) handler(s) (backup .bak-$stamp; check with /hooks in Codex)"
+} elseif ($Agents -contains 'codex' -and -not $hooksDeclined) { Note ok 'Codex hook trust' }
 
-$skillsSrc = Join-Path $repo '.claude\skills'
-foreach ($s in Get-ChildItem -LiteralPath $skillsSrc -Directory) {
-    Sync-Dir $s.FullName (Join-Path $ClaudeDir "skills\$($s.Name)") (Join-Path $ClaudeDir "skills\_backup\$stamp\$($s.Name)") "skills\$($s.Name)"
+# Skills: one source (<repo>\skills\<name>\SKILL.md), copied to where each agent looks for personal skills
+# (Claude Code: ~\.claude\skills; Codex: ~\.agents\skills). Copies, not links: links need Developer Mode on Windows.
+$skillsSrc = Join-Path $repo 'skills'
+$skillDirs = @()
+if ($Agents -contains 'claude') { $skillDirs += , @('Claude Code', (Join-Path $ClaudeDir 'skills')) }
+if ($Agents -contains 'codex') { $skillDirs += , @('Codex', $AgentsSkillsDir) }
+foreach ($sd in $skillDirs) {
+    foreach ($s in Get-ChildItem -LiteralPath $skillsSrc -Directory) {
+        Sync-Dir $s.FullName (Join-Path $sd[1] $s.Name) (Join-Path $sd[1] "_backup\$stamp\$($s.Name)") "$($sd[0]) skills\$($s.Name)"
+    }
 }
 
-# <root>\CLAUDE.md: sessions start in the root, so it imports the repo's CLAUDE.md.
-$rootMd = Join-Path $Root 'CLAUDE.md'
-$importPath = if ([IO.Path]::GetFullPath($repo).TrimEnd('\') -eq $expectedRepo) { 'game-factory/CLAUDE.md' } else { ($repo -replace '\\', '/') + '/CLAUDE.md' }
-$importLine = "@$importPath"
-if (-not (Test-Path -LiteralPath $rootMd)) {
-    [IO.File]::WriteAllText($rootMd, "# Work root`n`nEvery session on this machine follows the game-factory rules and skills:`n`n$importLine`n", $utf8)
-    Note added "$rootMd" "imports $importPath"
-} elseif ([IO.File]::ReadAllText($rootMd) -match [regex]::Escape($importLine)) { Note ok "$rootMd" }
-else {
-    Copy-Item -LiteralPath $rootMd "$rootMd.bak-$stamp"
-    [IO.File]::AppendAllText($rootMd, "`n$importLine`n", $utf8)
-    Note changed "$rootMd" "appended $importLine (backup .bak-$stamp)"
+# Root instructions: sessions start in the root. Claude Code reads <root>\CLAUDE.md (it imports the repo's CLAUDE.md,
+# which imports AGENTS.md); Codex reads <root>\AGENTS.md (no imports: it names the repo's AGENTS.md to read first).
+$inRoot = [IO.Path]::GetFullPath($repo).TrimEnd('\') -eq $expectedRepo
+function Set-RootFile([string]$Path, [string]$Line, [string]$NewText) {
+    if (-not (Test-Path -LiteralPath $Path)) {
+        [IO.File]::WriteAllText($Path, $NewText, $utf8)
+        Note added "$Path" $Line
+    } elseif ([IO.File]::ReadAllText($Path) -match [regex]::Escape($Line)) { Note ok "$Path" }
+    else {
+        Copy-Item -LiteralPath $Path "$Path.bak-$stamp"
+        [IO.File]::AppendAllText($Path, "`n$Line`n", $utf8)
+        Note changed "$Path" "appended $Line (backup .bak-$stamp)"
+    }
+}
+if ($Agents -contains 'claude') {
+    $importPath = if ($inRoot) { 'game-factory/CLAUDE.md' } else { ($repo -replace '\\', '/') + '/CLAUDE.md' }
+    Set-RootFile (Join-Path $Root 'CLAUDE.md') "@$importPath" "# Work root`n`nEvery session on this machine follows the game-factory rules and skills:`n`n@$importPath`n"
+}
+if ($Agents -contains 'codex') {
+    $agentsPath = Join-Path $repo 'AGENTS.md'
+    $line = "Before anything else, read $agentsPath and follow it (rules, skills, priorities)."
+    Set-RootFile (Join-Path $Root 'AGENTS.md') $line ("# Work root`n`nEvery session on this machine follows the game-factory rules and skills.`n$line`n" +
+        "The skills it names (commit-always, game-session, write-tasks) are installed in $AgentsSkillsDir.`n")
 }
 
 # --- 4. git, LFS, gh, game repos --------------------------------------------------------------------------------------
