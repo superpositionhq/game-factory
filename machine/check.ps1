@@ -5,16 +5,21 @@
   Toolchain: UE 5.7 (and 5.3 for games made on it), MSVC 14.44, Windows SDK, .NET Framework 4.8.1 SDK, git + Git LFS, gh (logged in, can see the
   org's repos), Python. Recording: NVIDIA driver >= 617 (NVENC with the pinned ffmpeg), refresh rate, display sleep
   off, the pinned ffmpeg. Space: free disk on the root's drive. Content: the asset library against
-  docs/asset-library.md and docs/asset-library-fab-ue.tsv. Setup done by bootstrap.ps1: config, job slots, ue-heavy.ps1, hooks
-  in settings.json, skills, root CLAUDE.md.
+  docs/asset-library.md and docs/asset-library-fab-ue.tsv. Agents (the config's "agents": Claude Code and/or Codex):
+  installed, signed in where it can tell. Setup done by bootstrap.ps1: config, job slots, ue-heavy.ps1, the recording
+  hooks and each agent's wiring (Claude Code settings.json; Codex hooks.json + trust), skills, root CLAUDE.md / AGENTS.md.
   Exit code = number of FAILs. -Json writes the report as JSON too.
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File machine\check.ps1
-  powershell -ExecutionPolicy Bypass -File machine\check.ps1 -Root C:\gf-test\Work -ClaudeDir C:\gf-test\home\.claude -Json C:\gf-test\check.json
+  powershell -ExecutionPolicy Bypass -File machine\check.ps1 -Root C:\gf-test\Work -ClaudeDir C:\gf-test\home\.claude -CodexDir C:\gf-test\home\.codex `
+      -AgentsSkillsDir C:\gf-test\home\.agents\skills -HooksDir C:\gf-test\home\.game-factory\hooks -Json C:\gf-test\check.json
 #>
 param(
     [string]$Root,
     [string]$ClaudeDir = (Join-Path $env:USERPROFILE '.claude'),
+    [string]$CodexDir,                                          # default: CODEX_HOME / %USERPROFILE%\.codex
+    [string]$AgentsSkillsDir = (Join-Path $env:USERPROFILE '.agents\skills'),
+    [string]$HooksDir,                                          # default: config hooks_dir
     [string]$ConfigPath,
     [string]$Org,                   # default: the config's github_org (GF_ORG)
     [int]$MinFreeGB = 300,          # WARN below this, FAIL below a third of it
@@ -24,10 +29,14 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'lib\gf-root.ps1')
+. (Join-Path $PSScriptRoot 'lib\codex-hooks.ps1')
 if ($ConfigPath) { $env:GF_CONFIG = $ConfigPath }
 if ($Root) { $env:GF_ROOT = $Root }
 $cfg = Get-GFConfig
 $Root = $cfg.root
+if (-not $CodexDir) { $CodexDir = Get-GFCodexHome }
+if (-not $HooksDir) { $HooksDir = Get-GFHooksDir $cfg }
+$Agents = @(Get-GFAgents $cfg)
 if (-not $Org) { $Org = Get-GFOrg $cfg }
 $results = New-Object Collections.Generic.List[object]
 
@@ -226,34 +235,84 @@ Try-Check 'ue-heavy.ps1' {
     else { Add-Result FAIL 'ue-heavy.ps1' "missing $dst" 'machine\bootstrap.ps1' }
 }
 Try-Check 'Recording hooks' {
-    $hd = Join-Path $ClaudeDir 'hooks'
+    $hd = $HooksDir
     $files = @('record-action.ps1', 'record-commit.ps1')
     $diff = @($files | Where-Object { -not (Same-File (Join-Path $PSScriptRoot "hooks\$_") (Join-Path $hd $_)) })
-    $lib = Test-Path (Join-Path $hd 'gf-root.ps1')
-    $sp = Join-Path $ClaudeDir 'settings.json'
-    $wired = @()
-    if (Test-Path $sp) {
-        $s = [IO.File]::ReadAllText($sp) | ConvertFrom-Json
-        foreach ($ev in 'PostToolUse', 'PostToolUseFailure', 'Stop') {
-            $cmds = @($s.hooks.$ev | ForEach-Object { $_.hooks } | ForEach-Object { [string]$_.command })
-            if ($cmds -match 'record-action\.ps1') { $wired += $ev }
-        }
-    }
     $absent = @($files | Where-Object { -not (Test-Path (Join-Path $hd $_)) })
-    if (-not $diff -and $lib -and $wired.Count -eq 3) { Add-Result PASS 'Recording hooks' "$hd; settings.json wires PostToolUse, PostToolUseFailure, Stop" }
-    elseif (-not $absent -and $wired.Count -eq 3) {
-        Add-Result WARN 'Recording hooks' "installed and wired, but older than the repo copy ($($diff -join ', ')$(if (-not $lib) { ', no gf-root.ps1' }))" 'machine\bootstrap.ps1 (backs up the old copies)'
-    } else { Add-Result FAIL 'Recording hooks' ("{0}{1}settings.json wires: {2}" -f $(if ($diff) { "differs/missing: $($diff -join ', '); " } else { '' }), $(if (-not $lib) { 'no gf-root.ps1; ' } else { '' }), $(if ($wired) { $wired -join ', ' } else { 'none' })) 'machine\bootstrap.ps1' }
+    $lib = Test-Path (Join-Path $hd 'gf-root.ps1')
+    if ($absent -or -not $lib) { Add-Result FAIL 'Recording hooks' "missing in ${hd}: $(@($absent) + @($(if (-not $lib) { 'gf-root.ps1' })) -join ', ')" 'machine\bootstrap.ps1'; return }
+    if ($diff) { Add-Result WARN 'Recording hooks' "$hd`: older than the repo copy ($($diff -join ', '))" 'machine\bootstrap.ps1 (backs up the old copies)'; return }
+    Add-Result PASS 'Recording hooks' $hd
+}
+# The events each agent must run record-action.ps1 on (Codex has no PostToolUseFailure).
+function Get-WiredEvents($Obj, [string[]]$Events) {
+    $w = @()
+    foreach ($ev in $Events) {
+        $cmds = @($Obj.hooks.$ev | ForEach-Object { $_.hooks } | ForEach-Object { [string]$_.command })
+        if ($cmds -match 'record-action\.ps1') { $w += $ev }
+    }
+    return $w
+}
+if ($Agents -contains 'claude') {
+    Try-Check 'Claude Code' {
+        $cmd = Get-Command claude -ErrorAction SilentlyContinue
+        $v = if ($cmd) { (Run $cmd.Source @('--version')).out } else { $null }
+        if ($cmd) { Add-Result PASS 'Claude Code' "$v ($($cmd.Source)); sign-in is not detectable: run claude once and sign in" }
+        else { Add-Result WARN 'Claude Code' 'claude not on PATH (the desktop app alone also works)' 'install Claude Code (https://claude.com/claude-code) or the Claude desktop app, then sign in' }
+    }
+    Try-Check 'Claude Code hooks' {
+        $sp = Join-Path $ClaudeDir 'settings.json'
+        $events = @('PostToolUse', 'PostToolUseFailure', 'Stop')
+        $wired = if (Test-Path $sp) { @(Get-WiredEvents ([IO.File]::ReadAllText($sp) | ConvertFrom-Json) $events) } else { @() }
+        if ($wired.Count -eq $events.Count) { Add-Result PASS 'Claude Code hooks' "$sp wires $($events -join ', ')" }
+        else { Add-Result FAIL 'Claude Code hooks' "$sp wires: $(if ($wired) { $wired -join ', ' } else { 'none' })" 'machine\bootstrap.ps1 -Agent claude (asks before installing them)' }
+    }
+}
+if ($Agents -contains 'codex') {
+    Try-Check 'Codex' {
+        $cmd = Get-Command codex -ErrorAction SilentlyContinue
+        if (-not $cmd) { Add-Result FAIL 'Codex' 'codex not on PATH' 'winget install -e --id OpenAI.Codex (or npm install -g @openai/codex), then codex login'; return }
+        $v = (Run $cmd.Source @('--version')).out
+        $s = Run $cmd.Source @('login', 'status')   # exit 0 and "Logged in using ..." when signed in
+        if ($s.code -eq 0) { Add-Result PASS 'Codex' "$v; $(($s.out -split "`n")[0])" }
+        else { Add-Result FAIL 'Codex' "$v; not signed in" 'codex login (ChatGPT account in the browser; or --device-auth)' }
+    }
+    Try-Check 'Codex hooks' {
+        $hp = Join-Path $CodexDir 'hooks.json'
+        $events = @('PostToolUse', 'Stop')
+        $h = if (Test-Path $hp) { [IO.File]::ReadAllText($hp) | ConvertFrom-Json } else { $null }
+        $wired = if ($h) { @(Get-WiredEvents $h $events) } else { @() }
+        if ($wired.Count -ne $events.Count) { Add-Result FAIL 'Codex hooks' "$hp wires: $(if ($wired) { $wired -join ', ' } else { 'none' })" 'machine\bootstrap.ps1 -Agent codex (asks before installing them)'; return }
+        # an untrusted or changed hook is skipped by Codex without a word: compare the trust entries
+        $state = Get-GFCodexTrustState (Join-Path $CodexDir 'config.toml')
+        $trust = @(Get-GFCodexHookTrust $hp $h)
+        $bad = @($trust | Where-Object { $state[$_.key] -ne $_.hash -and $state["\\?\$($_.key)"] -ne $_.hash } | ForEach-Object { $_.event })
+        if (-not $bad) { Add-Result PASS 'Codex hooks' "$hp wires $($events -join ', '); trusted in config.toml" }
+        else { Add-Result FAIL 'Codex hooks' "wired but not trusted (Codex skips them): $($bad -join ', ')" 'machine\bootstrap.ps1 -Agent codex, or in Codex type /hooks and trust the record-action.ps1 hooks' }
+    }
 }
 Try-Check 'Skills' {
-    $names = @(Get-ChildItem (Join-Path $repo '.claude\skills') -Directory | Select-Object -ExpandProperty Name)
-    $bad = @($names | Where-Object { -not (Same-File (Join-Path $repo ".claude\skills\$_\SKILL.md") (Join-Path $ClaudeDir "skills\$_\SKILL.md")) })
-    if (-not $bad) { Add-Result PASS 'Skills' ($names -join ', ') } else { Add-Result FAIL 'Skills' "missing or outdated in ${ClaudeDir}\skills: $($bad -join ', ')" 'machine\bootstrap.ps1' }
+    $names = @(Get-ChildItem (Join-Path $repo 'skills') -Directory | Select-Object -ExpandProperty Name)
+    $where = @()
+    if ($Agents -contains 'claude') { $where += , @('Claude Code', (Join-Path $ClaudeDir 'skills')) }
+    if ($Agents -contains 'codex') { $where += , @('Codex', $AgentsSkillsDir) }
+    $bad = @(foreach ($w in $where) { foreach ($n in $names) { if (-not (Same-File (Join-Path $repo "skills\$n\SKILL.md") (Join-Path $w[1] "$n\SKILL.md"))) { "$($w[0]): $n" } } })
+    if (-not $bad) { Add-Result PASS 'Skills' "$($names -join ', ') in $(($where | ForEach-Object { $_[1] }) -join ' and ')" }
+    else { Add-Result FAIL 'Skills' "missing or outdated: $($bad -join ', ')" 'machine\bootstrap.ps1' }
 }
-Try-Check 'Root CLAUDE.md' {
-    $p = Join-Path $Root 'CLAUDE.md'
-    if ((Test-Path $p) -and ((Get-Content $p -Raw) -match '@.*game-factory/CLAUDE\.md|@.*/CLAUDE\.md')) { Add-Result PASS 'Root CLAUDE.md' "$p imports the repo CLAUDE.md" }
-    else { Add-Result FAIL 'Root CLAUDE.md' "$p missing or not importing game-factory/CLAUDE.md" 'machine\bootstrap.ps1' }
+if ($Agents -contains 'claude') {
+    Try-Check 'Root CLAUDE.md' {
+        $p = Join-Path $Root 'CLAUDE.md'
+        if ((Test-Path $p) -and ((Get-Content $p -Raw) -match '@.*game-factory/CLAUDE\.md|@.*/CLAUDE\.md')) { Add-Result PASS 'Root CLAUDE.md' "$p imports the repo CLAUDE.md" }
+        else { Add-Result FAIL 'Root CLAUDE.md' "$p missing or not importing game-factory/CLAUDE.md" 'machine\bootstrap.ps1' }
+    }
+}
+if ($Agents -contains 'codex') {
+    Try-Check 'Root AGENTS.md' {
+        $p = Join-Path $Root 'AGENTS.md'
+        if ((Test-Path $p) -and ((Get-Content $p -Raw) -match [regex]::Escape((Join-Path $repo 'AGENTS.md')))) { Add-Result PASS 'Root AGENTS.md' "$p names the repo AGENTS.md" }
+        else { Add-Result FAIL 'Root AGENTS.md' "$p missing or not naming $(Join-Path $repo 'AGENTS.md')" 'machine\bootstrap.ps1' }
+    }
 }
 Try-Check 'Game repos record commits' {
     # _-prefixed folders (e.g. _pipeline-test) are tool test projects, not game data
@@ -301,7 +360,7 @@ Try-Check 'Asset library (Fab packs)' {
 # --- report ------------------------------------------------------------------------------------------------------------
 $colors = @{ PASS = 'Green'; WARN = 'Yellow'; FAIL = 'Red' }
 Write-Host ""
-Write-Host "game-factory machine check  (root $Root, Claude dir $ClaudeDir)"
+Write-Host "game-factory machine check  (root $Root, agents $($Agents -join ' + '), hooks dir $HooksDir)"
 foreach ($r in $results) {
     Write-Host ("  {0}  {1,-30} {2}" -f $r.status, $r.check, $r.detail) -ForegroundColor $colors[$r.status]
     if ($r.status -ne 'PASS' -and $r.fix) { Write-Host ("        fix: {0}" -f $r.fix) -ForegroundColor DarkGray }
@@ -310,7 +369,7 @@ $nFail = @($results | Where-Object status -eq 'FAIL').Count
 $nWarn = @($results | Where-Object status -eq 'WARN').Count
 Write-Host ("{0} checks: {1} PASS, {2} WARN, {3} FAIL" -f $results.Count, ($results.Count - $nFail - $nWarn), $nWarn, $nFail)
 if ($Json) {
-    $obj = [ordered]@{ time = (Get-Date).ToString('o'); root = $Root; claude_dir = $ClaudeDir; fail = $nFail; warn = $nWarn; results = $results }
+    $obj = [ordered]@{ time = (Get-Date).ToString('o'); root = $Root; agents = $Agents; hooks_dir = $HooksDir; claude_dir = $ClaudeDir; codex_dir = $CodexDir; fail = $nFail; warn = $nWarn; results = $results }
     [IO.File]::WriteAllText($Json, ($obj | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding($false)))
 }
 exit $nFail

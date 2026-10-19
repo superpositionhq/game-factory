@@ -27,7 +27,7 @@ param(
     [string]$IdPrefix,                  # workflow row id prefix; default the slug's initials (is, rr, td) or its first two letters
     [string]$Reason = 'Create the project from the standard UE skeleton (Live Coding off, Shipping/HiDPI config, AutoPlay drop-in, LFS for every binary type)',
     [string]$Root,
-    [string]$HooksDir = (Join-Path $env:USERPROFILE '.claude\hooks'),
+    [string]$HooksDir,                  # default: the config's hooks_dir (machine/lib/gf-root.ps1 Get-GFHooksDir)
     [string]$Org,                       # default: the config's github_org (GF_ORG)
     [switch]$NoGitHub                   # skip creating the GitHub repo (tests, offline)
 )
@@ -35,6 +35,7 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 . (Join-Path $repo 'machine\lib\gf-root.ps1')
 if (-not $Root) { $Root = Get-GFRoot }
+if (-not $HooksDir) { $HooksDir = Get-GFHooksDir }
 if (-not $Org) { $Org = Get-GFOrg }
 if (-not $Org -and -not $NoGitHub) { throw 'no GitHub org: set github_org (machine/bootstrap.ps1 -Org <org>), pass -Org, or -NoGitHub' }
 # Pre-flight, first: the recording hooks tie this session to the game when a tool call names the project folder as an
@@ -54,7 +55,7 @@ if ($Project -notmatch '^[A-Z][A-Za-z0-9]{1,30}$') { throw "project name '$Proje
 
 # Names that must never appear inside a game (code, config, commits, builds).
 foreach ($v in @($Slug, $Project, $Title, $Description, $Reason)) {
-    if ($v -match '(?i)superposition|game[-_ ]?factory|claude|anthropic' -or ($Org -and $v -match ('(?i)' + [regex]::Escape($Org)))) { throw "banned name in '$v' (see the game-session skill)" }
+    if ($v -match '(?i)superposition|game[-_ ]?factory|claude|anthropic|openai' -or ($Org -and $v -match ('(?i)' + [regex]::Escape($Org)))) { throw "banned name in '$v' (see the game-session skill)" }
 }
 if ((Test-Path -LiteralPath $Path) -and @(Get-ChildItem -LiteralPath $Path -Force).Count) { throw "$Path exists and is not empty" }
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw 'git not found (run machine\bootstrap.ps1 first)' }
