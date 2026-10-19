@@ -1,5 +1,5 @@
 {
-  "$comment": "Vendored, unchanged except this comment, from the game environment's published GameTask schema (backend/app/factory/game_env/tasks.schema.json at commit b5305708 on feat/game-env-probe-checks, 2026-10-19: the deterministic `probe` check kind). Update it from there; tools/validate-game.py checks every task in a game repo's Tasks/ and in a dataset against it.",
+  "$comment": "Vendored, unchanged except this comment, from the game environment's published GameTask schema (backend/app/factory/game_env/tasks.schema.json at commit 60914179 on feat/game-env-probe-checks, 2026-10-19: the deterministic `probe` check kind, every task seeded). Update it from there; tools/validate-game.py checks every task in a game repo's Tasks/ and in a dataset against it.",
   "$defs": {
     "ActionsJudge": {
       "additionalProperties": false,
@@ -2770,15 +2770,7 @@
       "title": "Play Map"
     },
     "seed": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/Seed"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null
+      "$ref": "#/$defs/Seed"
     },
     "tags": {
       "items": {
@@ -2790,7 +2782,7 @@
     },
     "template": {
       "const": "blank-cpp",
-      "default": "blank-cpp",
+      "description": "Read past: every task starts from its seed (2026-10-18).",
       "title": "Template",
       "type": "string"
     },
@@ -2805,6 +2797,7 @@
     "name",
     "title",
     "instruction",
+    "seed",
     "milestones"
   ],
   "title": "game-task/1",
