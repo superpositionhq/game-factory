@@ -314,7 +314,7 @@ public static class Tools {
     // Formats that are binary even when their first 8 KB hold no NUL byte (Radiance .hdr starts with a text header).
     static readonly HashSet<string> BinaryExt = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
         ".hdr", ".exr", ".bmp", ".png", ".jpg", ".jpeg", ".tga", ".dds", ".psd", ".tif", ".tiff", ".fbx", ".glb", ".uasset", ".umap",
-        ".wav", ".ogg", ".mp3", ".flac", ".mkv", ".mka", ".mp4", ".pak", ".ucas", ".utoc", ".exe", ".dll", ".zip", ".7z", ".ttf", ".otf", ".bin" };
+        ".wav", ".ogg", ".mp3", ".flac", ".mkv", ".mka", ".mp4", ".pak", ".ucas", ".utoc", ".exe", ".dll", ".zip", ".7z", ".ttf", ".otf", ".bin", ".r8", ".r16", ".raw", ".blend" };
     public static bool IsText(string path) {
         if (BinaryExt.Contains(Path.GetExtension(path))) return false;
         using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read)) {
@@ -409,7 +409,9 @@ public static class Tools {
             if (banned.IsMatch(rel)) { var h = new Hit(); h.Path = rel; h.Kind = "path"; h.Text = rel; mine.Add(h); }
             string full = root + rel.Replace('/', '\\');
             var fi = new FileInfo(full);
-            if (fi.Length > 0 && fi.Length < (256L << 20) && IsText(full)) {
+            // Git LFS objects (GitHistory/lfs/objects, History/lfs/objects) are binary assets by type (LFS patterns); their
+            // names carry no extension, so raw image data without NUL bytes (.r8 heightmap/weight layers) would pass as text
+            if (fi.Length > 0 && fi.Length < (256L << 20) && rel.IndexOf("lfs/objects/", StringComparison.OrdinalIgnoreCase) < 0 && IsText(full)) {
                 string text = DecodeText(File.ReadAllBytes(full));
                 long line = 1; int pos = 0, found = 0;
                 while (pos <= text.Length) {
