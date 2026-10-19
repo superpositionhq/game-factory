@@ -33,8 +33,9 @@ The user's standing rule: **every session commits its work continuously.**
 - Body: why, how it was verified (build/test/run result), anything left open.
 - Game repos: end with the workflow rows the commit covers: `workflow: td-00412..td-00431`. A commit that acts on a
   human direction also names it: `Direction: td-00398 (<the direction in a few words>)`.
-- Game repos: no AI attribution trailers (`Co-Authored-By: Claude ...`) and never the names Superposition or
-  game-factory: commit messages ship in the dataset's `git.log`. Deliverables block Claude/Anthropic/Opus outright.
+- Game repos: no AI attribution trailers or footers (`Co-Authored-By: <agent> ...`, `Generated with <tool>`) and never
+  the names Superposition or game-factory: commit messages ship in the dataset's `git.log`. Agent, model and provider
+  names (Claude, Anthropic, Opus, OpenAI, Codex CLI, GPT model ids) stay out too; deliverables block or scrub them.
   game-factory commits follow the normal attribution rules.
 
 ## workflow.jsonl (game repos)
@@ -124,7 +125,8 @@ already made: the replay has to go back and redo everything after it.
 
 ## The WIP auto-commit
 
-The Stop hook (`record-action.ps1 -Stop`) commits leftover changes in a game repo as `WIP` at the end of every turn.
+The Stop hook (`record-action.ps1 -Stop`, wired into Claude Code and Codex alike) commits leftover changes in a game
+repo as `WIP` at the end of every turn.
 It is a safety net so nothing is lost, not a way of working: a `WIP` commit carries no reason and no row ids, and it
 reads as sloppy in the dataset's `git.log`. If one of yours appears, say in your next commit's body what the WIP
 commit contained. Don't squash or amend it away; the history is the record. The hook does not cover game-factory:
