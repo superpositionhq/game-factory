@@ -511,7 +511,8 @@ GRADER_KEYS = ('milestones',)          # the grader's half of a task, with seed.
 
 def task_semantic_errors(t):
     """What the schema cannot say (the game environment's tasks.validate): check names unique, `needs` naming earlier
-    checks, a code judge or a reference judge only with seed.reference, a before/after judge only with a seed."""
+    checks, a code judge or a reference judge only with seed.reference, a before/after judge only with a seed, a
+    calibrated probe only with seed.reference, a start-relative probe only with a seed."""
     errs, seen = [], set()
     seed = t.get('seed') if isinstance(t.get('seed'), dict) else None
     ref = seed.get('reference') if seed else None
@@ -526,6 +527,12 @@ def task_semantic_errors(t):
                 errs.append(f'check {n}: a before/after judge needs a seed')
             if k == 'judge' and c.get('reference') and not ref:
                 errs.append(f'check {n}: a reference judge needs seed.reference')
+            if k == 'probe':
+                exp = c.get('expect') if isinstance(c.get('expect'), dict) else {}
+                if 'calibrate' in exp and not ref:
+                    errs.append(f'check {n}: a calibrated probe needs seed.reference')
+                if ('start_times' in exp or 'start_plus' in exp) and not seed:
+                    errs.append(f'check {n}: a probe relative to the start needs a seed')
             if n in seen:
                 errs.append(f'check {n} is named twice')
             missing = [x for x in (c.get('needs') or []) if x not in seen]
@@ -541,6 +548,15 @@ def check_task(rep, a, label, t, game, has_commit):
         rep.error(a, f'{label}: {e}')
     for e in task_semantic_errors(t)[:5]:
         rep.error(a, f'{label}: {e}')
+    gated = [c for m in t.get('milestones') or [] if isinstance(m, dict) for c in m.get('checks') or []
+             if isinstance(c, dict) and c.get('kind') == 'probe' and c.get('required', True)]
+    judged = [c.get('name') for m in t.get('milestones') or [] if isinstance(m, dict) for c in m.get('checks') or []
+              if isinstance(c, dict) and c.get('kind') in ('judge', 'code_judge', 'actions_judge')
+              and c.get('required', True)]
+    if not gated:
+        rep.error(a, f'{label}: no required probe check: pass/fail must be deterministic (write-tasks section 5)')
+    if judged:
+        rep.note(a, f'{label}: required judge check(s) {judged}: judges should be "required": false quality checks')
     s = t.get('seed')
     if isinstance(s, dict):
         if s.get('game') != game:
