@@ -50,13 +50,14 @@ Then write the tasks in `<root>/tasks/<slug>/Tasks/`, commit there (`git -C <roo
   anything under `Tasks/` or whose `tasks` branch shares history with main.
 - The recording and live-replay hooks ignore commits on the `tasks` branch, and the delivered history leaves it out,
   so committing tasks costs the game's record nothing.
-- Seeds (`seed.commit`, `seed.reference`) are commits of main's history (ancestors of main's head); pick them in the
-  game checkout (`git -C <root>/games/<slug> log`), never on the tasks branch.
+- Seeds (`seed.commit`, `seed.reference`) are commits of main's history (ancestors of main's head) or of the task's
+  own start branch `starts/<task name>` (section 2, "Starts on the engine"); pick them in the game checkout
+  (`git -C <root>/games/<slug> log`), never on the tasks branch.
 
 Check every task after committing it on the tasks branch:
 `python <GF_ROOT>/game-factory/tools/validate-game.py <GF_ROOT>/games/<slug>` (it reads the committed `tasks`
 branch, else `origin/tasks`, through git: schema, the environment's extra rules, name = file name, seed commits on
-main, the branch an orphan, nothing under `Tasks/` on main). Commit tasks as you go, like any work (commit-always
+main or the task's `starts/<name>` branch and on UE 5.7, the branch an orphan, nothing under `Tasks/` on main). Commit tasks as you go, like any work (commit-always
 skill), but on the tasks branch only.
 
 ## 1. The four kinds
@@ -65,13 +66,32 @@ skill), but on the tasks branch only.
 |---|---|---|---|---|
 | `bug_fix` | a real fix in this game's history | the fix's parent | the fix | the bug shows in play or a log at the start; the fix is mostly code; one cause |
 | `correction` | a person's direction (`user.direction` row) the game then answered | the last commit before the direction | the commit that answered it (the last of its span) | the direction is about the game itself and its outcome shows in play or code |
-| `feature` | a new mechanic a producer would plausibly ask for | a stable commit (after the 5.7 port when it matters) | none, or the game's own later feature | small enough for one session, uses keys a grader can press, judgeable in play |
+| `feature` | a new mechanic a producer would plausibly ask for | a stable 5.7 commit (main's head is usual) | none, or the game's own later feature | small enough for one session, uses keys a grader can press, judgeable in play |
 | `change` | a look or content change (lighting, weather, camera, HUD style) | a stable commit | none, or the game's own later change | clearly visible in screenshots, before vs after |
 
 Not a task: status chatter, process rules, questions, praise, a fix that is only a re-import of assets the start does
 not have, a sweeping pass resting on a pack imported later, anything whose outcome neither play nor code can show.
 
 ## 2. Picking the commits
+
+### Starts on the engine (owner's rule, 2026-10-19)
+
+The game environment builds a start exactly as committed, on UE 5.7: it never ports, patches or rewrites a game, and
+it refuses a start that isn't a 5.7 project. So `seed.commit` and `seed.reference` must both be commits whose
+`.uproject` says `"EngineAssociation": "5.7"` and that build as they are (the validator checks the engine). A real fix
+made before the game's 5.7 port can't be used as it was; give it a start on 5.7 instead:
+
+- **B** = main's head (5.7). **S** (`seed.commit`) = B with the change taken back out of the game itself (`Source/`,
+  `Content/`, `Config/`, `Plugins/`, the `.uproject`), re-created by hand where later work moved the code: the issue
+  must really be back, and S must still compile. Every other path of S (`workflow.jsonl`, `Scripts/`, `Docs/`,
+  `README.md`, manifests, tools) is exactly as at the old pre-fix commit, so nothing in the start records or
+  regenerates the fix. **R** (`seed.reference`) = a child of S whose tree is B's (`git commit-tree <B^{tree}> -p S`).
+- Both live on the branch `starts/<task name>` (pointing at R), pushed with the game; the dataset ships every branch
+  but `tasks`, so the history the environment gets holds them.
+- A binary asset (.uasset/.umap) goes back to its pre-fix version only if no later commit changed it; otherwise
+  re-create the issue in code or config, or pick another task.
+- A feature or change with no reference starts at B itself (no branch), once you've checked B doesn't already have it.
+- A real fix made after the port needs none of this: its parent and the fix are both 5.7 commits of main.
 
 - **Read the code at `seed.commit`** and confirm the issue is there (the reference diff's removed lines, or a search).
 - **The real fix is often not the commit that says so**: a descriptive commit may touch only `workflow.jsonl` while the
