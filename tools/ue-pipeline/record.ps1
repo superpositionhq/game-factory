@@ -171,7 +171,11 @@ function Stop-Capture($Cap, [int]$TimeoutMs = 15000) {
     if ($Cap.Process.HasExited) { return }
     try { $Cap.Process.StandardInput.Write('q'); $Cap.Process.StandardInput.Flush() } catch { }
     if (-not $Cap.Process.WaitForExit($TimeoutMs)) {
-        & taskkill.exe /T /F /PID $Cap.Process.Id 2>&1 | Out-Null   # cmd and its ffmpeg child
+        # cmd and its ffmpeg child. taskkill writes to stderr when a child is already gone or cannot be ended; under
+        # $ErrorActionPreference Stop that became a terminating error and failed the whole run (blade-duel, stealth
+        # 2026-10-18), so it runs with Continue and its output is ignored.
+        $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        try { & taskkill.exe /T /F /PID $Cap.Process.Id 2>&1 | Out-Null } catch { } finally { $ErrorActionPreference = $eap }
         [void]$Cap.Process.WaitForExit(5000)
     }
 }
