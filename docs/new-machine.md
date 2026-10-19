@@ -18,7 +18,7 @@ step or a reboot, run it again and it continues where it stopped.
 | An NVIDIA GPU (8 GB+ VRAM) | only for recording gameplay videos (NVENC); without one, recording falls back to slower encoders |
 | A GitHub account that is a member of `<org>` (the organisation, or user, that owns `game-factory` and the private `game-<slug>` repos), allowed to create private repos there | an owner of `<org>` adds you |
 | An Epic Games account | the Unreal Engine EULA and the Launcher download; Fab (store packs) uses the same account |
-| A Claude account | Claude Code in a terminal, or the Claude desktop app (Code tab) |
+| A coding-agent account: Claude, or OpenAI (a ChatGPT plan or an API key) | the agent that builds the game: Claude Code in a terminal or the Claude desktop app (Code tab), or the Codex CLI in a terminal (`setup.ps1 -Agent claude\|codex\|both`) |
 | Admin rights on the PC | a few UAC prompts (Build Tools, long paths) |
 
 ## 1. Run setup
@@ -45,23 +45,25 @@ Then the one command (in the folder holding `setup.ps1`):
 powershell -ExecutionPolicy Bypass -File setup.ps1 -Org <org>
 ```
 
-Options: `-Root D:\Work` (the machine root; default `%USERPROFILE%\Work`, asked on the first run; a short path such as
-`C:\Work` helps with deep store-pack paths), `-CloneGames` (clone every `<org>/game-*` repo; asked otherwise), `-Yes`
-(answer yes to every question).
+Options: `-Agent claude|codex|both` (the coding agent; asked on the first run, remembered), `-Root D:\Work` (the
+machine root; default `%USERPROFILE%\Work`, asked on the first run; a short path such as `C:\Work` helps with deep
+store-pack paths), `-CloneGames` (clone every `<org>/game-*` repo; asked otherwise), `-Yes` (answer yes to every
+question).
 
 What it does, in order (log: `<root>\.setup\setup.log`; answers remembered in `<root>\.setup\state.json`):
 
 1. **Hardware precheck** against the minimums above.
 2. **Software through winget**, after one question (winget accepts each package's licence; some show a UAC prompt):
    Git + Git LFS, GitHub CLI, Python 3.12, VS 2022 Build Tools (C++ workload: MSVC 14.44, Windows 11 SDK 22621),
-   .NET Framework 4.8.1 Developer Pack, 7-Zip, Epic Games Launcher; the Claude desktop app is offered separately.
+   .NET Framework 4.8.1 Developer Pack, 7-Zip, Epic Games Launcher; with Codex the Codex CLI (`OpenAI.Codex`); with
+   Claude Code the Claude desktop app is offered separately (optional).
 3. **Windows settings, each asked first**: long paths (one UAC prompt) and no sleep for the PC and the display while
    plugged in (long builds and overnight queues).
 4. **GitHub sign-in** (`gh auth login` in the browser) and your git `user.name` / `user.email`; checks that you can
-   see `<org>/game-factory`.
+   see `<org>/game-factory`. With Codex, **Codex sign-in** (`codex login` in the browser; `codex login status` tells).
 5. **game-factory**: cloned into `<root>\game-factory`, then `machine\bootstrap.ps1` (config with `github_org`, job
-   slots, layout, tools, pinned ffmpeg, skills, root `CLAUDE.md`, and the recording hooks after it has shown what
-   they record and asked; the games when you said so) and `machine\check.ps1`.
+   slots, layout, tools, pinned ffmpeg, skills, root `CLAUDE.md` and/or `AGENTS.md`, and the recording hooks for your
+   agent after it has shown what they record and asked; the games when you said so) and `machine\check.ps1`.
 6. **A PASS / TODO list.** Each TODO says exactly what to do; do it and run setup again.
 
 ## 2. What only you can do
@@ -74,7 +76,7 @@ Setup prints these as TODOs and detects them on the next run.
 | NVIDIA driver (if you have an NVIDIA GPU) | the current Game Ready or Studio driver, 610 or newer, from nvidia.com/drivers or the NVIDIA app | `nvidia-smi` |
 | Display (for recording) | a multiple of 60 Hz (60/120/240) and a primary display that holds a 1920x1080 window: Settings > System > Display | `check.ps1` |
 | Fab sign-in | only to download store packs for a **new** game: sign in at fab.com with the Epic account that owns the packs, in the browser the asset-scout session uses (the Claude browser pane). Purchases and licence choices stay with their owner (paid packs: `docs/fab-shopping-list.md`). | (not detectable) |
-| Claude sign-in | sign in to Claude Code (`claude`) or the desktop app | (not detectable) |
+| Agent sign-in | Claude Code: run `claude` once (or open the desktop app) and sign in. Codex: `codex login` (setup runs it; `--device-auth` without a browser) | Claude: not detectable; Codex: `codex login status` |
 
 Cloned games carry their store packs (committed through Git LFS in each private repo), so the shared asset library
 (`<root>\asset-library`, rebuilt by the asset-scout helper) is only needed for new games; `check.ps1` reports it as a
@@ -82,13 +84,15 @@ WARN until then.
 
 ## 3. The first session
 
-- **Desktop app, several games at once:** open the Code tab in the root folder and start the coordinator with
-  [briefs/coordinator.md](briefs/coordinator.md); add its session id to `~\.claude\hooks\recording-exclude.txt`. The
+- **Desktop app, several games at once (Claude only):** open the Code tab in the root folder and start the coordinator with
+  [briefs/coordinator.md](briefs/coordinator.md); add its session id to `<hooks dir>\recording-exclude.txt`. The
   coordinator starts the **ue-pipeline** helper first (proves build, package and recording on this PC), the
   **asset-scout** when new games need packs, then the game sessions (`CONTINUE` for cloned games, `NEW` for new ones:
   [briefs/game-session.md](briefs/game-session.md) + [briefs/games/](briefs/games/)).
-- **Solo, one game in a terminal:** `cd <root>`, run `claude`, and paste [briefs/solo-game.md](briefs/solo-game.md)
-  with its placeholders filled. Same rules; you take the coordinator's decisions (pushes, recordings).
+- **Solo, one game in a terminal:** `cd <root>`, run `claude` or `codex -s danger-full-access`, and paste
+  [briefs/solo-game.md](briefs/solo-game.md) with its placeholders filled. Same rules and the same recording with
+  either agent; you take the coordinator's decisions (pushes, recordings). What differs between the agents:
+  [AGENTS.md](../AGENTS.md), "Agents".
 
 ## Reference: what bootstrap writes
 
@@ -102,13 +106,17 @@ WARN until then.
   `<ueb>\src`, `<ueb>\tmp`;
 - `tools\ue-heavy.ps1` (the machine-wide job limiter), `tools\asset-scout\`, the pinned ffmpeg 8.1.2 (SHA-256
   verified);
-- the recording hooks in `~\.claude\hooks\`, wired into `~\.claude\settings.json` (backup first; asked first, `-Yes`
-  skips the question), the skills in `~\.claude\skills\`, `<root>\CLAUDE.md` importing `game-factory/CLAUDE.md`;
+- the recording hooks in the hooks dir (`hooks_dir` in the config: `~\.claude\hooks\` on machines set up before Codex
+  support, else `~\.game-factory\hooks\`), wired into `~\.claude\settings.json` for Claude Code and
+  `~\.codex\hooks.json` + trust entries in `~\.codex\config.toml` for Codex (backup first; asked first, `-Yes` skips
+  the question); the skills from `skills\` in `~\.claude\skills\` and/or `~\.agents\skills\`; `<root>\CLAUDE.md`
+  importing `game-factory/CLAUDE.md` and/or `<root>\AGENTS.md` naming `game-factory\AGENTS.md`;
 - Git LFS filters, the commit recorder in every game repo, and with `-CloneGames` every `<org>/game-*` repo.
 
 `machine/check.ps1` reports PASS / WARN / FAIL for the toolchain, GitHub access, display and power, disk, the pinned
 ffmpeg (NVENC test), config, job slots, layout, hooks, skills, game repo hooks and the asset library; its exit code is
-the number of FAILs. Details of every file: [../machine/README.md](../machine/README.md).
+the number of FAILs; for each agent it also checks the install, the sign-in (Codex) and that the hooks are wired (and,
+for Codex, trusted). Details of every file: [../machine/README.md](../machine/README.md).
 
 ## Toolchain notes
 
@@ -125,11 +133,11 @@ the number of FAILs. Details of every file: [../machine/README.md](../machine/RE
 ## Scratch test (without touching a live setup)
 
 `-DryRun` reports installs, Windows settings, sign-ins and game clones without doing them; with a scratch root and
-Claude folder, the bootstrap and check parts run against those only:
+agent folders, the bootstrap and check parts run against those only:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File machine/setup.ps1 -Org <org> -DryRun -Root C:/gf-test/Work -ClaudeDir C:/gf-test/home/.claude -ConfigPath C:/gf-test/home/.game-factory/config.json
+powershell -ExecutionPolicy Bypass -File machine/setup.ps1 -Org <org> -DryRun -Agent both -Root C:/gf-test/Work -ClaudeDir C:/gf-test/home/.claude -CodexDir C:/gf-test/home/.codex -AgentsSkillsDir C:/gf-test/home/.agents/skills -HooksDir C:/gf-test/home/.game-factory/hooks -ConfigPath C:/gf-test/home/.game-factory/config.json
 ```
 
-`templates/new-game.ps1 -NoGitHub -Root C:/gf-test/Work -HooksDir C:/gf-test/home/.claude/hooks` creates a game
+`templates/new-game.ps1 -NoGitHub -Root C:/gf-test/Work -HooksDir C:/gf-test/home/.game-factory/hooks` creates a game
 without creating a GitHub repo.

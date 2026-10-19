@@ -15,10 +15,11 @@
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Repo,
-    [string]$HooksDir = (Join-Path $env:USERPROFILE '.claude\hooks'),   # where bootstrap.ps1 installed record-commit.ps1
+    [string]$HooksDir,   # where bootstrap.ps1 installed record-commit.ps1; default the config's hooks_dir (Get-GFHooksDir)
     [switch]$Force
 )
 $ErrorActionPreference = 'Stop'
+if (-not $HooksDir) { . (Join-Path $PSScriptRoot 'lib\gf-root.ps1'); $HooksDir = Get-GFHooksDir }
 $Repo = (Resolve-Path -LiteralPath $Repo).Path
 if (-not (Test-Path -LiteralPath (Join-Path $Repo '.git'))) { throw "not a git repo (no .git): $Repo" }
 $hookPath = (& git -C $Repo rev-parse --git-path hooks/post-commit)

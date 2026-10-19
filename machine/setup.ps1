@@ -6,15 +6,19 @@
   1. Hardware precheck against the stated minimums (below).
   2. Software through winget (asks once, lists what is missing; winget accepts each package's licence):
      Git (+ Git LFS), GitHub CLI, Python 3.12, VS 2022 Build Tools (C++ workload: MSVC 14.44, Windows 11 SDK 22621),
-     .NET Framework 4.8.1 Developer Pack, 7-Zip, Epic Games Launcher, and the Claude desktop app if winget has it.
+     .NET Framework 4.8.1 Developer Pack, 7-Zip, Epic Games Launcher, the Codex CLI when Codex is one of the agents,
+     and the Claude desktop app (optional) when Claude Code is.
   3. Windows settings, each asked first: long paths (admin, one UAC prompt) and no sleep while plugged in (display and
      PC; powercfg on the current power plan).
-  4. GitHub sign-in (gh auth login in the browser) and git user.name / user.email.
+  4. GitHub sign-in (gh auth login in the browser) and git user.name / user.email; Codex sign-in (codex login in the
+     browser) when Codex is one of the agents.
   5. game-factory: cloned into <root>\game-factory when this script runs from outside a clone, then
      machine\bootstrap.ps1 (config, tools, hooks after its own question, skills; -CloneGames when you say so) and
      machine\check.ps1.
-  6. What cannot be scripted (Epic sign-in + UE 5.7 in the Launcher, NVIDIA driver, Fab sign-in, Claude sign-in):
+  6. What cannot be scripted (Epic sign-in + UE 5.7 in the Launcher, NVIDIA driver, Fab sign-in, Claude Code sign-in):
      exact steps, detected on the next run.
+  The coding agent: -Agent claude (Claude Code), codex (OpenAI Codex CLI) or both; asked on the first run (remembered),
+  passed on to bootstrap.ps1, which wires the recording hooks, skills and root instructions into each.
   Ends with a PASS / TODO list. Log: <root>\.setup\setup.log; answers: <root>\.setup\state.json (not asked again).
 
   Minimums: Windows 11; 8 logical cores and 16 GB RAM (32 GB recommended: job slots scale with RAM); 300 GB free on
@@ -23,10 +27,12 @@
   610+, NVENC); without one it falls back to slower encoders.
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File setup.ps1 -Org <org>
+  powershell -ExecutionPolicy Bypass -File setup.ps1 -Org <org> -Agent codex
   powershell -ExecutionPolicy Bypass -File setup.ps1 -Org <org> -Root D:\Work -CloneGames
   # dry run against a scratch root (installs, Windows settings, sign-ins and game clones are only reported):
   powershell -ExecutionPolicy Bypass -File machine\setup.ps1 -Org <org> -DryRun -Root C:\gf-test\Work `
-      -ClaudeDir C:\gf-test\home\.claude -ConfigPath C:\gf-test\home\.game-factory\config.json
+      -ClaudeDir C:\gf-test\home\.claude -CodexDir C:\gf-test\home\.codex -AgentsSkillsDir C:\gf-test\home\.agents\skills `
+      -HooksDir C:\gf-test\home\.game-factory\hooks -ConfigPath C:\gf-test\home\.game-factory\config.json -Agent both
 #>
 param(
     [string]$Root,                     # default: the config's root, else asked (%USERPROFILE%\Work offered)
@@ -36,7 +42,11 @@ param(
     [switch]$DryRun,                   # no installs, Windows settings, sign-ins or game clones (bootstrap still writes the
                                        # config, root and Claude dir it is given: use it with a scratch -Root/-ClaudeDir/-ConfigPath)
     [string]$RepoUrl,                  # where to clone game-factory from (default https://github.com/<org>/game-factory)
+    [ValidateSet('', 'claude', 'codex', 'both')][string]$Agent = '',   # the coding agent(s); asked when not given
     [string]$ClaudeDir = (Join-Path $env:USERPROFILE '.claude'),
+    [string]$CodexDir,                 # default: CODEX_HOME / %USERPROFILE%\.codex
+    [string]$AgentsSkillsDir,          # default: %USERPROFILE%\.agents\skills (Codex's personal skills)
+    [string]$HooksDir,                 # default: the config's hooks_dir
     [string]$ConfigPath,
     [switch]$SkipFfmpeg
 )
@@ -95,6 +105,21 @@ if (-not $Org) { $Org = Get-State 'org' }
 if (-not $Org -and $interactive) { $Org = (Read-Host '  GitHub organisation (or user) that owns game-factory and the game-<slug> repos').Trim() }
 if ($Org) { Save-State 'org' $Org }
 
+# Which coding agent(s): -Agent, else the previous answer, else the config's "agents", else asked (Claude Code, Codex
+# or both); a non-interactive run without an answer takes what is installed (bootstrap.ps1 -Agent auto).
+if (-not $Agent) { $Agent = [string](Get-State 'agent') }
+if (-not $Agent -and $cfgNow -and $cfgNow.PSObject.Properties['agents'] -and @($cfgNow.agents).Count) {
+    $Agent = if (@($cfgNow.agents).Count -ge 2) { 'both' } else { [string]@($cfgNow.agents)[0] }
+}
+if (-not $Agent -and $interactive -and -not $Yes) {
+    $a = (Read-Host '  Coding agent: claude (Claude Code), codex (OpenAI Codex CLI) or both [claude]').Trim().ToLower()
+    $Agent = if ($a -in 'codex', 'both') { $a } else { 'claude' }
+}
+if ($Agent) { Save-State 'agent' $Agent }
+$useClaude = $Agent -in '', 'claude', 'both'
+$useCodex = $Agent -in 'codex', 'both'
+Write-Host "  agent: $(if ($Agent) { $Agent } else { 'auto (what is installed)' })"
+
 # --- 1. hardware -------------------------------------------------------------------------------------------------------
 Write-Host "1. hardware (minimums: Windows 11, 8 threads, 16 GB RAM, 300 GB free; NVIDIA for recording)"
 $os = Get-CimInstance Win32_OperatingSystem
@@ -134,8 +159,10 @@ $packages = @(
     @{ id = 'Microsoft.DotNet.Framework.DeveloperPack_4'; name = '.NET Framework 4.8.1 Developer Pack'; test = { Test-NetFx481 } },
     @{ id = '7zip.7zip'; name = '7-Zip'; test = { (Has 7z) -or (Test-Path "$env:ProgramFiles\7-Zip\7z.exe") } },
     @{ id = 'EpicGames.EpicGamesLauncher'; name = 'Epic Games Launcher'; test = { (Test-Path "${env:ProgramFiles(x86)}\Epic Games\Launcher\Portal\Binaries\Win64\EpicGamesLauncher.exe") -or (Test-Path "$env:ProgramFiles\Epic Games\Launcher\Portal\Binaries\Win64\EpicGamesLauncher.exe") } },
-    @{ id = 'Anthropic.Claude'; name = 'Claude desktop app (optional: Code tab, coordinator mode)'; optional = $true; test = { (Test-Path "$env:LOCALAPPDATA\AnthropicClaude\claude.exe") -or [bool](Get-AppxPackage -Name '*Claude*' -ErrorAction SilentlyContinue) } }
+    @{ id = 'Anthropic.Claude'; name = 'Claude desktop app (optional: Code tab, coordinator mode)'; optional = $true; agent = 'claude'; test = { (Test-Path "$env:LOCALAPPDATA\AnthropicClaude\claude.exe") -or [bool](Get-AppxPackage -Name '*Claude*' -ErrorAction SilentlyContinue) } },
+    @{ id = 'OpenAI.Codex'; name = 'Codex CLI (OpenAI)'; agent = 'codex'; test = { Has codex } }
 )
+$packages = @($packages | Where-Object { -not $_.agent -or ($_.agent -eq 'claude' -and $useClaude) -or ($_.agent -eq 'codex' -and $useCodex) })
 $missing = @($packages | Where-Object { -not (& $_.test) })
 foreach ($p in $packages) { if ($missing -notcontains $p) { Item PASS $p.name 'installed' } }
 if ($missing) {
@@ -212,6 +239,20 @@ if (Has git) {
         if ($v) { Item PASS "git $k" $v } else { Item TODO "git $k" 'not set' "git config --global $k `"<value>`"" }
     }
 }
+if ($useCodex) {
+    # Codex sign-in: `codex login status` exits 0 when signed in (ChatGPT account or API key).
+    if (-not (Has codex)) { Item TODO 'Codex sign-in' 'needs the Codex CLI' 'install it (step 2), then run setup again' }
+    else {
+        $cxOk = (Quiet { codex login status }).code -eq 0
+        if (-not $cxOk -and -not $DryRun -and $interactive) {
+            Write-Host '  Codex sign-in: a browser page opens; sign in with the ChatGPT account (or the API key) you were given.'
+            & codex login
+            $cxOk = (Quiet { codex login status }).code -eq 0
+        }
+        if ($cxOk) { Item PASS 'Codex sign-in' ((Quiet { codex login status }).out -split "`n")[0] }
+        else { Item TODO 'Codex sign-in' 'not signed in' 'codex login (or codex login --device-auth), then run setup again' }
+    }
+}
 if (-not $Org) { Item TODO 'GitHub org' 'not set' 'run setup again with -Org <org> (the organisation or user that owns game-factory)' }
 elseif ($ghOk) {
     $see = (Quiet { gh repo view "$Org/game-factory" --json name }).code -eq 0
@@ -244,7 +285,11 @@ if (Test-Path (Join-Path $repo 'machine\bootstrap.ps1')) {
             Save-State 'clone_games' $clone
         }
     }
-    $ba = @{ Root = $Root; ClaudeDir = $ClaudeDir }
+    $ba = [ordered]@{ Root = $Root; ClaudeDir = $ClaudeDir }
+    if ($Agent) { $ba.Agent = $Agent }
+    if ($CodexDir) { $ba.CodexDir = $CodexDir }
+    if ($AgentsSkillsDir) { $ba.AgentsSkillsDir = $AgentsSkillsDir }
+    if ($HooksDir) { $ba.HooksDir = $HooksDir }
     if ($Org) { $ba.Org = $Org }
     if ($env:GF_CONFIG) { $ba.ConfigPath = $env:GF_CONFIG }
     if ($Yes) { $ba.Yes = $true }
@@ -276,7 +321,9 @@ if ($nv) {
     if ($drv -ge 610) { Item PASS 'NVIDIA driver' "$drv" } else { Item TODO 'NVIDIA driver' $(if ($drv) { "$drv" } else { 'nvidia-smi not found' }) 'install the current Game Ready or Studio driver (610 or newer) from nvidia.com/drivers or the NVIDIA app, then run setup again' }
 }
 Item INFO 'Fab sign-in' 'only to download store packs for a NEW game: sign in at fab.com (Epic account) in the browser the asset-scout session uses; cloned games already carry their packs'
-Item INFO 'Claude sign-in' 'sign in to Claude Code (claude, or the desktop app) with your account; then start the first session (docs/new-machine.md, "First session")'
+if ($useClaude) { Item INFO 'Claude Code sign-in' 'run claude once (or open the desktop app) and sign in with your account; not detectable' }
+Item INFO 'First session' "start Claude Code (claude) or Codex (codex) in $Root and paste the brief (docs/new-machine.md, 'The first session')"
+
 
 # --- check + summary -----------------------------------------------------------------------------------------------------
 $check = Join-Path $repo 'machine\check.ps1'
@@ -284,6 +331,9 @@ if (Test-Path $check) {
     Write-Host "7. machine\check.ps1"
     $json = Join-Path $setupDir 'check.json'
     $ca = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $check, '-Root', $Root, '-ClaudeDir', $ClaudeDir, '-Json', $json)
+    if ($CodexDir) { $ca += @('-CodexDir', $CodexDir) }
+    if ($AgentsSkillsDir) { $ca += @('-AgentsSkillsDir', $AgentsSkillsDir) }
+    if ($HooksDir) { $ca += @('-HooksDir', $HooksDir) }
     if ($env:GF_CONFIG) { $ca += @('-ConfigPath', $env:GF_CONFIG) }
     $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     & powershell @ca | Out-Null
@@ -292,7 +342,8 @@ if (Test-Path $check) {
         $cr = [IO.File]::ReadAllText($json) | ConvertFrom-Json
         # check.ps1 rows that setup already reported above (same subject under setup's name)
         $same = @{ 'Unreal Engine 5.7' = 'Unreal Engine 5.7'; 'Long paths' = 'Long paths'; 'System sleep off' = 'No sleep while plugged in'
-                   'Display sleep off' = 'No sleep while plugged in'; 'GitHub CLI' = 'GitHub sign-in'; 'NVIDIA driver >= 610' = 'NVIDIA driver'; 'Memory' = 'Memory' }
+                   'Display sleep off' = 'No sleep while plugged in'; 'GitHub CLI' = 'GitHub sign-in'; 'NVIDIA driver >= 610' = 'NVIDIA driver'; 'Memory' = 'Memory'
+                   'Codex' = 'Codex sign-in' }
         $known = @($items | ForEach-Object { $_.what })
         foreach ($r in $cr.results) {
             if ($r.status -eq 'PASS') { continue }
