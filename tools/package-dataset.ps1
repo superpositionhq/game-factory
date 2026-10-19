@@ -381,7 +381,7 @@ $status = if ($haveReplay) { 'complete' } else { 'pending' }
 $pending = @(if (-not $haveReplay) { 'ReplayScripts/' })
 Write-Step "dataset v1: $Game @ $short ($status)  from $pkg"
 
-# ---- Gameplay/<game>_S<n>.mp4: one video per scenario of the release version, game audio muxed ------------------------
+# ---- Gameplay/<game>_S<n>.mp4: one video per recorded scenario, at least one (user rule 2026-10-19), game audio muxed --
 # The package's runs are those of the packaged commit (package-game.ps1 -OnlyCommitRuns). One per scenario: the FIRST
 # valid run (validation ok or warn), by time. The result (win/lose/timeout) is metadata, never a selection criterion.
 $runs = @(Get-ChildItem (Join-Path $pkg 'Gameplay') -Directory | ForEach-Object {
@@ -560,8 +560,8 @@ function Write-Readme([string]$Dest, [string]$Variant) {
         A '- `Brief/` — the original brief the game was built from (`Brief/brief.md`) and its design doc with story bible and status (`Brief/design.md`).'
         if ($layout -eq 'dataset-layout/v1.3' -and -not $repo) { A "- ``Tasks/`` — $($taskNames.Count) tasks on this game for a game-creation environment (``Tasks/README.md``)." }
     }
-    if ($scen.Count) { A "- ``Gameplay/`` — one video per scenario of this version ($($scen.Count)), played through with the game audio." }
-    else { A '- `Gameplay/` — one video per scenario, played through with the game audio. *(pending)*' }
+    if ($scen.Count) { A "- ``Gameplay/`` — $(if ($scen.Count -eq 1) { 'a video of one scenario' } else { "videos of $($scen.Count) scenarios" }) of this version, played through with the game audio." }
+    else { A '- `Gameplay/` — videos of the recorded scenarios (at least one), played through with the game audio. *(pending)*' }
     if (-not $repo) { A "- ``Build/`` — the packaged Windows Shipping build$(if ($exe) { " (``Build/$exe``)" })." }
     A '- `Screenshots/` — the images in this README.'
     A '- `manifest.json` — path, size and sha256 of every file, and the release metadata.'

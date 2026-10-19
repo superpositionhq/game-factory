@@ -275,7 +275,7 @@ reads, so this text and the checks cannot drift apart. Nothing in it is per game
 | `workflow.jsonl` | the repo's `workflow.jsonl` at the release commit | scrubbed copy |
 | `ReplayScripts/` | the creation replay (`tools/ue-replay/`, `ue_replay.py package`, READY) | `ReplayScripts/` scrubbed with the package rules (`package-game.ps1 -ScrubDir`) |
 | `UEProject/` | the repo tree at the release commit + its Git LFS objects; store packs kept out of git come from the game's working tree | always with store content |
-| `Gameplay/<game>_S<n>.mp4` | the release version's validated runs, one per scenario: the first valid run (validation `ok` or `warn`), whatever its result. Taken as is from the run's `recordings\<game>\<run>\gameplay.mp4` (written by record.ps1; no re-encode); runs without one are encoded from `video.mkv` + `system_audio.mka` | 1920x1080 60 fps H.264 (the recording's NVENC stream, stream-copied; fallback: libx264 High CRF 20) + AAC 192 kbit/s stereo; the run's game audio delayed by its own `system_audio.start_offset_ns - video_start_offset_ns`; faststart; nothing added to the picture |
+| `Gameplay/<game>_S<n>.mp4` | the release version's validated runs, at least one scenario (user rule 2026-10-19: one recorded scenario is enough; every scenario already recorded is included), one video per recorded scenario: the first valid run (validation `ok` or `warn`), whatever its result. Taken as is from the run's `recordings\<game>\<run>\gameplay.mp4` (written by record.ps1; no re-encode); runs without one are encoded from `video.mkv` + `system_audio.mka` | 1920x1080 60 fps H.264 (the recording's NVENC stream, stream-copied; fallback: libx264 High CRF 20) + AAC 192 kbit/s stereo; the run's game audio delayed by its own `system_audio.start_offset_ns - video_start_offset_ns`; faststart; nothing added to the picture |
 | `Screenshots/` | the project's `docs/screenshots/`, else stills of the release runs (`recordings\<game>\_stills\`) | every image is shown in the README |
 | `Build/` | the pipeline's Shipping build of the release commit (store art cooked in, account name not compiled in) | `.pdb` left out |
 | `manifest.json` | generated | schema below |
@@ -347,7 +347,7 @@ is `package-game.ps1 -Rescan`; run both before a review.
 
 - What ships is what matters, in this order: the game plays; the game builds (editor and packaged Shipping); the dataset holds the replay scripts and the git log. The AutoPlay bot should still play like a human (human-like input, aim and camera), but bot work never blocks a release: one recording per scenario that shows the game running is enough, whatever the result (win/lose/timeout is metadata). No tuning for win rates, seed sweeps or "clean" runs, and no re-runs or re-recordings to improve how the bot plays. No retest loops: every GPU or editor run costs about 30 minutes of the shared machine and holds up delivery, so run the minimum once and report; re-run only when the user asks. Game-session work never blocks dataset packaging or sharing.
 
-- Gameplay holds mp4s only, one per scenario of the release version: no per-run bundles (inputs, telemetry, json), no
+- Gameplay holds mp4s only, at least one, one per recorded scenario of the release version: no per-run bundles (inputs, telemetry, json), no
   version subfolders, no index file; the README lists the videos.
 - No `play.mp4`: the per-scenario videos replace it.
 - No `replay.mp4` (v1.1, user, 2026-10-12): the verified replay scripts are the creation replay; no video of it.

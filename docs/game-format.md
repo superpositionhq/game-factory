@@ -98,7 +98,7 @@ lists what needs a person).
 | `Tasks/` | no | the game's tasks, each split: `Tasks/<name>/task.json` (the agent's part) and `Tasks/<name>/grader.json` (milestones, `seed.reference`), plus a generated `README.md` |
 | `UEProject/` | no | the project at the release commit, store content included |
 | `ReplayScripts/` | yes | the creation replayed headless, with `Verification/report.json` (required for complete; its verdict PASS or FAIL is metadata) |
-| `Gameplay/<game>_S<n>.mp4` | yes | one video per scenario, 1920x1080 h264 + aac |
+| `Gameplay/<game>_S<n>.mp4` | yes | at least one scenario video (user rule 2026-10-19: one recorded scenario is enough, the first valid one by scenario order; videos of other scenarios already recorded may be included), 1920x1080 h264 + aac |
 | `Screenshots/` | yes | the README's images |
 | `Build/` | no | the packaged Windows Shipping build, no `.pdb` |
 | `manifest.json` | yes | metadata, `history`, `brief`, and path / bytes / sha256 of every file except the content-addressed `History/lfs/objects/` |

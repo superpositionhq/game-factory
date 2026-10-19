@@ -368,7 +368,7 @@ def check_dataset(rep, path, area='dataset'):
     # replay_verification is null only while ReplayScripts/ is pending (docs/game-deliverable.md: "null while pending")
     if m.get('replay_verification') is None and not any(str(p).rstrip('/') == 'ReplayScripts' for p in m['pending']):
         rep.error(a, 'replay_verification is null but ReplayScripts/ is not listed as pending')
-    # videos: at least one, unless Gameplay/ is listed as pending (no recordings yet)
+    # videos: at least one (user rule 2026-10-19: one recorded scenario is enough), unless Gameplay/ is listed as pending
     if not m['scenarios'] and not any(str(p).rstrip('/') == 'Gameplay' for p in m['pending']):
         rep.error(a, 'no scenario videos: a delivery has at least one, or lists Gameplay/ as pending')
     # v1.2: Brief/, the person's directions, History/

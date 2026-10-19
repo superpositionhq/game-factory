@@ -127,7 +127,7 @@ foreach ($en in $L.entries) {
         $rx = $pat.Replace('<game>', [regex]::Escape($game))
         foreach ($f in $inside) { $leaf = $f.Substring($en.name.Length + 1); if ($leaf -match '/' -or $leaf -notmatch $rx) { E "$f does not belong in $($en.name)/ (allowed: $pat, no subfolders)" } }
         if (Get-Prop $en 'scenario_numbers') {
-            # a subset of the game's scenarios is fine (user decision 2026-10-12); numbers must be 1+ and distinct
+            # a subset of the game's scenarios is fine (user decision 2026-10-12; 2026-10-19: one recorded scenario is enough); numbers must be 1+ and distinct
             $nums = @($inside | ForEach-Object { if (($_.Substring($en.name.Length + 1)) -match $rx) { [int]$Matches[1] } } | Sort-Object)
             if (@($nums | Where-Object { $_ -lt 1 }).Count -or @($nums | Sort-Object -Unique).Count -ne $nums.Count) { E "$($en.name)/ scenario numbers must be distinct and 1 or more: $($nums -join ', ')" }
         }
