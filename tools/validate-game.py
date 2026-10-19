@@ -622,7 +622,8 @@ def _git(repo, *args):
 
 def check_repo_tasks(rep, repo, files=None):
     """The game's tasks on its orphan `tasks` branch (`tasks`, else `origin/tasks`): Tasks/<name>.json, one GameTask
-    each, name = file stem, seeds on commits of main's history (ancestors of HEAD, the main branch in a game checkout).
+    each, name = file stem, seeds on commits of main's history (ancestors of HEAD, the main branch in a game checkout)
+    or of the task's own start branch `starts/<name>` (write-tasks section 2), each a project of ENGINE as committed.
     The branch shares no history with main, and main's HEAD tracks nothing under Tasks/. Read from git, not the
     working tree (`files` is unused)."""
     a = 'repo: Tasks'
@@ -645,12 +646,15 @@ def check_repo_tasks(rep, repo, files=None):
     if not paths:
         rep.error(a, f'no task files in Tasks/ on {ref} (a game ships at least one; about 10 recommended)')
         return
-    known = {}
+    known, current = {}, {'stem': ''}
 
-    def has_commit(c):   # a commit of main's history: an ancestor of main's head
-        if c not in known:
-            known[c] = _git(repo, 'merge-base', '--is-ancestor', c, 'HEAD').returncode == 0
-        return known[c]
+    def has_commit(c):   # an ancestor of main's head, or of the task's own start branch
+        key = (c, current['stem'])
+        if key not in known:
+            tips = ['HEAD'] + [r for r in (f'refs/heads/starts/{current["stem"]}', f'refs/remotes/origin/starts/{current["stem"]}')
+                               if _git(repo, 'rev-parse', '--verify', '-q', r).returncode == 0]
+            known[key] = any(_git(repo, 'merge-base', '--is-ancestor', c, tip).returncode == 0 for tip in tips)
+        return known[key]
     for f in paths:
         stem = f[len('Tasks/'):-len('.json')]
         label = f'{ref}:{f}'
@@ -668,8 +672,31 @@ def check_repo_tasks(rep, repo, files=None):
             continue
         if t.get('name') != stem:
             rep.error(a, f'{label}: name {t.get("name")!r} differs from the file name')
+        current['stem'] = stem
         check_task(rep, a, label, t, game, has_commit)
+        seed = t.get('seed') if isinstance(t.get('seed'), dict) else {}
+        for k in ('commit', 'reference'):
+            if seed.get(k) and has_commit(seed[k]):
+                engine = start_engine(repo, seed[k])
+                if engine != ENGINE:
+                    rep.error(a, f'{label}: seed.{k} {seed[k][:12]} is a UE {engine or "?"} project: a task starts from a '
+                                 f'commit that builds on UE {ENGINE} as committed (never ported; write-tasks section 2)')
     rep.note(a, f'{len(paths)} task(s) on {ref} (about 10 recommended)')
+
+
+ENGINE = '5.7'   # the game environment's engine: it builds a start exactly as committed
+
+
+def start_engine(repo, commit):
+    """The EngineAssociation of the .uproject at the root of `commit` ('' when there is none)."""
+    names = _git(repo, 'ls-tree', '--name-only', commit).stdout.decode('utf-8', 'replace').split()
+    up = next((n for n in names if n.endswith('.uproject')), None)
+    if not up:
+        return ''
+    try:
+        return str(json.loads(_git(repo, 'show', f'{commit}:{up}').stdout.decode('utf-8-sig')).get('EngineAssociation', ''))
+    except ValueError:
+        return ''
 
 
 def check_tasks(rep, area, v, m):
