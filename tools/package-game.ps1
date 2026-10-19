@@ -30,7 +30,7 @@
   defaults), git author names/handles -> dev_NN, the account user name (incl. in user paths) -> dev, e-mail addresses ->
   <redacted-email>, other agent/provider mentions -> agent/provider. Then every file is rescanned: it refuses (exit 2,
   nothing published, hits in deliverables\<game>\<name>.refused-hits.tsv) on any remaining hit in a path or text file,
-  or any blocked term in a binary (ASCII or UTF-16). One exception: the short terms (claude, opus) inside the
+  or any blocked term in a binary (ASCII or UTF-16). One exception: the short terms (claude, opus) and the account name inside the
   compressed audio/video stream payload of .mp4/.mkv/.mka/.wav are random bytes and are listed, not refused
   (allowed-stream in <name>.allowlisted.tsv, file + offset + term); container metadata, tags, chapters, subtitle
   tracks and file names still refuse. Binaries are never edited; user name / agent findings in binaries
@@ -1233,8 +1233,10 @@ function Set-ReviewedHits($HitList, [string]$Root) {
 [GameDeliverable.Tools]::LocaleNeedle = $UserName
 [GameDeliverable.Tools]::AllowBin = New-Object System.Text.RegularExpressions.Regex($OpusAllowBin)
 # Short terms that random compressed bytes can spell: relaxed inside media stream payloads only (user rule, 2026-10-12).
-# Long terms (user name, anthropic, superposition, game-factory) stay blocking everywhere.
-foreach ($t in @('claude', 'opus')) { [void][GameDeliverable.Tools]::StreamTerms.Add($t) }
+# The account name too (coordinator rule, 2026-10-19): ~10 GB of H.264 per game spells it a few times by chance
+# (duo-kart, stealth). Only inside the payload ranges; container metadata, tags, chapters, subtitles and file names
+# still refuse. The other long terms (anthropic, superposition, game-factory) stay blocking everywhere.
+foreach ($t in @('claude', 'opus', $UserName)) { [void][GameDeliverable.Tools]::StreamTerms.Add($t) }
 $Banned = New-Object System.Text.RegularExpressions.Regex($BannedPattern, 'IgnoreCase')
 # The refs of the delivered history: all but the tasks branch (local and remote-tracking; tasks never enter the dataset's
 # history), and not the HEADs of other worktrees (a tasks worktree's HEAD). Same as [GameDeliverable.Tools]::HistoryRefs.
@@ -1282,6 +1284,21 @@ if ($SelfCheck) {
         @{ id = 'bin-random-model'; mode = 'scan'; expect = 'refuse'; bin = (& $mkBin ([byte[]](@(0xf3) + [Text.Encoding]::ASCII.GetBytes('ai=Opus4.5;') + @(0xa0))) $true) }
         @{ id = 'bin-text-bytes'; mode = 'scan'; expect = 'refuse'; bin = (& $mkBin ([byte[]](@(0x20) + [Text.Encoding]::ASCII.GetBytes('k3opusSe') + @(0x20))) $false) }
     )
+    # media files: the account name spelled by random bytes inside the stream payload (a WAV data chunk) passes, listed as
+    # allowed-stream; the same name in container metadata (a LIST/INFO chunk) still refuses
+    $mkWav = { param([byte[]]$DataIns, [byte[]]$ListIns)
+        $data = New-Object byte[] 4096; $rnd.NextBytes($data); if ($DataIns) { [Array]::Copy($DataIns, 0, $data, 2048, $DataIns.Length) }
+        $ms = New-Object IO.MemoryStream; $w = New-Object IO.BinaryWriter($ms)
+        $fmt = [byte[]](1, 0, 2, 0, 0x80, 0xbb, 0, 0, 0, 0xee, 2, 0, 4, 0, 16, 0)
+        [byte[]]$list = if ($ListIns) { [byte[]]([Text.Encoding]::ASCII.GetBytes('INFOIART') + [BitConverter]::GetBytes([uint32]$ListIns.Length) + $ListIns) } else { $null }
+        $w.Write([Text.Encoding]::ASCII.GetBytes('RIFF')); $w.Write([uint32](4 + 8 + $fmt.Length + 8 + $data.Length + $(if ($list) { 8 + $list.Length } else { 0 })))
+        $w.Write([Text.Encoding]::ASCII.GetBytes('WAVEfmt ')); $w.Write([uint32]$fmt.Length); $w.Write($fmt)
+        if ($list) { $w.Write([Text.Encoding]::ASCII.GetBytes('LIST')); $w.Write([uint32]$list.Length); $w.Write($list) }
+        $w.Write([Text.Encoding]::ASCII.GetBytes('data')); $w.Write([uint32]$data.Length); $w.Write($data); $w.Flush(); , $ms.ToArray() }
+    $cases += @(
+        @{ id = 'wav-user-in-stream'; mode = 'scan'; expect = 'pass'; ext = '.wav'; bin = (& $mkWav ([byte[]](@(0x9b, 0x98, 0x81) + [Text.Encoding]::ASCII.GetBytes($mixed + 'L') + @(0x92, 0x00, 0x3e))) $null) }
+        @{ id = 'wav-user-in-metadata'; mode = 'scan'; expect = 'refuse'; ext = '.wav'; bin = (& $mkWav $null ([Text.Encoding]::ASCII.GetBytes("$U1 recorded this" + [char]0))) }
+    )
     if ($Reviewed.Values -contains 'opusWTTj') { $cases += @{ id = 'codec-reviewed-word'; mode = 'scan'; expect = 'pass'; text = 'the first: `opusWTTj` in the raw pixels' } }
     $dir = Join-Path ([IO.Path]::GetTempPath()) ('pkg-selfcheck-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     try {
@@ -1289,7 +1306,7 @@ if ($SelfCheck) {
         # files are named c<n> (a case id may hold a blocked term, and the scan checks file names too)
         for ($i = 0; $i -lt $cases.Count; $i++) {
             $c = $cases[$i]; $c.file = "c$i"
-            $p = Join-Path $dir "$($c.mode)\$($c.file)$(if ($c.ContainsKey('bin')) { '.bin' } else { '.jsonl' })"
+            $p = Join-Path $dir "$($c.mode)\$($c.file)$(if ($c.ContainsKey('ext')) { $c.ext } elseif ($c.ContainsKey('bin')) { '.bin' } else { '.jsonl' })"
             if ($c.ContainsKey('bin')) { [IO.File]::WriteAllBytes($p, $c.bin) } else { [IO.File]::WriteAllText($p, $c.text + "`n", (New-Object System.Text.UTF8Encoding $false)) }
         }
         $sd = Join-Path $dir 'scrub'; $srels = [string[]]@(Get-ChildItem $sd -File | ForEach-Object Name)

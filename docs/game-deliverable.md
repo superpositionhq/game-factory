@@ -163,12 +163,12 @@ in the rescan tsv.
 
 Compressed media streams (user rule, 2026-10-12): random compressed bytes spell short terms now and then (`OPUSOb` in
 H.264 slice data). Inside the audio/video stream payload of `.mp4` / `.mkv` / `.mka` / `.wav`, a hit on a short term
-(`claude`, `opus`) is listed as `allowed-stream-*` in `<name>.allowlisted.tsv` (file, offset, term and the bytes around
+(`claude`, `opus`) or on the account name (coordinator rule, 2026-10-19: ~10 GB of H.264 per game spells it a few by chance) is listed as `allowed-stream-*` in `<name>.allowlisted.tsv` (file, offset, term and the bytes around
 it) instead of refusing; `scrub-report.json` counts them (`allowlisted_hits.media_stream`). The payload is the `mdat`
 data of an MP4 whose tracks are all video or audio (`hdlr` `vide`/`soun`), the frame data of Matroska blocks on video
 and audio tracks, and the WAV `data` chunk. Container metadata, tags, chapters, subtitle or other tracks and file names
-are outside it and still refuse, as does a file with more than 1000 such hits. Long terms (the account name,
-`anthropic`, `superposition`, `game-factory`) refuse everywhere; a match on one goes to a person for review.
+are outside it and still refuse, as does a file with more than 1000 such hits. The other long terms
+(`anthropic`, `superposition`, `game-factory`) refuse everywhere, and the account name everywhere outside the payload; a match on one goes to a person for review.
 
 Reviewed exceptions: `tools/package-reviewed-hits.tsv` holds single binary hits that a person judged to be data, keyed
 by the file's sha256 + byte offset + word, with the reason (the first: `opusWTTj` in the raw grayscale pixels of the
