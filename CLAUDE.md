@@ -12,7 +12,7 @@ Skills (in `.claude/skills/`, installed to `~\.claude\skills\` by `machine/boots
 - **game-session**: sessions that build a game (art, UI, story, naming, ue-heavy/GPU, workflow.jsonl, AutoPlay,
   framing screenshots, dataset v1.1).
 - **write-tasks**: sessions that write, move or review a game's tasks (the orphan `tasks` branch, never on main;
-  about 10 per game; the four kinds, seed and reference commits, briefs written from context, milestones and rubrics).
+  about 10 per game; the four kinds, seed and reference commits, briefs written from context, milestones with deterministic probe checks).
 
 Rules for working in this repo: [AGENTS.md](AGENTS.md). Session briefs: [docs/briefs/](docs/briefs/README.md).
 New machine: [docs/new-machine.md](docs/new-machine.md). Pipeline: [docs/ue-pipeline.md](docs/ue-pipeline.md).

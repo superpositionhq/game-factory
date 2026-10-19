@@ -127,7 +127,7 @@ that the branch shares no history with main, and that main tracks nothing under 
 
 In a dataset (layout v1.3) the packager copies the tasks from the tip of the tasks branch, maps each seed's commits
 through the history rewrite, scrubs them, and splits each into `Tasks/<name>/task.json` (what the agent may see) and
-`Tasks/<name>/grader.json` (the grader's half: `milestones` with their rubrics, judge and code-judge questions and
+`Tasks/<name>/grader.json` (the grader's half: `milestones` with their probes, rubrics, judge and code-judge questions and
 log patterns, and `seed.reference`); merging the two gives the task. `Tasks/README.md` explains it.
 
 **The harness rule.** An agent given a task starts from a history-less snapshot of the game at `seed.commit`, with

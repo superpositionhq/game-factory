@@ -177,7 +177,7 @@ bug fixes from your real history, corrections from `user.direction` rows, featur
 live on the repo's orphan `tasks` branch, checked out as a worktree outside the game folder (`<root>/tasks/<slug>`),
 committed and pushed there, never on main: task work never enters the game's history (the hooks ignore that branch).
 Seeds point at main's commits. Follow the write-tasks skill (the branch and worktree, seeds, the brief written from
-context, play map, checks and rubrics, what must never reach the agent); never point the game's code or docs at
+context, play map, deterministic probe checks, what must never reach the agent); never point the game's code or docs at
 `Tasks/`. validate-game.py checks them.
 
 ## Working with the coordinator
