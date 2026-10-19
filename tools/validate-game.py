@@ -509,10 +509,60 @@ TASK_NAME = re.compile(r'^[a-z0-9][a-z0-9-]{1,62}$')
 GRADER_KEYS = ('milestones',)          # the grader's half of a task, with seed.reference
 
 
+# A task play's command-line flags (the environment's tasks.PLAY_ARG / DENIED_ARGS at 854a4fe3): never the grader's own.
+PLAY_ARG = re.compile(r'^-([A-Za-z][A-Za-z0-9]{0,40})(=[A-Za-z0-9_.-]{1,40})?$')
+DENIED_PLAY_ARGS = {'execcmds', 'run', 'nullrhi', 'log', 'unattended', 'renderoffscreen', 'resx', 'resy', 'benchmark',
+                    'fps', 'game', 'windowed'}
+TASK_PLAY_DEFAULTS = {'inputs': [], 'map': None, 'args': [], 'every': None}
+
+
+def probe_errors(c, seed, ref, plays):
+    """A probe check's rules beyond the schema (the environment's tasks._probe and TaskPlay validators at 854a4fe3):
+    asset measures only with play "editor" and trace measures only with play "trace"; a trace probe never gates and
+    takes a literal value; a task play is not named look/drive/editor/trace, has no input at or after its end, sets no
+    grader flag, and same-named task plays are identical; == and != take a literal value; a calibrated threshold needs
+    seed.reference and a start-relative one a seed."""
+    errs, n = [], c.get('name')
+    play = c.get('play')
+    measure = c.get('measure') if isinstance(c.get('measure'), dict) else {}
+    expect = c.get('expect') if isinstance(c.get('expect'), dict) else {}
+    probe = measure.get('probe')
+    pname = play if isinstance(play, str) else (play.get('name') if isinstance(play, dict) else None)
+    if (probe == 'asset') != (pname == 'editor'):
+        errs.append(f'check {n}: asset measures are taken by the editor pass (play "editor"), and it takes nothing else')
+    if (probe == 'trace') != (pname == 'trace'):
+        errs.append(f'check {n}: trace measures are read from the trace (play "trace"), and it gives nothing else')
+    rel = 'calibrate' if 'calibrate' in expect else ('start' if 'start_times' in expect or 'start_plus' in expect else None)
+    if probe == 'trace' and (c.get('required', True) or rel):
+        errs.append(f'check {n}: a trace probe never gates (required: false) and takes a literal value')
+    if isinstance(play, dict):
+        if pname in ('look', 'drive', 'editor', 'trace'):
+            errs.append(f"check {n}: a task play can't be named {pname}")
+        secs = play.get('seconds')
+        if isinstance(secs, (int, float)) and any(isinstance(i, dict) and isinstance(i.get('t'), (int, float))
+                                                  and i['t'] >= secs for i in play.get('inputs') or []):
+            errs.append(f'check {n}: play {pname} has an input at or after its end ({secs} s)')
+        for arg in play.get('args') or []:
+            mm = PLAY_ARG.match(arg) if isinstance(arg, str) else None
+            if mm and (mm.group(1).lower() in DENIED_PLAY_ARGS or mm.group(1).lower().startswith('gameenv')):
+                errs.append(f"check {n}: a task play can't set {arg.split('=')[0]}")
+        whole = dict(TASK_PLAY_DEFAULTS, **play)
+        if plays.setdefault(pname, whole) != whole:
+            errs.append(f'check {n}: task play {pname} differs from another play of that name')
+    if rel and expect.get('op') in ('==', '!='):
+        errs.append(f'check {n}: == and != take a literal value, never a calibrated threshold')
+    if rel == 'calibrate' and not ref:
+        errs.append(f"check {n} calibrates against a reference the task's seed doesn't name")
+    if rel == 'start' and not seed:
+        errs.append(f'check {n} sets its threshold from the start, which only a seeded task has')
+    return errs
+
+
 def task_semantic_errors(t):
     """What the schema cannot say (the game environment's tasks.validate): check names unique, `needs` naming earlier
-    checks, a code judge or a reference judge only with seed.reference, a before/after judge only with a seed."""
-    errs, seen = [], set()
+    checks, a code judge or a reference judge only with seed.reference, a before/after judge only with a seed, and the
+    probe rules (probe_errors)."""
+    errs, seen, plays = [], set(), {}
     seed = t.get('seed') if isinstance(t.get('seed'), dict) else None
     ref = seed.get('reference') if seed else None
     for m in t.get('milestones') or []:
@@ -520,6 +570,8 @@ def task_semantic_errors(t):
             if not isinstance(c, dict):
                 continue
             n, k = c.get('name'), c.get('kind')
+            if k == 'probe':
+                errs.extend(probe_errors(c, seed, ref, plays))
             if k == 'code_judge' and not ref:
                 errs.append(f'check {n}: a code judge needs seed.reference')
             if k == 'judge' and c.get('before') and not seed:

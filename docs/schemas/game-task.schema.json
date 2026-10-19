@@ -1,5 +1,5 @@
 {
-  "$comment": "Vendored, unchanged except this comment, from the game environment's published GameTask schema (backend/app/factory/game_env/tasks.schema.json at commit 68010c4a, 2026-10-15). Update it from there; tools/validate-game.py checks every task in a game repo's Tasks/ and in a dataset against it.",
+  "$comment": "Vendored, unchanged except this comment, from the game environment's published GameTask schema (backend/app/factory/game_env/tasks.schema.json at commit 854a4fe3, 2026-10-19, branch feat/game-env-probe-checks; the probe check kind from bfd46540; identical to tasks.schema_text() run from that commit). Update it from there; tools/validate-game.py checks every task in a game repo's Tasks/ and in a dataset against it.",
   "$defs": {
     "ActionsJudge": {
       "additionalProperties": false,
@@ -57,6 +57,350 @@
         "rubric"
       ],
       "title": "ActionsJudge",
+      "type": "object"
+    },
+    "ActorsMeasure": {
+      "additionalProperties": false,
+      "properties": {
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "delta",
+                "any",
+                "all",
+                "count",
+                "sum",
+                "range",
+                "std",
+                "changes"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 120,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "const": "end",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "field": {
+          "pattern": "^(count|x|y|z|yaw|pitch|roll|scale|extent_x|extent_y|extent_z|hidden|collision|speed|prop:[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?(\\.[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?){0,5}|facing_vs_velocity|bone:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz]|rel_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|bb:[A-Za-z_][A-Za-z0-9_]{0,63})$",
+          "title": "Field",
+          "type": "string"
+        },
+        "match": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Match"
+        },
+        "of": {
+          "default": "count",
+          "enum": [
+            "count",
+            "any",
+            "all",
+            "min",
+            "max",
+            "mean",
+            "sum",
+            "first"
+          ],
+          "title": "Of",
+          "type": "string"
+        },
+        "probe": {
+          "const": "actors",
+          "title": "Probe",
+          "type": "string"
+        },
+        "select": {
+          "$ref": "#/$defs/Select"
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        }
+      },
+      "required": [
+        "probe",
+        "select",
+        "field"
+      ],
+      "title": "ActorsMeasure",
+      "type": "object"
+    },
+    "AssetMeasure": {
+      "additionalProperties": false,
+      "description": "The project as saved, read in a headless editor pass: an asset's property (`asset` + prop:<path>), or actors\nof a map (`map` + `select`).",
+      "properties": {
+        "asset": {
+          "anyOf": [
+            {
+              "pattern": "^/[A-Za-z0-9_][A-Za-z0-9_/.-]{0,299}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset"
+        },
+        "field": {
+          "pattern": "^(count|material_default|mesh_collision|material:[A-Za-z_][A-Za-z0-9_]{0,63}|prop:[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?(\\.[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?){0,5})$",
+          "title": "Field",
+          "type": "string"
+        },
+        "map": {
+          "anyOf": [
+            {
+              "pattern": "^/[A-Za-z0-9_][A-Za-z0-9_/.-]{0,299}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Map"
+        },
+        "match": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Match"
+        },
+        "of": {
+          "default": "count",
+          "enum": [
+            "count",
+            "any",
+            "all",
+            "min",
+            "max",
+            "mean",
+            "sum",
+            "first"
+          ],
+          "title": "Of",
+          "type": "string"
+        },
+        "probe": {
+          "const": "asset",
+          "title": "Probe",
+          "type": "string"
+        },
+        "select": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Select"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "probe",
+        "field"
+      ],
+      "title": "AssetMeasure",
+      "type": "object"
+    },
+    "AtActor": {
+      "additionalProperties": false,
+      "description": "The first actor `actor` selects, plus `offset` (cm).",
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/Select"
+        },
+        "offset": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "title": "Offset",
+          "type": "array"
+        }
+      },
+      "required": [
+        "actor"
+      ],
+      "title": "AtActor",
+      "type": "object"
+    },
+    "AtCamera": {
+      "additionalProperties": false,
+      "description": "The player's camera, `forward` cm along its view.",
+      "properties": {
+        "camera": {
+          "const": true,
+          "title": "Camera",
+          "type": "boolean"
+        },
+        "forward": {
+          "default": 0.0,
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Forward",
+          "type": "number"
+        }
+      },
+      "required": [
+        "camera"
+      ],
+      "title": "AtCamera",
+      "type": "object"
+    },
+    "AtPawn": {
+      "additionalProperties": false,
+      "description": "The player pawn's location, plus `offset` (cm).",
+      "properties": {
+        "offset": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "title": "Offset",
+          "type": "array"
+        },
+        "pawn": {
+          "const": true,
+          "title": "Pawn",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "pawn"
+      ],
+      "title": "AtPawn",
+      "type": "object"
+    },
+    "AtXYZ": {
+      "additionalProperties": false,
+      "description": "A fixed point in the world (cm).",
+      "properties": {
+        "xyz": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "title": "Xyz",
+          "type": "array"
+        }
+      },
+      "required": [
+        "xyz"
+      ],
+      "title": "AtXYZ",
+      "type": "object"
+    },
+    "Axis": {
+      "additionalProperties": false,
+      "description": "An axis event (MouseX, MouseY, Gamepad_LeftX) with its value, e.g. mouse look.",
+      "properties": {
+        "axis": {
+          "maximum": 1000,
+          "minimum": -1000,
+          "title": "Axis",
+          "type": "number"
+        },
+        "key": {
+          "pattern": "^[A-Za-z0-9_]{1,40}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "t": {
+          "maximum": 120,
+          "minimum": 0,
+          "title": "T",
+          "type": "number"
+        }
+      },
+      "required": [
+        "t",
+        "key",
+        "axis"
+      ],
+      "title": "Axis",
       "type": "object"
     },
     "Boot": {
@@ -148,6 +492,175 @@
       "title": "Build",
       "type": "object"
     },
+    "Calibrate": {
+      "additionalProperties": false,
+      "description": "Threshold s + f * (r - s): the start (s) and the developers' fix (r) measured in the grading environment.",
+      "properties": {
+        "calibrate": {
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "title": "Calibrate",
+          "type": "number"
+        },
+        "op": {
+          "enum": [
+            ">",
+            ">=",
+            "<",
+            "<=",
+            "==",
+            "!="
+          ],
+          "title": "Op",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "calibrate"
+      ],
+      "title": "Calibrate",
+      "type": "object"
+    },
+    "CameraMeasure": {
+      "additionalProperties": false,
+      "properties": {
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "delta",
+                "any",
+                "all",
+                "count",
+                "sum",
+                "range",
+                "std",
+                "changes"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 120,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "const": "end",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "field": {
+          "enum": [
+            "distance",
+            "height",
+            "pitch",
+            "yaw",
+            "fov",
+            "occluded",
+            "pawn_on_screen"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "probe": {
+          "const": "camera",
+          "title": "Probe",
+          "type": "string"
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        }
+      },
+      "required": [
+        "probe",
+        "field"
+      ],
+      "title": "CameraMeasure",
+      "type": "object"
+    },
+    "Click": {
+      "additionalProperties": false,
+      "description": "A click on the first visible button widget of that name or class, as a player would.",
+      "properties": {
+        "click": {
+          "const": true,
+          "title": "Click",
+          "type": "boolean"
+        },
+        "t": {
+          "maximum": 120,
+          "minimum": 0,
+          "title": "T",
+          "type": "number"
+        },
+        "widget": {
+          "pattern": "^[A-Za-z0-9_]{1,120}$",
+          "title": "Widget",
+          "type": "string"
+        }
+      },
+      "required": [
+        "t",
+        "widget",
+        "click"
+      ],
+      "title": "Click",
+      "type": "object"
+    },
     "CodeJudge": {
       "additionalProperties": false,
       "description": "A code reviewer's question over the run's own change (its diff from the start, text files) beside the game's\nreal change for the same problem (the seed's `reference`, a bug's fix from the game's history), which the agent\nnever sees.",
@@ -206,6 +719,198 @@
       "title": "CodeJudge",
       "type": "object"
     },
+    "ComponentSelect": {
+      "additionalProperties": false,
+      "description": "Registered components of a class (NiagaraComponent, DecalComponent, AudioComponent), optionally of an owner\nactor the `owner` select matches, and near a point.",
+      "properties": {
+        "class": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,120}$",
+          "title": "Class",
+          "type": "string"
+        },
+        "near": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Near"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Select"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "class"
+      ],
+      "title": "ComponentSelect",
+      "type": "object"
+    },
+    "ComponentsMeasure": {
+      "additionalProperties": false,
+      "properties": {
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "delta",
+                "any",
+                "all",
+                "count",
+                "sum",
+                "range",
+                "std",
+                "changes"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 120,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "const": "end",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "field": {
+          "enum": [
+            "count",
+            "active",
+            "visible"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "of": {
+          "default": "count",
+          "enum": [
+            "count",
+            "any",
+            "all",
+            "min",
+            "max",
+            "mean",
+            "sum",
+            "first"
+          ],
+          "title": "Of",
+          "type": "string"
+        },
+        "probe": {
+          "const": "components",
+          "title": "Probe",
+          "type": "string"
+        },
+        "select": {
+          "$ref": "#/$defs/ComponentSelect"
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        }
+      },
+      "required": [
+        "probe",
+        "select",
+        "field"
+      ],
+      "title": "ComponentsMeasure",
+      "type": "object"
+    },
+    "Cursor": {
+      "additionalProperties": false,
+      "description": "The mouse cursor moved to a viewport point (fractions 0-1); a following LeftMouseButton press clicks there.",
+      "properties": {
+        "cursor": {
+          "items": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "title": "Cursor",
+          "type": "array"
+        },
+        "t": {
+          "maximum": 120,
+          "minimum": 0,
+          "title": "T",
+          "type": "number"
+        }
+      },
+      "required": [
+        "t",
+        "cursor"
+      ],
+      "title": "Cursor",
+      "type": "object"
+    },
     "FileExists": {
       "additionalProperties": false,
       "description": "At least `min_count` project files match `glob` (relative to the project; e.g. Content/Maps/*.umap).",
@@ -258,6 +963,123 @@
         "glob"
       ],
       "title": "FileExists",
+      "type": "object"
+    },
+    "GradingMeasure": {
+      "additionalProperties": false,
+      "properties": {
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "delta",
+                "any",
+                "all",
+                "count",
+                "sum",
+                "range",
+                "std",
+                "changes"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 120,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "const": "end",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "enum": [
+                "cast",
+                "warmth",
+                "tint",
+                "saturation",
+                "contrast",
+                "grey"
+              ],
+              "type": "string"
+            },
+            {
+              "pattern": "^post:[A-Za-z_][A-Za-z0-9_]{0,63}$",
+              "type": "string"
+            }
+          ],
+          "title": "Field"
+        },
+        "probe": {
+          "const": "grading",
+          "title": "Probe",
+          "type": "string"
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        }
+      },
+      "required": [
+        "probe",
+        "field"
+      ],
+      "title": "GradingMeasure",
       "type": "object"
     },
     "Judge": {
@@ -340,6 +1162,158 @@
         "rubric"
       ],
       "title": "Judge",
+      "type": "object"
+    },
+    "Key": {
+      "additionalProperties": false,
+      "description": "A key pressed or released (Unreal key names: W, SpaceBar, LeftMouseButton).",
+      "properties": {
+        "key": {
+          "pattern": "^[A-Za-z0-9_]{1,40}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "press": {
+          "title": "Press",
+          "type": "boolean"
+        },
+        "t": {
+          "maximum": 120,
+          "minimum": 0,
+          "title": "T",
+          "type": "number"
+        }
+      },
+      "required": [
+        "t",
+        "key",
+        "press"
+      ],
+      "title": "Key",
+      "type": "object"
+    },
+    "LightMeasure": {
+      "additionalProperties": false,
+      "properties": {
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "delta",
+                "any",
+                "all",
+                "count",
+                "sum",
+                "range",
+                "std",
+                "changes"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 120,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "const": "end",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "field": {
+          "enum": [
+            "illuminance",
+            "exposure",
+            "brightness"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "point": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AtXYZ"
+            },
+            {
+              "$ref": "#/$defs/AtPawn"
+            },
+            {
+              "$ref": "#/$defs/AtCamera"
+            },
+            {
+              "$ref": "#/$defs/AtActor"
+            }
+          ],
+          "title": "Point"
+        },
+        "probe": {
+          "const": "light",
+          "title": "Probe",
+          "type": "string"
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        }
+      },
+      "required": [
+        "probe",
+        "point",
+        "field"
+      ],
+      "title": "LightMeasure",
       "type": "object"
     },
     "Limits": {
@@ -425,6 +1399,35 @@
       "title": "LogAbsent",
       "type": "object"
     },
+    "LogMeasure": {
+      "additionalProperties": false,
+      "description": "Lines of the play's game log matching `pattern`.",
+      "properties": {
+        "field": {
+          "const": "count",
+          "default": "count",
+          "title": "Field",
+          "type": "string"
+        },
+        "pattern": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Pattern",
+          "type": "string"
+        },
+        "probe": {
+          "const": "log",
+          "title": "Probe",
+          "type": "string"
+        }
+      },
+      "required": [
+        "probe",
+        "pattern"
+      ],
+      "title": "LogMeasure",
+      "type": "object"
+    },
     "Milestone": {
       "additionalProperties": false,
       "properties": {
@@ -439,7 +1442,8 @@
                 "file_exists": "#/$defs/FileExists",
                 "judge": "#/$defs/Judge",
                 "log_absent": "#/$defs/LogAbsent",
-                "package": "#/$defs/Package"
+                "package": "#/$defs/Package",
+                "probe": "#/$defs/Probe"
               },
               "propertyName": "kind"
             },
@@ -467,6 +1471,9 @@
               },
               {
                 "$ref": "#/$defs/ActionsJudge"
+              },
+              {
+                "$ref": "#/$defs/Probe"
               }
             ]
           },
@@ -486,6 +1493,40 @@
         "checks"
       ],
       "title": "Milestone",
+      "type": "object"
+    },
+    "Near": {
+      "additionalProperties": false,
+      "properties": {
+        "point": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AtXYZ"
+            },
+            {
+              "$ref": "#/$defs/AtPawn"
+            },
+            {
+              "$ref": "#/$defs/AtCamera"
+            },
+            {
+              "$ref": "#/$defs/AtActor"
+            }
+          ],
+          "title": "Point"
+        },
+        "radius": {
+          "exclusiveMinimum": 0,
+          "maximum": 10000000,
+          "title": "Radius",
+          "type": "number"
+        }
+      },
+      "required": [
+        "point",
+        "radius"
+      ],
+      "title": "Near",
       "type": "object"
     },
     "Package": {
@@ -529,6 +1570,275 @@
       "title": "Package",
       "type": "object"
     },
+    "PawnMeasure": {
+      "additionalProperties": false,
+      "properties": {
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "delta",
+                "any",
+                "all",
+                "count",
+                "sum",
+                "range",
+                "std",
+                "changes"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 120,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "const": "end",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "field": {
+          "enum": [
+            "x",
+            "y",
+            "z",
+            "speed",
+            "moved",
+            "dist"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "probe": {
+          "const": "pawn",
+          "title": "Probe",
+          "type": "string"
+        },
+        "to": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AtXYZ"
+            },
+            {
+              "$ref": "#/$defs/AtPawn"
+            },
+            {
+              "$ref": "#/$defs/AtCamera"
+            },
+            {
+              "$ref": "#/$defs/AtActor"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To"
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        }
+      },
+      "required": [
+        "probe",
+        "field"
+      ],
+      "title": "PawnMeasure",
+      "type": "object"
+    },
+    "Probe": {
+      "additionalProperties": false,
+      "description": "A deterministic check (probes.md): `measure` taken where `play` says, reduced to one number, compared with\n`expect`. `describe` is the assertion in plain English, shown in the grade.",
+      "properties": {
+        "describe": {
+          "maxLength": 400,
+          "minLength": 1,
+          "title": "Describe",
+          "type": "string"
+        },
+        "expect": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Value"
+            },
+            {
+              "$ref": "#/$defs/Calibrate"
+            },
+            {
+              "$ref": "#/$defs/StartTimes"
+            },
+            {
+              "$ref": "#/$defs/StartPlus"
+            }
+          ],
+          "title": "Expect"
+        },
+        "kind": {
+          "const": "probe",
+          "default": "probe",
+          "title": "Kind",
+          "type": "string"
+        },
+        "measure": {
+          "discriminator": {
+            "mapping": {
+              "actors": "#/$defs/ActorsMeasure",
+              "asset": "#/$defs/AssetMeasure",
+              "camera": "#/$defs/CameraMeasure",
+              "components": "#/$defs/ComponentsMeasure",
+              "grading": "#/$defs/GradingMeasure",
+              "light": "#/$defs/LightMeasure",
+              "log": "#/$defs/LogMeasure",
+              "pawn": "#/$defs/PawnMeasure",
+              "spawns": "#/$defs/SpawnsMeasure",
+              "trace": "#/$defs/TraceMeasure",
+              "widgets": "#/$defs/WidgetsMeasure"
+            },
+            "propertyName": "probe"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/PawnMeasure"
+            },
+            {
+              "$ref": "#/$defs/CameraMeasure"
+            },
+            {
+              "$ref": "#/$defs/ActorsMeasure"
+            },
+            {
+              "$ref": "#/$defs/WidgetsMeasure"
+            },
+            {
+              "$ref": "#/$defs/ComponentsMeasure"
+            },
+            {
+              "$ref": "#/$defs/LightMeasure"
+            },
+            {
+              "$ref": "#/$defs/GradingMeasure"
+            },
+            {
+              "$ref": "#/$defs/SpawnsMeasure"
+            },
+            {
+              "$ref": "#/$defs/LogMeasure"
+            },
+            {
+              "$ref": "#/$defs/AssetMeasure"
+            },
+            {
+              "$ref": "#/$defs/TraceMeasure"
+            }
+          ],
+          "title": "Measure"
+        },
+        "name": {
+          "pattern": "^[a-z0-9_]{1,48}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "needs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Needs",
+          "type": "array"
+        },
+        "play": {
+          "anyOf": [
+            {
+              "enum": [
+                "look",
+                "drive",
+                "editor",
+                "trace"
+              ],
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/TaskPlay"
+            }
+          ],
+          "title": "Play"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "weight": {
+          "default": 1,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Weight",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "describe",
+        "play",
+        "measure",
+        "expect"
+      ],
+      "title": "Probe",
+      "type": "object"
+    },
     "RubricItem": {
       "additionalProperties": false,
       "properties": {
@@ -565,7 +1875,7 @@
     },
     "Seed": {
       "additionalProperties": false,
-      "description": "Where a seeded task starts: one of the studio's games at `commit`. `game` is its slug in the games catalog\n(games.json: its repository, project and mirror), the folder under the machine's games root on the studio's PC.\n`reference`: a later commit of that game whose change solves the task (a bug's fix), for the code judge only.",
+      "description": "Where a seeded task starts: one of the studio's games at `commit`. `game` is its slug in the games catalog\n(games.json: its repository, project and mirror), the folder under the machine's games root on the studio's PC.\n`reference`: a later commit of that game whose change solves the task (a bug's fix), for the code judge only.\n`history`: which history the two commits are from (datasets.py): \"private\", the game's own repository (its clone,\nGitHub, the mirror), or \"dataset\", the rewritten history a layout v1.3 Dataset.zip delivers (History/), whose\ncommit ids differ; the game's commit map translates either way (datasets.seed_in).",
       "properties": {
         "commit": {
           "pattern": "^[0-9a-f]{40}$",
@@ -575,6 +1885,15 @@
         "game": {
           "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
           "title": "Game",
+          "type": "string"
+        },
+        "history": {
+          "default": "private",
+          "enum": [
+            "private",
+            "dataset"
+          ],
+          "title": "History",
           "type": "string"
         },
         "kind": {
@@ -607,6 +1926,627 @@
         "kind"
       ],
       "title": "Seed",
+      "type": "object"
+    },
+    "Select": {
+      "additionalProperties": false,
+      "description": "Actors that match every key given: `class` (the actor's class or a parent, without prefix letters; a Blueprint\nclass by its asset name, BP_Wall_C), `tag` (an actor tag), `name` (a wildcard on its name or label), `near`\n(within `radius` cm of a point), `player` (the player pawn).",
+      "properties": {
+        "class": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,120}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Class"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9_.*? -]{1,120}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "near": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Near"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "player": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Player"
+        },
+        "tag": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9_. -]{1,80}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tag"
+        }
+      },
+      "title": "Select",
+      "type": "object"
+    },
+    "SpawnsMeasure": {
+      "additionalProperties": false,
+      "properties": {
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "delta",
+                "any",
+                "all",
+                "count",
+                "sum",
+                "range",
+                "std",
+                "changes"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 120,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "const": "end",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "class": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,120}$",
+          "title": "Class",
+          "type": "string"
+        },
+        "field": {
+          "enum": [
+            "spawned",
+            "destroyed"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "probe": {
+          "const": "spawns",
+          "title": "Probe",
+          "type": "string"
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        }
+      },
+      "required": [
+        "probe",
+        "class",
+        "field"
+      ],
+      "title": "SpawnsMeasure",
+      "type": "object"
+    },
+    "StartPlus": {
+      "additionalProperties": false,
+      "description": "Threshold s + d: the start (s) measured in the grading environment (a task with no developers' fix).",
+      "properties": {
+        "op": {
+          "enum": [
+            ">",
+            ">=",
+            "<",
+            "<=",
+            "==",
+            "!="
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "start_plus": {
+          "title": "Start Plus",
+          "type": "number"
+        }
+      },
+      "required": [
+        "op",
+        "start_plus"
+      ],
+      "title": "StartPlus",
+      "type": "object"
+    },
+    "StartTimes": {
+      "additionalProperties": false,
+      "description": "Threshold s * f: the start (s) measured in the grading environment (a task with no developers' fix).",
+      "properties": {
+        "op": {
+          "enum": [
+            ">",
+            ">=",
+            "<",
+            "<=",
+            "==",
+            "!="
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "start_times": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "title": "Start Times",
+          "type": "number"
+        }
+      },
+      "required": [
+        "op",
+        "start_times"
+      ],
+      "title": "StartTimes",
+      "type": "object"
+    },
+    "TaskPlay": {
+      "additionalProperties": false,
+      "description": "A task-defined scripted play: `inputs` (keys, axes, widget clicks) sent at their times during `seconds`; its\nown `map` (with URL options) instead of the task's play_map, `args` on its command line (game flags, -Name or\n-Name=value, but never the grader's own: DENIED_ARGS, -GameEnv*), and samples every `every` seconds (default\n0.5).",
+      "properties": {
+        "args": {
+          "items": {
+            "pattern": "^-([A-Za-z][A-Za-z0-9]{0,40})(=[A-Za-z0-9_.-]{1,40})?$",
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Args",
+          "type": "array"
+        },
+        "every": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.1,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Every"
+        },
+        "inputs": {
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Key"
+              },
+              {
+                "$ref": "#/$defs/Axis"
+              },
+              {
+                "$ref": "#/$defs/Click"
+              },
+              {
+                "$ref": "#/$defs/Cursor"
+              },
+              {
+                "$ref": "#/$defs/Teleport"
+              }
+            ]
+          },
+          "maxItems": 400,
+          "title": "Inputs",
+          "type": "array"
+        },
+        "map": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "pattern": "^/[A-Za-z0-9_/.-]+(\\?[A-Za-z0-9_=.,-]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Map"
+        },
+        "name": {
+          "pattern": "^[a-z0-9_]{1,32}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "seconds": {
+          "maximum": 120,
+          "minimum": 5,
+          "title": "Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "seconds"
+      ],
+      "title": "TaskPlay",
+      "type": "object"
+    },
+    "Teleport": {
+      "additionalProperties": false,
+      "description": "The player pawn placed at `teleport` (cm) facing `yaw`: the grader's own way to reach a test spot.",
+      "properties": {
+        "t": {
+          "maximum": 120,
+          "minimum": 0,
+          "title": "T",
+          "type": "number"
+        },
+        "teleport": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "title": "Teleport",
+          "type": "array"
+        },
+        "yaw": {
+          "default": 0.0,
+          "maximum": 360,
+          "minimum": -360,
+          "title": "Yaw",
+          "type": "number"
+        }
+      },
+      "required": [
+        "t",
+        "teleport"
+      ],
+      "title": "Teleport",
+      "type": "object"
+    },
+    "TraceMeasure": {
+      "additionalProperties": false,
+      "description": "A fact of the agent's own trace (never gating).",
+      "properties": {
+        "fact": {
+          "enum": [
+            "built_after_last_change",
+            "played_after_last_change",
+            "read_before_first_edit",
+            "build_ok_at_end",
+            "edits_outside_project"
+          ],
+          "title": "Fact",
+          "type": "string"
+        },
+        "probe": {
+          "const": "trace",
+          "title": "Probe",
+          "type": "string"
+        }
+      },
+      "required": [
+        "probe",
+        "fact"
+      ],
+      "title": "TraceMeasure",
+      "type": "object"
+    },
+    "Value": {
+      "additionalProperties": false,
+      "description": "A literal threshold, for facts that don't depend on the scene (counts, booleans).",
+      "properties": {
+        "op": {
+          "enum": [
+            ">",
+            ">=",
+            "<",
+            "<=",
+            "==",
+            "!="
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "op",
+        "value"
+      ],
+      "title": "Value",
+      "type": "object"
+    },
+    "WidgetSelect": {
+      "additionalProperties": false,
+      "description": "Widgets on screen: UMG widgets in the viewport by their class (WBP_HUD_C, TextBlock) and/or name, or Slate\nwidgets under the game viewport by their type (`slate`: STextBlock, SImage, a game's own S... type); `text`: a\nregular expression the widget's text must match.",
+      "properties": {
+        "class": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,120}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Class"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9_.*? -]{1,120}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "slate": {
+          "anyOf": [
+            {
+              "pattern": "^S[A-Za-z0-9_]{1,120}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Slate"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        }
+      },
+      "title": "WidgetSelect",
+      "type": "object"
+    },
+    "WidgetsMeasure": {
+      "additionalProperties": false,
+      "properties": {
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "delta",
+                "any",
+                "all",
+                "count",
+                "sum",
+                "range",
+                "std",
+                "changes"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 120,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "const": "end",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "field": {
+          "enum": [
+            "count",
+            "visible",
+            "text",
+            "percent",
+            "has_brush",
+            "brush",
+            "x",
+            "y",
+            "w",
+            "h"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "match": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Match"
+        },
+        "of": {
+          "default": "count",
+          "enum": [
+            "count",
+            "any",
+            "all",
+            "min",
+            "max",
+            "mean",
+            "sum",
+            "first"
+          ],
+          "title": "Of",
+          "type": "string"
+        },
+        "probe": {
+          "const": "widgets",
+          "title": "Probe",
+          "type": "string"
+        },
+        "select": {
+          "$ref": "#/$defs/WidgetSelect"
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        }
+      },
+      "required": [
+        "probe",
+        "select",
+        "field"
+      ],
+      "title": "WidgetsMeasure",
       "type": "object"
     }
   },
