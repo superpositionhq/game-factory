@@ -1,5 +1,5 @@
 {
-  "$comment": "Vendored, unchanged except this comment, from the game environment's published GameTask schema (backend/app/factory/game_env/tasks.schema.json at commit 60914179 on feat/game-env-probe-checks, 2026-10-19: the deterministic `probe` check kind, every task seeded). Update it from there; tools/validate-game.py checks every task in a game repo's Tasks/ and in a dataset against it.",
+  "$comment": "Vendored, unchanged except this comment, from the game environment's published GameTask schema (backend/app/factory/game_env/tasks.schema.json on feat/tasks-start-fails-build, superposition-training#588, 2026-10-20: the deterministic `probe` check kind, every task seeded, `fails_at_start` on a build check). Update it from there; tools/validate-game.py checks every task in a game repo's Tasks/ and in a dataset against it.",
   "$defs": {
     "ActionsJudge": {
       "additionalProperties": false,
@@ -495,8 +495,13 @@
     },
     "Build": {
       "additionalProperties": false,
-      "description": "The editor target compiles.",
+      "description": "The editor target compiles. `fails_at_start`: the task's start doesn't build, and making it build is the task\n(a compile error the engine rejects); the start is never played, so nothing in the task may need it played\n(check_milestones).",
       "properties": {
+        "fails_at_start": {
+          "default": false,
+          "title": "Fails At Start",
+          "type": "boolean"
+        },
         "kind": {
           "const": "build",
           "default": "build",
