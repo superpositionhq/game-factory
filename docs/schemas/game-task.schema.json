@@ -1,5 +1,5 @@
 {
-  "$comment": "Vendored, unchanged except this comment, from the game environment's published GameTask schema (backend/app/factory/game_env/tasks.schema.json on feat/tasks-start-fails-build, superposition-training#588, 2026-10-20: the deterministic `probe` check kind, every task seeded, `fails_at_start` on a build check). Update it from there; tools/validate-game.py checks every task in a game repo's Tasks/ and in a dataset against it.",
+  "$comment": "The GameTask schema (game-task/1): every task starts from a seed, pass/fail is decided by deterministic `probe` checks, a build check may say the start doesn't build (`fails_at_start`). tools/validate-game.py checks every task in a game repo's Tasks/ and in a dataset against it; tools/task-check.py checks that each task's start fails it and its reference passes it (docs/task-check.md).",
   "$defs": {
     "ActionsJudge": {
       "additionalProperties": false,
