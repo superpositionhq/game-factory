@@ -171,7 +171,7 @@ public static class Tools {
     // to the --all after it; --single-worktree keeps --all from adding the HEADs of other worktrees (the tasks worktree's
     // HEAD is the tasks branch, and --exclude does not filter worktree HEADs). HistoryRefArgs in the script body is the
     // same list for PowerShell callers.
-    public const string HistoryRefs = "--single-worktree --exclude=refs/heads/tasks --exclude=refs/remotes/*/tasks --all";
+    public const string HistoryRefs = "--single-worktree --exclude=refs/heads/tasks --exclude=refs/heads/tasks-* --exclude=refs/remotes/*/tasks --exclude=refs/remotes/*/tasks-* --all";
 
     public static bool ContainsAscii(string path, string needle) {
         byte[] n = Encoding.ASCII.GetBytes(needle); byte[] d = File.ReadAllBytes(path);
@@ -1247,7 +1247,7 @@ foreach ($t in @('claude', 'opus', $UserName)) { [void][GameDeliverable.Tools]::
 $Banned = New-Object System.Text.RegularExpressions.Regex($BannedPattern, 'IgnoreCase')
 # The refs of the delivered history: all but the tasks branch (local and remote-tracking; tasks never enter the dataset's
 # history), and not the HEADs of other worktrees (a tasks worktree's HEAD). Same as [GameDeliverable.Tools]::HistoryRefs.
-$HistoryRefArgs = @('--single-worktree', '--exclude=refs/heads/tasks', '--exclude=refs/remotes/*/tasks', '--all')
+$HistoryRefArgs = @('--single-worktree', '--exclude=refs/heads/tasks', '--exclude=refs/heads/tasks-*', '--exclude=refs/remotes/*/tasks', '--exclude=refs/remotes/*/tasks-*', '--all')
 
 # -SelfCheck: regression check of the scan (and scrub) rules on built-in samples; the game argument is ignored. Samples
 # that name the account are built from this machine's account name at run time (never written in the repo).
@@ -2122,7 +2122,7 @@ if (-not $NoGitHistory) {
     $commitMap = [GameDeliverable.Tools]::RewriteHistory($repo, $bare, $authors, $lfsMap, [string[]]@($Rules | ForEach-Object { $_.match }),
         [string[]]@($Rules | ForEach-Object { $_.replace }), [string[]]@($Rules | ForEach-Object { $_.scope }), $hints, $problems)
     $newSha = $null; if (-not $commitMap.TryGetValue($sha, [ref]$newSha)) { throw "the rewritten history has no commit for $sha" }
-    $tasksRefs = @(Invoke-Git $bare @('for-each-ref', '--format=%(refname)') | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match '/tasks$' })
+    $tasksRefs = @(Invoke-Git $bare @('for-each-ref', '--format=%(refname)') | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match '/tasks(-[^/]*)?$' })
     if ($tasksRefs.Count) { throw "the rewritten history carries the tasks branch ($($tasksRefs -join ', ')): task work must never enter the delivered history" }
     Invoke-Git $bare @('bundle', 'create', (Join-Path $ghDir "$Game.bundle"), '--all') | Out-Null
     $refs = @(Invoke-Git $bare @('for-each-ref', '--format=%(refname)') | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
