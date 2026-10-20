@@ -26,7 +26,7 @@ What the skeleton carries, and why:
 | `Config/DefaultEngine.ini` | GameInstance class, Enhanced Input classes, `bAllowHighDPIInGameMode=True` (Shipping recording builds; the pipeline packages Development without it), DX12 SM6, Lumen + VSM, `r.RDG.AsyncCompute=0` (first-frame GPU hang) |
 | `Config/DefaultEditorPerProjectUserSettings.ini` | Live Coding off (a running Live Coding blocks UBT for every project on the engine install) |
 | `Config/DefaultGame.ini` | project name/GUID, `CompanyName` = the game's own name (it becomes the exe's Publisher), Shipping packaging, scenario maps |
-| `.gitignore` | root-anchored build output only (`/Binaries/`, `/Saved/`, ...): everything else is committed |
+| `.gitignore` | root-anchored build output only (`/Binaries/`, `/Saved/`, ...) and local results (`/.task-checks/`, the task checker's): everything else is committed |
 | `.gitattributes` | `* text=auto` + every binary type in LFS, case-insensitive (`*.[pP][nN][gG]`) |
 | `Scripts/`, `Docs/ThirdPartyNotices.md`, `assets.manifest.json`, `Docs/screenshots/` | editor scripts kept unchanged; third-party credits; README images |
 | `Dataset/` | dataset layout v1.1 placeholder (`Gameplay/`, `Screenshots/`, `ReplayScripts/`, README) |

@@ -57,8 +57,9 @@ Then write the tasks in `<root>/tasks/<slug>/Tasks/`, commit there (`git -C <roo
 Check every task after committing it on the tasks branch:
 `python <GF_ROOT>/game-factory/tools/validate-game.py <GF_ROOT>/games/<slug>` (it reads the committed `tasks`
 branch, else `origin/tasks`, through git: schema, the format's extra rules, name = file name, seed commits on
-main or the task's `starts/<name>` branch and on UE 5.7, the branch an orphan, nothing under `Tasks/` on main). Commit tasks as you go, like any work (commit-always
-skill), but on the tasks branch only.
+main or the task's `starts/<name>` branch and on UE 5.7, the branch an orphan, nothing under `Tasks/` on main). Before
+committing a task, run the task check on it (section 5, `tools/task-check.py`): only a VALID task is committed and
+shipped. Commit tasks as you go, like any work (commit-always skill), but on the tasks branch only.
 
 ## 1. The four kinds
 
@@ -180,9 +181,15 @@ colour are measured from the engine (`light`, `grading`), never from screenshots
 plain words; it is shown in the grade, never to the agent. Check names are unique and `needs` only names earlier
 checks; calibrated probes, `code_judge` and `"reference": true` judges need `seed.reference`.
 
-A task is valid only when it passes the task check (docs/task-probes.md, section 4): its start fails the task and its
-reference fix passes every required check (with no reference, the start fails at least one required probe), and every
-required `still_works` probe already passes at the start.
+A task is valid only when it passes the task check: its start fails the task and its reference fix passes every
+required check (with no reference, the start fails at least one required probe), and every required `still_works`
+probe already passes at the start. Write the probes per [docs/task-probes.md](../../docs/task-probes.md), then run
+the task check on every task before committing it:
+`python <GF_ROOT>/game-factory/tools/task-check.py <GF_ROOT>/games/<slug> --task <path>/Tasks/<name>.json` (a task
+file not committed yet; `--task <name>` checks one on the tasks branch; [docs/task-check.md](../../docs/task-check.md)).
+It builds the start and the reference with the probe plugin, plays them and prints VALID or INVALID with the reasons
+and the measured values. **A task ships only when the task check says VALID**; for INVALID, fix the task (the
+docs' "Common reasons and fixes"), never the threshold toward what the start happens to measure.
 
 ## 6. Difficulty and limits
 

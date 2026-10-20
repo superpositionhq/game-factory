@@ -24,3 +24,5 @@ __pycache__/
 /Dataset.zip
 /Dataset.pending.zip
 /.dataset/
+# the task checker's results (tools/task-check.py): local only
+/.task-checks/

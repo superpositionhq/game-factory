@@ -62,7 +62,7 @@ Words used here:
   - `args` (optional): game flags on the play's command line, `-Name` or `-Name=value` (name: letters and digits;
     value: `[A-Za-z0-9_.-]{1,40}`). Never the engine flags the checker sets itself: ExecCmds, Run, NullRHI, Log,
     Unattended, RenderOffscreen, ResX, ResY, Benchmark, FPS, Game, Windowed, nor the checker's own measurement flags
-    (`tools/validate-game.py` lists what it refuses).
+    (any flag starting with `-TaskProbe`, the TaskProbe plugin's; `tools/validate-game.py` lists what it refuses).
   - `inputs`, each at time `t` (seconds of play):
     - a key: `{"t": 1.0, "key": "W", "press": true}` and later `"press": false` (Unreal key names: W, A, D, SpaceBar,
       LeftShift, LeftMouseButton, F2, Escape, ...);

@@ -2314,7 +2314,7 @@
     },
     "TaskPlay": {
       "additionalProperties": false,
-      "description": "A task-defined scripted play: `inputs` (keys, axes, widget clicks) sent at their times during `seconds`; its\nown `map` (with URL options) instead of the task's play_map, `args` on its command line (game flags, -Name or\n-Name=value, but never the grader's own: the engine flags in docs/task-probes.md section 1.1, -GameEnv*), and samples every `every` seconds (default\n0.5).",
+      "description": "A task-defined scripted play: `inputs` (keys, axes, widget clicks) sent at their times during `seconds`; its\nown `map` (with URL options) instead of the task's play_map, `args` on its command line (game flags, -Name or\n-Name=value, but never the grader's own: the engine flags in docs/task-probes.md section 1.1, -TaskProbe*), and samples every `every` seconds (default\n0.5).",
       "properties": {
         "args": {
           "items": {
