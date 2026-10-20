@@ -59,7 +59,7 @@
       "kind": "dir",
       "required": true,
       "in_repo_dataset": false,
-      "what": "the game's tasks in the game environment's task format (GameTask, docs/schemas/game-task.schema.json), copied from Tasks/ at the tip of the game repo's orphan tasks branch (never on main) with seed commits mapped to the delivered history: Tasks/<name>/task.json (the agent's part: everything but the grader's) and Tasks/<name>/grader.json (the grader's part: milestones, seed.reference), plus Tasks/README.md (what a task is, the split, the harness rule, how a seed is checked out of History/)",
+      "what": "the game's tasks in the task format (GameTask, docs/schemas/game-task.schema.json; probe checks: docs/task-probes.md), copied from Tasks/ at the tip of the game repo's orphan tasks branch (never on main) with seed commits mapped to the delivered history: Tasks/<name>/task.json (the agent's part: everything but the grader's) and Tasks/<name>/grader.json (the grader's part: milestones, seed.reference), plus Tasks/README.md (what a task is, the split, the harness rule, how a seed is checked out of History/)",
       "must_contain": [
         "README.md"
       ]

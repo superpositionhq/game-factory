@@ -173,7 +173,7 @@ listed file committed (`tools/migrate-assets-manifest.py` converts an older file
 images, no banned names. The dataset adds your design doc and the original brief (`Brief/`) and the full history.
 
 **Tasks (write-tasks skill).** A game is complete when its repo has `Tasks/` on the tasks branch: tasks an agent can
-be given on this game, one `Tasks/<game>-<kind>-<slug>.json` each in the game environment's format, about 10 (a mix of
+be given on this game, one `Tasks/<game>-<kind>-<slug>.json` each in the task format `GameTask`, about 10 (a mix of
 bug fixes from your real history, corrections from `user.direction` rows, features and look/content changes). They
 live on the repo's orphan `tasks` branch, checked out as a worktree outside the game folder (`<root>/tasks/<slug>`),
 committed and pushed there, never on main: task work never enters the game's history (the hooks ignore that branch).
