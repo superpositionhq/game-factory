@@ -561,10 +561,14 @@ def probe_errors(c, seed, ref, plays):
 def task_semantic_errors(t):
     """What the schema cannot say (the task format's own rules): check names unique, `needs` naming earlier
     checks, a code judge or a reference judge only with seed.reference, a before/after judge only with a seed, and the
-    probe rules (probe_errors)."""
+    probe rules (probe_errors); and a task whose start doesn't build (a build check's `fails_at_start`) has nothing
+    that needs the start played: no start-relative threshold, no before/after judge (docs/task-probes.md, 3.1)."""
     errs, seen, plays = [], set(), {}
     seed = t.get('seed') if isinstance(t.get('seed'), dict) else None
     ref = seed.get('reference') if seed else None
+    checks = [c for m in t.get('milestones') or [] if isinstance(m, dict) for c in m.get('checks') or []
+              if isinstance(c, dict)]
+    broken = next((c.get('name') for c in checks if c.get('kind') == 'build' and c.get('fails_at_start') is True), None)
     for m in t.get('milestones') or []:
         for c in (m.get('checks') or []) if isinstance(m, dict) else []:
             if not isinstance(c, dict):
@@ -572,6 +576,14 @@ def task_semantic_errors(t):
             n, k = c.get('name'), c.get('kind')
             if k == 'probe':
                 errs.extend(probe_errors(c, seed, ref, plays))
+                expect = c.get('expect') if isinstance(c.get('expect'), dict) else {}
+                relative = [x for x in ('calibrate', 'start_times', 'start_plus') if x in expect]
+                if broken and relative:
+                    errs.append(f"check {n}: its threshold is relative to the start ({relative[0]}), but the start "
+                                f"doesn't build ({broken}: fails_at_start), so it is never played; use a literal value")
+            if k == 'judge' and c.get('before') and broken:
+                errs.append(f"check {n} compares with the start (before: true), but the start doesn't build "
+                            f"({broken}: fails_at_start), so it is never played")
             if k == 'code_judge' and not ref:
                 errs.append(f'check {n}: a code judge needs seed.reference')
             if k == 'judge' and c.get('before') and not seed:
