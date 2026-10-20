@@ -35,6 +35,20 @@ def ignore_results(repo, out):
         f.write(f"\n# the task checker's results (tools/task-check.py)\n/{relative}/\n")
 
 
+def default_scratch(repo, root=None):
+    """Where the scratch copies go by default: on the same volume as the repo's resolved path (junctions and links
+    followed), so the copies' LFS files are hardlinks of the repo's own objects. The machine root's .task-check when
+    it is on that volume, else a .task-check folder beside the repo's parent folder (beside the repo itself when that
+    parent is a drive's root); never inside the repo."""
+    real = Path(os.path.realpath(repo))
+    root = Path(os.path.realpath(root or unreal.gfroot.root()))
+    if os.path.splitdrive(str(root))[0].lower() == os.path.splitdrive(str(real))[0].lower():
+        return root / ".task-check"
+    parent = real.parent
+    base = parent.parent if parent.parent != parent else parent
+    return base / ".task-check"
+
+
 def line(result):
     """The one line printed per task."""
     head = f"{result['verdict']:<7} {result['task']}"
@@ -52,7 +66,8 @@ def main(argv=None):
     parser.add_argument("--all", action="store_true", help="check every task on the tasks branch")
     parser.add_argument("--keep", action="store_true", help="keep the scratch copies (built games) after the check")
     parser.add_argument("--out", help="where results go (default: <repo>\\.task-checks)")
-    parser.add_argument("--scratch", help="where the scratch copies go (default: <machine root>\\.task-check)")
+    parser.add_argument("--scratch", help="where the scratch copies go (default: a .task-check folder on the repo's own drive, so LFS "
+                             "files are hardlinked)")
     parser.add_argument("--direct", action="store_true",
                         help="run Unreal directly, not through the machine's ue-heavy.ps1 slots")
     parser.add_argument("--timeout", type=int, default=1800, help="seconds a play or the editor pass may run")
@@ -92,7 +107,7 @@ def main(argv=None):
         return 2
     out = Path(args.out).resolve() if args.out else repo / ".task-checks"
     ignore_results(repo, out)
-    scratch_root = Path(args.scratch).resolve() if args.scratch else Path(unreal.gfroot.root()) / ".task-check"
+    scratch_root = Path(args.scratch).resolve() if args.scratch else default_scratch(repo)
     unreal.gfroot.check_free(str(scratch_root), "task check")
 
     def log(text):

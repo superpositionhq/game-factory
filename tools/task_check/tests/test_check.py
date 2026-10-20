@@ -395,6 +395,22 @@ class Cli(unittest.TestCase):
             self.assertEqual((code, seen), (0, ["metro-runner-fix-x"]))
             self.assertEqual(out.getvalue(), "VALID   metro-runner-fix-x\n")
 
+    def test_the_default_scratch_is_on_the_repos_own_drive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repos" / "metro-runner"
+            repo.mkdir(parents=True)
+            drive = os.path.splitdrive(os.path.realpath(tmp))[0]
+            self.assertEqual(cli.default_scratch(repo, root=Path(tmp) / "root"),
+                             Path(os.path.realpath(tmp)) / "root" / ".task-check", "the machine root when it is there")
+            other = "Z:" if drive.upper() != "Z:" else "Y:"
+            self.assertEqual(cli.default_scratch(repo, root=other + "\\Work"),
+                             Path(os.path.realpath(tmp)) / ".task-check", "else beside the repos' folder")
+            link = Path(tmp) / "games"
+            if subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(Path(tmp) / "repos")],
+                              capture_output=True).returncode == 0:
+                self.assertEqual(cli.default_scratch(link / "metro-runner", root=other + "\\Work"),
+                                 Path(os.path.realpath(tmp)) / ".task-check", "a junction is followed")
+
     def test_one_line_per_task(self):
         self.assertEqual(cli.line({"task": "a", "verdict": "VALID", "reasons": []}), "VALID   a")
         self.assertEqual(cli.line({"task": "b", "verdict": "INVALID", "reasons": ["x", "y"]}), "INVALID b: x; y")

@@ -37,10 +37,10 @@ elsewhere, `--scratch DIR` puts the copies elsewhere, `--direct` runs Unreal wit
 - Python 3.12 (standard library only), git and Git LFS. The checker reads the game's files straight from its git objects
   and its local LFS store, so the LFS objects of both commits must be there: `git -C <repo> lfs fetch origin <commit>`
   when it says one is missing.
-- Disk: each task makes up to two copies of the game plus their build outputs, deleted when the task is done. LFS files
-  are hardlinks of the repo's own objects (no extra disk) when the copies are on the repo's drive, else copies: pass
-  `--scratch` on the repo's drive when space is short. It refuses to start below the machine's free-space floor
-  (`min_free_gb`).
+- Disk: each task makes up to two copies of the game plus their build outputs, deleted when the task is done. The
+  copies go on the repo's own drive (its resolved path, junctions followed), so LFS files are hardlinks of the repo's
+  own objects and cost no disk; `--scratch` elsewhere makes them copies. It refuses to start below the machine's
+  free-space floor (`min_free_gb`).
 - Time: two cold builds and a few plays, typically 20-60 minutes per task. Every build, play and editor run goes
   through `<root>\tools\ue-heavy.ps1` when the machine has it, so checks share the machine's job slots with everything
   else; its timeouts count from when a job starts, not the wait for a slot. If PowerShell refuses to load
@@ -51,7 +51,9 @@ elsewhere, `--scratch DIR` puts the copies elsewhere, `--direct` runs Unreal wit
 
 1. Reads the task from the `tasks` branch (else `origin/tasks`) and validates it like
    [tools/validate-game.py](../tools/validate-game.py) does; a task that doesn't validate is INVALID.
-2. Materializes the start and the reference into a scratch folder outside the repo (default `<root>\.task-check\`):
+2. Materializes the start and the reference into a scratch folder outside the repo, on its drive (default
+   `<root>\.task-check\` when the machine root is on the repo's drive, else a `.task-check` folder beside the folder
+   that holds the repo):
    every file of that commit exactly as committed, LFS files hardlinked from the repo's store (copied across drives),
    without `Tasks/`, `History/`, `Dataset/` or `Dataset.zip`. The TaskProbe plugin is added as `Plugins/TaskProbe`;
    nothing else is added or changed, the `.uproject` included, and nothing comes from another commit (no port, no
