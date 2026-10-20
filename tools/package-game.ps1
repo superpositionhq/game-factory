@@ -1353,7 +1353,7 @@ $repo = if ($RepoPath) { (Resolve-Path $RepoPath).Path } else { $info.Dir }
 # Opus-codec allowlist, account name, e-mail addresses, git identity names) without changing it.
 if ($Rescan) {
     $pkg = (Resolve-Path $Rescan).Path
-    $terms = @(Invoke-Git $repo (@('log') + $HistoryRefArgs + @('--format=%an%n%cn')) | ForEach-Object { "$_".Trim() } | Where-Object { $_ -and $_ -notmatch '(?i)^(claude|agent|dev_\d+)$' } | Sort-Object -Unique)
+    $terms = @(Invoke-Git $repo (@('log') + $HistoryRefArgs + @('--format=%an%n%cn')) | ForEach-Object { "$_".Trim() } | Where-Object { $_ -and $_ -notmatch '(?i)^(claude|agent|dev|dev_\d+)$' } | Sort-Object -Unique)
     $parts = @($BannedPattern, 'claude', 'anthropic', 'opus', $UserSegRx, $EmailRx) + @($terms | ForEach-Object { "$WordStart$([regex]::Escape($_))(?![A-Za-z0-9])" })
     $rx = New-Object System.Text.RegularExpressions.Regex(($parts -join '|'), 'IgnoreCase')
     $rels = [string[]]@(Get-ChildItem $pkg -Recurse -File | ForEach-Object { $_.FullName.Substring($pkg.Length + 1).Replace('\', '/') })
@@ -1386,7 +1386,7 @@ if ($ScrubDir) {
     $ids = New-Object System.Collections.ArrayList; $seen = @{}
     foreach ($line in (Invoke-Git $repo (@('log') + $HistoryRefArgs + @('--reverse', '--topo-order', '--format=%an%x09%ae%n%cn%x09%ce')))) {
         $parts = "$line" -split "`t"; if ($parts.Count -lt 2) { continue }
-        $nm = $parts[0].Trim(); if ($nm -match '(?i)^(claude|agent|dev_\d+)$') { continue }
+        $nm = $parts[0].Trim(); if ($nm -match '(?i)^(claude|agent|dev|dev_\d+)$') { continue }
         if (-not $seen.ContainsKey($nm)) { $seen[$nm] = 'dev_' + ($seen.Count + 1).ToString('00') }
         $dev = $seen[$nm]; [void]$ids.Add(@($nm, $dev))
         foreach ($w in ($nm -split '[^A-Za-z0-9]+')) { if ($w.Length -ge 4 -and $w -notmatch '(?i)^(claude|anthropic|agent|users?|admin|root|dev|noreply|github|unknown)$') { [void]$ids.Add(@($w, $dev)) } }
@@ -2020,7 +2020,7 @@ foreach ($line in (Invoke-Git $repo @('log', '--format=%an%x09%ae%n%cn%x09%ce', 
     $parts = "$line" -split "`t"; if ($parts.Count -lt 2) { continue }
     $nm = $parts[0].Trim(); $em = $parts[1].Trim(); if (-not $authors.ContainsKey($nm)) { continue }
     $dev = $authors[$nm]
-    if ($nm -notmatch '(?i)^(claude|agent|dev_\d+)$') { [void]$identityTerms.Add(@($nm, $dev)) }
+    if ($nm -notmatch '(?i)^(claude|agent|dev|dev_\d+)$') { [void]$identityTerms.Add(@($nm, $dev)) }
     foreach ($w in ($nm -split '[^A-Za-z0-9]+')) { if ($w.Length -ge 4 -and $skipWords -notcontains $w.ToLowerInvariant()) { [void]$identityTerms.Add(@($w, $dev)) } }
     $local = ($em -split '@')[0]; if ($local -match '\+') { $local = ($local -split '\+')[-1] }
     if ($local.Length -ge 4 -and $skipWords -notcontains $local.ToLowerInvariant()) { [void]$identityTerms.Add(@($local, $dev)) }
