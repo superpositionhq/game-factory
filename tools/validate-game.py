@@ -61,7 +61,7 @@ def check_schema(value, schema, root=None, path='$'):
         if not any(_is(value, t) for t in ts):
             yield f'{path}: expected {"/".join(ts)}, got {type(value).__name__}'
             return
-    # combinators (the game environment's task schema uses them: optional fields, check kinds)
+    # combinators (the task schema uses them: optional fields, check kinds)
     if 'allOf' in schema:
         for sub in schema['allOf']:
             yield from check_schema(value, sub, root, path)
@@ -509,7 +509,7 @@ TASK_NAME = re.compile(r'^[a-z0-9][a-z0-9-]{1,62}$')
 GRADER_KEYS = ('milestones',)          # the grader's half of a task, with seed.reference
 
 
-# A task play's command-line flags (the environment's tasks.PLAY_ARG / DENIED_ARGS at 854a4fe3): never the grader's own.
+# A task play's command-line flags (docs/task-probes.md, section 1.1): never the checker's own.
 PLAY_ARG = re.compile(r'^-([A-Za-z][A-Za-z0-9]{0,40})(=[A-Za-z0-9_.-]{1,40})?$')
 DENIED_PLAY_ARGS = {'execcmds', 'run', 'nullrhi', 'log', 'unattended', 'renderoffscreen', 'resx', 'resy', 'benchmark',
                     'fps', 'game', 'windowed'}
@@ -517,7 +517,7 @@ TASK_PLAY_DEFAULTS = {'inputs': [], 'map': None, 'args': [], 'every': None}
 
 
 def probe_errors(c, seed, ref, plays):
-    """A probe check's rules beyond the schema (the environment's tasks._probe and TaskPlay validators at 854a4fe3):
+    """A probe check's rules beyond the schema (docs/task-probes.md):
     asset measures only with play "editor" and trace measures only with play "trace"; a trace probe never gates and
     takes a literal value; a task play is not named look/drive/editor/trace, has no input at or after its end, sets no
     grader flag, and same-named task plays are identical; == and != take a literal value; a calibrated threshold needs
@@ -559,12 +559,16 @@ def probe_errors(c, seed, ref, plays):
 
 
 def task_semantic_errors(t):
-    """What the schema cannot say (the game environment's tasks.validate): check names unique, `needs` naming earlier
+    """What the schema cannot say (the task format's own rules): check names unique, `needs` naming earlier
     checks, a code judge or a reference judge only with seed.reference, a before/after judge only with a seed, and the
-    probe rules (probe_errors)."""
+    probe rules (probe_errors); and a task whose start doesn't build (a build check's `fails_at_start`) has nothing
+    that needs the start played: no start-relative threshold, no before/after judge (docs/task-probes.md, 3.1)."""
     errs, seen, plays = [], set(), {}
     seed = t.get('seed') if isinstance(t.get('seed'), dict) else None
     ref = seed.get('reference') if seed else None
+    checks = [c for m in t.get('milestones') or [] if isinstance(m, dict) for c in m.get('checks') or []
+              if isinstance(c, dict)]
+    broken = next((c.get('name') for c in checks if c.get('kind') == 'build' and c.get('fails_at_start') is True), None)
     for m in t.get('milestones') or []:
         for c in (m.get('checks') or []) if isinstance(m, dict) else []:
             if not isinstance(c, dict):
@@ -572,6 +576,14 @@ def task_semantic_errors(t):
             n, k = c.get('name'), c.get('kind')
             if k == 'probe':
                 errs.extend(probe_errors(c, seed, ref, plays))
+                expect = c.get('expect') if isinstance(c.get('expect'), dict) else {}
+                relative = [x for x in ('calibrate', 'start_times', 'start_plus') if x in expect]
+                if broken and relative:
+                    errs.append(f"check {n}: its threshold is relative to the start ({relative[0]}), but the start "
+                                f"doesn't build ({broken}: fails_at_start), so it is never played; use a literal value")
+            if k == 'judge' and c.get('before') and broken:
+                errs.append(f"check {n} compares with the start (before: true), but the start doesn't build "
+                            f"({broken}: fails_at_start), so it is never played")
             if k == 'code_judge' and not ref:
                 errs.append(f'check {n}: a code judge needs seed.reference')
             if k == 'judge' and c.get('before') and not seed:
@@ -588,7 +600,7 @@ def task_semantic_errors(t):
 
 
 def check_task(rep, a, label, t, game, has_commit):
-    """One whole task (GameTask): schema, the environment's extra rules, seed on `game` and on known commits."""
+    """One whole task (GameTask): schema, the format's extra rules, seed on `game` and on known commits."""
     for e in list(check_schema(t, SCHEMAS['game-task']))[:5]:
         rep.error(a, f'{label}: {e}')
     for e in task_semantic_errors(t)[:5]:
@@ -684,7 +696,7 @@ def check_repo_tasks(rep, repo, files=None):
     rep.note(a, f'{len(paths)} task(s) on {ref} (about 10 recommended)')
 
 
-ENGINE = '5.7'   # the game environment's engine: it builds a start exactly as committed
+ENGINE = '5.7'   # the checker's engine: it builds a start exactly as committed
 
 
 def start_engine(repo, commit):

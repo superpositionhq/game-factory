@@ -1,5 +1,5 @@
 {
-  "$comment": "Vendored, unchanged except this comment, from the game environment's published GameTask schema (backend/app/factory/game_env/tasks.schema.json on feat/tasks-start-fails-build, superposition-training#588, 2026-10-20: the deterministic `probe` check kind, every task seeded, `fails_at_start` on a build check). Update it from there; tools/validate-game.py checks every task in a game repo's Tasks/ and in a dataset against it.",
+  "$comment": "game-factory's task format, GameTask (game-task/1): one task a game ships with, on its orphan tasks branch (Tasks/<name>.json) and, split into the agent's and the grader's parts, in its dataset. The deterministic `probe` check kind is described for task authors in docs/task-probes.md, and every task is seeded; a build check's `fails_at_start` marks a start that doesn't compile. tools/validate-game.py checks every task in a game repo's tasks branch and in a dataset against this schema and the rules it cannot express.",
   "$defs": {
     "ActionsJudge": {
       "additionalProperties": false,
@@ -495,7 +495,7 @@
     },
     "Build": {
       "additionalProperties": false,
-      "description": "The editor target compiles. `fails_at_start`: the task's start doesn't build, and making it build is the task\n(a compile error the engine rejects); the start is never played, so nothing in the task may need it played\n(check_milestones).",
+      "description": "The editor target compiles. `fails_at_start`: the task's start doesn't build, and making it build is the task\n(a compile error the engine rejects); the start is never played, so nothing in the task may need it played\n(docs/task-probes.md, section 3.1; tools/validate-game.py).",
       "properties": {
         "fails_at_start": {
           "default": false,
@@ -1832,7 +1832,7 @@
     },
     "Probe": {
       "additionalProperties": false,
-      "description": "A deterministic check (probes.md): `measure` taken where `play` says, reduced to one number, compared with\n`expect`. `describe` is the assertion in plain English, shown in the grade.",
+      "description": "A deterministic check (docs/task-probes.md): `measure` taken where `play` says, reduced to one number, compared with\n`expect`. `describe` is the assertion in plain English, shown in the grade.",
       "properties": {
         "describe": {
           "maxLength": 400,
@@ -2005,7 +2005,7 @@
     },
     "Seed": {
       "additionalProperties": false,
-      "description": "Where a seeded task starts: one of the studio's games at `commit`. `game` is its slug in the games catalog\n(games.json: its repository, project and mirror), the folder under the machine's games root on the studio's PC.\n`reference`: a later commit of that game whose change solves the task (a bug's fix), for the code judge only.\n`history`: which history the two commits are from (datasets.py): \"private\", the game's own repository (its clone,\nGitHub, the mirror), or \"dataset\", the rewritten history a layout v1.3 Dataset.zip delivers (History/), whose\ncommit ids differ; the game's commit map translates either way (datasets.seed_in).",
+      "description": "Where a seeded task starts: one of the studio's games at `commit`. `game` is its slug: the game's repository\n(game-<slug>) and its folder under the machine's games root.\n`reference`: a later commit of that game whose change solves the task (a bug's fix), for calibrated probes, the code judge and the task check.\n`history`: which history the two commits are from: \"private\", the game's own repository (its clone,\nGitHub, a mirror), or \"dataset\", the rewritten history a layout v1.3 Dataset.zip delivers (History/), whose\ncommit ids differ; the game's commit map translates either way.",
       "properties": {
         "commit": {
           "pattern": "^[0-9a-f]{40}$",
@@ -2314,7 +2314,7 @@
     },
     "TaskPlay": {
       "additionalProperties": false,
-      "description": "A task-defined scripted play: `inputs` (keys, axes, widget clicks) sent at their times during `seconds`; its\nown `map` (with URL options) instead of the task's play_map, `args` on its command line (game flags, -Name or\n-Name=value, but never the grader's own: DENIED_ARGS, -GameEnv*), and samples every `every` seconds (default\n0.5).",
+      "description": "A task-defined scripted play: `inputs` (keys, axes, widget clicks) sent at their times during `seconds`; its\nown `map` (with URL options) instead of the task's play_map, `args` on its command line (game flags, -Name or\n-Name=value, but never the grader's own: the engine flags in docs/task-probes.md section 1.1, -GameEnv*), and samples every `every` seconds (default\n0.5).",
       "properties": {
         "args": {
           "items": {
