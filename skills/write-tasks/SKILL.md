@@ -7,10 +7,10 @@ description: How to write the tasks a game ships with (Tasks/ on the repo's orph
 
 A game is complete when its repo's orphan `tasks` branch has `Tasks/`: tasks an LLM agent can be given on this game,
 fair, checkable and not leaked. One file per task, `Tasks/<game>-<kind>-<slug>.json` (`kind`: `fix`, `corr`, `feat`,
-`change`), in the game environment's format `GameTask`
+`change`), in the task format `GameTask`
 ([docs/schemas/game-task.schema.json](../../../docs/schemas/game-task.schema.json), game-task/1), with `"name"` equal
 to the file stem (run and grade ids depend on it; never rename a shipped task). About 10 per game is the
-recommendation; a mix of kinds. The tasks branch is the single source: the environment loads `Tasks/*.json` from the
+recommendation; a mix of kinds. The tasks branch is the single source: tasks are loaded as `Tasks/*.json` from the
 repos' tasks branches, and the packager ships them in the dataset split into the agent's and the grader's halves
 (docs/game-format.md).
 
@@ -56,7 +56,7 @@ Then write the tasks in `<root>/tasks/<slug>/Tasks/`, commit there (`git -C <roo
 
 Check every task after committing it on the tasks branch:
 `python <GF_ROOT>/game-factory/tools/validate-game.py <GF_ROOT>/games/<slug>` (it reads the committed `tasks`
-branch, else `origin/tasks`, through git: schema, the environment's extra rules, name = file name, seed commits on
+branch, else `origin/tasks`, through git: schema, the format's extra rules, name = file name, seed commits on
 main or the task's `starts/<name>` branch and on UE 5.7, the branch an orphan, nothing under `Tasks/` on main). Commit tasks as you go, like any work (commit-always
 skill), but on the tasks branch only.
 
@@ -76,7 +76,7 @@ not have, a sweeping pass resting on a pack imported later, anything whose outco
 
 ### Starts on the engine (owner's rule, 2026-10-19)
 
-The game environment builds a start exactly as committed, on UE 5.7: it never ports, patches or rewrites a game, and
+The checker builds a start exactly as committed, on UE 5.7: it never ports, patches or rewrites a game, and
 it refuses a start that isn't a 5.7 project. So `seed.commit` and `seed.reference` must both be commits whose
 `.uproject` says `"EngineAssociation": "5.7"` and that build as they are (the validator checks the engine). A real fix
 made before the game's 5.7 port can't be used as it was; give it a start on 5.7 instead:
@@ -87,7 +87,7 @@ made before the game's 5.7 port can't be used as it was; give it a start on 5.7 
   `README.md`, manifests, tools) is exactly as at the old pre-fix commit, so nothing in the start records or
   regenerates the fix. **R** (`seed.reference`) = a child of S whose tree is B's (`git commit-tree <B^{tree}> -p S`).
 - Both live on the branch `starts/<task name>` (pointing at R), pushed with the game; the dataset ships every branch
-  but `tasks`, so the history the environment gets holds them.
+  but `tasks`, so the delivered history holds them.
 - A binary asset (.uasset/.umap) goes back to its pre-fix version only if no later commit changed it; otherwise
   re-create the issue in code or config, or pick another task.
 - A feature or change with no reference starts at B itself (no branch), once you've checked B doesn't already have it.
@@ -133,9 +133,9 @@ Every grader play opens it (boots, idle and drive, the route, the before and ref
 **Pass/fail is decided only by checks the grader computes itself** (the owner, 2026-10-19): `build`, `boot`,
 `log_absent` and **`probe`** checks. A model judge (`judge`, `code_judge`, `actions_judge`) never decides pass/fail
 and nothing is graded from pixel statistics of the game's frames. Judges may stay as `"required": false` quality
-checks (taste, readability, how the agent worked). The probe language is the environment's contract:
-`docs/planning/2026-10-13_game-creation-env/probes.md` in superposition-training, mirrored by the schema in
-[docs/schemas/game-task.schema.json](../../../docs/schemas/game-task.schema.json).
+checks (taste, readability, how the agent worked). The probe language, every play, measure and threshold with the
+rules that gate a task, is the task author's contract [docs/task-probes.md](../../docs/task-probes.md), checked by the
+schema [docs/schemas/game-task.schema.json](../../docs/schemas/game-task.schema.json) and `tools/validate-game.py`.
 
 Each milestone is a reward group; a run that gets part of the way earns part of the reward. The usual order:
 
@@ -180,8 +180,9 @@ colour are measured from the engine (`light`, `grading`), never from screenshots
 plain words; it is shown in the grade, never to the agent. Check names are unique and `needs` only names earlier
 checks; calibrated probes, `code_judge` and `"reference": true` judges need `seed.reference`.
 
-A task is valid only when the grader's golden check passes in the grading environment: the reference passes every
-required probe and the start fails at least one.
+A task is valid only when it passes the task check (docs/task-probes.md, section 4): its start fails the task and its
+reference fix passes every required check (with no reference, the start fails at least one required probe), and every
+required `still_works` probe already passes at the start.
 
 ## 6. Difficulty and limits
 
