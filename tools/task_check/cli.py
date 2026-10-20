@@ -1,7 +1,8 @@
-"""python tools/task-check.py <game repo> [--task NAME ...] [--all] [--keep] [--out DIR] (docs/task-check.md)."""
+"""python tools/task-check.py <game repo> [--task NAME|FILE.json ...] [--all] [--keep] [--out DIR] (docs/task-check.md)."""
 
 import argparse
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -47,7 +48,7 @@ def main(argv=None):
         "plugin, measure every probe, and say whether the task is VALID (the start fails it, the reference passes "
         "it, what still works already works). docs/task-check.md"))
     parser.add_argument("repo", help="the game's repo (its tasks are read from its tasks branch, else origin/tasks)")
-    parser.add_argument("--task", action="append", default=[], metavar="NAME", help="a task to check (repeatable)")
+    parser.add_argument("--task", action="append", default=[], metavar="NAME", help="a task on the tasks branch, or a task file (<name>.json) not committed yet (repeatable)")
     parser.add_argument("--all", action="store_true", help="check every task on the tasks branch")
     parser.add_argument("--keep", action="store_true", help="keep the scratch copies (built games) after the check")
     parser.add_argument("--out", help="where results go (default: <repo>\\.task-checks)")
@@ -61,19 +62,33 @@ def main(argv=None):
     repo = Path(args.repo).resolve()
     if not (repo / ".git").exists():
         parser.error(f"{repo} isn't a git repo")
+    files = {}
+    for given in args.task:  # a task file on disk (one being written, not committed yet)
+        if given.lower().endswith(".json") and Path(given).is_file():
+            raw = Path(given).read_bytes()
+            try:
+                data = json.loads(raw.decode("utf-8-sig"))
+            except ValueError as e:
+                data, why = None, f"{given} is not JSON ({e})"
+            else:
+                why = None if isinstance(data, dict) else f"{given} is not a task object"
+            files[given] = (data if why is None else None, raw, why, str(Path(given).resolve()))
     ref, found = tasks.read_tasks(repo)
-    if ref is None:
+    sources = {n: (t, raw, why, ref) for n, (t, raw, why) in found.items()}
+    sources.update(files)
+    if ref is None and not files:
         print(f"{repo.name}: no tasks branch (neither tasks nor origin/tasks)", file=sys.stderr)
         return 2
     names = sorted(found) if args.all else args.task
     if not names:
-        print(f"{repo.name}: {len(found)} task(s) on {ref}; name one with --task NAME or pass --all:", file=sys.stderr)
+        print(f"{repo.name}: {len(found)} task(s) on {ref}; name one with --task NAME (or --task <file>.json) or "
+              "pass --all:", file=sys.stderr)
         for n in sorted(found):
             print(f"  {n}", file=sys.stderr)
         return 2
-    unknown = [n for n in names if n not in found]
+    unknown = [n for n in names if n not in sources]
     if unknown:
-        print(f"{repo.name}: no task {', '.join(unknown)} on {ref}", file=sys.stderr)
+        print(f"{repo.name}: no task {', '.join(unknown)} on {ref or 'a tasks branch'}", file=sys.stderr)
         return 2
     out = Path(args.out).resolve() if args.out else repo / ".task-checks"
     ignore_results(repo, out)
@@ -85,8 +100,8 @@ def main(argv=None):
 
     results = []
     for name in names:
-        task, raw, why = found[name]
-        log(f"{name}: checking ({ref})")
+        task, raw, why, source = sources[name]
+        log(f"{name}: checking ({source})")
         if task is None:
             result = {"task": name, "verdict": "INVALID", "reasons": [why]}
         else:

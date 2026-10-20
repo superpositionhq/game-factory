@@ -1,6 +1,8 @@
 """A task checked end to end with fake Unreal: the sides' plays and builds, calibration, the grades, a whole check's
 result file; a commit materialized from a real git repo; the argv a play passes to the game."""
 
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -374,6 +376,24 @@ class Cli(unittest.TestCase):
             exclude = (repo / ".git" / "info" / "exclude").read_text(encoding="utf-8")
             cli.ignore_results(repo, repo / ".task-checks")
             self.assertEqual((repo / ".git" / "info" / "exclude").read_text(encoding="utf-8"), exclude, "once")
+
+    def test_a_task_file_not_committed_yet_is_checked_too(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, _, _, _ = make_game(tmp)
+            path = Path(tmp) / "metro-runner-fix-x.json"
+            path.write_text(json.dumps({**task_with(probe()), "name": "metro-runner-fix-x"}), encoding="utf-8")
+            seen = []
+
+            def fake(repo_, task, raw, scratch, out, **kw):
+                seen.append(task["name"])
+                return {"task": task["name"], "verdict": "VALID", "reasons": []}
+
+            with mock.patch.object(check, "check_task", fake), \
+                    mock.patch.object(unreal.gfroot, "check_free", lambda *a: 100.0), \
+                    contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
+                code = cli.main([str(repo), "--task", str(path), "--scratch", str(Path(tmp) / "s")])
+            self.assertEqual((code, seen), (0, ["metro-runner-fix-x"]))
+            self.assertEqual(out.getvalue(), "VALID   metro-runner-fix-x\n")
 
     def test_one_line_per_task(self):
         self.assertEqual(cli.line({"task": "a", "verdict": "VALID", "reasons": []}), "VALID   a")

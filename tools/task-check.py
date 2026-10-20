@@ -3,6 +3,7 @@
 
     python tools/task-check.py <games>/<slug> --task <name> [--task <name> ...]
     python tools/task-check.py <games>/<slug> --all
+    python tools/task-check.py <games>/<slug> --task <path>/Tasks/<name>.json   # a task file not committed yet
     options: --keep (keep the built scratch copies), --out DIR (default <repo>\\.task-checks), --scratch DIR,
              --direct (run Unreal without the machine's ue-heavy.ps1 slots), --timeout S, --build-timeout S
 

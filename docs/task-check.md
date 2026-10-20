@@ -10,7 +10,11 @@ plugin, measures every probe, and says **VALID** or **INVALID** with the reasons
 python tools\task-check.py C:\Users\<you>\Work\games\<slug> --task <task-name>
 python tools\task-check.py C:\Users\<you>\Work\games\<slug> --task <one> --task <two>
 python tools\task-check.py C:\Users\<you>\Work\games\<slug> --all
+python tools\task-check.py C:\Users\<you>\Work\games\<slug> --task C:\Users\<you>\Work\tasks\<slug>\Tasks\<task-name>.json
 ```
+
+A task is read from the repo's `tasks` branch by name; give the path of a `.json` file instead to check a task you
+haven't committed yet.
 
 Run it from PowerShell (the machine's `ue-heavy.ps1` is a PowerShell script; see "Requirements"). Without `--task` or
 `--all` it lists the tasks on the branch. Each task prints one line, and the exit code is 0 only when every task is
