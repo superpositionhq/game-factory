@@ -33,8 +33,10 @@ elsewhere, `--scratch DIR` puts the copies elsewhere, `--direct` runs Unreal wit
 - Python 3.12 (standard library only), git and Git LFS. The checker reads the game's files straight from its git objects
   and its local LFS store, so the LFS objects of both commits must be there: `git -C <repo> lfs fetch origin <commit>`
   when it says one is missing.
-- Disk: each task makes up to two copies of the game plus their build outputs (hardlinked LFS files cost nothing when
-  the copies are on the repo's drive). It refuses to start below the machine's free-space floor (`min_free_gb`).
+- Disk: each task makes up to two copies of the game plus their build outputs, deleted when the task is done. LFS files
+  are hardlinks of the repo's own objects (no extra disk) when the copies are on the repo's drive, else copies: pass
+  `--scratch` on the repo's drive when space is short. It refuses to start below the machine's free-space floor
+  (`min_free_gb`).
 - Time: two cold builds and a few plays, typically 20-60 minutes per task. Every build, play and editor run goes
   through `<root>\tools\ue-heavy.ps1` when the machine has it, so checks share the machine's job slots with everything
   else; its timeouts count from when a job starts, not the wait for a slot. If PowerShell refuses to load
