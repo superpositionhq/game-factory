@@ -46,7 +46,7 @@ Everything needed to rebuild the game from the repo alone, tracked in git (binar
 | `Dataset/` | the dataset minus `UEProject/`, `Build/`, `History/` and `Tasks/` (written by the packager) |
 
 **Tasks live on the orphan `tasks` branch, never on main.** The same repo has a branch `tasks` that shares no history
-with main: `Tasks/<game>-<kind>-<slug>.json` (one task each in the game environment's format,
+with main: `Tasks/<game>-<kind>-<slug>.json` (one task each in the task format `GameTask`,
 [schemas/game-task.schema.json](schemas/game-task.schema.json); at least one, about 10 recommended; written with the
 `write-tasks` skill), a short `README.md`, optionally `tasks-workflow.jsonl`. It is checked out as a git worktree
 outside the game folder (e.g. `<root>/tasks/<slug>`), committed and pushed there. Task work never enters the game's
@@ -117,12 +117,12 @@ then copy `History/lfs` into `<game>/.git/lfs`, `git lfs install --local`, `git 
 
 **Tasks.** A game is complete when its repo's orphan `tasks` branch has `Tasks/`: tasks an agent can be given on
 this game (a bug fix from its history, a correction from a person's direction, a feature, a look or content change),
-in the game environment's task format (`GameTask`, game-task/1), one file per task named
+in the task format (`GameTask`, game-task/1), one file per task named
 `<game>-<kind>-<slug>.json` with `name` equal to the file name. About 10 are recommended; the count is reported,
-and only a game with none fails. The tasks branch is the single source: the environment loads `Tasks/*.json` from
+and only a game with none fails. The tasks branch is the single source: tasks are loaded as `Tasks/*.json` from
 the repos' tasks branches. How to write them: the `write-tasks` skill. The validator reads the tasks from `tasks`
 (else `origin/tasks`) and checks each against [schemas/game-task.schema.json](schemas/game-task.schema.json)
-(vendored from the environment), that its seed is on this game and its seed commits are ancestors of main's head,
+(the task format; probe checks: [task-probes.md](task-probes.md)), that its seed is on this game and its seed commits are ancestors of main's head,
 that the branch shares no history with main, and that main tracks nothing under `Tasks/`.
 
 In a dataset (layout v1.3) the packager copies the tasks from the tip of the tasks branch, maps each seed's commits
