@@ -544,7 +544,7 @@ def probe_errors(c, seed, ref, plays):
             errs.append(f'check {n}: play {pname} has an input at or after its end ({secs} s)')
         for arg in play.get('args') or []:
             mm = PLAY_ARG.match(arg) if isinstance(arg, str) else None
-            if mm and (mm.group(1).lower() in DENIED_PLAY_ARGS or mm.group(1).lower().startswith('gameenv')):
+            if mm and (mm.group(1).lower() in DENIED_PLAY_ARGS or mm.group(1).lower().startswith('taskprobe')):
                 errs.append(f"check {n}: a task play can't set {arg.split('=')[0]}")
         whole = dict(TASK_PLAY_DEFAULTS, **play)
         if plays.setdefault(pname, whole) != whole:

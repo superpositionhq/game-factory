@@ -65,6 +65,10 @@ class Tasks(unittest.TestCase):
         ]:
             with self.assertRaisesRegex(ValueError, said):
                 task_with(*checks, seed=seed)
+        for arg in ("-TaskProbe", "-taskprobeseconds=99", "-ExecCmds=quit"):
+            with self.assertRaisesRegex(ValueError, "can't set"):
+                task_with(probe(play={"name": "fire", "seconds": 10, "args": [arg]}))
+        task_with(probe(play={"name": "fire", "seconds": 10, "args": ["-AutoPlay", "-Scenario=2"]}))
         task_with(probe("a", play={"name": "fire", "seconds": 10}), probe("b", play={"name": "fire", "seconds": 10}))
         task_with(probe(expect={"op": ">=", "start_times": 1.3}), seed=NO_FIX)
 
