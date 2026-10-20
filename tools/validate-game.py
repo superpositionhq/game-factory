@@ -558,6 +558,29 @@ def probe_errors(c, seed, ref, plays):
     return errs
 
 
+def unplayed_start_errors(t):
+    """A task whose start doesn't build (a build check's `fails_at_start`: making it build is the task) is never
+    played at its start, so none of its checks may need the start played: no probe threshold relative to the start
+    (calibrate, start_times, start_plus) and no judge comparing with it (`before`)."""
+    checks = [c for m in t.get('milestones') or [] if isinstance(m, dict) for c in m.get('checks') or []
+              if isinstance(c, dict)]
+    broken = next((c.get('name') for c in checks if c.get('kind') == 'build' and c.get('fails_at_start')), None)
+    if broken is None:
+        return []
+    errs = []
+    for c in checks:
+        expect = c.get('expect') if isinstance(c.get('expect'), dict) else {}
+        rel = 'calibrate' if 'calibrate' in expect else ('start' if 'start_times' in expect or 'start_plus' in expect
+                                                          else None)
+        if c.get('kind') == 'probe' and rel:
+            errs.append(f"check {c.get('name')}: its threshold is relative to the start ({rel}), but the start doesn't "
+                        f"build ({broken}: fails_at_start), so it is never played; use a literal value")
+        if c.get('kind') == 'judge' and c.get('before'):
+            errs.append(f"check {c.get('name')} compares with the start (before: true), but the start doesn't build "
+                        f"({broken}: fails_at_start), so it is never played")
+    return errs
+
+
 def task_semantic_errors(t):
     """What the schema cannot say (the game environment's tasks.validate): check names unique, `needs` naming earlier
     checks, a code judge or a reference judge only with seed.reference, a before/after judge only with a seed, and the
@@ -565,6 +588,7 @@ def task_semantic_errors(t):
     errs, seen, plays = [], set(), {}
     seed = t.get('seed') if isinstance(t.get('seed'), dict) else None
     ref = seed.get('reference') if seed else None
+    errs.extend(unplayed_start_errors(t))
     for m in t.get('milestones') or []:
         for c in (m.get('checks') or []) if isinstance(m, dict) else []:
             if not isinstance(c, dict):
