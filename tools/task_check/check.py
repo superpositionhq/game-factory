@@ -268,6 +268,35 @@ def probe_values(task, reference, start):
     return out
 
 
+def task_maps(task):
+    """The maps the task's plays open: its play_map and every task play's own map."""
+    found = [task.get("play_map")] + [p["map"] for p in probes.task_plays(task).values()]
+    return sorted({m.split("?", 1)[0] for m in found if m})
+
+
+def map_gaps(repo, sha, task):
+    """{map: {"missing": [/Game packages it names that the commit lacks], "names": how many it names}} of the maps the
+    task plays, for those that miss any (a store pack committed only later, say). The checker never fills them in: a
+    task is built exactly as committed."""
+    out = {}
+    for name in task_maps(task):
+        found = seeds.missing_packages(repo, sha, name)
+        if found and found[0]:
+            out[name] = {"missing": found[0], "names": found[1]}
+    return out
+
+
+def gap_notes(result):
+    """A note per side and map whose packages the commit lacks."""
+    notes = []
+    for side in ("start", "reference"):
+        for name, gap in ((result.get(side) or {}).get("missing_packages") or {}).items():
+            notes.append(f"{side}: {name} names {len(gap['missing'])} of its {gap['names']} /Game packages that the "
+                         f"commit doesn't have (e.g. {gap['missing'][0]}): they load as missing; commit them with the "
+                         "task's commit or pick a commit that has them")
+    return notes
+
+
 def check_task(repo, task, raw, scratch, out_dir, keep=False, direct=False, timeout=1800, build_timeout=3600,
                log=print, clock=time.time):
     """Check one task (a dict read from `repo`'s tasks branch, its file's bytes `raw`): its result (written to
@@ -314,8 +343,9 @@ def check_task(repo, task, raw, scratch, out_dir, keep=False, direct=False, time
             project = unreal.Project(folder, machine, f"{name} {side}")
             sides[side] = Side(side, project, task, timeout, build_timeout, evidence, log)
             result[side] = {"commit": sha, "files": made["files"], "lfs_linked": made["linked"],
-                            "lfs_copied": made["copied"], "overlaid": made["overlaid"], "engine": str(machine.engine),
-                            "slots": "ue-heavy" if machine.ue_heavy else "direct"}
+                            "lfs_copied": made["copied"], "engine": str(machine.engine),
+                            "slots": "ue-heavy" if machine.ue_heavy else "direct",
+                            "missing_packages": map_gaps(repo, sha, task)}
         start, reference = sides["start"], sides.get("reference")
         build = tasks.fails_at_start(task)
         if not start.built():
@@ -334,6 +364,7 @@ def check_task(repo, task, raw, scratch, out_dir, keep=False, direct=False, time
         else:
             start_grade = Grade(task, "start", start, reference, thresholds).run()
         valid, why, notes = verdict.verdict(task, ref_grade, start_grade)
+        notes += gap_notes(result)
         result.update(probes=probe_values(task, ref_grade, start_grade), start_checks=start_grade["checks"],
                       reference_checks=ref_grade["checks"] if ref_grade else [])
         return finish("VALID" if valid else "INVALID", why, notes)

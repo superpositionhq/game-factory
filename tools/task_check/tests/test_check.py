@@ -225,6 +225,26 @@ class Seeds(unittest.TestCase):
             seeds.remove(copy)
             self.assertTrue((repo / ".git" / "lfs" / "objects").is_dir())
 
+    def test_a_maps_missing_packages_are_reported_never_filled_in(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, start, _, _ = make_game(tmp)
+            maps = repo / "Content" / "Maps"
+            maps.mkdir(parents=True)
+            (maps / "L_Town.umap").write_bytes(b"\x00/Game/Packs/Rocks/SM_Rock\x00/Game/T_Wall\x00/Game/Maps/L_Town\x00")
+            git(repo, "add", "-A")
+            git(repo, "commit", "-q", "-m", "a map naming a pack the commit lacks")
+            sha = git(repo, "rev-parse", "HEAD").decode().strip()
+            self.assertEqual(seeds.missing_packages(repo, sha, "/Game/Maps/L_Town?Scenario=1"),
+                             (["/Game/Packs/Rocks/SM_Rock"], 2))
+            self.assertIsNone(seeds.missing_packages(repo, sha, "/Game/Maps/L_Nowhere"))
+            task = {**task_with(probe()), "play_map": "/Game/Maps/L_Town?Scenario=1"}
+            gaps = check.map_gaps(repo, sha, task)
+            self.assertEqual(gaps, {"/Game/Maps/L_Town": {"missing": ["/Game/Packs/Rocks/SM_Rock"], "names": 2}})
+            note, = check.gap_notes({"start": {"missing_packages": gaps}})
+            self.assertTrue(note.startswith("start: /Game/Maps/L_Town names 1 of its 2 /Game packages"))
+            seeds.materialize(repo, sha, Path(tmp) / "copy")
+            self.assertFalse((Path(tmp) / "copy" / "Content" / "Packs").exists(), "nothing is added")
+
     def test_a_missing_lfs_object_and_another_engine_are_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo, start, _, _ = make_game(tmp, engine="5.3")

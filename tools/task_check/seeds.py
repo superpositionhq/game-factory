@@ -1,13 +1,14 @@
 """A commit of the game as a project folder outside its repo, for the checker to build and play.
 
-- materialize: the game's files at a commit, read straight from its repository (git objects, and the Git LFS objects in
-  its .git/lfs/objects), written into a scratch folder; each LFS file is a hardlink of its object when the folder is on
-  the repo's volume (it costs no disk), else a copy. Nothing in the repo is written or checked out.
+- materialize: the game's files at a commit, exactly as committed, read straight from its repository (git objects, and
+  the Git LFS objects in its local store), written into a scratch folder; each LFS file is a hardlink of its object when
+  the folder is on the repo's volume (it costs no disk), else a copy. Nothing in the repo is written or checked out, and
+  nothing from another commit is added: a task is built exactly as committed (no port, no patch).
 - what a task's agent never sees is left out (ANSWERS): Tasks/, History/, Dataset/ and Dataset.zip at the root.
-- store packs a commit lacks are overlaid (overlay_entries): several games committed their Fab/Marketplace packs only
-  late, so an earlier commit's maps would load without them. What was overlaid is noted in Saved/TaskProbe/overlay.json.
 - add_probe: the TaskProbe plugin as its own folder under Plugins/ (enabled by default: the game's own files, its
-  .uproject included, stay exactly as committed). A start is a UE 5.7 project as committed: never ported or patched."""
+  .uproject included, stay exactly as committed). The only thing the checker adds.
+- missing_packages: the /Game packages a map names that the commit doesn't hold (e.g. a store pack committed only
+  later): a fault of the task's commit, which the checker reports and never fills in."""
 
 import json
 import os
@@ -15,7 +16,6 @@ import re
 import shutil
 import stat
 import subprocess
-from functools import lru_cache
 from pathlib import Path
 
 LFS_POINTER = re.compile(rb"^version https://git-lfs\.github\.com/spec/v1\noid sha256:([0-9a-f]{64})\nsize (\d+)\n")
@@ -24,9 +24,8 @@ PLUGIN = "Plugins/TaskProbe"
 PLUGIN_SOURCE = Path(__file__).resolve().parent / "TaskProbe"
 ANSWERS = ("tasks", "history", "dataset", "dataset.zip")  # never materialized (case-insensitive, at the root)
 ENGINE = "5.7"
-OVERLAY_NOTE = "Saved/TaskProbe/overlay.json"
-ASSETS_MANIFEST = "assets.manifest.json"
-ASSETS_SCHEMA = "assets-manifest/v1"
+PACKAGE = re.compile(rb"/Game/[A-Za-z0-9_/\-]+")
+NUMBERED = re.compile(r"^(.+)_\d+$")
 
 
 class WrongEngine(ValueError):
@@ -79,28 +78,24 @@ def place(stored, target, link=True):
     return "copied"
 
 
-def materialize(repo, commit, dest, overlay=True, link=True):
+def materialize(repo, commit, dest, link=True):
     """Write the files of `repo` at `commit` into `dest` (which must not exist), each Git LFS pointer replaced by its
-    object from the repo's LFS store (hardlinked when `link` and the volume allows, else copied), and none of ANSWERS;
-    with `overlay`, the store packs `commit` lacks (overlay_entries), noted in dest/OVERLAY_NOTE. Raises
-    FileNotFoundError when an object isn't in the local store (`git lfs fetch` it first). {"files", "linked",
-    "copied", "overlaid"}."""
+    object from the repo's LFS store (hardlinked when `link` and the volume allows, else copied), and none of ANSWERS.
+    Raises FileNotFoundError when an object isn't in the local store (`git lfs fetch` it first). {"files", "linked",
+    "copied"}."""
     repo, dest = Path(repo), Path(dest)
     if dest.exists():
         raise FileExistsError(dest)
     listing = _git(repo, "ls-tree", "-r", "-z", "--full-tree", commit).split(b"\0")
-    entries, have = [], set()
+    entries = []
     for line in listing:
         if not line:
             continue
         meta, path = line.split(b"\t", 1)
         mode, kind, oid = meta.split()
         path = path.decode("utf-8")
-        have.add(path)
         if kind == b"blob" and not answer(path):
             entries.append((path, oid.decode()))
-    extra = overlay_entries(repo, commit, have) if overlay else []
-    entries += [(path, oid) for path, oid, _, _, _ in extra]
     lfs = lfs_store(repo)
     counts = {"files": 0, "linked": 0, "copied": 0}
     missing = []
@@ -130,11 +125,6 @@ def materialize(repo, commit, dest, overlay=True, link=True):
     if missing:
         raise FileNotFoundError(f"{len(missing)} Git LFS object(s) of {commit[:12]} aren't in {repo.name}'s local store "
                                 f"(e.g. {missing[0]}): run `git -C {repo} lfs fetch origin {commit}` first")
-    counts["overlaid"] = overlaid(extra)["packs"] if extra else []
-    if extra:
-        note = dest / OVERLAY_NOTE
-        note.parent.mkdir(parents=True, exist_ok=True)
-        note.write_text(json.dumps(overlaid(extra), indent=2), encoding="utf-8")
     return counts
 
 
@@ -181,102 +171,36 @@ def remove(path):
         shutil.rmtree(path, onexc=writable)
 
 
-# -- store packs a commit lacks --------------------------------------------------------------------------------------
-# Several games committed their store packs (Fab, Marketplace) to git only late; before, a pack lived only in the
-# developer's working copy. A start or a reference made at an earlier commit would then load its maps without them
-# (a bare checkered floor). So materialize overlays each store pack a commit lacks from the pack's first commit, never
-# over a file the commit has.
+# -- what a map needs ------------------------------------------------------------------------------------------------
 
 
-def main_head(repo):
-    """The game's main branch (refs/heads/main, else origin/main), or None."""
-    for ref in ("refs/heads/main^{commit}", "refs/remotes/origin/main^{commit}"):
-        found = subprocess.run(["git", "-C", str(repo), "rev-parse", "--verify", "-q", ref], capture_output=True,
-                               text=True)
-        if found.returncode == 0:
-            return found.stdout.strip()
-    return None
+def map_package(play_map):
+    """The /Game package of a map (its URL options dropped), and its file under Content/."""
+    package = play_map.split("?", 1)[0]
+    return package, "Content/" + package[len("/Game/"):] + ".umap"
 
 
-def is_ancestor(repo, older, newer):
-    return subprocess.run(["git", "-C", str(repo), "merge-base", "--is-ancestor", older, newer],
-                          capture_output=True).returncode == 0
-
-
-def assets_manifest(repo, commit):
-    """The game's assets.manifest.json at `commit` when it is in assets-manifest/v1, else None."""
-    found = subprocess.run(["git", "-C", str(repo), "show", f"{commit}:{ASSETS_MANIFEST}"], capture_output=True,
-                           check=False)
-    if found.returncode != 0:
+def missing_packages(repo, commit, play_map):
+    """(the /Game packages the map's .umap names that `commit` has no .uasset or .umap for, how many it names), or
+    None when the map isn't in the commit or its LFS object isn't at hand. Unreal keeps a name's trailing _<n> apart
+    (SM_Rock_6 is written SM_Rock), so a package counts as there when a numbered one of its name is."""
+    if not play_map.startswith("/Game/"):
         return None
-    try:
-        data = json.loads(found.stdout.decode("utf-8-sig"))
-    except ValueError:
+    names = _git(repo, "ls-tree", "-r", "-z", "--name-only", "--full-tree", commit).decode("utf-8").split("\0")
+    have = {"/Game/" + n[len("Content/"):].rsplit(".", 1)[0] for n in names
+            if n.startswith("Content/") and n.endswith((".uasset", ".umap"))}
+    package, path = map_package(play_map)
+    if path not in names:
         return None
-    if not isinstance(data, dict) or data.get("schema") != ASSETS_SCHEMA or not isinstance(data.get("assets"), list):
-        return None
-    return data
-
-
-@lru_cache(maxsize=64)
-def store_packs(repo, head):
-    """[(asset name, path, first commit)] of the store assets in assets.manifest.json at `head` whose files are under
-    Content/, each with its first commit: the earliest on `head`'s history where the path holds at least half the
-    files it holds at `head`; None when never committed."""
-    manifest = assets_manifest(repo, head)
-    packs = []
-    for asset in (manifest or {}).get("assets") or []:
-        if not asset.get("store"):
-            continue
-        for entry in asset.get("files") or []:
-            if entry.startswith("Content/"):
-                packs.append((asset.get("name") or entry, entry, _first_commit(repo, head, entry.rstrip("/"))))
-    return packs
-
-
-def _count(repo, commit, path):
-    return len(_git(repo, "ls-tree", "-r", "-z", "--name-only", commit, "--", path).split(b"\0")) - 1
-
-
-def _first_commit(repo, head, path):
-    want = _count(repo, head, path)
-    if not want:
-        return None
-    for sha in _git(repo, "rev-list", "--reverse", "--topo-order", head, "--", path).decode().split():
-        if 2 * _count(repo, sha, path) >= want:
-            return sha
-    return None
-
-
-def overlay_entries(repo, commit, have=None):
-    """[(path, blob oid, asset name, pack path, first commit)] of the store-pack files `commit` lacks: for each pack whose
-    first commit isn't in `commit`'s history, its files there that `commit`'s tree doesn't have (`have`: its paths)."""
-    head = main_head(repo)
-    if head is None:
-        return []
-    packs = [p for p in store_packs(str(repo), head) if p[2] and not is_ancestor(repo, p[2], commit)]
-    if not packs:
-        return []
-    if have is None:
-        have = set(_git(repo, "ls-tree", "-r", "-z", "--name-only", "--full-tree", commit).decode().split("\0"))
-    out, taken = [], set()
-    for name, entry, first in packs:
-        for line in _git(repo, "ls-tree", "-r", "-z", "--full-tree", first, "--", entry.rstrip("/")).split(b"\0"):
-            if not line:
-                continue
-            meta, path = line.split(b"\t", 1)
-            mode, kind, oid = meta.split()
-            path = path.decode("utf-8")
-            if kind == b"blob" and path not in have and path not in taken and not answer(path):
-                taken.add(path)
-                out.append((path, oid.decode(), name, entry, first))
-    return out
-
-
-def overlaid(entries):
-    """overlay_entries summed up per pack."""
-    packs = {}
-    for _, _, name, entry, first in entries:
-        packs.setdefault((name, entry, first), 0)
-        packs[(name, entry, first)] += 1
-    return {"packs": [{"asset": n, "path": e, "from": f, "files": c} for (n, e, f), c in packs.items()]}
+    data = _git(repo, "cat-file", "blob", f"{commit}:{path}")
+    pointer = LFS_POINTER.match(data) if len(data) < POINTER_MAX else None
+    if pointer:
+        oid = pointer.group(1).decode()
+        stored = lfs_store(repo) / oid[:2] / oid[2:4] / oid
+        if not stored.is_file():
+            return None
+        data = stored.read_bytes()
+    refs = {r.decode().split(".")[0] for r in PACKAGE.findall(data)}
+    refs = {r for r in refs if not r.startswith(("/Game/__", "/Game/Developers")) and r.rstrip("/") != package}
+    numbered = {m.group(1) for m in map(NUMBERED.match, have) if m}
+    return sorted(r for r in refs if r not in have and r not in numbered), len(refs)

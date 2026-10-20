@@ -48,10 +48,11 @@ elsewhere, `--scratch DIR` puts the copies elsewhere, `--direct` runs Unreal wit
 1. Reads the task from the `tasks` branch (else `origin/tasks`) and validates it like
    [tools/validate-game.py](../tools/validate-game.py) does; a task that doesn't validate is INVALID.
 2. Materializes the start and the reference into a scratch folder outside the repo (default `<root>\.task-check\`):
-   every file of that commit, LFS files hardlinked from the repo's store (copied across drives), without `Tasks/`,
-   `History/`, `Dataset/` or `Dataset.zip`. A store pack the commit lacks (committed later, per `assets.manifest.json`
-   on main) is overlaid from its first commit. The TaskProbe plugin is added as `Plugins/TaskProbe`; nothing else is
-   changed, the `.uproject` included. Your checkout is never touched.
+   every file of that commit exactly as committed, LFS files hardlinked from the repo's store (copied across drives),
+   without `Tasks/`, `History/`, `Dataset/` or `Dataset.zip`. The TaskProbe plugin is added as `Plugins/TaskProbe`;
+   nothing else is added or changed, the `.uproject` included, and nothing comes from another commit (no port, no
+   patch). Your checkout is never touched. When a map the task plays names `/Game` packages the commit doesn't hold (a
+   store pack committed only later, say), the result says so in a note: that is the task's commit to fix.
 3. Builds the start (`Build.bat <Name>Editor Win64 Development -DisableAdaptiveUnity`). A start that doesn't build makes
    the task INVALID, unless its build check says so (`"fails_at_start": true`: making it build is the task); then the
    start failing to build is the start failing the task, and it is never played.
@@ -160,6 +161,11 @@ threshold.
 **`reference fails X`.** The reference doesn't do what the probe asks (a threshold on the wrong side: check `op`), or
 the reference's play doesn't reach the situation either. `reference fails boots_clean: crashed` means the reference
 crashes in a plain boot.
+
+**`start: /Game/Maps/L_X names N of its M /Game packages that the commit doesn't have`** (a note). The map refers to
+assets the commit lacks, typically a store pack committed only later; in the plays they load as missing (a bare,
+checkered level), which can make probes measure the wrong thing. Pick a commit that has the packs, or commit them so the
+task's commits hold them; the checker never adds files from other commits.
 
 **`start doesn't build`.** The start doesn't compile on UE 5.7 as committed. Pick a start that builds, or, when making
 it build is the task, set `"fails_at_start": true` on the build check (then no threshold may be relative to the start).
