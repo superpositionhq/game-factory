@@ -1,0 +1,17 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "TaskProbe",
+	"Description": "The task checker's probe (game-factory tools/task_check): screenshots, scripted inputs, a position track and the task's probe measures for a timed run of the game, only when started with -TaskProbe. The checker adds this folder to its own copy of the game; the game's files are never changed.",
+	"Category": "Testing",
+	"CanContainContent": false,
+	"EnabledByDefault": true,
+	"Modules": [
+		{
+			"Name": "TaskProbe",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}
