@@ -1,0 +1,117 @@
+# Line endings: normalise text, leave binaries alone.
+* text=auto
+
+# Every binary type goes through Git LFS (GitHub refuses files over 100 MB, and binary history bloats clones).
+# Patterns are case-insensitive ([pP][nN][gG]) so FOO.PNG from a store pack is caught too.
+# Add a type here BEFORE committing the first file of a new binary type (git lfs migrate rewrites history).
+
+# Unreal assets and cooked data
+*.[uU][aA][sS][sS][eE][tT] filter=lfs diff=lfs merge=lfs -text
+*.[uU][mM][aA][pP] filter=lfs diff=lfs merge=lfs -text
+*.[uU][eE][xX][pP] filter=lfs diff=lfs merge=lfs -text
+*.[uU][bB][uU][lL][kK] filter=lfs diff=lfs merge=lfs -text
+*.[uU][pP][kK] filter=lfs diff=lfs merge=lfs -text
+*.[uU][dD][kK] filter=lfs diff=lfs merge=lfs -text
+*.[pP][aA][kK] filter=lfs diff=lfs merge=lfs -text
+*.[uU][tT][oO][cC] filter=lfs diff=lfs merge=lfs -text
+*.[uU][cC][aA][sS] filter=lfs diff=lfs merge=lfs -text
+
+# 3D and DCC sources
+*.[fF][bB][xX] filter=lfs diff=lfs merge=lfs -text
+*.[oO][bB][jJ] filter=lfs diff=lfs merge=lfs -text
+*.[gG][lL][bB] filter=lfs diff=lfs merge=lfs -text
+*.[gG][lL][tT][fF] filter=lfs diff=lfs merge=lfs -text
+*.[aA][bB][cC] filter=lfs diff=lfs merge=lfs -text
+*.[bB][lL][eE][nN][dD] filter=lfs diff=lfs merge=lfs -text
+*.[mM][aA][xX] filter=lfs diff=lfs merge=lfs -text
+*.[mM][aA] filter=lfs diff=lfs merge=lfs -text
+*.[mM][bB] filter=lfs diff=lfs merge=lfs -text
+*.3[dD][sS] filter=lfs diff=lfs merge=lfs -text
+*.[dD][aA][eE] filter=lfs diff=lfs merge=lfs -text
+*.[uU][sS][dD] filter=lfs diff=lfs merge=lfs -text
+*.[uU][sS][dD][cC] filter=lfs diff=lfs merge=lfs -text
+*.[uU][sS][dD][zZ] filter=lfs diff=lfs merge=lfs -text
+*.[pP][lL][yY] filter=lfs diff=lfs merge=lfs -text
+*.[sS][tT][lL] filter=lfs diff=lfs merge=lfs -text
+*.[sS][pP][pP] filter=lfs diff=lfs merge=lfs -text
+*.[sS][bB][sS][aA][rR] filter=lfs diff=lfs merge=lfs -text
+
+# images and textures
+*.[pP][nN][gG] filter=lfs diff=lfs merge=lfs -text
+*.[jJ][pP][gG] filter=lfs diff=lfs merge=lfs -text
+*.[jJ][pP][eE][gG] filter=lfs diff=lfs merge=lfs -text
+*.[tT][gG][aA] filter=lfs diff=lfs merge=lfs -text
+*.[pP][sS][dD] filter=lfs diff=lfs merge=lfs -text
+*.[eE][xX][rR] filter=lfs diff=lfs merge=lfs -text
+*.[hH][dD][rR] filter=lfs diff=lfs merge=lfs -text
+*.[bB][mM][pP] filter=lfs diff=lfs merge=lfs -text
+*.[tT][iI][fF] filter=lfs diff=lfs merge=lfs -text
+*.[tT][iI][fF][fF] filter=lfs diff=lfs merge=lfs -text
+*.[dD][dD][sS] filter=lfs diff=lfs merge=lfs -text
+*.[kK][tT][xX] filter=lfs diff=lfs merge=lfs -text
+*.[kK][tT][xX]2 filter=lfs diff=lfs merge=lfs -text
+*.[gG][iI][fF] filter=lfs diff=lfs merge=lfs -text
+*.[wW][eE][bB][pP] filter=lfs diff=lfs merge=lfs -text
+*.[iI][cC][oO] filter=lfs diff=lfs merge=lfs -text
+*.[rR][aA][wW] filter=lfs diff=lfs merge=lfs -text
+*.[rR]16 filter=lfs diff=lfs merge=lfs -text
+*.[rR]8 filter=lfs diff=lfs merge=lfs -text
+
+# audio
+*.[wW][aA][vV] filter=lfs diff=lfs merge=lfs -text
+*.[oO][gG][gG] filter=lfs diff=lfs merge=lfs -text
+*.[mM][pP]3 filter=lfs diff=lfs merge=lfs -text
+*.[fF][lL][aA][cC] filter=lfs diff=lfs merge=lfs -text
+*.[aA][iI][fF] filter=lfs diff=lfs merge=lfs -text
+*.[aA][iI][fF][fF] filter=lfs diff=lfs merge=lfs -text
+*.[mM]4[aA] filter=lfs diff=lfs merge=lfs -text
+*.[oO][pP][uU][sS] filter=lfs diff=lfs merge=lfs -text
+*.[wW][eE][mM] filter=lfs diff=lfs merge=lfs -text
+*.[bB][aA][nN][kK] filter=lfs diff=lfs merge=lfs -text
+*.[bB][nN][kK] filter=lfs diff=lfs merge=lfs -text
+
+# video
+*.[mM][pP]4 filter=lfs diff=lfs merge=lfs -text
+*.[mM][oO][vV] filter=lfs diff=lfs merge=lfs -text
+*.[mM][kK][vV] filter=lfs diff=lfs merge=lfs -text
+*.[wW][eE][bB][mM] filter=lfs diff=lfs merge=lfs -text
+*.[aA][vV][iI] filter=lfs diff=lfs merge=lfs -text
+*.[bB][kK]2 filter=lfs diff=lfs merge=lfs -text
+
+# fonts
+*.[tT][tT][fF] filter=lfs diff=lfs merge=lfs -text
+*.[oO][tT][fF] filter=lfs diff=lfs merge=lfs -text
+*.[tT][tT][cC] filter=lfs diff=lfs merge=lfs -text
+*.[uU][fF][oO][nN][tT] filter=lfs diff=lfs merge=lfs -text
+*.[wW][oO][fF][fF] filter=lfs diff=lfs merge=lfs -text
+*.[wW][oO][fF][fF]2 filter=lfs diff=lfs merge=lfs -text
+
+# archives and packages
+*.[zZ][iI][pP] filter=lfs diff=lfs merge=lfs -text
+*.7[zZ] filter=lfs diff=lfs merge=lfs -text
+*.[rR][aA][rR] filter=lfs diff=lfs merge=lfs -text
+*.[gG][zZ] filter=lfs diff=lfs merge=lfs -text
+*.[tT][gG][zZ] filter=lfs diff=lfs merge=lfs -text
+*.[tT][aA][rR] filter=lfs diff=lfs merge=lfs -text
+*.[uU][nN][iI][tT][yY][pP][aA][cC][kK][aA][gG][eE] filter=lfs diff=lfs merge=lfs -text
+*.[uU][pP][aA][cC][kK] filter=lfs diff=lfs merge=lfs -text
+
+# documents
+*.[pP][dD][fF] filter=lfs diff=lfs merge=lfs -text
+*.[xX][lL][sS][xX] filter=lfs diff=lfs merge=lfs -text
+*.[dD][oO][cC][xX] filter=lfs diff=lfs merge=lfs -text
+*.[pP][pP][tT][xX] filter=lfs diff=lfs merge=lfs -text
+
+# binaries (should not be committed at all; LFS if they ever are)
+*.[eE][xX][eE] filter=lfs diff=lfs merge=lfs -text
+*.[dD][lL][lL] filter=lfs diff=lfs merge=lfs -text
+*.[pP][dD][bB] filter=lfs diff=lfs merge=lfs -text
+*.[lL][iI][bB] filter=lfs diff=lfs merge=lfs -text
+*.[sS][oO] filter=lfs diff=lfs merge=lfs -text
+*.[dD][yY][lL][iI][bB] filter=lfs diff=lfs merge=lfs -text
+*.[aA] filter=lfs diff=lfs merge=lfs -text
+*.[bB][iI][nN] filter=lfs diff=lfs merge=lfs -text
+*.[dD][aA][tT] filter=lfs diff=lfs merge=lfs -text
+
+# lighting data
+*.[iI][eE][sS] filter=lfs diff=lfs merge=lfs -text

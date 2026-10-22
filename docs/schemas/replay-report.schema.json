@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ue-replay.verification/v1",
+  "title": "ReplayScripts/Verification/report.json",
+  "description": "The creation replay's verification: the project rebuilt headless from ReplayScripts/ and compared with the game at its final commit (files outside Content/ byte-identical, assets equal by structure, maps equal by actors). Written by tools/ue-replay (verify.py). A complete dataset needs this report; verdict.pass (true or false) is metadata.",
+  "type": "object",
+  "required": [
+    "schema",
+    "game",
+    "final_commit",
+    "time",
+    "files",
+    "assets",
+    "maps",
+    "rows",
+    "windows",
+    "verdict"
+  ],
+  "properties": {
+    "schema": {
+      "const": "ue-replay.verification/v1"
+    },
+    "game": {
+      "type": "string",
+      "minLength": 1
+    },
+    "final_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "time": {
+      "type": "string"
+    },
+    "files": {
+      "type": "object",
+      "description": "byte comparison: content (identical/differs counts), other (identical ...), lists of differing paths"
+    },
+    "assets": {
+      "type": "object",
+      "required": [
+        "total"
+      ],
+      "description": "structural comparison of every asset: total and by_class counts"
+    },
+    "maps": {
+      "type": "object",
+      "description": "per map path: actor counts matched / identical / differs / missing / extra"
+    },
+    "maps_excluded": {
+      "type": "object"
+    },
+    "rows": {
+      "type": "object",
+      "description": "workflow.jsonl rows against what each replayed run did"
+    },
+    "windows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "window",
+          "commit"
+        ],
+        "properties": {
+          "window": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "commit": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          }
+        }
+      },
+      "description": "one per commit, in order"
+    },
+    "verdict": {
+      "type": "object",
+      "required": [
+        "pass",
+        "criteria"
+      ],
+      "properties": {
+        "pass": {
+          "type": "boolean"
+        },
+        "criteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "text",
+              "pass"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "pass": {
+                "type": "boolean"
+              },
+              "result": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "exclusions": {
+          "type": [
+            "array",
+            "object"
+          ]
+        },
+        "informational": {
+          "type": [
+            "array",
+            "object"
+          ]
+        }
+      }
+    },
+    "deviations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "what": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array"
+          }
+        }
+      }
+    }
+  }
+}

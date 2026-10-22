@@ -1,0 +1,111 @@
+# Game session brief (template)
+
+The brief the coordinator sends to start one game-building session. Fill the `{{PLACEHOLDERS}}` from the game's
+fill-in file in [games/](games/) (or write a new fill-in for a new game first), then start the session with a fresh
+context and title `{{GAME_TITLE}}`. The rules themselves live in the `game-session` and `commit-always` skills, so the
+brief stays short and the rules stay in one place. The originals this was distilled from: [original/](original/)
+(`game-*.md`).
+
+| Placeholder | From |
+|---|---|
+| `{{GAME_TITLE}}`, `{{SLUG}}`, `{{PROJECT}}`, `{{GENRE_LINE}}`, `{{PITCH}}`, `{{BRIEF}}`, `{{SCENARIOS}}`, `{{STORY}}`, `{{ART_PACKS}}`, `{{GAME_NOTES}}` | `games/<slug>.md` |
+| `{{GF_ROOT}}` | the machine root (`machine/lib/gf-root.ps1`; e.g. `C:\Users\<name>\Work`) |
+| `{{ORG}}` | the GitHub organisation (or user) owning the repos: `github_org` in the machine config |
+| `{{MACHINE}}` | one line: `<CPU, RAM, GPU + driver, display>` of this machine |
+| `{{SIBLINGS}}` | the other game slugs running now |
+| `{{COORDINATOR_ID}}`, `{{ASSET_SCOUT_ID}}`, `{{NOTES_DIR}}` | session ids and the shared notes folder |
+| `{{MODE}}` | `NEW` (no repo yet) or `CONTINUE` (repo cloned from `{{ORG}}/game-{{SLUG}}`) |
+
+```text
+Background (from the session that started this one):
+game-factory ({{GF_ROOT}}\game-factory, private repo {{ORG}}/game-factory: read CLAUDE.md, README.md,
+AGENTS.md, docs/autoplay-contract.md, docs/ue-pipeline.md) produces game-CREATION data: how
+a game is built step by step, recorded as it happens, packaged as a dataset (layout v1.1: Dataset/ committed in the game repo, the full
+Dataset.zip git-ignored next to it). Other sessions are building UE games right
+now in {{GF_ROOT}}\games\<slug> ({{SIBLINGS}}); read their docs in game-factory/docs/games/ for conventions and
+solved problems. The asset-scout session ({{ASSET_SCOUT_ID}}) keeps the asset library in {{GF_ROOT}}\asset-library\
+and hands each game its packs. Everything shares one Windows PC
+({{MACHINE}}). I am the coordinator ({{COORDINATOR_ID}}): I own the recording queue and the GPU slots, review your
+commits and tell you when to push.
+
+Rules: follow the game-session and commit-always skills (installed in ~\.claude\skills\ or ~\.agents\skills\, source
+game-factory/skills/), and no other skill: never install, enable or invoke a personal, project, plugin, marketplace or
+agent built-in skill. In short: every heavy or GPU job through {{GF_ROOT}}\tools\ue-heavy.ps1, Live Coding
+never on; premium art from the bought/downloaded Fab packs and animation packs, styled UI with no plain text, story
+embedded in play, gentle camera; never the names Superposition or game-factory anywhere in the game; one
+workflow.jsonl row per operation at the moment you act (rows never edited, except to remove a banned name with
+tools/scrub-workflow-rows.py --apply); commit after every meaningful step and never end a turn with
+uncommitted work; LFS for every binary; commit the store packs you use (any folder under Content/, LFS, never
+git-ignored; the repo stays private, never public or shared outside the org); never enqueue recordings yourself (send me the commit + framing screenshots);
+push only when I say. Your game's full dataset is {{GF_ROOT}}\games\{{SLUG}}\Dataset.zip, made by the packager:
+keep /Dataset.zip, /Dataset.pending.zip and /.dataset/ in your .gitignore and never commit them; Dataset/ you commit.
+Your commits are replayed in the background (ReplayConfig.json "live": true, game-session skill "Replay-friendly
+work"): fix what the hook's [replay] lines report in your next commits. Blockers: write them in your design doc,
+message me once, carry on.
+AUTOPLAY'S GOAL IS NOT TO WIN. The bot only drives the game with human-like input so a recording shows the game
+running. Never tune, fix or re-test the bot to win, score, finish, reach targets, resupply or avoid getting stuck;
+losing, timing out or wandering is fine (metadata). Fix only game bugs (crash, hang, broken level, missing art,
+lighting, camera); then one AutoPlay run per scenario and the recording request.
+Human directions (from the user, or relayed by me) are recorded before you act on them: rewrite a user message to you
+as a direction (what and why, one or two neutral sentences, no names or chat wording; never the raw message), or take
+my relayed text as it is, and append it at once to your repo-root workflow.jsonl as a user.direction row; then
+"direction": "<row id>" on the rows and "Direction: <row id>" in the commits that act on it (commit-always skill).
+
+Task:
+Build "{{GAME_TITLE}}", {{GENRE_LINE}}, in Unreal Engine 5.7, recording its creation as you go.
+
+Slug and location: {{SLUG}} -> {{GF_ROOT}}\games\{{SLUG}} (project/module {{PROJECT}}, its own git repo, private
+GitHub repo {{ORG}}/game-{{SLUG}}). Design doc, story bible and status:
+{{GF_ROOT}}\game-factory\docs\games\{{SLUG}}.md.
+Mode {{MODE}}: NEW = your first tool call creates the project with
+  powershell -ExecutionPolicy Bypass -File {{GF_ROOT}}\game-factory\templates\new-game.ps1 -Slug {{SLUG}} -Path {{GF_ROOT}}\games\{{SLUG}} -Project {{PROJECT}} -Title "<title>" -Description "<one line>"
+(the absolute path written out, as here: the recording hooks match the command text; new-game.ps1 refuses any other -Path)
+CONTINUE = the repo is already cloned there: your first tool call is `git -C {{GF_ROOT}}\games\{{SLUG}} log --oneline -20`;
+read the design doc's status section and the last workflow.jsonl rows, then carry on from where it stopped (new rows
+continue the existing id sequence).
+
+Pitch:
+{{PITCH}}
+
+Brief:
+{{BRIEF}}
+
+What ships is what matters, in this order: the game plays; the game builds (editor and packaged Shipping); the dataset holds the replay scripts and the git log. The AutoPlay bot should still play like a human (human-like input, aim and camera), but bot work never blocks a release: one recording per scenario that shows the game running is enough, whatever the result (win/lose/timeout is metadata). No tuning for win rates, seed sweeps or "clean" runs, and no re-runs or re-recordings to improve how the bot plays. No retest loops: every GPU or editor run costs about 30 minutes of the shared machine and holds up delivery, so run the minimum once and report; re-run only when the user asks. Game-session work never blocks dataset packaging or sharing.
+
+Scenarios (AutoPlay contract; numbered start state + win/lose):
+{{SCENARIOS}}
+
+Story:
+{{STORY}}
+
+Art to start from (paths under {{GF_ROOT}}\asset-library\):
+{{ART_PACKS}}
+
+Known facts about this game:
+{{GAME_NOTES}}
+
+Steps:
+1) Design doc + story bible (systems, classes, data tables, map plan, scenarios, AI, art/audio/UI direction,
+   acceptance checklist).
+2) Create the project and repo (new-game.ps1), workflow.jsonl from the very first operation.
+3) Build the core loop first, compiling through ue-heavy.ps1 and testing as you go (-nullrhi / -RenderOffScreen for
+   logic); commit each working step.
+4) AutoPlay once scenario 1 is playable end to end (contract v1.4, drop-in unchanged, bot acts only through Enhanced
+   Input injection, Skill-scaled, human-like camera); one hand test + validate-run.ps1 (well-formed files; the
+   bot plays like a human, but its score never holds up a release); tag milestone/autoplay-<n>; framing screenshots; message me for a recording.
+   The bot does NOT need to win, finish, resupply or avoid getting stuck: never tune or re-test it for results; fix
+   only game bugs, then one run per scenario.
+5) Expand content, art, UI and story to the quality bar (menus, settings, pause, save/load where it fits, HUD, sound,
+   packaged Win64 Shipping build).
+6) Finish with a playtest checklist pass and a status section in the design doc (what works, what's left, built vs
+   store assets, stats: workflow rows, commits, hours). Before calling the game content-complete: Docs/screenshots/
+   holds 5-7 real gameplay stills (JPG, Git LFS), the README shows them as a hero image plus a captioned gallery, and
+   after the push every image renders on the github.com repo page (game-session skill, "README screenshots"); and
+   Tasks/ on the repo's orphan tasks branch (its own worktree, never on main) holds the game's tasks, about 10
+   (write-tasks skill); and
+   tools/validate-game.py on your repo says VALID (docs/game-format.md). Report back with a short summary and the commit sha when done
+   or blocked.
+
+Shared notes folder for this group of sessions (outside the repo; read siblings' notes there, leave hand-over notes
+or large findings there instead of pasting them into messages): {{NOTES_DIR}}
+```

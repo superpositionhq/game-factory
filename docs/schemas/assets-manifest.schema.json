@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "assets-manifest/v1",
+  "title": "assets.manifest.json (game repo)",
+  "description": "Every external asset the game uses: where it came from, its licence, and where its files are in the repo. Store packs may sit in any folder; what matters is that every path listed under files is committed in the repo (store content is never git-ignored; the repo stays private). The validator checks each path against the tracked files. One format for every game (user rule): a file in any other shape is an error; tools/migrate-assets-manifest.py converts the earlier shapes.",
+  "type": "object",
+  "required": [
+    "schema",
+    "project",
+    "assets"
+  ],
+  "properties": {
+    "schema": {
+      "const": "assets-manifest/v1"
+    },
+    "project": {
+      "type": "string",
+      "minLength": 1,
+      "description": "the .uproject name"
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "source",
+          "licence",
+          "files"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "origin": {
+            "enum": [
+              "studio",
+              "third-party"
+            ],
+            "description": "studio = made in-house by the studio (e.g. its own earlier project), needs a description instead of a url; third-party (the default when absent) = from a store or another author, needs an https url"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "description": "required for origin studio: what it is and where it came from inside the studio"
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "description": "where it came from: Fab, Poly Haven, ambientCG, Kenney, Google Fonts, ..."
+          },
+          "url": {
+            "type": "string",
+            "pattern": "^https://",
+            "description": "the listing or source page; required unless origin is studio"
+          },
+          "author": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "licence": {
+            "type": "string",
+            "minLength": 1,
+            "description": "e.g. Fab Standard License, CC0 1.0, SIL OFL 1.1"
+          },
+          "licence_url": {
+            "type": "string"
+          },
+          "store": {
+            "type": "boolean",
+            "description": "true for paid or store-licensed content (Fab and other marketplaces)"
+          },
+          "files": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "repo-relative paths of the files used; a path ending in / stands for every file under that folder. Each must be committed."
+          },
+          "used_for": {
+            "type": "string"
+          },
+          "changes": {
+            "type": "string",
+            "description": "what was changed (materials, kitbash, trimmed, re-imported, ...), or none"
+          }
+        },
+        "if": {
+          "properties": {
+            "origin": {
+              "const": "studio"
+            }
+          },
+          "required": [
+            "origin"
+          ]
+        },
+        "then": {
+          "required": [
+            "description"
+          ]
+        },
+        "else": {
+          "required": [
+            "url"
+          ]
+        }
+      }
+    }
+  }
+}

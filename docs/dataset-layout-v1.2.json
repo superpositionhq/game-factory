@@ -1,0 +1,208 @@
+{
+  "schema": "dataset-layout/v1.2",
+  "approved": "2026-10-15",
+  "changes": "v1.2 (2026-10-15, user): the dataset carries the full git history (History/: a git bundle of every commit and every Git LFS object) and the original brief and design doc (Brief/); workflow.jsonl is the record of the person's directions (user.direction rows), no conversation transcripts. v1.1 (2026-10-12): no replay video; ReplayScripts/ only; Dataset.zip next to Dataset/.",
+  "description": "Our standard delivery layout for every game: the creation record (git.log, workflow.jsonl, ReplayScripts/, the full git history in History/, the brief and design doc in Brief/), the project, per-scenario gameplay videos, README screenshots and the packaged build. docs/game-format.md is the prose version of this file (v1.1: docs/game-deliverable.md); tools/validate-dataset.ps1 checks against this file.",
+  "names": {
+    "zip": "Dataset.zip",
+    "zip_place": "the game repo's own folder, next to Dataset/ (git-ignored, with the packager's scratch in .dataset/)",
+    "zip_pending_suffix": ".pending.zip",
+    "top_folder_in_zip": "<game>",
+    "repo_folder": "Dataset"
+  },
+  "entries": [
+    {
+      "name": "README.md",
+      "kind": "file",
+      "required": true,
+      "in_repo_dataset": true,
+      "what": "game, how to play and open it, how to replay the creation, scenario videos, screenshots, licences"
+    },
+    {
+      "name": "git.log",
+      "kind": "file",
+      "required": true,
+      "in_repo_dataset": true,
+      "what": "every commit, oldest first: message, anonymised author, dates, full text diff; binary and LFS files as path + sha256"
+    },
+    {
+      "name": "workflow.jsonl",
+      "kind": "file",
+      "required": true,
+      "in_repo_dataset": true,
+      "what": "editor operations, one row each, written when the operation happened"
+    },
+    {
+      "name": "Brief",
+      "kind": "dir",
+      "required": true,
+      "in_repo_dataset": true,
+      "what": "the original brief the game was built from (brief.md) and the design doc with story bible and status (design.md); images they link may sit next to them",
+      "must_contain": [
+        "brief.md",
+        "design.md"
+      ],
+      "only_files_matching": "(?i)^[A-Za-z0-9._-]+\\.(md|png|jpe?g|webp)$"
+    },
+    {
+      "name": "History",
+      "kind": "dir",
+      "required": true,
+      "in_repo_dataset": false,
+      "what": "the full git history: <game>.bundle (git bundle --all; scrubbed: anonymised authors, no tool or vendor names) and lfs/objects/<aa>/<bb>/<sha256> (every Git LFS object of every commit, in git's own layout). Restore: git clone <game>.bundle <dir>, copy lfs/ into <dir>/.git/lfs/, git lfs checkout",
+      "must_contain": [
+        "*.bundle"
+      ]
+    },
+    {
+      "name": "UEProject",
+      "kind": "dir",
+      "required": true,
+      "in_repo_dataset": false,
+      "what": "the project at the release commit, with store content; in the repo the repository itself is the project",
+      "must_contain": [
+        "*.uproject"
+      ]
+    },
+    {
+      "name": "ReplayScripts",
+      "kind": "dir",
+      "required": true,
+      "in_repo_dataset": true,
+      "pending_allowed": true,
+      "what": "scripts that replay the creation headless, with Verification/ (report.json verdict PASS required for complete)"
+    },
+    {
+      "name": "Gameplay",
+      "kind": "dir",
+      "required": true,
+      "in_repo_dataset": true,
+      "what": "one video per scenario of the release version",
+      "only_files_matching": "^<game>_S([0-9]+)\\.mp4$",
+      "scenario_numbers": "distinct, 1 or more; a dataset may hold a subset of the game's scenarios (e.g. rally-racer: S2 only, user decision 2026-10-12)"
+    },
+    {
+      "name": "Screenshots",
+      "kind": "dir",
+      "required": true,
+      "in_repo_dataset": true,
+      "what": "the README hero and gallery images, linked from README.md by relative path",
+      "only_files_matching": "(?i)\\.(png|jpe?g|webp)$"
+    },
+    {
+      "name": "Build",
+      "kind": "dir",
+      "required": true,
+      "in_repo_dataset": false,
+      "what": "packaged Windows Shipping build",
+      "must_contain": [
+        "*.exe"
+      ],
+      "forbid": [
+        "*.pdb"
+      ]
+    },
+    {
+      "name": "manifest.json",
+      "kind": "file",
+      "required": true,
+      "in_repo_dataset": true,
+      "what": "metadata and path, bytes, sha256 of every other file"
+    }
+  ],
+  "repo_dataset_extra_allowed": [
+    ".gitattributes"
+  ],
+  "gameplay_video": {
+    "container": "mp4",
+    "video_codec": "h264",
+    "width": 1920,
+    "height": 1080,
+    "audio_codec": "aac",
+    "audio_required": true
+  },
+  "manifest": {
+    "required_keys": [
+      "layout",
+      "game",
+      "title",
+      "version",
+      "commit",
+      "status",
+      "variant",
+      "pending",
+      "scenarios",
+      "totals",
+      "files",
+      "brief"
+    ],
+    "layout_value": "dataset-layout/v1.2",
+    "status_values": [
+      "complete",
+      "pending"
+    ],
+    "complete_requires": "replay_verification.pass = true in manifest.json and verdict.pass = true in ReplayScripts/Verification/report.json (the creation replay run end to end, headless, from ReplayScripts/ and verified: files outside Content/ byte-identical, assets equal by structure, game maps equal by actors; known non-content differences listed)",
+    "replay_verification_keys": [
+      "pass",
+      "report",
+      "criteria",
+      "exclusions"
+    ],
+    "variant_values": [
+      "full",
+      "repo-dataset"
+    ],
+    "file_keys": [
+      "path",
+      "bytes",
+      "sha256"
+    ],
+    "history_keys": [
+      "bundle",
+      "head",
+      "commits",
+      "refs",
+      "lfs_objects",
+      "lfs_bytes",
+      "authors_anonymised"
+    ],
+    "history_rule": "full variant: history is an object (head = commit, the bundle holds every commit, every LFS object of every commit is under History/lfs/objects); repo-dataset: history is null (the repo is its own history)",
+    "brief_rule": "brief lists the Brief/ files: {\"brief\": \"Brief/brief.md\", \"design\": \"Brief/design.md\"}"
+  },
+  "readme": {
+    "sections_in_order": [
+      "Requirements",
+      "Package contents",
+      "Play the game",
+      "Replay the creation process",
+      "Restore the git history",
+      "Scenarios",
+      "Screenshots",
+      "Assets and licences",
+      "Integrity"
+    ],
+    "must_link_every_screenshot": true,
+    "restore_history_section_repo_dataset": "in a repo Dataset/ README the \"Restore the git history\" section says the repository itself is the history"
+  },
+  "scan": {
+    "tool": "tools/package-game.ps1 -Rescan",
+    "blocking": [
+      "Superposition",
+      "game-factory (and game_factory, gamefactory)",
+      "Claude",
+      "Opus (as a word; codec allowlist)",
+      "Anthropic",
+      "the account (user) name of the machine that built it (exact-token allowlist in tools/package-game.ps1)",
+      "e-mail addresses",
+      "git author names and handles"
+    ],
+    "history": "History/: commit messages, author/committer identities (dev_NN only) and every text blob of every commit are scanned the same way"
+  },
+  "unlisted_allowed": {
+    "prefix": "History/lfs/objects/",
+    "why": "content-addressed: each file is named by its own sha256 (checked by tools/validate-game.py); manifest.history counts them"
+  },
+  "workflow": {
+    "directions": "every direction a person gave (what to change and why) is a user.direction row, written before the work it caused; rows acting on it carry \"direction\": <id>. These rows replace conversation transcripts."
+  }
+}
