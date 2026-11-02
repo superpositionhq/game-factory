@@ -15,12 +15,14 @@
 # existed: the rows go in just before that session's first row. Each session is backfilled at most once
 # (recording-backfill.json next to this file), and a call already in actions.jsonl is never written twice.
 # On Stop, leftover changes in a game repo are committed ("WIP") so no work stays uncommitted.
+# Nothing is recorded when GF_NO_RECORDING is set: tools/task-try.py sets it for the agent it runs on a task.
 # <root> = the machine root (gf-root.ps1 next to this file; machine/lib/gf-root.ps1 in the repo).
 # machine/bootstrap.ps1 installs this into the hooks dir (config "hooks_dir") and wires it into Claude Code
 # (machine/hooks/settings-hooks.json -> ~\.claude\settings.json) and Codex (machine/hooks/codex-hooks.json ->
 # ~\.codex\hooks.json, pre-trusted in ~\.codex\config.toml).
 param([switch]$Stop, [string]$Backfill, [string]$TranscriptPath, [ValidateSet('claude', 'codex')][string]$Agent = 'claude')
 $ErrorActionPreference = 'Stop'
+if ($env:GF_NO_RECORDING) { exit 0 }   # a task try's agent (tools/task-try.py): not a game session, never recorded
 [Console]::InputEncoding = [Text.Encoding]::UTF8
 $utf8 = New-Object Text.UTF8Encoding($false)
 [Console]::OutputEncoding = $utf8   # git writes UTF-8; read it as such

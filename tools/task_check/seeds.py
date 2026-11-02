@@ -82,7 +82,7 @@ def materialize(repo, commit, dest, link=True):
     """Write the files of `repo` at `commit` into `dest` (which must not exist), each Git LFS pointer replaced by its
     object from the repo's LFS store (hardlinked when `link` and the volume allows, else copied), and none of ANSWERS.
     Raises FileNotFoundError when an object isn't in the local store (`git lfs fetch` it first). {"files", "linked",
-    "copied"}."""
+    "copied", "objects"}."""
     repo, dest = Path(repo), Path(dest)
     if dest.exists():
         raise FileExistsError(dest)
@@ -97,7 +97,7 @@ def materialize(repo, commit, dest, link=True):
         if kind == b"blob" and not answer(path):
             entries.append((path, oid.decode()))
     lfs = lfs_store(repo)
-    counts = {"files": 0, "linked": 0, "copied": 0}
+    counts = {"files": 0, "linked": 0, "copied": 0, "objects": {}}  # objects: LFS sha -> its file in the store
     missing = []
     with subprocess.Popen(["git", "-C", str(repo), "cat-file", "--batch"], stdin=subprocess.PIPE,
                           stdout=subprocess.PIPE) as batch:
@@ -119,6 +119,7 @@ def materialize(repo, commit, dest, link=True):
                     missing.append(path)
                     continue
                 counts[place(stored, target, link)] += 1
+                counts["objects"][sha] = stored
             else:
                 target.write_bytes(data)
         batch.stdin.close()

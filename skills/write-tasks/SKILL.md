@@ -248,8 +248,13 @@ docs' "Common reasons and fixes"), never the threshold toward what the start hap
   outside `still_works`, or whose reference changes fewer than 5 game files against its start; for a seed on main it
   also fails fewer than 4 game-changing commits from `seed.commit` to `seed.reference`. These are floors, not targets:
   pick the longest threads the history has.
-- Before committing, ask: would a strong agent finish this in under an hour from the brief alone? If yes, extend the
-  thread back to an earlier attempt, merge it with its neighbouring issues, or drop it.
+- Before committing, try it with your own coding agent:
+  `python <GF_ROOT>/game-factory/tools/task-try.py <GF_ROOT>/games/<slug> --task <name> --agent claude` (or
+  `--agent codex`, `--runs 3`; [docs/task-try.md](../../docs/task-try.md)). It gives your agent the task as the cloud
+  does (the start without history, the brief only) and grades its result with the task's probes. If it solves it,
+  especially quickly, the task is too easy: extend the thread back to an earlier attempt, merge it with its
+  neighbouring issues, or drop it. A run whose transcript names the game repo or the tasks worktree doesn't count.
+  The try is advice; the cloud's grade decides.
 
 Probes may measure the cause's effect directly, since the agent never sees them.
 
