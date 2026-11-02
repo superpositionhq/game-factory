@@ -1,6 +1,6 @@
 ---
 name: write-tasks
-description: How to write the tasks a game ships with (Tasks/ on the repo's orphan tasks branch, never on main, one GameTask JSON per task, about 10 per game) so an agent can be given them in the game-creation environment: the tasks branch and its worktree, the four kinds (bug_fix from real fixes in the history, correction from user.direction rows, feature, change), picking seed.commit and seed.reference, writing the instruction from context, play_map, milestones and deterministic probe checks (pass/fail never by a model judge or pixels), difficulty and limits, the hard tier (about 2-3 per game: long threads, far causes, compound tickets, observation-only briefs), and what keeps a task gradable and unleaked. Use when a game session writes, moves or reviews tasks, and before calling a game complete.
+description: How to write the tasks a game ships with (Tasks/ on the repo's orphan tasks branch, never on main, one GameTask JSON per task, up to about 10 per game) so an agent can be given them in the game-creation environment: the tasks branch and its worktree, the one bar every task meets (a long thread of multiple edits from the game's real history: many commits, many files, several systems, every task hard, never a single fix), the four kinds as where a thread comes from, picking seed.commit (the parent of the thread's first attempt) and seed.reference (its final accepted fix), observation-only briefs, play_map, milestones and deterministic probe checks (pass/fail never by a model judge or pixels; one required probe per issue), limits, and what keeps a task gradable and unleaked. Use when a game session writes, moves or reviews tasks, and before calling a game complete.
 ---
 
 # Writing a game's tasks
@@ -9,8 +9,8 @@ A game is complete when its repo's orphan `tasks` branch has `Tasks/`: tasks an 
 fair, checkable and not leaked. One file per task, `Tasks/<game>-<kind>-<slug>.json` (`kind`: `fix`, `corr`, `feat`,
 `change`), in the task format `GameTask`
 ([docs/schemas/game-task.schema.json](../../../docs/schemas/game-task.schema.json), game-task/1), with `"name"` equal
-to the file stem (run and grade ids depend on it; never rename a shipped task). About 10 per game is the
-recommendation; a mix of kinds. The tasks branch is the single source: tasks are loaded as `Tasks/*.json` from the
+to the file stem (run and grade ids depend on it; never rename a shipped task). Up to about 10 per game, every one a
+long thread of multiple edits (section 1): fewer good tasks beat filling the count with short ones. The tasks branch is the single source: tasks are loaded as `Tasks/*.json` from the
 repos' tasks branches, and the packager ships them in the dataset split into the agent's and the grader's halves
 (docs/game-format.md). Write tasks with this skill and the game-factory tools only, never with another skill
 (AGENTS.md, "Only these skills").
@@ -62,17 +62,55 @@ main or the task's `starts/<name>` branch and on UE 5.7, the branch an orphan, n
 committing a task, run the task check on it (section 5, `tools/task-check.py`): only a VALID task is committed and
 shipped. Commit tasks as you go, like any work (commit-always skill), but on the tasks branch only.
 
-## 1. The four kinds
+## 1. The bar: long threads of multiple edits, nothing else (owner, 2026-11-02)
 
-| kind | where it comes from | `seed.commit` | `seed.reference` | good when |
-|---|---|---|---|---|
-| `bug_fix` | a real fix in this game's history | the fix's parent | the fix | the bug shows in play or a log at the start; the fix is mostly code; one cause |
-| `correction` | a person's direction (`user.direction` row) the game then answered | the last commit before the direction | the commit that answered it (the last of its span) | the direction is about the game itself and its outcome shows in play or code |
-| `feature` | a new mechanic a producer would plausibly ask for | a stable 5.7 commit (main's head is usual) | none, or the game's own later feature | small enough for one session, uses keys a grader can press, judgeable in play |
-| `change` | a look or content change (lighting, weather, camera, HUD style) | a stable commit | none, or the game's own later change | clearly visible in screenshots, before vs after |
+**The only tasks that meet our requirements are long threads of multiple edits.** A task is a stretch of the game's
+real history where its own sessions needed many commits, several attempts or several rounds of directions, touching
+many files across several systems, before the outcome held. Strong agents finish a single fix, one cause in one
+place, in minutes, however long the original took; such a task is worthless to us and never ships, not even as an
+"easy" or "medium" one. Every task is `"difficulty": "hard"` with the tag `long-thread`.
 
-Not a task: status chatter, process rules, questions, praise, a fix that is only a re-import of assets the start does
-not have, a sweeping pass resting on a pack imported later, anything whose outcome neither play nor code can show.
+A thread qualifies only when all of these hold (the validator enforces the numbers, section 6):
+
+1. **Many edits.** From `seed.commit` to `seed.reference`, at least 4 commits change the game itself (`Source/`,
+   `Content/`, `Config/`, `Plugins/`, the `.uproject`), and the reference changes at least 5 game files against the
+   start. Status, docs and `workflow.jsonl` commits don't count.
+2. **Several systems.** The change spans at least two of: C++, Blueprint or UMG assets, data assets or tables, levels,
+   materials or lighting, config, input, assets rebuilt by editor scripts. A long thread confined to one function is a
+   short task in disguise.
+3. **Several outcomes.** At least 3 required outcome probes, one per issue the thread settled, so partial work earns
+   partial credit (a compound ticket). A thread that settled only one observable thing is rarely long enough.
+4. **The first attempt didn't hold, or the cause is far from the symptom.** The thread had a fix that was undone,
+   complained about again ("still too low") or broke something else; or the symptom shows in one system and the cause
+   sits in another (a HUD symptom from a data asset, a camera symptom from collision channels, a crash only in the
+   packaged build, an intermittent or timing bug, a regression from an earlier change).
+5. **Checkable by the grader.** Every required outcome is measurable in the grader's own plays: a scenario
+   (`play_map` options at the seed) that triggers the moment, or a task play whose scripted keys reach it (key names,
+   mouse buttons included, but no mouse movement). A thread no probe can measure is not a task.
+
+The four kinds say where the thread comes from; each is a long thread, never one commit:
+
+| kind | the thread | `seed.commit` | `seed.reference` |
+|---|---|---|---|
+| `bug_fix` | a bug the game's sessions fixed over several attempts or commits | the parent of the first attempt | the final fix that held |
+| `correction` | a person's direction (`user.direction` rows) that took several rounds or follow-ups to satisfy | the last commit before the first direction | the commit that answered the last round |
+| `feature` | a mechanic the game itself built over a span of commits (code, assets, input, HUD) | the parent of the span's first commit | the span's last commit, once it played |
+| `change` | a look or content pass built over a span (lighting plus post plus materials, a camera rework, a HUD restyle) | the parent of the span's first commit | the span's last commit |
+
+`seed.reference` is always set: a task without the game's own accepted end of the thread is not a task. Merge, don't
+split: a chain whose first fix didn't hold is one task, not two; a direction with several issues fixed in several
+commits is one compound task with a probe per issue; neighbouring fixes of the same system in the same stretch belong
+together.
+
+Not a task: a single fix or a single commit, a one-setting change, a bug with one cause in one file, status chatter,
+process rules, questions, praise, a fix that is only a re-import of assets the start does not have, a sweeping pass
+resting on a pack imported later, anything whose outcome neither play nor code can show. If a game's history has fewer
+than 10 qualifying threads, ship fewer tasks.
+
+**Finding threads.** Walk the history for clusters: `git log --stat` around a feature, runs of commits on the same
+files (`git log --format=%h -- <path>` piled up in a short window), several `user.direction` rows on one topic
+(the workflow rows' `"direction"` links), fixes followed by "still", "again", "regressed" or a revert, ports that broke
+a system and the commits that mended it. Read the whole span before picking its ends.
 
 ## 2. Picking the commits
 
@@ -92,20 +130,24 @@ made before the game's 5.7 port can't be used as it was; give it a start on 5.7 
   but `tasks`, so the delivered history holds them.
 - A binary asset (.uasset/.umap) goes back to its pre-fix version only if no later commit changed it; otherwise
   re-create the issue in code or config, or pick another task.
-- A feature or change with no reference starts at B itself (no branch), once you've checked B doesn't already have it.
-- A real fix made after the port needs none of this: its parent and the fix are both 5.7 commits of main.
+- For a thread, "the change" is the whole thread: S takes every commit of it back out, not only the last one, and the
+  thread's commits on main (its count and files) are what qualify it; note them in the task's `tasks-workflow.jsonl`
+  row (`"thread"`: first and last commit of main).
+- A thread made after the port needs none of this: the parent of its first attempt and its final fix are both 5.7
+  commits of main.
 
 - **Read the code at `seed.commit`** and confirm the issue is there (the reference diff's removed lines, or a search).
-- **The real fix is often not the commit that says so**: a descriptive commit may touch only `workflow.jsonl` while the
-  code is in the WIP commit before it; a fix may span commits (use the last); a fix may land a commit or two after a
-  port. Use `git show --stat` around that time and the workflow rows that link the direction (`"direction"`).
-- **The reference must build and run**: the grader plays it beside the agent's result. If the fix crashed until a
-  later commit, use the later one.
-- **Chains**: a person complained again after a fix ("still too low") gives two tasks; the second starts from the
-  first fix. **Splits**: a direction with several issues fixed in separate commits is one task per issue; issues fixed
-  together stay together.
-- **Dedupe** against the game's existing tasks by fix commit and by issue. One fix commit may serve two tasks only when
-  each code-judge question says which part of the reference belongs to the other.
+- **The thread's real ends are often not the commits that say so**: a descriptive commit may touch only
+  `workflow.jsonl` while the code is in the WIP commit before it; the last attempt may land a commit or two after a
+  port. Use `git show --stat` around that time and the workflow rows that link the direction (`"direction"`). Start
+  before the first attempt, so the agent faces every issue the thread settled, and end at the commit after which no
+  more work on it followed.
+- **The reference must build and run**: the grader plays it beside the agent's result. If the last fix crashed until a
+  later commit, extend the thread to the later one.
+- **Chains and splits merge**: a person complained again after a fix ("still too low"): one task from before the first
+  fix to the last. A direction with several issues fixed in separate commits: one compound task, one required probe
+  per issue.
+- **Dedupe** against the game's existing tasks by thread and by issue: two tasks never share a span of commits.
 - Binary-only fixes are fine (the agent can make the same change through editor scripts or C++); drop one only when
   its outcome cannot be seen.
 
@@ -114,14 +156,19 @@ made before the game's 5.7 port can't be used as it was; give it a start on 5.7 
 Write it from the context, never by quoting a person: no quotes, typos, capitals, profanity, "the owner said" or chat
 wording. The reader is a capable developer who has never seen the game.
 
-- **bug_fix**: a QA bug report: what happens, how to reproduce it, what is expected. Name no file, function or cause;
-  code identifiers only inside a quoted compiler or crash-log line, which is what a player or a log shows.
-- **correction**: what is wrong and how a player sees it, then the wanted outcome.
-- **feature / change**: a producer's ticket: what and why, how the player uses it (which key), details, what must still
-  work. Close with the art bar: the project's own assets and engine features, no primitive placeholder shapes, no
-  debug text.
+**Every brief is only an observation**: what a player or QA sees, in plain words, for every issue the thread settled.
+It names no cause, no place to look, no file, system, class or asset, and no mechanism ("the camera feels jammed
+against the ship", not "the obstruction sweep counts the sea"). It never says how many changes are needed or that the
+issues are related. Leave out the play_map line, which the harness adds.
+
+- **bug_fix**: a QA bug report listing each symptom: what happens, how to reproduce it, what is expected. Code
+  identifiers only inside a quoted compiler or crash-log line, which is what a player or a log shows.
+- **correction**: what is wrong and how a player sees it, item by item, then the wanted outcome.
+- **feature / change**: a producer's ticket: what and why, how the player uses it (which key), the behaviours and
+  looks wanted, what must still work. Close with the art bar: the project's own assets and engine features, no
+  primitive placeholder shapes, no debug text.
 - Describe the controls the player needs; the harness tells the agent which map QA plays (`play_map`).
-- Never name the studio, its pipeline or its tools. Never describe the fix.
+- Never name the studio, its pipeline or its tools. Never describe the fix or any step of the thread.
 
 ## 4. `play_map`
 
@@ -143,9 +190,10 @@ Each milestone is a reward group; a run that gets part of the way earns part of 
 
 1. `builds`: `build` (`editor_builds`).
 2. `boots`: `boot` 60 s (`boots_clean`), `needs` the build.
-3. `fixed` (bug_fix, correction) / `done` (feature, change): `probe` checks of the reported outcome, `required`,
-   `needs` `boots_clean`. Every bug_fix and correction has at least one required probe that the start fails for the
-   reported reason and the reference passes.
+3. `fixed` (bug_fix, correction) / `done` (feature, change): `probe` checks of the reported outcomes, `required`,
+   `needs` `boots_clean`: at least 3, one per issue the thread settled (split them over several milestones, e.g.
+   `fixed_hud`, `fixed_camera`, when the issues are separable). Each one fails at the start for the reported reason
+   and passes on the reference.
 4. `still_works`: probes that what must keep working still does (the player still moves, the HUD still shows, the
    level still loads its scenario).
 5. `quality` (optional, never required): a `judge` for taste items no probe can capture ("reads as a castle",
@@ -183,7 +231,7 @@ plain words; it is shown in the grade, never to the agent. Check names are uniqu
 checks; calibrated probes, `code_judge` and `"reference": true` judges need `seed.reference`.
 
 A task is valid only when it passes the task check: its start fails the task and its reference fix passes every
-required check (with no reference, the start fails at least one required probe), and every required `still_works`
+required check, and every required `still_works`
 probe already passes at the start. Write the probes per [docs/task-probes.md](../../docs/task-probes.md), then run
 the task check on every task before committing it:
 `python <GF_ROOT>/game-factory/tools/task-check.py <GF_ROOT>/games/<slug> --task <path>/Tasks/<name>.json` (a task
@@ -192,35 +240,18 @@ It builds the start and the reference with the probe plugin, plays them and prin
 and the measured values. **A task ships only when the task check says VALID**; for INVALID, fix the task (the
 docs' "Common reasons and fixes"), never the threshold toward what the start happens to measure.
 
-## 6. Difficulty and limits
+## 6. Difficulty, limits and what the validator enforces
 
-- `easy`: one obvious cause or setting, visible at once. `medium`: investigation across a few files or an asset (the
-  usual case). `hard`: a cause far from the symptom, editor work (rebuilding assets through scripts), or a broad change.
-- `limits`: 120 turns, 180 min, 40 USD, 1800 s tool timeout unless the task needs otherwise.
+- `difficulty` is always `hard`, and `tags` hold `long-thread`. There are no easy or medium tasks.
+- `limits`: 400 turns, 480 min, 150 USD, 1800 s tool timeout unless the task needs more; a long thread needs room.
+- `tools/validate-game.py` fails a task that is not `hard`, has no `seed.reference`, has fewer than 3 required probes
+  outside `still_works`, or whose reference changes fewer than 5 game files against its start; for a seed on main it
+  also fails fewer than 4 game-changing commits from `seed.commit` to `seed.reference`. These are floors, not targets:
+  pick the longest threads the history has.
+- Before committing, ask: would a strong agent finish this in under an hour from the brief alone? If yes, extend the
+  thread back to an earlier attempt, merge it with its neighbouring issues, or drop it.
 
-### The hard tier
-
-Each game also ships about 2-3 hard-tier tasks: `"difficulty": "hard"` and the tag `hard-tier`. A task with one cause
-in one place and a brief that names the system is not hard, however long the fix took; strong agents finish those in
-minutes. A hard-tier task has at least one of these traits, and its brief gives nothing away:
-
-1. **A long thread in the real history.** Pick stretches where the game's own sessions needed many commits or
-   several rounds of directions before the fix held. `seed.commit` is the parent of the first attempt;
-   `seed.reference` is the final accepted fix. A chain whose first fix didn't hold is one task, not two. Prefer
-   causes spread over several files, systems and assets (C++ plus Blueprint or data plus assets built by editor
-   scripts).
-2. **The cause is far from the symptom:** a HUD symptom caused by a data asset, a camera symptom caused by collision
-   channels, a crash only in the packaged build, an intermittent or timing bug, a regression from an earlier change.
-3. **A compound ticket:** several real issues in one task, each its own `required` probe, so partial work earns
-   partial credit.
-4. **A brief that is only an observation:** a player or QA report of what is seen, in plain words. It names no
-   cause, no place to look, no file, system or asset, and no mechanism ("the camera feels jammed against the ship",
-   not "the obstruction sweep counts the sea"). It says only what a player knows. Leave out the play_map line,
-   which the harness adds. Probes may measure the cause's effect directly, since the agent never sees them.
-5. **Checkable by the grader:** every required outcome must be measurable in the grader's own plays. Use a scenario
-   (`play_map` options at the seed) that triggers the moment, or a task play whose scripted keys reach it (key
-   names, mouse buttons included, but no mouse movement). A bug no probe can measure in the grader's plays or the
-   editor pass is not a hard-tier task.
+Probes may measure the cause's effect directly, since the agent never sees them.
 
 Wording: neutral and technical, for the game's people and creatures as for the rest. Describe meshes, bones, poses,
 hits and reactions. Never use gore, injury or body-horror words ("crumpled body", "cut neck"); a cloud content
@@ -250,11 +281,14 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 | a HUD widget or class name guessed | read the names from the code and assets at `seed.commit` and `seed.reference` |
 | quoting the person | write from context |
 | a reference that crashed | the reference must build and run |
-| "hard" tasks solved in minutes: one cause, one place, the brief named the system | hard tier: long threads, far causes, compound tickets, observation-only briefs |
+| tasks solved in minutes: one cause, one place, the brief named the system | only long threads of multiple edits, compound probes, observation-only briefs (section 1) |
+| a chain split into two short tasks | one task from before the first attempt to the fix that held |
 | a bug that never shows in the grader's plays | a scenario or a task play that triggers the moment |
 | a brief rejected by a content filter (injury wording) | neutral technical words: mesh, bones, pose, hit, reaction |
 
 ## 9. Examples
 
-One of each kind, in `Tasks/` on the game repos' tasks branches once moved there: `duo-kart-fix-wheels-turned-sideways.json` (bug_fix),
-`rally-racer-corr-steering-and-chase-camera.json` (correction), `battle-boats-feat-coal-burst.json` (feature).
+Older tasks on the game repos' tasks branches (`duo-kart-fix-wheels-turned-sideways.json`,
+`rally-racer-corr-steering-and-chase-camera.json`, `battle-boats-feat-coal-burst.json`) show the file format and probe
+style only; most are single fixes that no longer meet the bar (section 1). Rework such a task into its whole thread or
+remove it.

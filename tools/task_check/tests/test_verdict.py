@@ -74,6 +74,12 @@ class Verdict(unittest.TestCase):
         self.assertEqual(why, ["reference fails hero_on_ground: measured -500, threshold >= 0",
                                "start already passes every required probe"])
 
+    def test_the_start_fails_every_outcome_probe(self):
+        task = task_with(milestones=[{"name": "fixed", "checks": [probe("hud"), probe("camera"), probe("spawns")]}])
+        ref = record(checked("hud", "probe", True), checked("camera", "probe", True), checked("spawns", "probe", True))
+        start = record(checked("hud", "probe", False), checked("camera", "probe", True), checked("spawns", "probe", False))
+        self.assertEqual(verdict.verdict(task, ref, start), (False, ["start already passes required probe camera"], []))
+
     def test_a_task_with_no_reference_is_checked_on_its_start_alone(self):
         task = task_with(probe(expect={"op": ">=", "start_plus": 50}), seed=NO_FIX)
         self.assertTrue(verdict.verdict(task, None, record(checked("hero_on_ground", "probe", False)))[0])

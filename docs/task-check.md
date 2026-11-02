@@ -98,7 +98,8 @@ A task is **VALID** when all of this holds:
 
 - the start builds, or doesn't build exactly when a build check says `fails_at_start`;
 - with a reference: the reference builds, boots (every `boot` check) and passes every **required** probe;
-- the start fails at least one required probe outside `still_works` (or doesn't build by design);
+- the start fails every required probe outside `still_works` (or doesn't build by design): each is one issue of the
+  thread, and one the start already passes rewards no work;
 - every required probe in the `still_works` milestone already passes at the start. What must keep working has to work
   before the change, or the probe is broken and would fail every correct solution. A still-works probe the start
   measured nothing for (its play crashed, which is often the task's own bug) doesn't count against it.
@@ -107,8 +108,9 @@ Never part of the check: judges (`judge`, `code_judge`, `actions_judge`: quality
 (they read an agent's own tool calls), and `package` checks. The reference's other failures (`log_absent`,
 `file_exists`, probes with `"required": false`) are reported as notes and never make a task INVALID.
 
-A task with no reference (most features and changes) is checked on its start alone: it must build, fail a required
-probe (thresholds relative to the start, or literals), and pass its still-works probes.
+A task with no reference is checked on its start alone: it must build, fail every required probe outside
+`still_works` (thresholds relative to the start, or literals), and pass its still-works probes. Every shipped task has
+a reference (write-tasks section 1; `tools/validate-game.py` rejects one without), so this is for drafts only.
 
 ## Results
 

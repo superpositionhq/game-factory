@@ -13,9 +13,9 @@ A task is VALID when
 - the start builds, unless the task says it doesn't (a build check's `fails_at_start`: making it build is the task):
   then the start must not build, and that is the start failing the task (it is never played);
 - with a reference: the reference builds and boots and passes every required probe; its other checks (log_absent,
-  file_exists, probes that aren't required) are notes, never decisive; the start fails at least one required probe
+  file_exists, probes that aren't required) are notes, never decisive; the start fails every required probe
   outside still_works (or doesn't build by design);
-- without a reference: the start fails at least one required probe outside still_works (or doesn't build by design);
+- without a reference: the start fails every required probe outside still_works (or doesn't build by design);
 - either way, every required probe of the task's `still_works` milestone already passes at the start: what still works
   must hold there, or the probe is broken and would fail every correct solution. A still-works probe the start
   measured nothing for (its play crashed: the task's own bug) is no sign of a broken probe.
@@ -124,4 +124,7 @@ def verdict(task, reference, start):
         why.append("no required probe outside still_works to check the start with")
     elif all(c["passed"] for c in gates):
         why.append("start already passes every required probe")
+    else:  # every outcome is one issue of the thread: one the start already has rewards no work (write-tasks section 5)
+        why.extend(f"start already passes required probe {c['name']}" for c in gates
+                   if c["passed"] and c not in broken)
     return not why, why, notes

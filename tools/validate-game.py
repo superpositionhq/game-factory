@@ -599,6 +599,45 @@ def task_semantic_errors(t):
     return errs
 
 
+# The bar every task meets (owner, 2026-11-02): only long threads of multiple edits qualify (write-tasks sections 1, 6)
+MIN_OUTCOME_PROBES = 3     # required probes outside still_works: one per issue the thread settled
+MIN_THREAD_FILES = 5       # game files the reference changes against the start
+MIN_THREAD_COMMITS = 4     # commits from seed.commit to seed.reference that change the game (a seed on main)
+GAME_PATHS = ('Source', 'Content', 'Config', 'Plugins', '*.uproject')   # the game itself, not its records or docs
+
+
+def thread_errors(t, outcomes):
+    """Why task `t` (with `outcomes` required probes outside still_works) is not a long thread, from the task alone."""
+    errs = []
+    if t.get('difficulty') != 'hard':
+        errs.append(f'difficulty {t.get("difficulty", "medium")!r}: every task is "hard"')
+    if 'long-thread' not in (t.get('tags') or []):
+        errs.append('no long-thread tag')
+    if not (isinstance(t.get('seed'), dict) and t['seed'].get('reference')):
+        errs.append("no seed.reference: every task ends at the game's own accepted fix of the thread")
+    if outcomes < MIN_OUTCOME_PROBES:
+        errs.append(f'{outcomes} required outcome probe(s) outside still_works, fewer than {MIN_OUTCOME_PROBES}')
+    return errs
+
+
+def thread_span_errors(repo, seed, on_main):
+    """Why the span from seed.commit to seed.reference is too short: game files changed, and on main the commits."""
+    start, ref = seed.get('commit'), seed.get('reference')
+    if not (start and ref):
+        return []
+    errs = []
+    files = [p for p in _git(repo, '-c', 'core.quotepath=off', 'diff', '--name-only', start, ref, '--', *GAME_PATHS)
+             .stdout.decode('utf-8', 'replace').splitlines() if p.strip()]
+    if len(files) < MIN_THREAD_FILES:
+        errs.append(f'the reference changes {len(files)} game file(s) against the start, fewer than {MIN_THREAD_FILES}')
+    if on_main:
+        n = _git(repo, 'rev-list', '--count', f'{start}..{ref}', '--', *GAME_PATHS).stdout.decode().strip()
+        if int(n or 0) < MIN_THREAD_COMMITS:
+            errs.append(f'{n or 0} commit(s) change the game from seed.commit to seed.reference, '
+                        f'fewer than {MIN_THREAD_COMMITS}')
+    return errs
+
+
 def check_task(rep, a, label, t, game, has_commit):
     """One whole task (GameTask): schema, the format's extra rules, seed on `game` and on known commits."""
     for e in list(check_schema(t, SCHEMAS['game-task']))[:5]:
@@ -612,6 +651,11 @@ def check_task(rep, a, label, t, game, has_commit):
               and c.get('required', True)]
     if not gated:
         rep.error(a, f'{label}: no required probe check: pass/fail must be deterministic (write-tasks section 5)')
+    outcomes = [c for m in t.get('milestones') or [] if isinstance(m, dict) and m.get('name') != 'still_works'
+                for c in m.get('checks') or [] if isinstance(c, dict) and c.get('kind') == 'probe'
+                and c.get('required', True)]
+    for e in thread_errors(t, len(outcomes)):
+        rep.error(a, f'{label}: {e} (write-tasks section 1: only long threads of multiple edits)')
     if judged:
         rep.note(a, f'{label}: required judge check(s) {judged}: judges should be "required": false quality checks')
     s = t.get('seed')
@@ -693,7 +737,12 @@ def check_repo_tasks(rep, repo, files=None):
                 if engine != ENGINE:
                     rep.error(a, f'{label}: seed.{k} {seed[k][:12]} is a UE {engine or "?"} project: a task starts from a '
                                  f'commit that builds on UE {ENGINE} as committed (never ported; write-tasks section 2)')
-    rep.note(a, f'{len(paths)} task(s) on {ref} (about 10 recommended)')
+        if all(seed.get(k) and has_commit(seed[k]) for k in ('commit', 'reference')):
+            on_main = all(_git(repo, 'merge-base', '--is-ancestor', seed[k], 'HEAD').returncode == 0
+                          for k in ('commit', 'reference'))
+            for e in thread_span_errors(repo, seed, on_main):
+                rep.error(a, f'{label}: {e} (write-tasks section 1: only long threads of multiple edits)')
+    rep.note(a, f'{len(paths)} task(s) on {ref} (up to about 10, every one a long thread)')
 
 
 ENGINE = '5.7'   # the checker's engine: it builds a start exactly as committed
