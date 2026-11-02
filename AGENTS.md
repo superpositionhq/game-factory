@@ -14,8 +14,9 @@ Skills (one source, [skills/](skills/); `machine/bootstrap.ps1` copies them to `
 - **game-session** ([skills/game-session/SKILL.md](skills/game-session/SKILL.md)): sessions that build a game (art, UI,
   story, naming, ue-heavy/GPU, workflow.jsonl, AutoPlay, framing screenshots, dataset v1.1).
 - **write-tasks** ([skills/write-tasks/SKILL.md](skills/write-tasks/SKILL.md)): sessions that write, move or review a
-  game's tasks (the orphan `tasks` branch, never on main; about 10 per game; the four kinds, seed and reference commits,
-  briefs written from context, milestones with deterministic probe checks).
+  game's tasks (the orphan `tasks` branch, never on main; up to about 10 per game, every one a long thread of multiple
+  edits from the real history, never a single fix; seed and reference commits, observation-only briefs, milestones with
+  deterministic probe checks).
 
 **Only these skills (owner's rule, 2026-10-21).** Contractors and every agent session working for game-factory use the
 three skills above and no others. Never install, enable or invoke any other skill: not the person's own personal or

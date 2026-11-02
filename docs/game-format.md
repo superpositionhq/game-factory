@@ -47,8 +47,8 @@ Everything needed to rebuild the game from the repo alone, tracked in git (binar
 
 **Tasks live on the orphan `tasks` branch, never on main.** The same repo has a branch `tasks` that shares no history
 with main: `Tasks/<game>-<kind>-<slug>.json` (one task each in the task format `GameTask`,
-[schemas/game-task.schema.json](schemas/game-task.schema.json); at least one, about 10 recommended; written with the
-`write-tasks` skill), a short `README.md`, optionally `tasks-workflow.jsonl`. It is checked out as a git worktree
+[schemas/game-task.schema.json](schemas/game-task.schema.json); at least one, up to about 10, every one a long thread of
+multiple edits; written with the `write-tasks` skill), a short `README.md`, optionally `tasks-workflow.jsonl`. It is checked out as a git worktree
 outside the game folder (e.g. `<root>/tasks/<slug>`), committed and pushed there. Task work never enters the game's
 history: main never tracks `Tasks/` and never references the tasks branch, the recording and live-replay hooks ignore
 commits on it, and the delivered history leaves it out. Seeds (`seed.commit`, `seed.reference`) point at commits of
