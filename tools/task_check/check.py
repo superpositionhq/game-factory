@@ -70,7 +70,8 @@ class Side:
 
     def why_unbuilt(self):
         r = self.build()
-        what = "the game as the task started" if self.name == "start" else "the reference game"
+        what = {"start": "the game as the task started", "reference": "the reference game"}.get(
+            self.name, f"the agent's game ({self.name})")
         return f"{what} didn't build ({'timed out' if r.timed_out else f'exit {r.exit_code}'})"
 
     # -- plays ---------------------------------------------------------------------------------------------------------
@@ -145,12 +146,12 @@ class Side:
 
 class Grade:
     """The checks of one side as a solution's grade would run them. `mode` "reference": every check but judges, trace
-    probes and packaging; "start": its probes and a `fails_at_start` build check. Thresholds are shared between the two
-    grades (`thresholds`)."""
+    probes and packaging, of the reference or of `side` (an agent's game, task-try.py); "start": its probes and a
+    `fails_at_start` build check. Thresholds are shared between the grades (`thresholds`)."""
 
-    def __init__(self, task, mode, start, reference, thresholds):
+    def __init__(self, task, mode, start, reference, thresholds, side=None):
         self.task, self.mode, self.start, self.reference = task, mode, start, reference
-        self.side = reference if mode == "reference" else start
+        self.side = side or (reference if mode == "reference" else start)  # `side`: an agent's game graded as a solution
         self.thresholds = thresholds
         self.measured = {}
 

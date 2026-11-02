@@ -11,7 +11,9 @@ Modules:
 - verdict: thresholds (literal, calibrated, relative to the start) and the VALID/INVALID rules;
 - seeds: a commit of the game materialized outside the repo, with its Git LFS objects and the plugin;
 - unreal: builds, plays and the editor pass (through the machine's ue-heavy.ps1 when it has one);
-- check: one task checked end to end; cli: `python tools/task-check.py`.
+- check: one task checked end to end; cli: `python tools/task-check.py`;
+- trial: one task tried with the contractor's own coding agent and graded (`python tools/task-try.py`,
+  docs/task-try.md).
 
 Standard library only (Python 3.12)."""
 

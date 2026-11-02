@@ -4,6 +4,7 @@
 # A commit on the orphan `tasks` branch (the game's tasks, docs/game-format.md) is not recorded: task work never
 # enters the game's recorded history.
 param([string]$Repo)
+if ($env:GF_NO_RECORDING) { exit 0 }   # a task try's agent (tools/task-try.py) is never recorded
 $ErrorActionPreference = 'Continue'   # git warnings on stderr must not abort the record
 $utf8 = New-Object Text.UTF8Encoding($false)
 [Console]::OutputEncoding = $utf8   # git writes UTF-8; read it as such
