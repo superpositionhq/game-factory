@@ -108,7 +108,8 @@ The four kinds say where the thread comes from; each is a long thread, never one
 `seed.reference` is always set: a task without the game's own accepted end of the thread is not a task. Merge, don't
 split: a chain whose first fix didn't hold is one task, not two; a direction with several issues fixed in several
 commits is one compound task with a probe per issue; neighbouring fixes of the same system in the same stretch belong
-together.
+together. A separate thread in the same stretch (another system, other issues) is its own task, even over the same
+commits (section 2).
 
 Not a task: a single fix or a single commit, a one-setting change, a bug with one cause in one file, status chatter,
 process rules, questions, praise, a fix that is only a re-import of assets the start does not have, a sweeping pass
@@ -155,7 +156,11 @@ made before the game's 5.7 port can't be used as it was; give it a start on 5.7 
 - **Chains and splits merge**: a person complained again after a fix ("still too low"): one task from before the first
   fix to the last. A direction with several issues fixed in separate commits: one compound task, one required probe
   per issue.
-- **Dedupe** against the game's existing tasks by thread and by issue: two tasks never share a span of commits.
+- **Spans may overlap; issues may not** (owner, 2026-11-05). Two tasks may share commits, overlap or nest: one task's
+  start or reference may be another's, and a long feature span may contain a shorter thread that settled different
+  issues. Different threads that ran at the same time (a camera rework during a HUD pass) are separate tasks over the
+  same commits. What never repeats is an issue: two tasks never test the same outcome, so dedupe against the game's existing tasks by issue (their briefs and
+  required probes), not by commits. Merging still wins over splitting one thread into short tasks (section 1).
 - Binary-only fixes are fine (the agent can make the same change through editor scripts or C++); drop one only when
   its outcome cannot be seen.
 
