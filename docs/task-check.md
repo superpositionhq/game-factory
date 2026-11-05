@@ -102,7 +102,9 @@ A task is **VALID** when all of this holds:
   thread, and one the start already passes rewards no work;
 - every required probe in the `still_works` milestone already passes at the start. What must keep working has to work
   before the change, or the probe is broken and would fail every correct solution. A still-works probe the start
-  measured nothing for (its play crashed, which is often the task's own bug) doesn't count against it.
+  measured nothing for (its play crashed, which is often the task's own bug) doesn't count against it;
+- a no-op scores zero: no check the start passes carries weight, so build, boot and `still_works` checks take
+  `"weight": 0`. Judges aren't measured here, so a judge's weight isn't covered by this rule.
 
 Never part of the check: judges (`judge`, `code_judge`, `actions_judge`: quality scores, never pass/fail), trace probes
 (they read an agent's own tool calls), and `package` checks. The reference's other failures (`log_absent`,

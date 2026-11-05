@@ -60,7 +60,7 @@ class Thresholds(unittest.TestCase):
 
 class Verdict(unittest.TestCase):
     def test_the_reference_passes_every_required_probe_and_the_start_fails_one(self):
-        task = task_with(probe(), probe("extra", required=False),
+        task = task_with(probe(), probe("extra", required=False, weight=0),
                          probe("built", play="trace", required=False, measure={"probe": "trace",
                                                                                "fact": "build_ok_at_end"}))
         ref = record(checked("hero_on_ground", "probe", True), checked("extra", "probe", False, "measured 3"),
@@ -97,10 +97,33 @@ class Verdict(unittest.TestCase):
         self.assertEqual(why, ["reference fails boots_clean: crashed"])
         self.assertEqual(notes, ["reference fails route_left (file_exists): 0 file(s)"], "a deliverable never decides")
 
+    def test_a_no_op_scores_zero(self):
+        """What is true of the start carries no weight, whether or not it is required (owner, 2026-11-04)."""
+        task = task_with(milestones=[{"name": "builds", "checks": [{"kind": "build", "name": "editor_builds"}]},
+                                     {"name": "fixed", "checks": [probe("hud")]},
+                                     {"name": "still_works", "checks": [probe("runs")]}])
+        ref = record(checked("editor_builds", "build", True), checked("hud", "probe", True), checked("runs", "probe", True))
+        start = record(checked("editor_builds", "build", True), checked("hud", "probe", False),
+                       checked("runs", "probe", True))
+        valid, why, _ = verdict.verdict(task, ref, start)
+        self.assertFalse(valid)
+        self.assertEqual(why, ['a no-op scores 0.667, not 0: give editor_builds, runs "weight": 0, or drop them'])
+        weightless = task_with(milestones=[{"name": "builds", "checks": [{"kind": "build", "name": "editor_builds",
+                                                                          "weight": 0}]},
+                                           {"name": "fixed", "checks": [probe("hud")]},
+                                           {"name": "still_works", "checks": [probe("runs", weight=0)]}])
+        self.assertEqual(verdict.verdict(weightless, ref, start), (True, [], []))
+        self.assertEqual(verdict.noop_score(weightless, start), (0.0, []))
+
+    def test_a_judge_is_not_counted_in_a_no_op(self):
+        task = task_with(probe("hud"), {"kind": "judge", "name": "taste", "question": "q", "required": False, "rubric": [{"key": "k", "criterion": "c"}]})
+        start = record(checked("hud", "probe", False), checked("taste", "judge", False, "not asked"))
+        self.assertEqual(verdict.noop_score(task, start), (0.0, []))
+
     def test_a_still_works_probe_must_hold_at_the_start(self):
         """A still-works probe that never finds what it looks for would make a start-only task look valid."""
         task = task_with(milestones=[{"name": "done", "checks": [probe("roofs")]},
-                                     {"name": "still_works", "checks": [probe("hud_shown")]}], seed=NO_FIX)
+                                     {"name": "still_works", "checks": [probe("hud_shown", weight=0)]}], seed=NO_FIX)
         broken = record(checked("roofs", "probe", True), checked("hud_shown", "probe", False, "measured 0"))
         valid, why, _ = verdict.verdict(task, None, broken)
         self.assertFalse(valid)
@@ -115,7 +138,7 @@ class Verdict(unittest.TestCase):
 
     def test_a_still_works_probe_counts_with_a_reference_too(self):
         task = task_with(milestones=[{"name": "fixed", "checks": [probe("fixed")]},
-                                     {"name": "still_works", "checks": [probe("runs")]}])
+                                     {"name": "still_works", "checks": [probe("runs", weight=0)]}])
         ref = record(checked("fixed", "probe", True), checked("runs", "probe", True))
         start = record(checked("fixed", "probe", False), checked("runs", "probe", False, "measured 3"))
         self.assertEqual(verdict.verdict(task, ref, start)[1], ["start fails still-works runs: measured 3"])

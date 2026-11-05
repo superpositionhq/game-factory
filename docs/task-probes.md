@@ -277,7 +277,9 @@ Before any agent is given a task, the checker grades the start and the fix with 
 
 - the start builds (unless the task says it doesn't, section 3.1: then it must not);
 - the fix builds, boots and passes every required check;
-- the start fails the task: at least one required probe (or the `fails_at_start` build check);
+- the start fails every required probe outside `still_works` (or the `fails_at_start` build check);
+- a no-op scores zero: no check the start passes carries weight, so build, boot and `still_works` checks take
+  `"weight": 0` (the score is the weighted share of checks passed);
 - every required `still_works` probe passes at the start;
 - every calibrated probe measures differently on the start and the fix.
 
