@@ -183,8 +183,9 @@ live on the repo's orphan `tasks` branch, checked out as a worktree outside the 
 committed and pushed there, never on main: task work never enters the game's history (the hooks ignore that branch).
 Seeds point at main's commits. Follow the write-tasks skill (the branch and worktree, seeds, the brief written from
 context, play map, deterministic probe checks, what must never reach the agent); never point the game's code or docs at
-`Tasks/`. validate-game.py checks their format, and `tools/task-check.py <games>/<slug> --task <name or file>`
-(docs/task-check.md) checks each one on the engine: a task ships only when the task check says VALID. Judge each
+`Tasks/`. validate-game.py checks their format, and `tools/task-check.py <games>/<slug> --all`
+(docs/task-check.md), started once all the tasks are written as a background process the person can leave running
+(write-tasks section 5), checks them on the engine: a task ships only when the task check says VALID. Judge each
 task's difficulty in the session against the bar (write-tasks skill, section 6); never run a task with another coding
 agent (`tools/task-try.py` is ours, run on submitted tasks).
 

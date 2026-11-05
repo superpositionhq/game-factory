@@ -10,6 +10,10 @@
 4. The start is checked on its probes (and on a `fails_at_start` build check).
 5. verdict.verdict decides VALID or INVALID from the two sides' check rows.
 
+A run of several tasks shares one scratch copy per commit (Builds): a commit that is one task's start and another's
+reference, or two tasks' start, is materialized and built once and kept until the last task that needs it is done.
+The copy is the commit exactly as committed either way, so sharing it changes no result.
+
 The plays a probe names: "look", the idle play (20 s, no input, 6 screenshots); "drive", the scripted drive (22 s: W
 1-6 s, D 6-8 s, W 8-13 s with a jump at 9 s, A 13-15 s, W 15-21 s; 8 screenshots); a task play (its own seconds, inputs,
 map, args and sampling; 2 screenshots); "editor", one headless editor pass per side over every asset measure. Each is
@@ -40,6 +44,78 @@ def fatal(log):
     return bool(re.search(unreal.FATAL, log or ""))
 
 
+class Built:
+    """A scratch project shared by every task of a run whose start or reference is its commit: built at most once,
+    played as often as the tasks ask (each task's plays carry its own queries)."""
+
+    def __init__(self, project):
+        self.project = project
+        self._build = None
+
+    def has_built(self):
+        return self._build is not None
+
+    def build(self, timeout):
+        if self._build is None:
+            self._build = self.project.build(timeout)
+        return self._build
+
+    def __getattr__(self, name):
+        return getattr(self.project, name)
+
+
+class Builds:
+    """The scratch copies of one run, one per commit under `scratch`, each a Built. `get` materializes and adds the
+    TaskProbe plugin on first use; `release` deletes a copy no later task needs; `close` deletes them all."""
+
+    def __init__(self, repo, scratch, direct=False, log=print):
+        self.repo, self.scratch, self.direct, self.log = repo, Path(scratch), direct, log
+        self.copies = {}  # sha -> (Built, info) or the seeds.WrongEngine its plugin refused
+
+    def get(self, sha, needed=()):
+        """(Built, info) for commit `sha`; raises seeds.WrongEngine for a project that isn't UE 5.7. When the disk is
+        below the machine's floor, copies other than `needed` (this task's commits) are deleted first."""
+        if sha in self.copies:
+            self.log(f"  {sha[:12]}: reusing the copy already made in this run")
+        else:
+            self._room(set(needed) | {sha})
+            folder = self.scratch / sha[:12]
+            self.log(f"  {sha[:12]}: materializing into {folder}")
+            made = seeds.materialize(self.repo, sha, folder)
+            try:
+                seeds.add_probe(folder)
+            except seeds.WrongEngine as exc:
+                self.copies[sha] = exc
+            else:
+                machine = unreal.Machine.for_project(folder, self.direct)
+                self.copies[sha] = (Built(unreal.Project(folder, machine, sha[:12])),
+                                    {"files": made["files"], "lfs_linked": made["linked"],
+                                     "lfs_copied": made["copied"], "engine": str(machine.engine),
+                                     "slots": "ue-heavy" if machine.ue_heavy else "direct"})
+        found = self.copies[sha]
+        if isinstance(found, Exception):
+            raise found
+        return found
+
+    def _room(self, needed):
+        try:
+            unreal.gfroot.check_free(str(self.scratch), "task check")
+            return
+        except SystemExit:
+            for sha in [s for s in self.copies if s not in needed]:
+                self.log(f"  {sha[:12]}: low on disk, deleting its copy (a later task rebuilds it)")
+                self.release(sha)
+        unreal.gfroot.check_free(str(self.scratch), "task check")
+
+    def release(self, sha):
+        if self.copies.pop(sha, None) is not None:
+            seeds.remove(self.scratch / sha[:12])
+
+    def close(self):
+        self.copies.clear()
+        seeds.remove(self.scratch)
+
+
 class Side:
     """One side of a check ("start" or "reference"): its scratch project, built once, each play played once.
     `evidence`: where each play's probe.json, screenshots and log are kept (None: not kept)."""
@@ -57,10 +133,12 @@ class Side:
 
     def build(self):
         if self._build is None:
-            self.log(f"  {self.name}: building")
+            again = getattr(self.project, "has_built", lambda: False)()
+            if not again:
+                self.log(f"  {self.name}: building")
             self._build = self.project.build(self.build_timeout)
             self.log(f"  {self.name}: {'built' if self._build.exit_code == 0 else 'build FAILED'} "
-                     f"({self._build.seconds:.0f} s)")
+                     f"({self._build.seconds:.0f} s{', built earlier in this run' if again else ''})")
             if self.evidence is not None and self._build.exit_code != 0:
                 self._keep("build", {"build.log": self._build.output.encode("utf-8")})
         return self._build
@@ -88,6 +166,7 @@ class Side:
             found = self.project.play(seconds, shots, self.timeout, map=map or self.task.get("play_map"),
                                       inputs=inputs, queries=queries, args=args, every=every)
             self.played[name] = found
+            self.log(f"  {self.name}: played {name} in {found.seconds:.0f} s")
             if self.evidence is not None:
                 self._keep(name, {**found.files, "play.log": found.log.encode("utf-8"),
                                   "output.txt": found.output.encode("utf-8")})
@@ -300,9 +379,10 @@ def gap_notes(result):
 
 
 def check_task(repo, task, raw, scratch, out_dir, keep=False, direct=False, timeout=1800, build_timeout=3600,
-               log=print, clock=time.time):
+               log=print, clock=time.time, builds=None):
     """Check one task (a dict read from `repo`'s tasks branch, its file's bytes `raw`): its result (written to
-    <out_dir>/<name>.json, its plays' files under <out_dir>/<name>/)."""
+    <out_dir>/<name>.json, its plays' files under <out_dir>/<name>/). `builds`: a run's shared copies (Builds), which
+    the run deletes; without it the task gets its own under `scratch`, deleted when it is done unless `keep`."""
     started = clock()
     name = task.get("name", "?")
     result = {"format": FORMAT, "task": name, "game": (task.get("seed") or {}).get("game"),
@@ -323,31 +403,27 @@ def check_task(repo, task, raw, scratch, out_dir, keep=False, direct=False, time
     seed = task["seed"]
     evidence = Path(out_dir) / name
     seeds.remove(evidence)
-    scratch = Path(scratch)
+    own = builds is None
+    if own:
+        builds = Builds(repo, scratch, direct, log)
     sides = {}
     try:
+        shas = {}
         for side, commit in (("start", seed["commit"]), ("reference", seed.get("reference"))):
             if commit is None:
                 continue
             try:
-                sha = seeds.resolve(repo, commit)
+                shas[side] = seeds.resolve(repo, commit)
             except RuntimeError:
                 return finish("INVALID", [f"seed.{'commit' if side == 'start' else 'reference'} {commit[:12]} isn't a "
                                           f"commit of {Path(repo).name} (fetch it, or fix the task)"])
-            folder = scratch / side
-            log(f"  {side}: materializing {sha[:12]} into {folder}")
-            made = seeds.materialize(repo, sha, folder)
+        for side, sha in shas.items():
             try:
-                seeds.add_probe(folder)
+                project, info = builds.get(sha, shas.values())
             except seeds.WrongEngine as exc:
                 return finish("INVALID", [f"{side}: {exc}"])
-            machine = unreal.Machine.for_project(folder, direct)
-            project = unreal.Project(folder, machine, f"{name} {side}")
             sides[side] = Side(side, project, task, timeout, build_timeout, evidence, log)
-            result[side] = {"commit": sha, "files": made["files"], "lfs_linked": made["linked"],
-                            "lfs_copied": made["copied"], "engine": str(machine.engine),
-                            "slots": "ue-heavy" if machine.ue_heavy else "direct",
-                            "missing_packages": map_gaps(repo, sha, task)}
+            result[side] = {"commit": sha, **info, "missing_packages": map_gaps(repo, sha, task)}
         start, reference = sides["start"], sides.get("reference")
         build = tasks.fails_at_start(task)
         if not start.built():
@@ -373,5 +449,5 @@ def check_task(repo, task, raw, scratch, out_dir, keep=False, direct=False, time
     except (OSError, RuntimeError, ValueError) as exc:
         return finish("ERROR", [f"the checker couldn't check it: {type(exc).__name__}: {str(exc)[:400]}"])
     finally:
-        if not keep:
-            seeds.remove(scratch)
+        if own and not keep:
+            builds.close()

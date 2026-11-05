@@ -268,8 +268,10 @@ class Whole(unittest.TestCase):
             task["seed"]["reference"] = fix
         raw = json.dumps(task).encode()
 
+        names = {start[:12]: "start", fix[:12]: "reference"}
+
         def project(folder, machine, label):
-            return projects[Path(folder).name]
+            return projects[names[Path(folder).name]]
 
         with mock.patch.object(unreal, "Project", project), \
                 mock.patch.object(unreal.Machine, "for_project", classmethod(lambda cls, p, d=False: cls(Path(p), None))):
@@ -312,6 +314,33 @@ class Whole(unittest.TestCase):
             result = self.check(task, {"start": start, "reference": FakeProject(measuring(5))}, tmp)
             self.assertEqual(result["verdict"], "VALID", result["reasons"])
             self.assertEqual(start.plays, [], "a start that doesn't build is never played")
+
+    def test_a_run_builds_a_commit_its_tasks_share_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, start, fix, _ = make_game(tmp)
+            built = {start[:12]: FakeProject(measuring(-500)), fix[:12]: FakeProject(measuring(100))}
+            checks = [{"kind": "build", "name": "editor_builds", "weight": 0},
+                      {"kind": "boot", "name": "boots_clean", "seconds": 10, "needs": ["editor_builds"], "weight": 0},
+                      probe(expect={"op": ">=", "calibrate": 0.5}, needs=["boots_clean"])]
+            one, two = task_with(*checks), task_with(*checks)
+            for task, name in ((one, "a-fix-one"), (two, "a-fix-two")):
+                task["name"], task["seed"] = name, {**task["seed"], "commit": start, "reference": fix}
+            with mock.patch.object(unreal, "Project", lambda folder, machine, label: built[Path(folder).name]), \
+                    mock.patch.object(unreal.Machine, "for_project",
+                                      classmethod(lambda cls, p, d=False: cls(Path(p), None))), \
+                    mock.patch.object(unreal.gfroot, "check_free", lambda *a: 100.0):
+                builds = check.Builds(repo, Path(tmp) / "scratch", log=lambda *a: None)
+                verdicts = [check.check_task(repo, task, json.dumps(task).encode(), Path(tmp) / "unused",
+                                             Path(tmp) / "out", log=lambda *a: None, builds=builds)["verdict"]
+                            for task in (one, two)]
+                self.assertEqual(verdicts, ["VALID", "VALID"])
+                self.assertEqual([p.builds for p in built.values()], [1, 1], "each commit built once for both tasks")
+                self.assertEqual(len(built[start[:12]].plays), 2, "each task plays with its own queries")
+                self.assertTrue((Path(tmp) / "scratch" / start[:12]).is_dir(), "the run, not the task, deletes")
+                builds.release(start)
+                self.assertFalse((Path(tmp) / "scratch" / start[:12]).exists())
+                builds.close()
+                self.assertFalse((Path(tmp) / "scratch").exists())
 
     def test_an_unreadable_task_is_invalid(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -394,6 +423,39 @@ class Cli(unittest.TestCase):
                 code = cli.main([str(repo), "--task", str(path), "--scratch", str(Path(tmp) / "s")])
             self.assertEqual((code, seen), (0, ["metro-runner-fix-x"]))
             self.assertEqual(out.getvalue(), "VALID   metro-runner-fix-x\n")
+
+    def test_a_run_deletes_a_shared_copy_after_its_last_task_and_writes_its_progress(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, start, fix, _ = make_game(tmp)
+            paths, released, progress = [], [], []
+            for name, seed in (("g-fix-one", {"commit": start, "reference": fix}),
+                               ("g-fix-two", {"commit": fix, "reference": fix})):
+                path = Path(tmp) / f"{name}.json"
+                task = task_with(probe())
+                path.write_text(json.dumps({**task, "name": name, "seed": {**task["seed"], **seed}}),
+                                encoding="utf-8")
+                paths.append(str(path))
+            out = Path(tmp) / "out"
+
+            def fake(repo_, task, raw, scratch, out_, **kw):
+                progress.append((out / "progress.txt").read_text(encoding="utf-8"))
+                return {"task": task["name"], "verdict": "VALID", "reasons": [], "seconds": 60}
+
+            with mock.patch.object(check, "check_task", fake), \
+                    mock.patch.object(check.Builds, "release", lambda self, sha: released.append(sha)), \
+                    mock.patch.object(unreal.gfroot, "check_free", lambda *a: 100.0), \
+                    contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                code = cli.main([str(repo), "--task", paths[0], "--task", paths[1], "--scratch",
+                                 str(Path(tmp) / "s"), "--out", str(out)])
+            self.assertEqual(code, 0)
+            self.assertEqual(released, [start, fix], "start after task one; fix, shared, only after task two")
+            self.assertIn("0 of 2 task(s) done", progress[0])
+            self.assertIn("checking g-fix-two", progress[1])
+            final = (out / "progress.txt").read_text(encoding="utf-8")
+            self.assertIn("2 of 2 task(s) done", final)
+            self.assertIn("finished", final)
+            self.assertIn("VALID   g-fix-one  (1 min)", final)
+            self.assertTrue(json.loads((out / "progress.json").read_text(encoding="utf-8"))["finished"])
 
     def test_the_default_scratch_is_on_the_repos_own_drive(self):
         with tempfile.TemporaryDirectory() as tmp:

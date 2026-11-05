@@ -9,7 +9,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import check, tasks, unreal
+from . import check, seeds, tasks, unreal
 
 USAGE = __doc__
 
@@ -54,6 +54,37 @@ def line(result):
     head = f"{result['verdict']:<7} {result['task']}"
     reasons = result["reasons"]
     return head + (": " + "; ".join(reasons) if reasons else "")
+
+
+def commits_of(repo, task):
+    """The commits a task builds (its start and reference, resolved), so the run knows when a copy is last needed."""
+    found = set()
+    for commit in ((task or {}).get("seed") or {}).get("commit"), ((task or {}).get("seed") or {}).get("reference"):
+        if isinstance(commit, str):
+            try:
+                found.add(seeds.resolve(repo, commit))
+            except RuntimeError:
+                pass
+    return found
+
+
+def write_progress(out, started, names, results, now=None):
+    """<out>/progress.txt and progress.json: where a run stands, rewritten after every task, so whoever started it
+    can leave and read it later. `results` are the finished tasks' results, in order."""
+    now = time.time() if now is None else now
+    names = [Path(n).stem if n.lower().endswith(".json") else n for n in names]
+    done = len(results)
+    lines = [f"task check: {done} of {len(names)} task(s) done, started {time.strftime('%H:%M', time.localtime(started))}, "
+             f"{round((now - started) / 60)} min so far" + ("" if done < len(names) else ", finished")]
+    lines += [f"  {line(r)}" + (f"  ({round(r['seconds'] / 60)} min)" if r.get("seconds") else "") for r in results]
+    if done < len(names):
+        lines.append(f"  checking {names[done]}" + (f", then {len(names) - done - 1} more" if done + 1 < len(names) else ""))
+    Path(out).mkdir(parents=True, exist_ok=True)
+    (Path(out) / "progress.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (Path(out) / "progress.json").write_text(json.dumps(
+        {"format": "task-check-progress/1", "started": started, "updated": now, "tasks": names,
+         "done": [{"task": r["task"], "verdict": r["verdict"], "reasons": r["reasons"], "seconds": r.get("seconds")}
+                  for r in results], "finished": done == len(names)}, indent=2), encoding="utf-8")
 
 
 def main(argv=None):
@@ -111,21 +142,37 @@ def main(argv=None):
     unreal.gfroot.check_free(str(scratch_root), "task check")
 
     def log(text):
-        print(text, file=sys.stderr, flush=True)
+        print(f"{time.strftime('%H:%M:%S')} {text}", file=sys.stderr, flush=True)
 
+    # One scratch copy per commit for the whole run: a commit several tasks start or end on is built once, and
+    # deleted after the last task that needs it.
+    started = time.time()
+    tag = hashlib.sha256(f"{repo}:{started}".encode()).hexdigest()[:8]
+    builds = check.Builds(repo, scratch_root / tag, args.direct, log)
+    needs = {name: commits_of(repo, sources[name][0]) for name in names}
     results = []
-    for name in names:
-        task, raw, why, source = sources[name]
-        log(f"{name}: checking ({source})")
-        if task is None:
-            result = {"task": name, "verdict": "INVALID", "reasons": [why]}
+    write_progress(out, started, names, results)
+    try:
+        for i, name in enumerate(names):
+            task, raw, why, source = sources[name]
+            log(f"{name}: checking ({source})")
+            if task is None:
+                result = {"task": name, "verdict": "INVALID", "reasons": [why]}
+            else:
+                result = check.check_task(repo, task, raw, scratch_root / tag, out, keep=args.keep,
+                                          direct=args.direct, timeout=args.timeout, build_timeout=args.build_timeout,
+                                          log=log, builds=builds)
+                if not args.keep:
+                    later = set().union(*(needs[n] for n in names[i + 1:]))
+                    for sha in needs[name] - later:
+                        builds.release(sha)
+            results.append(result)
+            print(line(result), flush=True)
+            write_progress(out, started, names, results)
+    finally:
+        if args.keep:
+            log(f"  kept the scratch copies in {scratch_root / tag}")
         else:
-            tag = hashlib.sha256(f"{repo}:{name}:{time.time()}".encode()).hexdigest()[:8]
-            result = check.check_task(repo, task, raw, scratch_root / tag, out, keep=args.keep, direct=args.direct,
-                                      timeout=args.timeout, build_timeout=args.build_timeout, log=log)
-            if args.keep:
-                log(f"  kept the scratch copies in {scratch_root / tag}")
-        results.append(result)
-        print(line(result), flush=True)
-    log(f"results: {out}")
+            builds.close()
+    log(f"results: {out} (progress.txt sums up the run)")
     return 0 if all(r["verdict"] == "VALID" for r in results) else 1
