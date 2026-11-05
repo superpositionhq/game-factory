@@ -3,9 +3,12 @@ the headless editor. Every job goes through the machine's `<root>\\tools\\ue-hea
 shared CPU/GPU slots: the timeout then counts from when the job starts, never the wait for a slot), else runs directly.
 The engine is the one the machine config gives for the project's EngineAssociation (machine/lib/gfroot.py `engine`).
 
-- build: Build.bat <Name>Editor Win64 Development -Project=... -WaitMutex -DisableAdaptiveUnity (a scratch copy has no
-  .git, so UBT's adaptive unity would take every file for one being edited and compile each .cpp on its own; the
-  developer's checkout builds unity files, and so does the checker);
+- build: Build.bat <Name>Editor Win64 Development -Project=... -WaitMutex -DisableAdaptiveUnity -NoHotReloadFromIDE
+  (a scratch copy has no .git, so UBT's adaptive unity would take every file for one being edited and compile each
+  .cpp on its own; the developer's checkout builds unity files, and so does the checker. A Live Coding session holds a
+  mutex named after UnrealEditor.exe, so any editor on the machine, on any game, stops UBT with "Unable to build while
+  Live Coding is active": -NoHotReloadFromIDE skips that guard, and a scratch copy's DLLs are its own. A build that
+  still reports the line is retried: see build);
 - play: UnrealEditor.exe <uproject> [map] -game offscreen at 960x540, a fixed 30 fps, with -TaskProbe and its flags
   (-TaskProbeOut, -TaskProbeSeconds, -TaskProbeShots, -TaskProbeInputs, -TaskProbeQueries, -TaskProbeEvery), the log
   in Saved/Logs/TaskProbePlay.log, then a task play's own game flags; without sound (-nosound -benchmark) unless the
@@ -29,6 +32,11 @@ sys.path.insert(0, str(HERE.parent.parent / "machine" / "lib"))
 import gfroot  # noqa: E402  (game-factory's machine root and engine resolver)
 
 UNITY = "-DisableAdaptiveUnity"
+NO_LIVE_CODING_GUARD = "-NoHotReloadFromIDE"  # UBT: skip the machine-wide Live Coding check (HotReload.cs)
+NO_LIVE_CODING = "-LiveCoding=false"  # the editor: never start a Live Coding session (LiveCodingModule.cpp)
+LIVE_CODING_BLOCKED = "Unable to build while Live Coding is active"
+LIVE_CODING_RETRY_SECONDS = 60
+LIVE_CODING_RETRY_LIMIT = 30 * 60
 SHOT_SIZE = (960, 540)
 OUTPUT_CHARS = 30_000
 WRAPPER_GRACE = 60  # seconds ue-heavy.ps1 gets to release its slot once the job it runs is killed
@@ -190,14 +198,32 @@ class Project:
 
     def __init__(self, folder, machine, label):
         self.folder, self.machine, self.label = Path(folder), machine, label
+        self.build_retries = 0
 
     def uproject(self):
         return seeds.uproject(self.folder)
 
-    def build(self, timeout):
+    def build(self, timeout, sleep=time.sleep):
+        """The editor target's build. One stopped by another process's Live Coding session isn't a failed build: it
+        waits and tries again, up to LIVE_CODING_RETRY_LIMIT seconds, and says how many times in its output. Any other
+        failure, or the same line once the limit is up, comes back as it is."""
         argv = [self.machine.build_bat(), seeds.editor_target(self.folder), "Win64", "Development",
-                f"-Project={self.uproject()}", "-WaitMutex", UNITY]
-        return self.machine.job(f"task-check build {self.label}", argv, self.folder, timeout)
+                f"-Project={self.uproject()}", "-WaitMutex", UNITY, NO_LIVE_CODING_GUARD]
+        retries, waited = 0, 0
+        while True:
+            found = self.machine.job(f"task-check build {self.label}", argv, self.folder, timeout)
+            blocked = found.exit_code != 0 and LIVE_CODING_BLOCKED in (found.output or "")
+            if not blocked or waited >= LIVE_CODING_RETRY_LIMIT:
+                break
+            retries += 1
+            waited += LIVE_CODING_RETRY_SECONDS
+            print(f"  {self.label}: build blocked by Live Coding, retry {retries} in "
+                  f"{LIVE_CODING_RETRY_SECONDS} s", file=sys.stderr, flush=True)
+            sleep(LIVE_CODING_RETRY_SECONDS)
+        self.build_retries = retries
+        if retries:
+            found.output = f"[task-check] build retried {retries} time(s) for Live Coding\n{found.output}"
+        return found
 
     def play(self, seconds, shots, timeout, map=None, inputs=None, queries=None, args=(), every=None):
         """The game for `seconds` of game time through the plugin: offscreen at a fixed 30 fps, `shots` screenshots,
@@ -212,7 +238,7 @@ class Project:
         if map:
             argv.append(map)
         sound, step = probes.sound_flags(queries)  # audio off, unless the play measures it
-        argv += ["-game", "-RenderOffscreen", f"-ResX={SHOT_SIZE[0]}", f"-ResY={SHOT_SIZE[1]}", "-unattended",
+        argv += ["-game", "-RenderOffscreen", f"-ResX={SHOT_SIZE[0]}", f"-ResY={SHOT_SIZE[1]}", "-unattended", NO_LIVE_CODING,
                  *sound, "-nosplash", *step, "-fps=30", "-TaskProbe", f"-TaskProbeOut={out}",
                  f"-TaskProbeSeconds={seconds}", f"-TaskProbeShots={shots}", f"-log={LOG_NAME}"]
         if inputs:
@@ -243,7 +269,7 @@ class Project:
         path = self.folder / "Saved" / "TaskProbe" / "editor_script.py"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(script, encoding="utf-8")
-        argv = [self.machine.editor_cmd(), self.uproject(), "-run=pythonscript", f"-script={path}", "-unattended",
+        argv = [self.machine.editor_cmd(), self.uproject(), "-run=pythonscript", f"-script={path}", "-unattended", NO_LIVE_CODING,
                 "-nosplash", "-nosound", "-stdout", "-FullStdOutLogOutput"]
         return self.machine.job(f"task-check editor {self.label}", argv, self.folder, timeout)
 

@@ -146,6 +146,16 @@ def engine_of(project):
     return str(json.loads(uproject(project).read_text(encoding="utf-8-sig")).get("EngineAssociation", ""))
 
 
+def no_live_coding(project):
+    """Live Coding off in `project`'s per-user editor settings, so an editor an agent opens in a scratch copy, which has
+    no -unattended, doesn't hold the machine-wide mutex that stops every other build. Saved/ isn't part of the game."""
+    path = Path(project) / "Saved" / "Config" / "WindowsEditor" / "EditorPerProjectUserSettings.ini"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8", newline="\n") as ini:
+        ini.write("\n[/Script/LiveCoding.LiveCodingSettings]\nbEnabled=False\n")
+    return path
+
+
 def add_probe(project):
     """Add the TaskProbe plugin to `project` as its own folder under Plugins/. Raises WrongEngine when the project
     isn't a UE 5.7 project: a task starts from a commit that builds on 5.7 as committed."""
