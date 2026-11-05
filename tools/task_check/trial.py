@@ -26,7 +26,7 @@ from pathlib import Path
 from . import check, seeds, tasks, unreal, verdict
 
 FORMAT = "task-try/1"
-LONG_MINUTES = 30  # a long task keeps a clean agent run going at least this long (owner, 2026-11-04)
+LONG_MINUTES = 25  # a long task keeps a clean agent run going about 30 minutes; under this is too short (owner, 2026-11-05)
 LIMITS = {"max_turns": 200, "max_minutes": 240}  # the schema's defaults (game-task.schema.json Limits)
 BUILT = ("Binaries", "Intermediate")  # build outputs removed before a run is graded: the grade builds it fresh
 NO_RECORDING = "GF_NO_RECORDING"  # machine/hooks/record-action.ps1 records nothing when it is set
