@@ -1,4 +1,7 @@
-# Task try: run your task with your own coding agent
+# Task try: run a task with a coding agent (internal)
+
+**Contractors don't run this** (owner, 2026-11-05: it took up to 25 minutes a task). Judge a task's difficulty in the
+game session instead (write-tasks skill, section 6). We run the try on submitted tasks.
 
 The task check ([task-check.md](task-check.md)) proves a task is fair: the start fails it and the reference passes.
 The task try tells you whether it is hard enough. It gives the task to your own coding agent, Claude Code or Codex on
