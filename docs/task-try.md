@@ -57,6 +57,8 @@ beside it, and the brief the agent read `<task>\brief.md`.
 
 ## Reading the result
 
+- **Longest run under 30 minutes:** not long enough, solved or not; the printed line says so. A run that hit its own
+  time limit or crashed says nothing about length.
 - **Solved in any run, quickly:** too easy. Extend the thread back to an earlier attempt, merge it with its
   neighbouring issues, or drop it (write-tasks section 6).
 - **Never solved, but some required checks pass:** what a hard task looks like. Read the transcript: the agent should
