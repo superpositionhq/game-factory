@@ -64,7 +64,8 @@ shipped. Commit tasks as you go, like any work (commit-always skill), but on the
 
 ## 1. The bar: long threads of multiple edits, nothing else (owner, 2026-11-02)
 
-**The only tasks that meet our requirements are long threads of multiple edits.** A task is a stretch of the game's
+**The only tasks that meet our requirements are long threads of multiple edits.** A long task keeps one clean run of a
+strong agent working at least 30 minutes (owner, 2026-11-04); under that it isn't long enough, solved or not. A task is a stretch of the game's
 real history where its own sessions needed many commits, several attempts or several rounds of directions, touching
 many files across several systems, before the outcome held. Strong agents finish a single fix, one cause in one
 place, in minutes, however long the original took; such a task is worthless to us and never ships, not even as an
@@ -74,9 +75,11 @@ A thread qualifies only when all of these hold (the validator enforces the numbe
 
 1. **Many edits.** From `seed.commit` to `seed.reference`, at least 4 commits change the game itself (`Source/`,
    `Content/`, `Config/`, `Plugins/`, the `.uproject`), and the reference changes at least 5 game files against the
-   start. Status, docs and `workflow.jsonl` commits don't count.
-2. **Several systems.** The change spans at least two of: C++, Blueprint or UMG assets, data assets or tables, levels,
-   materials or lighting, config, input, assets rebuilt by editor scripts. A long thread confined to one function is a
+   start, with at least 300 code lines added plus removed. Status, docs and `workflow.jsonl` commits don't count.
+   Assets and binary files don't count as code lines.
+2. **Several systems.** The change spans at least two of: C++ (`Source/`), config (`Config/`, the `.uproject`), plugins,
+   levels (`.umap`), materials and textures (`M_`, `MI_`, `MF_`, `T_`), Blueprint or UMG assets (`BP_`, `WBP_`, `ABP_`,
+   `UI_`), data assets or tables (`DA_`, `DT_`), other assets. The validator counts them by path and name prefix. A long thread confined to one function is a
    short task in disguise.
 3. **Several outcomes.** At least 3 required outcome probes, one per issue the thread settled, so partial work earns
    partial credit (a compound ticket). A thread that settled only one observable thing is rarely long enough.
@@ -254,14 +257,16 @@ docs' "Common reasons and fixes"), never the threshold toward what the start hap
 - `difficulty` is always `hard`, and `tags` hold `long-thread`. There are no easy or medium tasks.
 - `limits`: 400 turns, 480 min, 150 USD, 1800 s tool timeout unless the task needs more; a long thread needs room.
 - `tools/validate-game.py` fails a task that is not `hard`, has no `seed.reference`, has fewer than 3 required probes
-  outside `still_works`, or whose reference changes fewer than 5 game files against its start; for a seed on main it
+  outside `still_works`, or whose reference changes fewer than 5 game files, fewer than 300 code lines or fewer than 2
+  systems against its start; for a seed on main it
   also fails fewer than 4 game-changing commits from `seed.commit` to `seed.reference`. These are floors, not targets:
   pick the longest threads the history has.
 - Before committing, try it with your own coding agent:
   `python <GF_ROOT>/game-factory/tools/task-try.py <GF_ROOT>/games/<slug> --task <name> --agent claude` (or
   `--agent codex`, `--runs 3`; [docs/task-try.md](../../docs/task-try.md)). It gives your agent the task as the cloud
-  does (the start without history, the brief only) and grades its result with the task's probes. If it solves it,
-  especially quickly, the task is too easy: extend the thread back to an earlier attempt, merge it with its
+  does (the start without history, the brief only) and grades its result with the task's probes. The validator can't
+  measure time: the try prints a warning when the longest run stays under 30 minutes, and we measure every submitted
+  task the same way. If it solves it, or stays under 30 minutes, the task is too easy or too short: extend the thread back to an earlier attempt, merge it with its
   neighbouring issues, or drop it. A run whose transcript names the game repo or the tasks worktree doesn't count.
   The try is advice; the cloud's grade decides.
 

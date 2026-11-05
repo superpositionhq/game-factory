@@ -177,5 +177,19 @@ class Whole(unittest.TestCase):
             self.assertIn("seed.reference", result["reasons"][0])
 
 
+class LongEnough(unittest.TestCase):
+    def test_the_line_says_when_the_longest_run_is_under_thirty_minutes(self):
+        run = {"required_passed": 2, "required": 3, "peeked": [], "seconds": 29.9 * 60}
+        result = {"status": "DONE", "task": "t", "solved": 0, "runs": [run]}
+        self.assertIn("longest run 29.9 min: under 30 min, not long enough", trial.line(result))
+        run["seconds"] = 30 * 60
+        self.assertNotIn("not long enough", trial.line(result))
+
+    def test_a_run_stopped_by_its_time_limit_says_nothing_about_length(self):
+        run = {"required_passed": 2, "required": 3, "peeked": [], "seconds": 10 * 60, "timed_out": True}
+        result = {"status": "DONE", "task": "t", "solved": 0, "runs": [run]}
+        self.assertNotIn("not long enough", trial.line(result))
+
+
 if __name__ == "__main__":
     unittest.main()

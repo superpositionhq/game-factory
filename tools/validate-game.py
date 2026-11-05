@@ -603,6 +603,11 @@ def task_semantic_errors(t):
 MIN_OUTCOME_PROBES = 3     # required probes outside still_works: one per issue the thread settled
 MIN_THREAD_FILES = 5       # game files the reference changes against the start
 MIN_THREAD_COMMITS = 4     # commits from seed.commit to seed.reference that change the game (a seed on main)
+MIN_THREAD_CODE_LINES = 300   # code lines added plus removed from start to reference (owner, 2026-11-04)
+MIN_THREAD_SYSTEMS = 2        # systems the change crosses, as thread_size counts them (owner, 2026-11-04)
+CODE_FILE = re.compile(r'\.(cpp|h|hpp|c|cc|inl|cs|py|ps1|bat|cmd|sh|js|hlsl|usf|ush)$', re.I)
+NOT_CODE_DIR = re.compile(r'^(Dataset|Docs|RawAssets|Content)/')
+GAME_FILE = re.compile(r'^(Source|Content|Config|Plugins)/|\.uproject$')
 GAME_PATHS = ('Source', 'Content', 'Config', 'Plugins', '*.uproject')   # the game itself, not its records or docs
 
 
@@ -640,6 +645,43 @@ def noop_errors(t):
     return errs
 
 
+def thread_system(path):
+    """Which system a changed game file belongs to, by its path and name prefix."""
+    low = path.lower()
+    if path.startswith('Source/'):
+        return 'cpp'
+    if path.startswith('Config/') or path.endswith('.uproject'):
+        return 'config'
+    if path.startswith('Plugins/'):
+        return 'plugin'
+    if low.endswith('.umap'):
+        return 'level'
+    name = low.rsplit('/', 1)[-1]
+    if name.startswith(('m_', 'mi_', 'mf_', 't_')):
+        return 'material'
+    if name.startswith(('wbp_', 'bp_', 'abp_', 'ui_')):
+        return 'blueprint'
+    if name.startswith(('da_', 'dt_')):
+        return 'data'
+    return 'asset'
+
+
+def thread_size(numstat):
+    """(code lines, systems) from `git diff --numstat --no-renames`. Binary files and assets never count as code lines;
+    assets do count as systems."""
+    lines, systems = 0, set()
+    for row in numstat.splitlines():
+        parts = row.split('\t')
+        if len(parts) != 3:
+            continue
+        added, removed, path = parts
+        if GAME_FILE.search(path):
+            systems.add(thread_system(path))
+        if added.isdigit() and removed.isdigit() and CODE_FILE.search(path) and not NOT_CODE_DIR.search(path):
+            lines += int(added) + int(removed)
+    return lines, len(systems)
+
+
 def thread_span_errors(repo, seed, on_main):
     """Why the span from seed.commit to seed.reference is too short: game files changed, and on main the commits."""
     start, ref = seed.get('commit'), seed.get('reference')
@@ -650,6 +692,12 @@ def thread_span_errors(repo, seed, on_main):
              .stdout.decode('utf-8', 'replace').splitlines() if p.strip()]
     if len(files) < MIN_THREAD_FILES:
         errs.append(f'the reference changes {len(files)} game file(s) against the start, fewer than {MIN_THREAD_FILES}')
+    lines, systems = thread_size(_git(repo, '-c', 'core.quotepath=off', 'diff', '--numstat', '--no-renames', start, ref)
+                                 .stdout.decode('utf-8', 'replace'))
+    if lines < MIN_THREAD_CODE_LINES:
+        errs.append(f'the reference changes {lines} code line(s) against the start, fewer than {MIN_THREAD_CODE_LINES}')
+    if systems < MIN_THREAD_SYSTEMS:
+        errs.append(f'the reference crosses {systems} system(s), fewer than {MIN_THREAD_SYSTEMS}')
     if on_main:
         n = _git(repo, 'rev-list', '--count', f'{start}..{ref}', '--', *GAME_PATHS).stdout.decode().strip()
         if int(n or 0) < MIN_THREAD_COMMITS:
