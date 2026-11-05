@@ -92,6 +92,13 @@ per side, with the measures of every probe that names it.
 | `"editor"` | one headless editor pass per side over every `asset` measure (the project as saved) |
 | a boot check | `seconds` of play, no input; `log_absent` reads a 60 s boot's log |
 
+A boot is the same idle game as `"look"`, only longer, so on the side that boots (the reference; a start is never
+booted) one 60 s idle play with look's queries serves both: the boot check reads all of it and `"look"` reads only its
+first 20 s, exactly what a 20 s play would have measured. That saves a game launch per task, and each launch costs
+minutes beyond its scripted seconds. A look probe that reads the log (`"probe": "log"`) keeps its own 20 s play,
+because a log covers the whole play. The kept files are then under `boot_60s\`, not `look\`. Each play's progress
+line says how long it took, and how much of that it waited for a machine slot (`ue-heavy.ps1`).
+
 ### Thresholds
 
 - `{"op": ">=", "value": 1}`: a literal.
