@@ -79,6 +79,10 @@ def workspace(repo, sha, dest):
     done = git("-c", "user.name=dev", "-c", "user.email=dev@localhost", "commit", "-q", "-m", "start")
     if done.returncode != 0:
         raise RuntimeError(f"couldn't commit the workspace: {done.stderr.strip()[:300]}")
+    # An editor the agent opens must not stop other builds; the setting isn't the game's, so git doesn't see it.
+    settings = seeds.no_live_coding(dest)
+    with (Path(dest) / ".git" / "info" / "exclude").open("a", encoding="utf-8", newline="\n") as exclude:
+        exclude.write("/" + settings.relative_to(dest).as_posix() + "\n")
     return {"files": made["files"], "copied": made["copied"]}
 
 
