@@ -26,6 +26,7 @@ from pathlib import Path
 from . import check, seeds, tasks, unreal, verdict
 
 FORMAT = "task-try/1"
+LONG_MINUTES = 30  # a long task keeps a clean agent run going at least this long (owner, 2026-11-04)
 LIMITS = {"max_turns": 200, "max_minutes": 240}  # the schema's defaults (game-task.schema.json Limits)
 BUILT = ("Binaries", "Intermediate")  # build outputs removed before a run is graded: the grade builds it fresh
 NO_RECORDING = "GF_NO_RECORDING"  # machine/hooks/record-action.ps1 records nothing when it is set
@@ -264,6 +265,9 @@ def line(result):
     tail = f"  (best {best}/{total} required checks"
     peeks = sorted({p for r in runs for p in r["peeked"]})
     tail += f"; transcript names {', '.join(peeks)}: it may have read the answer)" if peeks else ")"
+    times = [r["seconds"] / 60 for r in runs if r.get("seconds") is not None and not r.get("timed_out")]
+    if times and max(times) < LONG_MINUTES:
+        tail += f"  longest run {max(times):.1f} min: under {LONG_MINUTES} min, not long enough"
     return head + tail
 
 
