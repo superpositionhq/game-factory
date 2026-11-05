@@ -617,6 +617,26 @@ def thread_errors(t, outcomes):
         errs.append("no seed.reference: every task ends at the game's own accepted fix of the thread")
     if outcomes < MIN_OUTCOME_PROBES:
         errs.append(f'{outcomes} required outcome probe(s) outside still_works, fewer than {MIN_OUTCOME_PROBES}')
+    return errs + noop_errors(t)
+
+
+def noop_errors(t):
+    """Why a no-op would earn something, from the task alone: a no-op scores zero (owner, 2026-11-04). The score is the
+    weighted share of checks passed, so what is true of the start takes `"weight": 0`. The task check measures the rest."""
+    errs, earning = [], 0
+    for m in t.get('milestones') or []:
+        for c in (m.get('checks') or []) if isinstance(m, dict) else []:
+            if not isinstance(c, dict):
+                continue
+            kind, weight = c.get('kind'), c.get('weight', 1)
+            passes_at_start = (kind == 'build' and not c.get('fails_at_start')) or kind == 'boot' \
+                or m.get('name') == 'still_works'
+            if passes_at_start and weight != 0:
+                errs.append(f'check {c.get("name")}: a no-op passes it, so a no-op would score; give it "weight": 0')
+            elif not passes_at_start and c.get('required', True) and kind in ('probe', 'build') and weight > 0:
+                earning += 1
+    if not earning:
+        errs.append('no required outcome check carries weight, so no run can score')
     return errs
 
 

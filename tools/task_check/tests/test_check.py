@@ -298,7 +298,7 @@ class Whole(unittest.TestCase):
             self.assertEqual(result["reasons"], ["start doesn't build: the game as the task started didn't build "
                                                  "(exit 6)"])
         with tempfile.TemporaryDirectory() as tmp:
-            task = task_with({"kind": "build", "name": "editor_builds"}, probe(), seed=NO_FIX)
+            task = task_with({"kind": "build", "name": "editor_builds", "weight": 0}, probe(), seed=NO_FIX)
             result = self.check(task, {"start": FakeProject(measuring(10))}, tmp)
             self.assertEqual((result["verdict"], result["reasons"]),
                              ("INVALID", ["start already passes every required probe"]))
