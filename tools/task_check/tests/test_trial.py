@@ -178,11 +178,11 @@ class Whole(unittest.TestCase):
 
 
 class LongEnough(unittest.TestCase):
-    def test_the_line_says_when_the_longest_run_is_under_thirty_minutes(self):
-        run = {"required_passed": 2, "required": 3, "peeked": [], "seconds": 29.9 * 60}
+    def test_the_line_says_when_the_longest_run_is_too_short(self):
+        run = {"required_passed": 2, "required": 3, "peeked": [], "seconds": 24.9 * 60}
         result = {"status": "DONE", "task": "t", "solved": 0, "runs": [run]}
-        self.assertIn("longest run 29.9 min: under 30 min, not long enough", trial.line(result))
-        run["seconds"] = 30 * 60
+        self.assertIn("longest run 24.9 min: under 25 min, not long enough", trial.line(result))
+        run["seconds"] = 25 * 60
         self.assertNotIn("not long enough", trial.line(result))
 
     def test_a_run_stopped_by_its_time_limit_says_nothing_about_length(self):
