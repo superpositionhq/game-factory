@@ -93,6 +93,7 @@ follows the same format's repo rules (one `assets.manifest.json` format, every a
 tools/ue-pipeline/                  UE build, package and gameplay recording pipeline; AutoPlay drop-in
 tools/package-game.ps1, package-dataset.ps1   per-game deliverables and dataset layout v1.1
 tools/task-check.py, task-try.py   a task checked on the engine, and tried with your own coding agent (task_check/)
+tools/thread-stats.py              a thread's own commits counted against the task floors (git only)
 tools/ue-replay/                    creation replay: per-commit (live) and at release; ReplayScripts/ of the dataset
 machine/                            machine setup: setup (entry point), bootstrap/check, ue-heavy limiter, recording hooks, ffmpeg
 templates/                          UE 5.7 game skeleton + new-game.ps1

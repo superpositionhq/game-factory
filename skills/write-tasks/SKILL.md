@@ -161,6 +161,14 @@ made before the game's 5.7 port can't be used as it was; give it a start on 5.7 
   issues. Different threads that ran at the same time (a camera rework during a HUD pass) are separate tasks over the
   same commits. What never repeats is an issue: two tasks never test the same outcome, so dedupe against the game's existing tasks by issue (their briefs and
   required probes), not by commits. Merging still wins over splitting one thread into short tasks (section 1).
+- **Measure the thread on its own commits** (owner, 2026-11-05). The validator measures everything from `seed.commit`
+  to `seed.reference`, so a short thread inside another thread's stretch can pass the floors on the other thread's
+  work. Which commits are the thread's own is your call (the commits that answer its directions or work on its
+  issues); list them and count them:
+  `python <GF_ROOT>/game-factory/tools/thread-stats.py <GF_ROOT>/games/<slug> <commit> <commit> ... --span <seed.commit>..<seed.reference>`
+  (git only, seconds). A thread whose own commits are below the floors (section 6) is too short, whatever the span
+  says: extend it, merge it with its neighbouring issues, or drop it. When you tell the person a task is ready, give
+  its own line from the tool (commits, files, code lines, systems).
 - Binary-only fixes are fine (the agent can make the same change through editor scripts or C++); drop one only when
   its outcome cannot be seen.
 
