@@ -92,12 +92,21 @@ class Transcript(unittest.TestCase):
 
 
 class Score(unittest.TestCase):
+    def test_a_score_is_the_weighted_share_as_the_cloud_scores_it(self):
+        grade = {"checks": [dict(checked("editor_builds", "build", True), required=True, group="builds", weight=0),
+                            dict(checked("hud", "probe", False), required=True, group="fixed", weight=3),
+                            dict(checked("camera", "probe", False), required=True, group="fixed", weight=1),
+                            dict(checked("runs", "probe", True), required=True, group="still_works", weight=0)]}
+        self.assertEqual(trial.score(None, grade)["score"], 0.0, "a no-op scores nothing")
+        grade["checks"][1]["passed"] = True
+        self.assertEqual(trial.score(None, grade)["score"], 0.75)
+
     def test_solved_only_when_every_required_check_passes(self):
         grade = {"checks": [dict(checked("editor_builds", "build", True), required=True, group="builds"),
                             dict(checked("hud", "probe", True), required=True, group="fixed"),
                             dict(checked("camera", "probe", False), required=True, group="fixed"),
                             dict(checked("taste", "judge", False), required=False, group="quality")]}
-        self.assertEqual(trial.score(None, grade), {"solved": False, "required_passed": 2, "required": 3,
+        self.assertEqual(trial.score(None, grade), {"solved": False, "score": 0.667, "required_passed": 2, "required": 3,
                                                     "milestones": {"builds": True, "fixed": False}})
         grade["checks"][2]["passed"] = True
         self.assertTrue(trial.score(None, grade)["solved"])

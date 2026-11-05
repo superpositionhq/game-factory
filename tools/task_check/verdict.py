@@ -18,13 +18,16 @@ A task is VALID when
 - without a reference: the start fails every required probe outside still_works (or doesn't build by design);
 - either way, every required probe of the task's `still_works` milestone already passes at the start: what still works
   must hold there, or the probe is broken and would fail every correct solution. A still-works probe the start
-  measured nothing for (its play crashed: the task's own bug) is no sign of a broken probe.
+  measured nothing for (its play crashed: the task's own bug) is no sign of a broken probe;
+- a no-op scores zero (owner, 2026-11-04): no check the start passes carries weight. The cloud's score is the weighted
+  share of checks passed, so build, boot and still-works checks and anything else true of the start take `"weight": 0`.
 Judges (judge, code_judge, actions_judge) never take part, and neither do trace probes or packaging."""
 
 import math
 
 from . import probes, tasks
 
+JUDGES = ("judge", "code_judge", "actions_judge")
 MARGIN = 0.25  # a calibrated threshold whose start measured nothing: the reference's value, this share toward the start
 
 
@@ -93,6 +96,18 @@ def describe(check, value, limit, start, fix, why=None):
     return detail + (f": {why}" if why else "")
 
 
+def noop_score(task, start):
+    """(score, names): what doing nothing earns, the weighted share of the deterministic checks the start passes, and
+    the passed checks that carry weight. Judges and trace probes aren't measured here (`detail` "not asked")."""
+    weights = {c["name"]: c["weight"] for _, c in tasks.checks(task)
+               if c["kind"] not in JUDGES and not (c["kind"] == "probe" and c["measure"]["probe"] == "trace")}
+    total = sum(weights.values())
+    names = [c["name"] for c in start["checks"]
+             if c["name"] in weights and c["passed"] and weights[c["name"]] > 0
+             and not str(c["detail"]).startswith("not asked")]
+    return (round(sum(weights[n] for n in names) / total, 3) if total else 0.0), names
+
+
 def verdict(task, reference, start):
     """(valid, why, notes) from the reference's and the start's check rows ({"checks": [{name, kind, passed,
     detail}]}). `reference` None: a start-only check."""
@@ -117,6 +132,11 @@ def verdict(task, reference, start):
                 why.append(f"reference fails {c['name']}: {str(c['detail'])[:160]}")
             else:
                 notes.append(f"reference fails {c['name']} ({c['kind']}): {str(c['detail'])[:160]}")
+    earned, names = noop_score(task, start)
+    told = (required - still) | ({build["name"]} if build is not None else set())  # those have their own reasons below
+    if earned and set(names) - told:
+        why.append(f"a no-op scores {earned}, not 0: give {', '.join(n for n in names if n not in told)} "
+                   "\"weight\": 0, or drop them")
     if reference is None and broken:  # a start-only check's gate: the start doesn't build by design
         return not why, why, notes
     gates = [c for c in start["checks"] if c["name"] in required and c["name"] not in still] + broken

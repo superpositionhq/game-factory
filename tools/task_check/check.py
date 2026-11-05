@@ -235,7 +235,8 @@ class Grade:
                     ok, detail = False, f"the checker failed ({type(exc).__name__}: {str(exc)[:200]})"
             passed[check["name"]] = bool(ok)
             rows.append({"name": check["name"], "kind": check["kind"], "passed": bool(ok),
-                         "required": check["required"], "detail": str(detail)[:700], "group": group})
+                         "required": check["required"], "weight": check["weight"], "detail": str(detail)[:700],
+                         "group": group})
         return {"checks": rows, "probes": self.measured}
 
 
@@ -243,7 +244,7 @@ def start_unbuilt(task, why):
     """The start's grade when it doesn't build and the task says so: that build check failed, nothing else run."""
     group, build = next((g, c) for g, c in tasks.checks(task) if c["kind"] == "build" and c["fails_at_start"])
     return {"checks": [{"name": build["name"], "kind": "build", "passed": False, "required": build["required"],
-                        "detail": str(why)[:700], "group": group}], "probes": {}}
+                        "weight": build["weight"], "detail": str(why)[:700], "group": group}], "probes": {}}
 
 
 def probe_values(task, reference, start):

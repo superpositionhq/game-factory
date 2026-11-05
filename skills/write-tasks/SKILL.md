@@ -88,6 +88,11 @@ A thread qualifies only when all of these hold (the validator enforces the numbe
    (`play_map` options at the seed) that triggers the moment, or a task play whose scripted keys reach it (key names,
    mouse buttons included, but no mouse movement). A thread no probe can measure is not a task.
 
+**Never make a task easier (owner, 2026-11-04; permanent).** After a task is first written, these are banned if they
+lower the bar: widening a threshold or window, making a required probe optional, removing a probe, removing a
+requirement from the brief or narrowing what it asks. A plainly broken probe may be fixed only so that it asks at least
+as much as the brief. Otherwise drop the whole task and say so; fewer tasks is an acceptable result.
+
 The four kinds say where the thread comes from; each is a long thread, never one commit:
 
 | kind | the thread | `seed.commit` | `seed.reference` |
@@ -186,7 +191,11 @@ checks (taste, readability, how the agent worked). The probe language, every pla
 rules that gate a task, is the task author's contract [docs/task-probes.md](../../docs/task-probes.md), checked by the
 schema [docs/schemas/game-task.schema.json](../../docs/schemas/game-task.schema.json) and `tools/validate-game.py`.
 
-Each milestone is a reward group; a run that gets part of the way earns part of the reward. The usual order:
+Each milestone is a reward group; a run that gets part of the way earns part of the reward. **A no-op scores zero
+(owner, 2026-11-04; permanent):** the score is the weighted share of checks passed, so every check the start already
+passes takes `"weight": 0`: `builds`, `boots`, all of `still_works`, and any `log_absent` or `file_exists` true of the
+start. They still gate: a run must pass the required ones to be solved. `validate-game.py` and the task check refuse a
+task a no-op would earn anything on. The usual order:
 
 1. `builds`: `build` (`editor_builds`).
 2. `boots`: `boot` 60 s (`boots_clean`), `needs` the build.

@@ -23,7 +23,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import check, seeds, tasks, unreal
+from . import check, seeds, tasks, unreal, verdict
 
 FORMAT = "task-try/1"
 LIMITS = {"max_turns": 200, "max_minutes": 240}  # the schema's defaults (game-task.schema.json Limits)
@@ -148,13 +148,18 @@ def outside(path, folders):
 
 
 def score(task, grade):
-    """What a run reached: solved (every required check passed), required checks passed, milestones reached."""
+    """What a run reached: solved (every required check passed), its score (the weighted share of checks passed, as the
+    cloud scores it, judges left out since a try doesn't run them), required checks passed, milestones reached."""
     rows = grade["checks"]
+    weighed = [r for r in rows if r.get("kind") not in verdict.JUDGES]
+    total = sum(r.get("weight", 1) for r in weighed)
+    earned = sum(r.get("weight", 1) for r in weighed if r["passed"])
     required = [r for r in rows if r["required"]]
     groups = {}
     for r in required:
         groups.setdefault(r["group"], []).append(r["passed"])
-    return {"solved": all(r["passed"] for r in required), "required_passed": sum(r["passed"] for r in required),
+    return {"solved": all(r["passed"] for r in required), "score": round(earned / total, 3) if total else 0.0,
+            "required_passed": sum(r["passed"] for r in required),
             "required": len(required), "milestones": {g: all(v) for g, v in groups.items()}}
 
 
@@ -230,7 +235,7 @@ def try_task(repo, task, raw, scratch, out_dir, agent, exe, runs=1, model=None, 
             try:
                 tried, _ = side(label, folder, task, direct, timeout, build_timeout, evidence, log)
             except (seeds.WrongEngine, FileNotFoundError) as exc:  # the agent changed the engine or removed the project
-                row.update(solved=False, required_passed=0, required=None, milestones={}, checks=[],
+                row.update(solved=False, score=0.0, required_passed=0, required=None, milestones={}, checks=[],
                            why=str(exc))
             else:
                 grade = check.Grade(task, "reference", start, reference, thresholds, side=tried).run()
