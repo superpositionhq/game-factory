@@ -66,8 +66,6 @@ Run `measure` on every clip you keep and reject or trim what is wrong for its cu
 - `--mono` for anything placed in the world, so it spatializes; stereo for UI and ambience.
 - Trim with ffmpeg (`<GF_ROOT>\tools\ffmpeg-8.1.2\ffmpeg-8.1.2-full_build\bin\ffmpeg.exe`) by writing a new WAV next to
   the original; measure it again and record the change (section 3).
-- **No recorded voices (game-session skill):** skip anything with speech, shouts, grunts or mouth-made sounds. Voices
-  are subtitles and synthesized sound only.
 
 ## 5. Into the engine
 
