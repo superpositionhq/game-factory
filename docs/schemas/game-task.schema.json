@@ -113,7 +113,7 @@
           "title": "At"
         },
         "field": {
-          "pattern": "^(count|x|y|z|yaw|pitch|roll|scale|extent_x|extent_y|extent_z|hidden|collision|speed|prop:[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?(\\.[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?){0,5}|facing_vs_velocity|bone:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz]|rel_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|bb:[A-Za-z_][A-Za-z0-9_]{0,63})$",
+          "pattern": "^(count|x|y|z|yaw|pitch|roll|scale|extent_x|extent_y|extent_z|hidden|collision|speed|prop:[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?(\\.[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?){0,5}|facing_vs_velocity|bone:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz]|rel_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|bb:[A-Za-z_][A-Za-z0-9_]{0,63}|world_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|world_pitch:[A-Za-z_][A-Za-z0-9_]{0,63}|world_roll:[A-Za-z_][A-Za-z0-9_]{0,63}|forward:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz])$",
           "title": "Field",
           "type": "string"
         },
@@ -1830,6 +1830,200 @@
       "title": "PawnMeasure",
       "type": "object"
     },
+    "PieceSelect": {
+      "additionalProperties": false,
+      "description": "Placed mesh pieces (docs/task-probes.md, section 2.14): of mesh components of a class (StaticMeshComponent, which takes in the\ninstanced ones, InstancedStaticMeshComponent, ProceduralMeshComponent; default every mesh component), optionally by\nthe component's name, its mesh asset's name (`mesh`, a wildcard), an owner actor the `owner` select matches, and\nnear a point (each piece by its own place).",
+      "properties": {
+        "class": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,120}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Class"
+        },
+        "mesh": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9_.*? -]{1,120}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mesh"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9_.*? -]{1,120}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "near": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Near"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Select"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "PieceSelect",
+      "type": "object"
+    },
+    "PiecesMeasure": {
+      "additionalProperties": false,
+      "description": "Placed mesh pieces, whatever their form (docs/task-probes.md, section 2.14): a mesh component with a mesh is one, an instanced one\none per instance, a procedural mesh one per section; counted over all of them, never cut at the rows cap.",
+      "properties": {
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "delta",
+                "any",
+                "all",
+                "count",
+                "sum",
+                "range",
+                "std",
+                "changes"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 120,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "const": "end",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "field": {
+          "enum": [
+            "count",
+            "visible",
+            "components",
+            "actors"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "probe": {
+          "const": "pieces",
+          "title": "Probe",
+          "type": "string"
+        },
+        "select": {
+          "$ref": "#/$defs/PieceSelect"
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        }
+      },
+      "required": [
+        "probe",
+        "field"
+      ],
+      "title": "PiecesMeasure",
+      "type": "object"
+    },
     "Probe": {
       "additionalProperties": false,
       "description": "A deterministic check (docs/task-probes.md): `measure` taken where `play` says, reduced to one number, compared with\n`expect`. `describe` is the assertion in plain English, shown in the grade.",
@@ -1874,6 +2068,8 @@
               "light": "#/$defs/LightMeasure",
               "log": "#/$defs/LogMeasure",
               "pawn": "#/$defs/PawnMeasure",
+              "pieces": "#/$defs/PiecesMeasure",
+              "screen": "#/$defs/ScreenMeasure",
               "spawns": "#/$defs/SpawnsMeasure",
               "trace": "#/$defs/TraceMeasure",
               "widgets": "#/$defs/WidgetsMeasure"
@@ -1895,6 +2091,12 @@
             },
             {
               "$ref": "#/$defs/ComponentsMeasure"
+            },
+            {
+              "$ref": "#/$defs/PiecesMeasure"
+            },
+            {
+              "$ref": "#/$defs/ScreenMeasure"
             },
             {
               "$ref": "#/$defs/LightMeasure"
@@ -2001,6 +2203,137 @@
         "criterion"
       ],
       "title": "RubricItem",
+      "type": "object"
+    },
+    "ScreenMeasure": {
+      "additionalProperties": false,
+      "description": "The frame the player sees (docs/task-probes.md, section 2.15): mean luminance of the drawn frame, after post-processing, over `rect`\n[x0, y0, x1, y1] in viewport fractions (default the whole frame). It moves between machines, so its threshold is\ncalibrated or relative to the start, never a literal (tools/validate-game.py).",
+      "properties": {
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "delta",
+                "any",
+                "all",
+                "count",
+                "sum",
+                "range",
+                "std",
+                "changes"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 120,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "const": "end",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "field": {
+          "enum": [
+            "luminance",
+            "luma"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "probe": {
+          "const": "screen",
+          "title": "Probe",
+          "type": "string"
+        },
+        "rect": {
+          "items": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "title": "Rect",
+          "type": "array"
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        }
+      },
+      "required": [
+        "probe",
+        "field"
+      ],
+      "title": "ScreenMeasure",
       "type": "object"
     },
     "Seed": {

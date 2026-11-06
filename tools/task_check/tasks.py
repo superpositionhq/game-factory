@@ -15,8 +15,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 TOOLS = os.path.dirname(HERE)
 REFS = ("tasks", "origin/tasks")  # where a game's tasks live (validate-game.py TASKS_REFS)
 STILL_WORKS = "still_works"  # the milestone of what a task must leave working (write-tasks section 5)
-RUNTIME = ("pawn", "camera", "actors", "widgets", "components", "light", "grading", "spawns", "log")
-SAMPLED = ("pawn", "camera", "actors", "widgets", "components", "light", "grading", "spawns")
+RUNTIME = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns", "log")
+SAMPLED = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns")
+WHOLE_SCREEN = [0.0, 0.0, 1.0, 1.0]
+ANGLE_PREFIXES = ("rel_yaw:", "world_yaw:", "world_pitch:", "world_roll:")
 ZERO = [0.0, 0.0, 0.0]
 _validator = None
 
@@ -114,7 +116,8 @@ def select(s):
 
 def measure(m):
     """A probe's measure with every optional field: window, at, agg, to_angle, to_axis (None when unset), `of`
-    ("count") for selections, `field` ("count") for the log, `to` and `point` with their defaults."""
+    ("count") for selections, `field` ("count") for the log, `to` and `point` with their defaults, a pieces measure's
+    `select` ({} when unset) and a screen measure's `rect` (the whole frame when unset)."""
     out = dict(m)
     kind = out["probe"]
     if kind in SAMPLED:
@@ -128,6 +131,10 @@ def measure(m):
             out["to"] = point(out["to"]) if out.get("to") is not None else None
         if kind == "light":
             out["point"] = point(out["point"])
+        if kind == "pieces":
+            out["select"] = select(out.get("select") or {})
+        if kind == "screen":
+            out["rect"] = _floats(out.get("rect") or WHOLE_SCREEN)
     elif kind == "asset":
         for k in ("asset", "map", "select", "match", "to_angle", "to_axis"):
             out.setdefault(k, None)
@@ -205,9 +212,9 @@ def relative(c):
 
 
 def is_angle(field, turn=None):
-    """Whether a measure's field is an angle (degrees, normalised to (-180, 180]): yaw, pitch, roll, rel_yaw:, and a
-    reflected property (prop:) a probe compares with to_angle / to_axis."""
-    return field in ("yaw", "pitch", "roll") or field.startswith("rel_yaw:") or \
+    """Whether a measure's field is an angle (degrees, normalised to (-180, 180]): yaw, pitch, roll, rel_yaw:,
+    world_yaw:, world_pitch:, world_roll:, and a reflected property (prop:) a probe compares with to_angle / to_axis."""
+    return field in ("yaw", "pitch", "roll") or field.startswith(ANGLE_PREFIXES) or \
         (turn is not None and field.startswith("prop:"))
 
 
