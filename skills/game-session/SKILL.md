@@ -9,9 +9,9 @@ You build one small but premium-looking UE 5.7 game, and the way you build it is
 is recorded as it happens (`workflow.jsonl`, git history, the machine's action hooks) and becomes a game-creation
 dataset. Your brief (from `docs/briefs/game-session.md`, or `docs/briefs/solo-game.md` in a solo session) gives the game; these rules
 apply to every game. `%GF_ROOT%` = the machine root (`machine/README.md`); the coordinator is the session that
-started you. Use the **commit-always** skill for every commit.
+started you. Use the **commit-always** skill for every commit and the **sound** skill for every sound.
 
-**Only the game-factory skills (owner's rule).** Use commit-always, game-session and write-tasks and no other skill:
+**Only the game-factory skills (owner's rule).** Use commit-always, game-session, sound and write-tasks and no other skill:
 never install, enable or invoke a personal, project, plugin, marketplace or agent built-in skill, even when the agent
 offers one (AGENTS.md, "Only these skills"). Do what they don't cover by hand under these rules, or ask.
 
@@ -72,6 +72,9 @@ offers one (AGENTS.md, "Only these skills"). Do what they don't cover by hand un
   dressing, lighting). Record every external asset in `assets.manifest.json` (format `assets-manifest/v1`, docs/game-format.md: URL, licence, version, the repo paths of its files,
   changes) and credits in `Docs/ThirdPartyNotices.md`, written as a normal developer would. Need more? Write a "Fab
   requests" list (URL, price, licence, UE 5.7 support, what it replaces) in your design doc and message the coordinator.
+- **Sound:** every sound effect comes through the **sound** skill (read it before writing the audio direction): cues
+  listed in the design doc, clips chosen by their numbers and measured with `tools/sfx.py`, CC0 or CC BY only, recorded in
+  `assets.manifest.json`. Never leave a cue silent or ship an engine placeholder.
 - **UI (user rule):** matches the game's art style: kit frames, icons, display fonts, styled numbers. No plain or
   default-font text on screen.
 - **Story (user rule):** a strong background story told in play, never a wall of text: environmental storytelling, at

@@ -29,7 +29,7 @@ account and an account for the coding agent (Claude Code, or OpenAI Codex CLI wi
 1. **Story bible and design doc**: `docs/games/<slug>.md` (pitch, systems, maps, scenarios, art and story).
 2. **New project**: `templates/new-game.ps1` creates `%GF_ROOT%\games\<slug>` from the UE 5.7 template: hooks that
    record every action and commit, `ReplayConfig.json` (`"live": true`), `Scripts/ue.ps1`, a private GitHub repo.
-3. **Build**: the session (Claude Code or Codex) follows the `commit-always` and `game-session` skills; every action
+3. **Build**: the session (Claude Code or Codex) follows the `commit-always`, `game-session` and `sound` skills; every action
    is recorded (`workflow.jsonl`, the action hooks of either agent, git history).
 4. **Creation replay in the background**: after every commit, the post-commit hook starts the live replay
    (`tools/ue-replay`, `ue_replay.py live`). It replays the new commits into an isolated copy of the project at low
@@ -82,7 +82,7 @@ follows the same format's repo rules (one `assets.manifest.json` format, every a
   submitted tasks to measure how long a strong agent takes; contractors don't run it.
 - [docs/game-deliverable.md](docs/game-deliverable.md): the per-game deliverable (`tools/package-game.ps1`): layout, store-content variants, scrub.
 - [AGENTS.md](AGENTS.md): what every session reads first (Claude Code through [CLAUDE.md](CLAUDE.md), Codex
-  directly): the skills in `skills/` (commit-always, game-session, write-tasks), the priorities, how the two agents
+  directly): the skills in `skills/` (commit-always, game-session, sound, write-tasks), the priorities, how the two agents
   differ, and the rules for agents working here (each with the failure behind it).
 - [docs/new-machine.md](docs/new-machine.md): setting up another Windows machine (`machine/setup.ps1`, which runs `machine/bootstrap.ps1` and `machine/check.ps1`).
 - [docs/briefs/](docs/briefs/README.md): the prompts that start a game session (solo and coordinated).
@@ -94,10 +94,11 @@ tools/ue-pipeline/                  UE build, package and gameplay recording pip
 tools/package-game.ps1, package-dataset.ps1   per-game deliverables and dataset layout v1.1
 tools/task-check.py, task-try.py   a task checked on the engine; tried with a coding agent (internal) (task_check/)
 tools/thread-stats.py              a thread's own commits counted against the task floors (git only)
+tools/sfx.py                       sound effects for a game: search Freesound, fetch into the repo, measure (sound skill)
 tools/ue-replay/                    creation replay: per-commit (live) and at release; ReplayScripts/ of the dataset
 machine/                            machine setup: setup (entry point), bootstrap/check, ue-heavy limiter, recording hooks, ffmpeg
 templates/                          UE 5.7 game skeleton + new-game.ps1
-skills/                             commit-always, game-session, write-tasks (agent-neutral; bootstrap installs them for each agent)
+skills/                             commit-always, game-session, sound, write-tasks (agent-neutral; bootstrap installs them for each agent)
 docs/                               everything learned so far; docs/briefs/ = session prompts
 ```
 
