@@ -6,6 +6,8 @@ them into game-creation datasets. `%GF_ROOT%` is the machine root (env `GF_ROOT`
 `%USERPROFILE%\.game-factory\config.json`, else `%USERPROFILE%\Work`); see [machine/README.md](machine/README.md).
 Claude Code reads this file through [CLAUDE.md](CLAUDE.md); Codex reads it directly (and through `<root>\AGENTS.md`).
 
+**Before every new game, update game-factory:** `git -C <GF_ROOT>\game-factory pull`, then `powershell -ExecutionPolicy Bypass -File <GF_ROOT>\game-factory\machine\bootstrap.ps1` so the skills your agent reads are the new ones. The tools, task rules and validators change often; a game made with old ones can fail the Lab's checks.
+
 Skills (one source, [skills/](skills/); `machine/bootstrap.ps1` copies them to `~\.claude\skills\` for Claude Code and
 `~\.agents\skills\` for Codex; read the `SKILL.md` named here before the work it covers, whichever agent you are):
 
