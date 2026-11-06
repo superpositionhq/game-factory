@@ -73,5 +73,6 @@ private:
 	bool bDone = false;
 	bool bStarted = false;  // the first world has begun play: the clock runs from then on
 	bool bCursorSet = false;
+	int32 FramesWaited = 0;  // at the end, frames waited for a screen sample's frame
 	FVector2D CursorAbsolute = FVector2D::ZeroVector;
 };

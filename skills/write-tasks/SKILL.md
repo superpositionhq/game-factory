@@ -204,8 +204,9 @@ Every grader play opens it (boots, idle and drive, the route, the before and ref
 
 **Pass/fail is decided only by checks the grader computes itself** (the owner, 2026-10-19): `build`, `boot`,
 `log_absent` and **`probe`** checks. A model judge (`judge`, `code_judge`, `actions_judge`) never decides pass/fail
-and nothing is graded from pixel statistics of the game's frames. Judges may stay as `"required": false` quality
-checks (taste, readability, how the agent worked). The probe language, every play, measure and threshold with the
+and nothing is graded from pixel statistics of the game's frames except the frame's mean luminance (`screen`, the
+owner, 2026-11-06), whose threshold is always calibrated or relative to the start. Judges may stay as
+`"required": false` quality checks (taste, readability, how the agent worked). The probe language, every play, measure and threshold with the
 rules that gate a task, is the task author's contract [docs/task-probes.md](../../docs/task-probes.md), checked by the
 schema [docs/schemas/game-task.schema.json](../../docs/schemas/game-task.schema.json) and `tools/validate-game.py`.
 
@@ -322,7 +323,10 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 | checks or log patterns shown in the brief | the agent gets the brief only |
 | a model judge misread screenshots and failed a correct fix (or passed a wrong one) | pass/fail by probes only; judges are `"required": false` |
 | a fix made only in binary assets failed the code review | the cause is checked by its measured effect (a probe), never by reading the diff |
-| a pixel threshold moved between GPUs | light and colour from the engine (`light`, `grading`), never screenshot statistics |
+| a pixel threshold moved between GPUs | light and colour from the engine (`light`, `grading`); the frame's luminance (`screen`) only calibrated or relative to the start, never a literal |
+| a level dressed with instanced meshes counted as one actor | count placed pieces (`pieces`), not actors or components |
+| a count stopped at 200 rows and a threshold was set on it | counts and `of` read every match (since 2026-11-06); recalibrate a threshold set before |
+| a light's turn read relative to its own actor | `world_yaw:`/`world_pitch:`/`forward:` read the component in the world |
 | a probe that tests the reference's implementation ("SpawnZ = 92") | measure the outcome; another valid fix must pass |
 | the brief said "scenario 1" but not `?Scenario=1` | `play_map` always set and checked at the seed |
 | a HUD widget or class name guessed | read the names from the code and assets at `seed.commit` and `seed.reference` |

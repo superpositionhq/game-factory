@@ -325,6 +325,11 @@ bool UTaskProbe::Tick(float DeltaTime)
 
 	if (Elapsed >= Seconds + 0.5)
 	{
+		// a screen sample reads the frame drawn after it: the last one waits for that frame (a few frames at most)
+		if (Queries && Queries->WaitsForFrame() && FramesWaited++ < 5)
+		{
+			return true;
+		}
 		Finish(TEXT("time"));
 		FPlatformMisc::RequestExit(false);
 		return false;

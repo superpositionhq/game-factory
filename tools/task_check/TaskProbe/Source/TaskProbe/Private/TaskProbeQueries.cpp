@@ -23,6 +23,7 @@
 #include "Components/DirectionalLightComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/Image.h"
+#include "Components/InstancedStaticMeshComponent.h"
 #include "Components/LightComponent.h"
 #include "Components/LocalLightComponent.h"
 #include "Components/MeshComponent.h"
@@ -40,6 +41,8 @@
 #include "Engine/GameViewportClient.h"
 #include "Engine/HitResult.h"
 #include "Engine/Scene.h"
+#include "Engine/SkinnedAsset.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/Texture.h"
 #include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
@@ -55,6 +58,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "UObject/UObjectIterator.h"
 #include "UObject/UnrealType.h"
+#include "UnrealClient.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/SViewport.h"
 #include "Widgets/Text/STextBlock.h"
@@ -85,6 +89,58 @@ static TSharedPtr<FJsonValue> Arr(std::initializer_list<double> Values)
 	return MakeShared<FJsonValueArray>(Out);
 }
 static TSharedPtr<FJsonValue> V4(const FVector4& V) { return Arr({V.X, V.Y, V.Z, V.W}); }
+
+/** Every match's numeric value of one field, summed up when more matched than the rows hold ("full"), so a count, a sum,
+ *  a min or a max over a selection is never cut at the rows cap. */
+struct FFull
+{
+	int64 N = 0;
+	int64 NonZero = 0;
+	double Sum = 0.0;
+	double Min = 0.0;
+	double Max = 0.0;
+
+	void Add(const TSharedPtr<FJsonValue>& V)
+	{
+		if (!V.IsValid() || V->Type != EJson::Number)
+		{
+			return;  // null, a string (read through match) or anything else: rows only
+		}
+		const double X = V->AsNumber();
+		Min = N ? FMath::Min(Min, X) : X;
+		Max = N ? FMath::Max(Max, X) : X;
+		Sum += X;
+		NonZero += X != 0.0 ? 1 : 0;
+		++N;
+	}
+};
+
+/** "total" when more matched than the rows hold, and "full" with each field's FFull. */
+static void SetTotal(FJsonObject& Out, int32 Total, int32 Rows, const TArray<FString>& Fields, const TMap<FString, FFull>& Full)
+{
+	if (Total <= Rows)
+	{
+		return;
+	}
+	Out.SetNumberField(TEXT("total"), Total);
+	const TSharedRef<FJsonObject> All = MakeShared<FJsonObject>();
+	for (const FString& F : Fields)
+	{
+		const FFull* Found = Full.Find(F);
+		if (!Found)
+		{
+			continue;
+		}
+		const TSharedRef<FJsonObject> O = MakeShared<FJsonObject>();
+		O->SetNumberField(TEXT("n"), (double)Found->N);
+		O->SetNumberField(TEXT("nonzero"), (double)Found->NonZero);
+		O->SetField(TEXT("sum"), Num(Found->Sum));
+		O->SetField(TEXT("min"), Found->N ? Num(Found->Min) : Null());
+		O->SetField(TEXT("max"), Found->N ? Num(Found->Max) : Null());
+		All->SetObjectField(F, O);
+	}
+	Out.SetObjectField(TEXT("full"), All);
+}
 static TSharedPtr<FJsonValue> Rgb(const FLinearColor& C) { return Arr({C.R, C.G, C.B}); }
 
 /** A class or any parent class by name without prefix letters (SCCastlePiece), with them (ASCCastlePiece), or a
@@ -709,6 +765,38 @@ static TSharedPtr<FJsonValue> ActorField(AActor* A, const FString& F)
 		const USceneComponent* C = Cast<USceneComponent>(FindComponent(A, F.Mid(8)));
 		return C ? Num(Angle(C->GetComponentRotation().Yaw - A->GetActorRotation().Yaw)) : Null();
 	}
+	if (F.StartsWith(TEXT("world_yaw:")) || F.StartsWith(TEXT("world_pitch:")) || F.StartsWith(TEXT("world_roll:")))
+	{
+		// the component's own rotation in the world, whether its actor or the component itself turned
+		FString Which, Name;
+		F.Split(TEXT(":"), &Which, &Name);
+		const USceneComponent* C = Cast<USceneComponent>(FindComponent(A, Name));
+		if (!C)
+		{
+			return Null();
+		}
+		const FRotator R = C->GetComponentRotation();
+		return Num(Angle(Which == TEXT("world_yaw") ? R.Yaw : Which == TEXT("world_pitch") ? R.Pitch : R.Roll));
+	}
+	if (F.StartsWith(TEXT("forward:")))
+	{
+		// forward:<Component>.x|y|z: the component's forward unit vector in the world (a light's: where its light goes)
+		FString Name, Axis;
+		if (!F.Mid(8).Split(TEXT("."), &Name, &Axis, ESearchCase::CaseSensitive, ESearchDir::FromEnd))
+		{
+			return Null();
+		}
+		const USceneComponent* C = Cast<USceneComponent>(FindComponent(A, Name));
+		if (!C)
+		{
+			return Null();
+		}
+		const FVector V = C->GetForwardVector();
+		if (Axis == TEXT("x")) return Num(V.X);
+		if (Axis == TEXT("y")) return Num(V.Y);
+		if (Axis == TEXT("z")) return Num(V.Z);
+		return Null();
+	}
 	if (F == TEXT("count"))
 	{
 		return Num(1.0);
@@ -1135,6 +1223,75 @@ static FString OwnerName(const UActorComponent* C)
 	const AActor* Owner = C ? C->GetOwner() : nullptr;
 	return Owner ? Owner->GetName() : (C ? C->GetName() : FString());
 }
+
+// ---------------------------------------------------------------- pieces, screen
+
+/** A procedural mesh component's sections (UProceduralMeshComponent, read by reflection so the game needn't enable its
+ *  plugin): each section with triangles, by its local bounds and whether it is visible. False when C has no sections
+ *  array (not a procedural mesh). */
+static bool ProcSections(UMeshComponent* C, TFunctionRef<void(const FBox&, bool)> Visit)
+{
+	const FArrayProperty* AP = FindFProperty<FArrayProperty>(C->GetClass(), TEXT("ProcMeshSections"));
+	const FStructProperty* SP = AP ? CastField<FStructProperty>(AP->Inner) : nullptr;
+	if (!SP || !SP->Struct)
+	{
+		return false;
+	}
+	const FArrayProperty* Indices = FindFProperty<FArrayProperty>(SP->Struct, TEXT("ProcIndexBuffer"));
+	const FStructProperty* BoxProp = FindFProperty<FStructProperty>(SP->Struct, TEXT("SectionLocalBox"));
+	const FBoolProperty* VisibleProp = FindFProperty<FBoolProperty>(SP->Struct, TEXT("bSectionVisible"));
+	FScriptArrayHelper Sections(AP, AP->ContainerPtrToValuePtr<void>(C));
+	for (int32 i = 0; i < Sections.Num(); ++i)
+	{
+		uint8* Section = Sections.GetRawPtr(i);
+		if (Indices)
+		{
+			FScriptArrayHelper Tris(Indices, Indices->ContainerPtrToValuePtr<void>(Section));
+			if (Tris.Num() == 0)
+			{
+				continue;  // an empty section draws nothing
+			}
+		}
+		FBox Box(ForceInit);
+		if (BoxProp && BoxProp->Struct && BoxProp->Struct->GetName().StartsWith(TEXT("Box")) && BoxProp->GetElementSize() == sizeof(FBox))
+		{
+			Box = *BoxProp->ContainerPtrToValuePtr<FBox>(Section);
+		}
+		Visit(Box, !VisibleProp || VisibleProp->GetPropertyValue_InContainer(Section));
+	}
+	return true;
+}
+
+/** The name of a mesh component's mesh asset (a static or skinned mesh), empty when it has none or isn't one. */
+static FString MeshAssetName(const UMeshComponent* C)
+{
+	if (const UStaticMeshComponent* SM = Cast<UStaticMeshComponent>(C))
+	{
+		return SM->GetStaticMesh() ? SM->GetStaticMesh()->GetName() : FString();
+	}
+	if (const USkinnedMeshComponent* SK = Cast<USkinnedMeshComponent>(C))
+	{
+		return SK->GetSkinnedAsset() ? SK->GetSkinnedAsset()->GetName() : FString();
+	}
+	return FString();
+}
+
+/** An 8-bit sRGB value as linear light, 0-1. */
+static double SrgbToLinear(uint8 V)
+{
+	static double Table[256];
+	static bool bMade = false;
+	if (!bMade)
+	{
+		for (int32 i = 0; i < 256; ++i)
+		{
+			const double C = i / 255.0;
+			Table[i] = C <= 0.04045 ? C / 12.92 : FMath::Pow((C + 0.055) / 1.055, 2.4);
+		}
+		bMade = true;
+	}
+	return Table[V];
+}
 }  // namespace TaskProbe
 
 using namespace TaskProbe;
@@ -1253,6 +1410,10 @@ FTaskProbeQueries::FTaskProbeQueries()
 FTaskProbeQueries::~FTaskProbeQueries()
 {
 	FWorldDelegates::OnPostWorldInitialization.Remove(WorldInitHandle);
+	if (ViewportHandle.IsValid())
+	{
+		UGameViewportClient::OnViewportRendered().Remove(ViewportHandle);
+	}
 	Unhook();
 	ViewExtension.Reset();
 }
@@ -1285,7 +1446,8 @@ void FTaskProbeQueries::Load(const FString& Path)
 		ErrorList.Add(TEXT("queries file has no queries array"));
 		return;
 	}
-	static const TSet<FString> Kinds = {TEXT("actors"), TEXT("widgets"), TEXT("light"), TEXT("grading"), TEXT("spawns"), TEXT("camera"), TEXT("components")};
+	static const TSet<FString> Kinds = {TEXT("actors"), TEXT("widgets"), TEXT("light"), TEXT("grading"), TEXT("spawns"), TEXT("camera"), TEXT("components"),
+		TEXT("pieces"), TEXT("screen")};
 	TSet<FString> Ids;
 	for (const TSharedPtr<FJsonValue>& Item : *List)
 	{
@@ -1332,6 +1494,26 @@ void FTaskProbeQueries::Load(const FString& Path)
 		{
 			Q.Def->TryGetStringField(TEXT("class"), Q.SpawnClass);
 			bHasSpawns = true;
+		}
+		if (Q.Kind == TEXT("screen"))
+		{
+			// rect: [x0, y0, x1, y1] in viewport fractions (default the whole frame)
+			const TArray<TSharedPtr<FJsonValue>>* Rect = nullptr;
+			if (Q.Def->TryGetArrayField(TEXT("rect"), Rect) && Rect->Num() == 4)
+			{
+				for (int32 i = 0; i < 4; ++i)
+				{
+					double V = 0.0;
+					if ((*Rect)[i].IsValid() && (*Rect)[i]->TryGetNumber(V))
+					{
+						Q.Rect[i] = FMath::Clamp(V, 0.0, 1.0);
+					}
+				}
+			}
+			if (!ViewportHandle.IsValid())
+			{
+				ViewportHandle = UGameViewportClient::OnViewportRendered().AddRaw(this, &FTaskProbeQueries::OnViewportRendered);
+			}
 		}
 		if ((Q.Kind == TEXT("light") || Q.Kind == TEXT("grading")) && !ViewExtension.IsValid())
 		{
@@ -1439,6 +1621,17 @@ void FTaskProbeQueries::Sample(UWorld* World, APlayerController* PC, double T)
 		{
 			SampleCamera(World, PC, *S);
 		}
+		else if (Q.Kind == TEXT("pieces"))
+		{
+			SamplePieces(Q, World, PC, *S);
+		}
+		else if (Q.Kind == TEXT("screen"))
+		{
+			// filled in from the next frame the viewport draws (OnViewportRendered); null if none comes
+			S->SetField(TEXT("value"), Null());
+			Q.Pending.Add(S);
+			bWantFrame = true;
+		}
 		else if (Q.Kind == TEXT("spawns"))
 		{
 			const TSharedRef<FJsonObject> V = MakeShared<FJsonObject>();
@@ -1470,24 +1663,36 @@ void FTaskProbeQueries::SampleActors(FQuery& Q, UWorld* World, APlayerController
 	Q.Def->TryGetObjectField(TEXT("select"), SelObj);
 	TArray<AActor*> Found;
 	int32 Total = 0;
-	FindActors(World, PC, ParseSel(SelObj ? *SelObj : TSharedPtr<FJsonObject>()), 0, MaxRows, Found, Total);
+	FindActors(World, PC, ParseSel(SelObj ? *SelObj : TSharedPtr<FJsonObject>()), 0, MAX_int32, Found, Total);
+	// every match is read; rows hold the first MaxRows, and "full" sums up all of them when there are more
+	const bool bFull = Found.Num() > MaxRows;
+	TMap<FString, FFull> Full;
 	TArray<TSharedPtr<FJsonValue>> Rows;
-	for (AActor* A : Found)
+	for (int32 i = 0; i < Found.Num(); ++i)
 	{
+		AActor* A = Found[i];
 		const TSharedRef<FJsonObject> Row = MakeShared<FJsonObject>();
-		Row->SetStringField(TEXT("name"), A->GetName());
-		Row->SetStringField(TEXT("class"), A->GetClass()->GetName());
 		for (const FString& F : Q.Fields)
 		{
-			Row->SetField(F, ActorField(A, F));
+			const TSharedPtr<FJsonValue> V = ActorField(A, F);
+			if (bFull)
+			{
+				Full.FindOrAdd(F).Add(V);
+			}
+			if (i < MaxRows)
+			{
+				Row->SetField(F, V);
+			}
 		}
-		Rows.Add(MakeShared<FJsonValueObject>(Row));
+		if (i < MaxRows)
+		{
+			Row->SetStringField(TEXT("name"), A->GetName());
+			Row->SetStringField(TEXT("class"), A->GetClass()->GetName());
+			Rows.Add(MakeShared<FJsonValueObject>(Row));
+		}
 	}
 	Out.SetArrayField(TEXT("rows"), Rows);
-	if (Total > Rows.Num())
-	{
-		Out.SetNumberField(TEXT("total"), Total);  // more matched than the rows cap
-	}
+	SetTotal(Out, Total, Rows.Num(), Q.Fields, Full);
 }
 
 void FTaskProbeQueries::SampleWidgets(FQuery& Q, UWorld* World, FJsonObject& Out)
@@ -1503,6 +1708,7 @@ void FTaskProbeQueries::SampleWidgets(FQuery& Q, UWorld* World, FJsonObject& Out
 	}
 	TArray<TSharedPtr<FJsonValue>> Rows;
 	int32 Total = 0;
+	TMap<FString, FFull> Full;  // every match's values, when more matched than the rows hold
 	if (!Slate.IsEmpty())
 	{
 		// Slate widgets under the game viewport, by type name (STextBlock, SImage, a game's own S... type), optionally
@@ -1532,23 +1738,29 @@ void FTaskProbeQueries::SampleWidgets(FQuery& Q, UWorld* World, FJsonObject& Out
 					}
 				}
 				++Total;
-				if (Found.Num() < MaxRows)
-				{
-					Found.Add(W);
-				}
+				Found.Add(W);
 			});
 		}
-		for (const TSharedRef<SWidget>& W : Found)
+		for (int32 i = 0; i < Found.Num(); ++i)
 		{
+			const TSharedRef<SWidget>& W = Found[i];
 			const TSharedRef<FJsonObject> Row = MakeShared<FJsonObject>();
-			const FName Tag = W->GetTag();
-			Row->SetStringField(TEXT("name"), Tag.IsNone() ? W->GetTypeAsString() : Tag.ToString());
-			Row->SetStringField(TEXT("class"), W->GetTypeAsString());
 			for (const FString& F : Q.Fields)
 			{
-				Row->SetField(F, SlateField(W, F));
+				const TSharedPtr<FJsonValue> V = SlateField(W, F);
+				if (Found.Num() > MaxRows)
+				{
+					Full.FindOrAdd(F).Add(V);
+				}
+				Row->SetField(F, V);
 			}
-			Rows.Add(MakeShared<FJsonValueObject>(Row));
+			if (i < MaxRows)
+			{
+				const FName Tag = W->GetTag();
+				Row->SetStringField(TEXT("name"), Tag.IsNone() ? W->GetTypeAsString() : Tag.ToString());
+				Row->SetStringField(TEXT("class"), W->GetTypeAsString());
+				Rows.Add(MakeShared<FJsonValueObject>(Row));
+			}
 		}
 	}
 	else
@@ -1565,37 +1777,41 @@ void FTaskProbeQueries::SampleWidgets(FQuery& Q, UWorld* World, FJsonObject& Out
 				return;
 			}
 			++Total;
-			if (Found.Num() < MaxRows)
-			{
-				Found.AddUnique(W);
-			}
+			Found.AddUnique(W);
 		};
 		for (UUserWidget* Top : Tops)
 		{
 			ForEachWidgetDeep(Top, Visit);
 		}
-		for (UWidget* W : Found)
+		for (int32 i = 0; i < Found.Num(); ++i)
 		{
+			UWidget* W = Found[i];
 			const TSharedRef<FJsonObject> Row = MakeShared<FJsonObject>();
-			Row->SetStringField(TEXT("name"), W->GetName());
-			Row->SetStringField(TEXT("class"), W->GetClass()->GetName());
 			for (const FString& F : Q.Fields)
 			{
-				Row->SetField(F, WidgetField(W, F));
+				const TSharedPtr<FJsonValue> V = WidgetField(W, F);
+				if (Found.Num() > MaxRows)
+				{
+					Full.FindOrAdd(F).Add(V);
+				}
+				Row->SetField(F, V);
 			}
-			Rows.Add(MakeShared<FJsonValueObject>(Row));
+			if (i < MaxRows)
+			{
+				Row->SetStringField(TEXT("name"), W->GetName());
+				Row->SetStringField(TEXT("class"), W->GetClass()->GetName());
+				Rows.Add(MakeShared<FJsonValueObject>(Row));
+			}
 		}
 	}
 	Out.SetArrayField(TEXT("rows"), Rows);
-	if (Total > Rows.Num())
-	{
-		Out.SetNumberField(TEXT("total"), Total);
-	}
+	SetTotal(Out, Total, Rows.Num(), Q.Fields, Full);
 }
 
 void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out)
 {
 	TArray<TSharedPtr<FJsonValue>> Rows;
+	TArray<UActorComponent*> Matched;
 	int32 Total = 0;
 	const TSharedPtr<FJsonObject>* SelObj = nullptr;
 	Q.Def->TryGetObjectField(TEXT("select"), SelObj);
@@ -1640,49 +1856,238 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 				continue;
 			}
 			++Total;
-			if (Rows.Num() >= MaxRows)
+			Matched.Add(C);
+		}
+	}
+	// every match is read; rows hold the first MaxRows, and "full" sums up all of them when there are more
+	TMap<FString, FFull> Full;
+	for (int32 i = 0; i < Matched.Num(); ++i)
+	{
+		UActorComponent* C = Matched[i];
+		const USceneComponent* SC = Cast<USceneComponent>(C);
+		const TSharedRef<FJsonObject> Row = MakeShared<FJsonObject>();
+		for (const FString& F : Q.Fields)
+		{
+			TSharedPtr<FJsonValue> V = Null();
+			if (F == TEXT("count"))
 			{
-				continue;
+				V = Num(1.0);
 			}
-			const TSharedRef<FJsonObject> Row = MakeShared<FJsonObject>();
+			else if (F == TEXT("active"))
+			{
+				V = Num(C->IsActive() ? 1.0 : 0.0);
+			}
+			else if (F == TEXT("visible"))
+			{
+				// visible and not hidden in game, nor its owner
+				const AActor* Owner = C->GetOwner();
+				V = SC ? Num(SC->IsVisible() && !SC->bHiddenInGame && !(Owner && Owner->IsHidden()) ? 1.0 : 0.0) : Null();
+			}
+			else if (SC && (F == TEXT("x") || F == TEXT("y") || F == TEXT("z")))
+			{
+				const FVector L = SC->GetComponentLocation();
+				V = Num(F == TEXT("x") ? L.X : F == TEXT("y") ? L.Y : L.Z);
+			}
+			else if (F.StartsWith(TEXT("prop:")))
+			{
+				V = ReadProp(C, F.Mid(5));
+			}
+			if (Matched.Num() > MaxRows)
+			{
+				Full.FindOrAdd(F).Add(V);
+			}
+			Row->SetField(F, V);
+		}
+		if (i < MaxRows)
+		{
 			Row->SetStringField(TEXT("name"), C->GetName());
-			Row->SetStringField(TEXT("class"), K->GetName());
+			Row->SetStringField(TEXT("class"), C->GetClass()->GetName());
 			Row->SetStringField(TEXT("owner"), C->GetOwner() ? C->GetOwner()->GetName() : FString());
-			for (const FString& F : Q.Fields)
-			{
-				TSharedPtr<FJsonValue> V = Null();
-				if (F == TEXT("count"))
-				{
-					V = Num(1.0);
-				}
-				else if (F == TEXT("active"))
-				{
-					V = Num(C->IsActive() ? 1.0 : 0.0);
-				}
-				else if (F == TEXT("visible"))
-				{
-					// visible and not hidden in game, nor its owner
-					const AActor* Owner = C->GetOwner();
-					V = SC ? Num(SC->IsVisible() && !SC->bHiddenInGame && !(Owner && Owner->IsHidden()) ? 1.0 : 0.0) : Null();
-				}
-				else if (SC && (F == TEXT("x") || F == TEXT("y") || F == TEXT("z")))
-				{
-					const FVector L = SC->GetComponentLocation();
-					V = Num(F == TEXT("x") ? L.X : F == TEXT("y") ? L.Y : L.Z);
-				}
-				else if (F.StartsWith(TEXT("prop:")))
-				{
-					V = ReadProp(C, F.Mid(5));
-				}
-				Row->SetField(F, V);
-			}
 			Rows.Add(MakeShared<FJsonValueObject>(Row));
 		}
 	}
 	Out.SetArrayField(TEXT("rows"), Rows);
-	if (Total > Rows.Num())
+	SetTotal(Out, Total, Rows.Num(), Q.Fields, Full);
+}
+
+void FTaskProbeQueries::SamplePieces(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out)
+{
+	const TSharedPtr<FJsonObject>* SelObj = nullptr;
+	Q.Def->TryGetObjectField(TEXT("select"), SelObj);
+	const FSel Sel = ParseSel(SelObj ? *SelObj : TSharedPtr<FJsonObject>());
+	FString Mesh;
+	if (SelObj && SelObj->IsValid())
 	{
-		Out.SetNumberField(TEXT("total"), Total);
+		(*SelObj)->TryGetStringField(TEXT("mesh"), Mesh);
+	}
+	if (!World)
+	{
+		Out.SetField(TEXT("value"), Null());
+		return;
+	}
+	// owner: an actor selection the component's owner must be in
+	TSet<const AActor*> Owners;
+	const TSharedPtr<FJsonObject>* OwnerObj = nullptr;
+	const bool bOwner = SelObj && SelObj->IsValid() && (*SelObj)->TryGetObjectField(TEXT("owner"), OwnerObj);
+	if (bOwner)
+	{
+		TArray<AActor*> Found;
+		int32 OwnerTotal = 0;
+		FindActors(World, PC, ParseSel(*OwnerObj), 0, MAX_int32, Found, OwnerTotal);
+		Owners.Append(Found);
+	}
+	FVector NearP = FVector::ZeroVector;
+	const bool bNear = Sel.NearPoint.IsValid();
+	if (bNear && !ResolvePoint(Sel.NearPoint, World, PC, 1, NearP))
+	{
+		Out.SetField(TEXT("value"), Null());
+		return;
+	}
+	int64 Count = 0, Visible = 0;
+	int32 Components = 0;
+	TSet<const AActor*> Actors;
+	TMap<const UClass*, bool> ClassCache;  // most components share a few classes
+	for (TObjectIterator<UMeshComponent> It; It; ++It)
+	{
+		UMeshComponent* C = *It;
+		if (!IsValid(C) || C->HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject) || !C->IsRegistered() || C->GetWorld() != World ||
+			C->IsEditorOnly())
+		{
+			continue;
+		}
+		const UClass* K = C->GetClass();
+		const bool* Cached = ClassCache.Find(K);
+		// a world-space widget is a mesh component, but no placed mesh piece
+		const bool bClass = Cached ? *Cached : ClassCache.Add(K, !ClassMatches(K, TEXT("WidgetComponent")) && ClassMatches(K, Sel.Class));
+		const AActor* Owner = C->GetOwner();
+		if (!bClass || (!Sel.Name.IsEmpty() && !C->GetName().MatchesWildcard(Sel.Name)) || (bOwner && !Owners.Contains(Owner)))
+		{
+			continue;
+		}
+		const FString AssetName = MeshAssetName(C);
+		if (!Mesh.IsEmpty() && (AssetName.IsEmpty() || !AssetName.MatchesWildcard(Mesh)))
+		{
+			continue;  // select.mesh: only pieces of a mesh asset by that name (a procedural mesh has none)
+		}
+		const bool bShown = C->IsVisible() && !C->bHiddenInGame && !(Owner && Owner->IsHidden());
+		int64 N = 0, NV = 0;
+		auto Take = [&](const FVector& Where, bool bDrawn)
+		{
+			if (bNear && FVector::Dist(Where, NearP) > Sel.Radius)
+			{
+				return;
+			}
+			++N;
+			NV += bDrawn ? 1 : 0;
+		};
+		if (const UInstancedStaticMeshComponent* ISM = Cast<UInstancedStaticMeshComponent>(C))
+		{
+			if (!ISM->GetStaticMesh())
+			{
+				continue;
+			}
+			const int32 Instances = ISM->GetInstanceCount();
+			if (!bNear)
+			{
+				N = Instances;
+				NV = bShown ? Instances : 0;
+			}
+			else
+			{
+				for (int32 i = 0; i < Instances; ++i)
+				{
+					FTransform T;
+					if (ISM->GetInstanceTransform(i, T, true))
+					{
+						Take(T.GetLocation(), bShown);
+					}
+				}
+			}
+		}
+		else if (!ProcSections(C, [&](const FBox& Box, bool bSectionVisible)
+		{
+			Take(Box.IsValid ? C->GetComponentTransform().TransformPosition(Box.GetCenter()) : C->GetComponentLocation(), bShown && bSectionVisible);
+		}))
+		{
+			if (AssetName.IsEmpty() && (Cast<UStaticMeshComponent>(C) || Cast<USkinnedMeshComponent>(C)))
+			{
+				continue;  // an empty mesh draws nothing
+			}
+			Take(C->GetComponentLocation(), bShown);
+		}
+		if (N > 0)
+		{
+			Count += N;
+			Visible += NV;
+			++Components;
+			if (Owner)
+			{
+				Actors.Add(Owner);
+			}
+		}
+	}
+	const TSharedRef<FJsonObject> V = MakeShared<FJsonObject>();
+	V->SetNumberField(TEXT("count"), (double)Count);
+	V->SetNumberField(TEXT("visible"), (double)Visible);
+	V->SetNumberField(TEXT("components"), Components);
+	V->SetNumberField(TEXT("actors"), Actors.Num());
+	Out.SetObjectField(TEXT("value"), V);
+}
+
+void FTaskProbeQueries::OnViewportRendered(FViewport* Viewport)
+{
+	// right after the game viewport drew a frame, where the engine takes its own screenshots: the frame after
+	// post-processing and tone mapping, with the HUD canvas, before the UMG and Slate UI is drawn over it
+	const UGameViewportClient* GVC = GEngine ? GEngine->GameViewport.Get() : nullptr;
+	if (!bWantFrame || !Viewport || !GVC || GVC->Viewport != Viewport)
+	{
+		return;
+	}
+	const FIntPoint Size = Viewport->GetSizeXY();
+	if (Size.X <= 0 || Size.Y <= 0)
+	{
+		return;
+	}
+	TArray<FColor> Pixels;
+	if (!Viewport->ReadPixels(Pixels, FReadSurfaceDataFlags(), FIntRect(0, 0, Size.X, Size.Y)) || Pixels.Num() < Size.X * Size.Y)
+	{
+		return;
+	}
+	const int32 W = Size.X, H = Size.Y;
+	const int32 Stride = Pixels.Num() / H;  // the read-back rows (the render target may be wider than the viewport)
+	bWantFrame = false;
+	for (FQuery& Q : Queries)
+	{
+		if (Q.Kind != TEXT("screen") || Q.Pending.Num() == 0)
+		{
+			continue;
+		}
+		const int32 X0 = FMath::Clamp(FMath::FloorToInt(FMath::Min(Q.Rect[0], Q.Rect[2]) * W), 0, W - 1);
+		const int32 Y0 = FMath::Clamp(FMath::FloorToInt(FMath::Min(Q.Rect[1], Q.Rect[3]) * H), 0, H - 1);
+		const int32 X1 = FMath::Clamp(FMath::CeilToInt(FMath::Max(Q.Rect[0], Q.Rect[2]) * W), X0 + 1, W);
+		const int32 Y1 = FMath::Clamp(FMath::CeilToInt(FMath::Max(Q.Rect[1], Q.Rect[3]) * H), Y0 + 1, H);
+		double Lum = 0.0, Luma = 0.0;
+		for (int32 y = Y0; y < Y1; ++y)
+		{
+			const FColor* Row = Pixels.GetData() + (int64)y * Stride;
+			for (int32 x = X0; x < X1; ++x)
+			{
+				const FColor& P = Row[x];
+				Lum += 0.2126 * SrgbToLinear(P.R) + 0.7152 * SrgbToLinear(P.G) + 0.0722 * SrgbToLinear(P.B);
+				Luma += (0.2126 * P.R + 0.7152 * P.G + 0.0722 * P.B) / 255.0;
+			}
+		}
+		const double Count = (double)(X1 - X0) * (Y1 - Y0);
+		const TSharedRef<FJsonObject> V = MakeShared<FJsonObject>();
+		V->SetField(TEXT("luminance"), Num(Lum / Count));
+		V->SetField(TEXT("luma"), Num(Luma / Count));
+		V->SetNumberField(TEXT("pixels"), Count);
+		V->SetField(TEXT("size"), Arr({(double)W, (double)H}));
+		for (const TSharedPtr<FJsonObject>& S : Q.Pending)
+		{
+			S->SetObjectField(TEXT("value"), V);
+		}
+		Q.Pending.Reset();
 	}
 }
 

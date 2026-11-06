@@ -54,6 +54,10 @@ def needs(measure):
         return [{"kind": probe, "select": measure["select"], "fields": [] if field == "count" else [field]}]
     if probe == "light":
         return [{"kind": "light", "point": measure["point"]}]
+    if probe == "pieces":
+        return [{"kind": "pieces", "select": measure["select"]}]
+    if probe == "screen":
+        return [{"kind": "screen", "rect": measure["rect"]}]
     if probe == "grading":  # a post: field is asked for by name; the colour pipeline's settings always come
         return [{"kind": "grading", "fields": [field] if field.startswith("post:") else []}]
     if probe == "spawns":
@@ -132,6 +136,47 @@ def combine(values, of):
     if of == "first":
         return found[0]
     raise ValueError(f"no `of` {of}")
+
+
+ROWS = object()  # every_match: the rows alone read the measure
+
+
+def _count(value):
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def selected_count(sample, rows):
+    """How many a selection's sample matched: the plugin's `total` when more matched than its rows hold (it keeps at
+    most 200 rows), else the rows."""
+    total = sample.get("total")
+    return float(total) if _count(total) and total > rows else float(rows)
+
+
+def every_match(sample, rows, field, of):
+    """`of` over every match of a sample whose matches outnumber its rows, from the plugin's summary of their values
+    of `field` (`full`: n with a number, nonzero, sum, min, max); ROWS when the rows are the whole selection, for
+    `first` (the first row is the first match), or without a summary."""
+    full = sample.get("full") if isinstance(sample.get("full"), dict) else {}
+    found = full.get(field)
+    if not (_count(sample.get("total")) and sample["total"] > rows) or of == "first" or not isinstance(found, dict):
+        return ROWS
+    n, nonzero, total = found.get("n"), found.get("nonzero"), found.get("sum")
+    if not (_count(n) and _count(nonzero) and _count(total)):
+        return ROWS
+    if of == "count":
+        return float(nonzero)
+    if of == "any":
+        return 1.0 if nonzero > 0 else 0.0
+    if of == "all":
+        return 1.0 if n > 0 and nonzero == n else 0.0
+    if of == "sum":
+        return float(total)
+    if n == 0:
+        return None
+    if of == "mean":
+        return total / n
+    value = found.get(of)  # min, max
+    return float(value) if _count(value) else None
 
 
 def aggregate(values, agg):
@@ -295,17 +340,20 @@ def series(measure, probe):
     (query,) = needs(measure)
     samples = _samples(probe, query_id(query))
     if probe_kind in ("actors", "widgets", "components"):
-        out = []
+        out, turned = [], measure.get("to_angle") is not None or measure.get("to_axis") is not None
         for s in samples:
             rows = [r for r in s.get("rows") or [] if isinstance(r, dict)]
+            whole = every_match(s, len(rows), field, measure["of"]) if measure.get("match") is None and not turned else ROWS
             if field == "count":
-                out.append((s["t"], float(len(rows))))
+                out.append((s["t"], selected_count(s, len(rows))))
+            elif whole is not ROWS:
+                out.append((s["t"], whole))
             else:
                 out.append((s["t"], combine([angled(measure, number(r.get(field), measure.get("match")))
                                              for r in rows], measure["of"])))
         return out
     values = [(s["t"], s.get("value") if isinstance(s.get("value"), dict) else {}) for s in samples]
-    if probe_kind in ("camera", "light"):
+    if probe_kind in ("camera", "light", "pieces", "screen"):
         return [(t, number(v.get(field))) for t, v in values]
     if probe_kind == "grading":
         if field.startswith("post:"):

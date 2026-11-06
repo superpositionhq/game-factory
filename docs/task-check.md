@@ -171,7 +171,14 @@ by its asset name with `_C`, `BP_Wall_C`); a component property is `prop:<Compon
 selected rows of one sample, and without it a field like `z` counts the rows whose value isn't 0 instead of reading
 the value. Set `"of": "first"`, `"max"`, `"min"` or `"mean"` when you mean the value.
 
-**Angles.** `yaw`, `pitch`, `roll` and `rel_yaw:` are normalised to (-180, 180], so a raw yaw jumps from 180 to -180
+**More than 200 matches.** The plugin keeps at most 200 rows a sample in `probe.json`, but reads every match: the
+sample's `total` is how many matched and `full` sums up every match's numeric value of each field (`n`, `nonzero`,
+`sum`, `min`, `max`). `count` reads `total`, and `of` (`count`, `any`, `all`, `sum`, `min`, `max`, `mean`) reads
+`full`, so neither stops at 200. Only `"of": "first"` and values read through `match`, `to_angle` or `to_axis` read the
+200 rows alone. Before 2026-11-06 the checker counted the rows, so a selection of 389 read 200.
+
+**Angles.** `yaw`, `pitch`, `roll`, `rel_yaw:` and `world_yaw:`/`world_pitch:`/`world_roll:` are normalised to
+(-180, 180], so a raw yaw jumps from 180 to -180
 and `mean` or `delta` across the wrap mean nothing. Use `"to_angle": 90` (the shortest distance to 90 degrees, 0-180)
 or `"to_axis": 90` (the distance to that axis, 0-90: a direction and its opposite are one axis), with the threshold on
 that distance. A `prop:` that holds an angle takes `to_angle`/`to_axis` too.

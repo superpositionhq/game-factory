@@ -72,6 +72,28 @@ class Tasks(unittest.TestCase):
         task_with(probe("a", play={"name": "fire", "seconds": 10}), probe("b", play={"name": "fire", "seconds": 10}))
         task_with(probe(expect={"op": ">=", "start_times": 1.3}), seed=NO_FIX)
 
+    def test_a_screen_measure_takes_a_threshold_from_the_start_never_a_literal(self):
+        screen = {"probe": "screen", "rect": [0.25, 0.25, 0.75, 0.75], "field": "luminance", "window": [10, 20]}
+        with self.assertRaisesRegex(ValueError, "never a literal value"):
+            task_with(probe(measure=screen, expect={"op": ">=", "value": 0.1}))
+        task_with(probe(measure=screen, expect={"op": ">=", "calibrate": 0.5}))
+        task_with(probe(measure=screen, expect={"op": ">=", "start_times": 1.3}), seed=NO_FIX)
+        for bad in ({**screen, "rect": [0.5, 0, 1.2, 1]}, {**screen, "field": "brightness"}):
+            with self.assertRaises(ValueError):
+                task_with(probe(measure=bad, expect={"op": ">=", "calibrate": 0.5}))
+
+    def test_the_new_readings_are_task_fields(self):
+        pieces = {"probe": "pieces", "select": {"class": "StaticMeshComponent", "mesh": "SM_Rock*",
+                                                "near": {"point": {"pawn": True}, "radius": 3000}}, "field": "count"}
+        task_with(probe(measure=pieces, expect={"op": ">=", "value": 300}))
+        task_with(probe(measure={"probe": "pieces", "field": "visible"}, expect={"op": ">=", "value": 1}))
+        for field in ("world_yaw:LightComponent0", "world_pitch:Moon", "world_roll:Moon", "forward:Moon.z"):
+            task_with(probe(measure={"probe": "actors", "select": {"tag": "Moon"}, "field": field, "of": "first"}))
+        for bad in ({"probe": "pieces", "field": "instances"},
+                    {"probe": "actors", "select": {"tag": "Moon"}, "field": "forward:Moon.w"}):
+            with self.assertRaises(ValueError):
+                task_with(probe(measure=bad))
+
 
 class Queries(unittest.TestCase):
     def test_queries_are_merged_per_play_and_selection_under_stable_ids(self):
@@ -252,6 +274,77 @@ class Reducers(unittest.TestCase):
         value, why = probes.measured(measure, found)
         self.assertIsNone(value)
         self.assertIn("no class named Nowhere", why)
+
+
+class FairReadings(unittest.TestCase):
+    def test_a_count_reads_every_match_past_the_rows_cap(self):
+        """The plugin keeps 200 rows a sample; a count of 389 is 389, not 200."""
+        crates = m(probe="actors", select={"class": "Crate"}, field="count")
+        qid = probes.query_id(probes.needs(crates)[0])
+        rows = [{"name": f"Crate{i}", "count": 1} for i in range(200)]
+        self.assertEqual(probes.reduce(crates, {"measures": {qid: [{"t": 0.0, "rows": rows, "total": 389}]}}), 389)
+        self.assertEqual(probes.reduce(crates, {"measures": {qid: [{"t": 0.0, "rows": rows[:12]}]}}), 12)
+
+    def test_of_reads_the_plugins_summary_of_every_match_past_the_rows_cap(self):
+        rows = [{"z": 100.0, "hidden": 0} for _ in range(200)]
+        full = {"z": {"n": 389, "nonzero": 388, "sum": 40000.0, "min": 0.0, "max": 900.0},
+                "hidden": {"n": 389, "nonzero": 189, "sum": 189.0, "min": 0.0, "max": 1.0}}
+        sample = {"t": 0.0, "rows": rows, "total": 389, "full": full}
+
+        def read(**kw):
+            measure = m(probe="actors", select={"class": "Crate"}, **kw)
+            return probes.reduce(measure, {"measures": {probes.query_id(probes.needs(measure)[0]): [sample]}})
+
+        self.assertEqual(read(field="z", of="max"), 900.0)
+        self.assertEqual(read(field="z", of="min"), 0.0)
+        self.assertEqual(read(field="z", of="sum"), 40000.0)
+        self.assertAlmostEqual(read(field="z", of="mean"), 40000.0 / 389)
+        self.assertEqual(read(field="hidden"), 189, "of defaults to count: the non-zero values of every match")
+        self.assertEqual(read(field="hidden", of="any"), 1.0)
+        self.assertEqual(read(field="z", of="all"), 0.0, "one crate sits at 0")
+        self.assertEqual(read(field="z", of="first"), 100.0, "first is the first row")
+        self.assertEqual(read(field="yaw", of="max"), None, "a field the summary lacks reads the rows (none here)")
+
+    def test_values_read_through_match_or_an_angle_read_the_rows_alone(self):
+        rows = [{"prop:Label": "Gold", "yaw": 170.0}, {"prop:Label": "Iron", "yaw": -170.0}]
+        full = {"prop:Label": {"n": 0, "nonzero": 0, "sum": 0.0, "min": None, "max": None},
+                "yaw": {"n": 300, "nonzero": 300, "sum": 0.0, "min": -179.0, "max": 179.0}}
+        for measure, want in ((m(probe="actors", select={"class": "Ore"}, field="prop:Label", match="Gold"), 1.0),
+                              (m(probe="actors", select={"class": "Ore"}, field="yaw", to_angle=180, of="max"), 10.0)):
+            qid = probes.query_id(probes.needs(measure)[0])
+            found = probes.reduce(measure, {"measures": {qid: [{"t": 0.0, "rows": rows, "total": 300, "full": full}]}})
+            self.assertAlmostEqual(found, want)
+
+    def test_pieces_count_placed_mesh_pieces_whatever_their_form(self):
+        rocks = m(probe="pieces", select={"mesh": "SM_Rock*"}, field="count")
+        self.assertEqual(rocks["agg"], None)
+        (query,) = probes.needs(rocks)
+        self.assertEqual(query, {"kind": "pieces", "select": {"mesh": "SM_Rock*"}})
+        self.assertEqual(m(probe="pieces", field="count")["select"], {})
+        value = {"count": 1450, "visible": 1400, "components": 3, "actors": 2}
+        play = {"measures": {probes.query_id(query): sampled([value, {**value, "count": 1460}])}}
+        self.assertEqual(probes.reduce(rocks, play), 1460)
+        self.assertEqual(probes.reduce(m(probe="pieces", select={"mesh": "SM_Rock*"}, field="actors", agg="first"),
+                                       play), 2)
+
+    def test_screen_luminance_is_sampled_like_the_other_probes(self):
+        dark = m(probe="screen", field="luminance", window=[1, 1.5], agg="mean")
+        self.assertEqual(dark["rect"], [0.0, 0.0, 1.0, 1.0])
+        (query,) = probes.needs(m(probe="screen", rect=[0, 0.5, 1, 1], field="luma"))
+        self.assertEqual(query, {"kind": "screen", "rect": [0.0, 0.5, 1.0, 1.0]})
+        qid = probes.query_id(probes.needs(dark)[0])
+        frames = [{"luminance": 0.5, "luma": 0.7}, None, {"luminance": 0.1, "luma": 0.3},
+                  {"luminance": 0.2, "luma": 0.4}, {"luminance": 0.9, "luma": 0.9}]
+        self.assertAlmostEqual(probes.reduce(dark, {"measures": {qid: sampled(frames)}}), 0.15)
+
+    def test_a_components_world_rotation_reads_as_an_angle(self):
+        moon = m(probe="actors", select={"tag": "Moon"}, field="world_yaw:LightComponent0", to_angle=-90, of="first")
+        play = actors_play(moon, [[{"world_yaw:LightComponent0": 280.0}]])
+        self.assertAlmostEqual(probes.reduce(moon, play), 10.0)
+        self.assertTrue(all(tasks.is_angle(f) for f in ("world_yaw:Moon", "world_pitch:Moon", "world_roll:Moon")))
+        self.assertFalse(tasks.is_angle("forward:Moon.z"))
+        down = m(probe="actors", select={"tag": "Moon"}, field="forward:LightComponent0.z", of="first")
+        self.assertEqual(probes.reduce(down, actors_play(down, [[{"forward:LightComponent0.z": -0.5}]])), -0.5)
 
 
 class Angles(unittest.TestCase):

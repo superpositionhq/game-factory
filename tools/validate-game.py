@@ -520,7 +520,8 @@ def probe_errors(c, seed, ref, plays):
     """A probe check's rules beyond the schema (docs/task-probes.md):
     asset measures only with play "editor" and trace measures only with play "trace"; a trace probe never gates and
     takes a literal value; a task play is not named look/drive/editor/trace, has no input at or after its end, sets no
-    grader flag, and same-named task plays are identical; == and != take a literal value; a calibrated threshold needs
+    grader flag, and same-named task plays are identical; == and != take a literal value; a screen measure's threshold
+    is calibrated or relative to the start (the frame's luminance moves between machines); a calibrated threshold needs
     seed.reference and a start-relative one a seed."""
     errs, n = [], c.get('name')
     play = c.get('play')
@@ -552,6 +553,9 @@ def probe_errors(c, seed, ref, plays):
         whole = dict(TASK_PLAY_DEFAULTS, **play)
         if plays.setdefault(pname, whole) != whole:
             errs.append(f'check {n}: task play {pname} differs from another play of that name')
+    if probe == 'screen' and not rel:
+        errs.append(f"check {n}: the frame's luminance moves between machines, so a screen measure's threshold is "
+                    'calibrated or relative to the start, never a literal value')
     if rel and expect.get('op') in ('==', '!='):
         errs.append(f'check {n}: == and != take a literal value, never a calibrated threshold')
     if rel == 'calibrate' and not ref:
