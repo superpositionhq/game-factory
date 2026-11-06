@@ -83,8 +83,7 @@ offers one (AGENTS.md, "Only these skills"). Do what they don't cover by hand un
 - **Camera (user rule):** gentle; the user gets motion sick. Third person: character in the lower third, never filling
   the screen, never at hip height or jammed into the body (spring arm collisions in narrow spaces, crouching).
 - **Quality bar:** main menu, settings (volume, resolution, mouse sensitivity), pause, save/load where it fits, HUD,
-  sound, clear win/lose, packaged Win64 Shipping build. Voices: subtitles and synthesized sound only, no recorded or TTS
-  voices.
+  sound, clear win/lose, packaged Win64 Shipping build. Recorded and TTS voices are allowed.
 
 ## Names
 
