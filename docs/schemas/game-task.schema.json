@@ -2318,7 +2318,7 @@
       "properties": {
         "args": {
           "items": {
-            "pattern": "^-([A-Za-z][A-Za-z0-9]{0,40})(=[A-Za-z0-9_.-]{1,40})?$",
+            "pattern": "^-([A-Za-z][A-Za-z0-9]{0,40})(=[A-Za-z0-9_.:=,-]{1,60})?$",
             "type": "string"
           },
           "maxItems": 8,
