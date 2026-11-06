@@ -33,13 +33,13 @@ skills say to send to "the coordinator" (recording requests, push requests, Fab 
 and wait for my answer.
 
 Read first: {{GF_ROOT}}\game-factory\AGENTS.md, README.md, docs/autoplay-contract.md, docs/ue-pipeline.md,
-and the game-session and commit-always skills ({{GF_ROOT}}\game-factory\skills\<name>\SKILL.md; installed for your
+and the game-session, commit-always and sound skills ({{GF_ROOT}}\game-factory\skills\<name>\SKILL.md; installed for your
 agent too). They hold the rules; in short:
-- use only the game-factory skills (commit-always, game-session, write-tasks): never install, enable or invoke any
+- use only the game-factory skills (commit-always, game-session, sound, write-tasks): never install, enable or invoke any
   other skill (personal, project, plugin, marketplace or built into the agent), even when one is offered;
 - every editor, build, cook or GPU job through {{GF_ROOT}}\tools\ue-heavy.ps1; Live Coding never on;
 - premium art from store packs (any folder under Content/, committed through Git LFS, never git-ignored; the repo stays
-  private), styled UI with no plain text, story embedded in play, gentle camera; never the names of the toolkit or
+  private), every sound through the sound skill, styled UI with no plain text, story embedded in play, gentle camera; never the names of the toolkit or
   its owners inside the game;
 - one workflow.jsonl row per operation at the moment you act (rows are never edited, except to remove a banned name
   with tools/scrub-workflow-rows.py --apply); commit after every meaningful step, never end a turn
@@ -75,7 +75,7 @@ Steps:
 1) Design doc + story bible; 2) create the project (new-game.ps1); 3) core loop first, compiling and testing through
 ue-heavy.ps1, committing each working step; 4) AutoPlay once scenario 1 plays end to end: one hand test +
 tools/ue-pipeline/validate-run.ps1, tag milestone/autoplay-<n>, framing screenshots, then tell me; 5) content, art,
-UI, sound, packaged Win64 Shipping build; 6) playtest checklist, status section in the design doc, and before calling
+UI, sound (sound skill), packaged Win64 Shipping build; 6) playtest checklist, status section in the design doc, and before calling
 it content-complete: 5-7 real gameplay stills in Docs/screenshots/ (JPG, LFS) shown in the README as a hero image
 plus a captioned gallery, checked on github.com after I say push; Tasks/ with up to about 10 tasks on the game, every one a long thread of
 multiple edits, on the tasks branch, never on main (write-tasks skill); tools/validate-game.py VALID. Report each milestone here with the commit sha.

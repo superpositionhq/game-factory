@@ -341,7 +341,7 @@ if ($Agents -contains 'codex') {
     $agentsPath = Join-Path $repo 'AGENTS.md'
     $line = "Before anything else, read $agentsPath and follow it (rules, skills, priorities)."
     Set-RootFile (Join-Path $Root 'AGENTS.md') $line ("# Work root`n`nEvery session on this machine follows the game-factory rules and skills.`n$line`n" +
-        "The skills it names (commit-always, game-session, write-tasks) are installed in $AgentsSkillsDir.`n")
+        "The skills it names (commit-always, game-session, sound, write-tasks) are installed in $AgentsSkillsDir.`n")
 }
 
 # --- 4. git, LFS, gh, game repos --------------------------------------------------------------------------------------

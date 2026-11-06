@@ -28,10 +28,11 @@ and hands each game its packs. Everything shares one Windows PC
 ({{MACHINE}}). I am the coordinator ({{COORDINATOR_ID}}): I own the recording queue and the GPU slots, review your
 commits and tell you when to push.
 
-Rules: follow the game-session and commit-always skills (installed in ~\.claude\skills\ or ~\.agents\skills\, source
+Rules: follow the game-session, commit-always and sound skills (installed in ~\.claude\skills\ or ~\.agents\skills\, source
 game-factory/skills/), and no other skill: never install, enable or invoke a personal, project, plugin, marketplace or
 agent built-in skill. In short: every heavy or GPU job through {{GF_ROOT}}\tools\ue-heavy.ps1, Live Coding
-never on; premium art from the bought/downloaded Fab packs and animation packs, styled UI with no plain text, story
+never on; premium art from the bought/downloaded Fab packs and animation packs, every sound through the
+sound skill, styled UI with no plain text, story
 embedded in play, gentle camera; never the names Superposition or game-factory anywhere in the game; one
 workflow.jsonl row per operation at the moment you act (rows never edited, except to remove a banned name with
 tools/scrub-workflow-rows.py --apply); commit after every meaningful step and never end a turn with
@@ -85,8 +86,8 @@ Known facts about this game:
 {{GAME_NOTES}}
 
 Steps:
-1) Design doc + story bible (systems, classes, data tables, map plan, scenarios, AI, art/audio/UI direction,
-   acceptance checklist).
+1) Design doc + story bible (systems, classes, data tables, map plan, scenarios, AI, art/audio/UI direction with the
+   list of sound cues, acceptance checklist).
 2) Create the project and repo (new-game.ps1), workflow.jsonl from the very first operation.
 3) Build the core loop first, compiling through ue-heavy.ps1 and testing as you go (-nullrhi / -RenderOffScreen for
    logic); commit each working step.
@@ -95,8 +96,8 @@ Steps:
    bot plays like a human, but its score never holds up a release); tag milestone/autoplay-<n>; framing screenshots; message me for a recording.
    The bot does NOT need to win, finish, resupply or avoid getting stuck: never tune or re-test it for results; fix
    only game bugs, then one run per scenario.
-5) Expand content, art, UI and story to the quality bar (menus, settings, pause, save/load where it fits, HUD, sound,
-   packaged Win64 Shipping build).
+5) Expand content, art, UI and story to the quality bar (menus, settings, pause, save/load where it fits, HUD, sound through
+   the sound skill, packaged Win64 Shipping build).
 6) Finish with a playtest checklist pass and a status section in the design doc (what works, what's left, built vs
    store assets, stats: workflow rows, commits, hours). Before calling the game content-complete: Docs/screenshots/
    holds 5-7 real gameplay stills (JPG, Git LFS), the README shows them as a hero image plus a captioned gallery, and
