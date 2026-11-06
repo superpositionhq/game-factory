@@ -77,9 +77,9 @@ follows the same format's repo rules (one `assets.manifest.json` format, every a
 - [docs/autoplay-contract.md](docs/autoplay-contract.md): what each game implements so a bot can play and record it.
 - [docs/ue-pipeline.md](docs/ue-pipeline.md): build, package, smoke-test and gameplay recording pipeline (`tools/ue-pipeline/`).
 - [docs/game-format.md](docs/game-format.md): the final game format (repo + Dataset.zip layout v1.3), its schemas and `tools/validate-game.py`.
-- [docs/task-check.md](docs/task-check.md) and [docs/task-try.md](docs/task-try.md): checking a game's task on your own
-  machine (`tools/task-check.py`: the start fails, the reference passes) and trying it with your own Claude Code or
-  Codex (`tools/task-try.py`: does your agent solve it).
+- [docs/task-check.md](docs/task-check.md): checking a game's task on your own machine (`tools/task-check.py`: the
+  start fails, the reference passes). [docs/task-try.md](docs/task-try.md) is internal: we run `tools/task-try.py` on
+  submitted tasks to measure how long a strong agent takes; contractors don't run it.
 - [docs/game-deliverable.md](docs/game-deliverable.md): the per-game deliverable (`tools/package-game.ps1`): layout, store-content variants, scrub.
 - [AGENTS.md](AGENTS.md): what every session reads first (Claude Code through [CLAUDE.md](CLAUDE.md), Codex
   directly): the skills in `skills/` (commit-always, game-session, write-tasks), the priorities, how the two agents
@@ -92,7 +92,7 @@ follows the same format's repo rules (one `assets.manifest.json` format, every a
 ```
 tools/ue-pipeline/                  UE build, package and gameplay recording pipeline; AutoPlay drop-in
 tools/package-game.ps1, package-dataset.ps1   per-game deliverables and dataset layout v1.1
-tools/task-check.py, task-try.py   a task checked on the engine, and tried with your own coding agent (task_check/)
+tools/task-check.py, task-try.py   a task checked on the engine; tried with a coding agent (internal) (task_check/)
 tools/thread-stats.py              a thread's own commits counted against the task floors (git only)
 tools/ue-replay/                    creation replay: per-commit (live) and at release; ReplayScripts/ of the dataset
 machine/                            machine setup: setup (entry point), bootstrap/check, ue-heavy limiter, recording hooks, ffmpeg
