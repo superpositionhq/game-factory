@@ -9,6 +9,8 @@ timestamps, screen video, inputs, code commits and a playtest with inputs.
 
 ## Getting started
 
+**Before every new game, update game-factory:** `git -C <GF_ROOT>\game-factory pull`, then `powershell -ExecutionPolicy Bypass -File <GF_ROOT>\game-factory\machine\bootstrap.ps1` so the skills your agent reads are the new ones. The tools, task rules and validators change often; a game made with old ones can fail the Lab's checks.
+
 On a fresh Windows 11 PC (8+ threads, 16 GB RAM or more, 300 GB free; an NVIDIA GPU only for recording), with a
 GitHub account in `<org>` (the organisation that owns this repo and the private `game-<slug>` repos), an Epic Games
 account and an account for the coding agent (Claude Code, or OpenAI Codex CLI with a ChatGPT account or API key):
