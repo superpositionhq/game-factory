@@ -7,8 +7,10 @@ that can be checked without running the game.
 
 **Pass/fail is deterministic (owner's decision, 2026-10-19).** A task passes or fails only on checks the checker computes
 from the running game or from the project: `build`, `boot`, `log_absent` and `probe`. A model judge never decides
-pass/fail, and nothing is graded from pixel statistics of the game's frames. Judges (`judge`, `code_judge`,
-`actions_judge`) stay as **non-gating** quality checks (`"required": false`).
+pass/fail, and nothing is graded from pixel statistics of the game's frames except one: the frame's mean luminance
+(`screen`, section 2.15; the owner, 2026-11-06), whose threshold is always calibrated or relative to the start, so the
+same machine measures both sides. Judges (`judge`, `code_judge`, `actions_judge`) stay as **non-gating** quality checks
+(`"required": false`).
 
 Words used here:
 - **the start**: the game at the task's `seed.commit`, as the agent receives it;
@@ -113,8 +115,13 @@ When the start can't be measured (its play ended before the window), a calibrate
   `mean`, `sum`, `first`. **Default `count`.** A measure that reads a value (a position, an extent, a `prop:`, a text
   match, a percent) needs `"of": "first"` or another value reducer, or it counts instead of reading. With `"field":
   "count"`, `of` is ignored.
-- `to_angle` / `to_axis` (angle fields only: `yaw`, `pitch`, `roll`, `rel_yaw:<Component>`, and a `prop:` that holds an
-  angle): angles are normalised to (-180, 180]. `"to_angle": -90` turns the field into its shortest absolute angular
+- **Every match counts, past 200.** The plugin keeps at most 200 rows a sample in `probe.json` but reads every match:
+  `"field": "count"` is the whole selection's size, and `of` (`count`, `any`, `all`, `min`, `max`, `mean`, `sum`) reads
+  every match's value from the plugin's summary of them (the sample's `total` and `full`). Only `"of": "first"` and
+  values read through `match`, `to_angle` or `to_axis` read the first 200 rows alone. Before 2026-11-06 counts stopped
+  at 200 (a selection of 389 read 200): a threshold set on such a count then is set again.
+- `to_angle` / `to_axis` (angle fields only: `yaw`, `pitch`, `roll`, `rel_yaw:<Component>`,
+  `world_yaw:`/`world_pitch:`/`world_roll:<Component>`, and a `prop:` that holds an angle): angles are normalised to (-180, 180]. `"to_angle": -90` turns the field into its shortest absolute angular
   distance to that angle, 0-180 (so 270 and -90 are the same). `"to_axis": 90` turns it into the distance to that axis,
   0-90: a direction and its opposite are one axis (a straight road piece turned 90 or -90). One or the other, not both.
 - `match` (string values: text, names, enum-like strings, brush paths): a regular expression; the value is 1 when it
@@ -163,7 +170,12 @@ else first; `pawn_on_screen` = 1 when the pawn's centre projects inside the view
     class (`SpringArm`, `CharacterMovement`, `StaticMeshComponent0`); an array element as `Materials[0]`;
   - `bone:<Component>.<BoneOrSocket>.x|y|z`: world location of a bone or socket of a skeletal or static mesh
     component;
-  - `rel_yaw:<Component>`: the component's world yaw minus the actor's;
+  - `rel_yaw:<Component>`: the component's world yaw minus the actor's (turning the whole actor doesn't change it);
+  - `world_yaw:<Component>`, `world_pitch:<Component>`, `world_roll:<Component>`: the component's own rotation in the
+    world (degrees), whether its actor or the component itself turned; `forward:<Component>.x|y|z`: its forward unit
+    vector in the world. For a light component this is the way its light travels: a directional light pointing down
+    has a negative `world_pitch` and a negative `forward:<Component>.z`. A component by name or class, as for `prop:`
+    (`world_pitch:DirectionalLightComponent`);
   - `facing_vs_velocity`: degrees between the actor's forward and its velocity (0 when it moves forward; no value when
     it stands still);
   - `bb:<Key>` on AI controllers: a blackboard value (numbers and booleans as numbers, enums as index, objects as 1
@@ -173,7 +185,8 @@ else first; `pawn_on_screen` = 1 when the pawn's centre projects inside the view
 
 `{"probe": "components", "select": {"class": "NiagaraComponent", "owner": <actor select>, "near": ...}, "field":
 "count|active|visible", ...}`: registered components of a class (particle systems, decals, audio), optionally of an
-owner actor and near a point, so effects that are not actors count too.
+owner actor and near a point, so effects that are not actors count too. An instanced mesh component is one component
+however many instances it draws: count placed meshes with `pieces` (section 2.14).
 
 ### 2.6 `widgets`: the UI on screen
 
@@ -198,6 +211,9 @@ owner actor and near a point, so effects that are not actors count too.
   trace toward the light; the sky light by its intensity), each with a visibility trace from the light;
 - `exposure`: the auto-exposure the player's camera settled on (as a scale);
 - `brightness`: `illuminance * exposure`, what the player sees at that point.
+
+It sees no post-processing beyond auto-exposure (no exposure bias curve, colour grade, vignette, ambient occlusion,
+bloom); for what reaches the screen, use `screen` (section 2.15).
 
 ### 2.8 `grading`: the colour pipeline
 
@@ -244,6 +260,58 @@ refused for a path outside the project. Only as `"required": false` quality note
 
 `{"xyz": [x, y, z]}`, `{"pawn": true, "offset": [x, y, z]}`, `{"camera": true, "forward": cm}`, or
 `{"actor": <select>, "offset": [x, y, z]}` (the first match).
+
+### 2.14 `pieces`: placed mesh pieces, whatever their form
+
+```json
+{"probe": "pieces", "select": {"class": "StaticMeshComponent", "mesh": "SM_Rock*",
+                               "near": {"point": {"pawn": true}, "radius": 3000}},
+ "field": "count", "at": "end"}
+```
+
+How many mesh pieces are placed, however the level holds them: a level dressed with instanced static meshes (ISM,
+HISM, foliage, PCG output) or with one procedural mesh of many sections reads as one actor and one component to
+`actors` and `components`, but as its real number of pieces here.
+
+- A piece: a static or skeletal mesh component with a mesh is 1; an instanced static mesh component is 1 per
+  instance; a procedural mesh component is 1 per section with triangles; any other mesh component (a dynamic mesh) is
+  1. Empty meshes (no mesh asset, no instances, no triangles), widget components and editor-only components count 0.
+- `select` (optional; every key given must match, none means every mesh piece in the world):
+  - `class`: the mesh component's class or a parent (`StaticMeshComponent` takes in the instanced ones;
+    `InstancedStaticMeshComponent`, `HierarchicalInstancedStaticMeshComponent`, `ProceduralMeshComponent`,
+    `SkeletalMeshComponent`); default every mesh component;
+  - `name`: a wildcard on the component's name; `mesh`: a wildcard on its mesh asset's name (`SM_Rock*`; a procedural
+    mesh has none, so `mesh` leaves it out);
+  - `owner`: an actor select the component's actor must match (as in `actors`);
+  - `near`: within `radius` cm of a point, **each piece by its own place** (an instance's location, a section's bounds
+    centre, else the component's location).
+- `field`: `count` (pieces), `visible` (pieces drawn in game: component visible, not hidden in game, its actor not
+  hidden, the section visible), `components` (how many mesh components hold them), `actors` (how many actors).
+- Counted over every piece in the plugin, never cut at the rows cap. A literal threshold is fine (a count doesn't
+  depend on the machine).
+
+### 2.15 `screen`: what the player sees, after post-processing
+
+```json
+{"probe": "screen", "rect": [0.25, 0.25, 0.75, 0.75], "field": "luminance", "window": [10, 20], "agg": "mean"}
+```
+
+The mean brightness of the frame the player's viewport drew, sampled with the play like every other probe: after
+post-processing and tone mapping (exposure and its bias, colour grading, vignette, ambient occlusion, bloom, fog), so
+"the cave is too dark to see" or "the night is too bright" is measured on what reaches the screen. The `light` probe
+measures light arriving at a point and sees none of that.
+
+- `rect`: `[x0, y0, x1, y1]` in viewport fractions 0-1, x0 < x1 and y0 < y1 (default `[0, 0, 1, 1]`, the whole frame).
+  Keep it on the scene the task is about and off HUD drawn with the AHUD canvas.
+- `field`: `luminance`, the mean linear Rec. 709 luminance of the displayed pixels (sRGB decoded, 0-1); `luma`, the
+  mean Rec. 709 luma of the encoded values (0-1, closer to perceived brightness).
+- What is read: the frame drawn right after each sample (one frame later at the checker's 30 fps), as the engine's own
+  screenshots read it: the scene and AHUD canvas drawing, without the UMG and Slate UI drawn over it. No value when no
+  frame is drawn.
+- **The threshold is calibrated or relative to the start, never a literal value** (`tools/validate-game.py` refuses
+  one): the numbers depend on the GPU, the driver and the resolution, so they compare only within one machine's plays.
+  Two plays of one build on one machine read the same to about 1e-5. Auto-exposure takes a few seconds to settle after
+  the start and after a teleport: put the window after it.
 
 ## 3. What gates, and how a probe fails
 
@@ -310,3 +378,11 @@ a run on an invalid task is void.
   another valid fix must pass.
 - **Read names from the game.** Classes, tags, widget names, components and map paths come from the code and assets at
   `seed.commit` and `seed.reference`, never guessed.
+- **Count what the player sees placed.** A fix that moves props into instanced meshes, or a level built from one
+  procedural mesh, has fewer actors and components but as many pieces: count with `pieces`, so a fair build that
+  dressed the level another way still passes.
+- **A light's direction is a world direction.** `rel_yaw:` reads a component against its own actor, so a fix that turns
+  the actor instead of the component reads unchanged. "The moon points the same way" is `world_yaw:`, `world_pitch:` or
+  `forward:` of the light component.
+- **Brightness on screen goes through calibration.** A `screen` threshold is always calibrated between the start and
+  the fix (or relative to the start), and its window starts after auto-exposure settles.
