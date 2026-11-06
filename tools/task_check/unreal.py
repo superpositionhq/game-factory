@@ -42,6 +42,7 @@ class Result:
     output: str
     seconds: float
     timed_out: bool = False
+    waited: float = 0.0  # of `seconds`, waiting for a ue-heavy.ps1 slot before the job started
 
 
 @dataclass
@@ -53,6 +54,7 @@ class Played:
     probe: dict | None  # the plugin's probe.json; None when it wrote none (the game didn't get there)
     log: str
     files: dict = field(default_factory=dict)  # what the play wrote (probe.json, screenshots) by name
+    waited: float = 0.0  # of `seconds`, waiting for a machine slot
 
 
 def cut(text, limit=OUTPUT_CHARS):
@@ -135,7 +137,9 @@ def run(argv, cwd, timeout, wrapper=False, clock=time.monotonic):
             break
     reader.join(timeout=30)
     text = (b"".join(chunks)).decode("utf-8", errors="replace").replace("\r\n", "\n")
-    return Result(None if timed_out else proc.returncode, cut(text), round(clock() - started, 3), timed_out)
+    waited = job - started if wrapper and job is not None else 0.0  # a job seen start within its first poll: ~0
+    return Result(None if timed_out else proc.returncode, cut(text), round(clock() - started, 3), timed_out,
+                  round(waited, 3))
 
 
 def _ps_quote(value):
@@ -231,7 +235,7 @@ class Project:
         log = log_path.read_bytes().decode("utf-8", errors="replace") if log_path.is_file() else ""
         shutil.rmtree(out, ignore_errors=True)
         return Played(found.exit_code, found.timed_out, found.output, found.seconds,
-                      probe if isinstance(probe, dict) else None, log, files)
+                      probe if isinstance(probe, dict) else None, log, files, found.waited)
 
     def editor_python(self, script, timeout):
         path = self.folder / "Saved" / "TaskProbe" / "editor_script.py"
