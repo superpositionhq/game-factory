@@ -268,8 +268,10 @@ class Whole(unittest.TestCase):
             task["seed"]["reference"] = fix
         raw = json.dumps(task).encode()
 
+        names = {start[:12]: "start", fix[:12]: "reference"}
+
         def project(folder, machine, label):
-            return projects[Path(folder).name]
+            return projects[names[Path(folder).name]]
 
         with mock.patch.object(unreal, "Project", project), \
                 mock.patch.object(unreal.Machine, "for_project", classmethod(lambda cls, p, d=False: cls(Path(p), None))):
@@ -313,12 +315,95 @@ class Whole(unittest.TestCase):
             self.assertEqual(result["verdict"], "VALID", result["reasons"])
             self.assertEqual(start.plays, [], "a start that doesn't build is never played")
 
+    def test_a_run_builds_a_commit_its_tasks_share_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, start, fix, _ = make_game(tmp)
+            built = {start[:12]: FakeProject(measuring(-500)), fix[:12]: FakeProject(measuring(100))}
+            checks = [{"kind": "build", "name": "editor_builds", "weight": 0},
+                      {"kind": "boot", "name": "boots_clean", "seconds": 10, "needs": ["editor_builds"], "weight": 0},
+                      probe(expect={"op": ">=", "calibrate": 0.5}, needs=["boots_clean"])]
+            one, two = task_with(*checks), task_with(*checks)
+            for task, name in ((one, "a-fix-one"), (two, "a-fix-two")):
+                task["name"], task["seed"] = name, {**task["seed"], "commit": start, "reference": fix}
+            with mock.patch.object(unreal, "Project", lambda folder, machine, label: built[Path(folder).name]), \
+                    mock.patch.object(unreal.Machine, "for_project",
+                                      classmethod(lambda cls, p, d=False: cls(Path(p), None))), \
+                    mock.patch.object(unreal.gfroot, "check_free", lambda *a: 100.0):
+                builds = check.Builds(repo, Path(tmp) / "scratch", log=lambda *a: None)
+                verdicts = [check.check_task(repo, task, json.dumps(task).encode(), Path(tmp) / "unused",
+                                             Path(tmp) / "out", log=lambda *a: None, builds=builds)["verdict"]
+                            for task in (one, two)]
+                self.assertEqual(verdicts, ["VALID", "VALID"])
+                self.assertEqual([p.builds for p in built.values()], [1, 1], "each commit built once for both tasks")
+                self.assertEqual(len(built[start[:12]].plays), 2, "each task plays with its own queries")
+                self.assertTrue((Path(tmp) / "scratch" / start[:12]).is_dir(), "the run, not the task, deletes")
+                builds.release(start)
+                self.assertFalse((Path(tmp) / "scratch" / start[:12]).exists())
+                builds.close()
+                self.assertFalse((Path(tmp) / "scratch").exists())
+
     def test_an_unreadable_task_is_invalid(self):
         with tempfile.TemporaryDirectory() as tmp:
             result = check.check_task(tmp, {"name": "x"}, b"{}", Path(tmp) / "s", Path(tmp) / "out",
                                       log=lambda *a: None)
             self.assertEqual(result["verdict"], "INVALID")
             self.assertTrue(result["reasons"][0].startswith("the task doesn't validate"))
+
+
+def rising(log="LogInit: ready\n"):
+    """A play answer whose pawn rises 10 cm a second, for the play's whole length."""
+
+    def play(seconds, shots, queries):
+        return {"format": "game-probe/1", "ended": "time", "seconds": float(seconds), "map": "L", "inputs_sent": 0,
+                "screenshots": [], "track": [[i * 0.5, 0.0, 0.0, i * 5.0] for i in range(int(seconds * 2) + 1)],
+                "camera": [], "measures": {}}, log
+
+    return play
+
+
+class IdlePlay(unittest.TestCase):
+    BOOT = {"kind": "boot", "name": "boots_clean", "seconds": 60, "weight": 0}
+
+    def test_the_60_s_boot_serves_look_and_look_sees_only_its_first_20_s(self):
+        task = task_with(self.BOOT, probe("highest", measure={"probe": "pawn", "field": "z", "agg": "max"},
+                                          expect={"op": ">=", "value": 0}, needs=["boots_clean"]))
+        game = FakeProject(rising())
+        found = grade(task, "reference", side("start", FakeProject(), task), side("reference", game, task))
+        self.assertTrue(all(c["passed"] for c in found["checks"]), found["checks"])
+        self.assertEqual([(p["seconds"], p["shots"]) for p in game.plays], [(60, 6)], "one launch for both")
+        self.assertEqual(found["probes"]["highest"]["value"], 200.0, "the highest point of the first 20 s, not 300")
+
+    def test_a_look_probe_reading_the_log_keeps_its_own_play(self):
+        task = task_with(self.BOOT, probe("no_warnings", measure={"probe": "log", "pattern": "Warning"},
+                                          expect={"op": "==", "value": 0}, needs=["boots_clean"]))
+        game = FakeProject(rising())
+        grade(task, "reference", side("start", FakeProject(), task), side("reference", game, task))
+        self.assertEqual([p["seconds"] for p in game.plays], [60, 20], "a log covers the whole play")
+
+    def test_a_boot_shorter_than_look_keeps_its_own_play(self):
+        task = task_with({**self.BOOT, "seconds": 10}, probe(needs=["boots_clean"]))
+        game = FakeProject(rising())
+        grade(task, "reference", side("start", FakeProject(), task), side("reference", game, task))
+        self.assertEqual([p["seconds"] for p in game.plays], [10, 20])
+
+    def test_a_play_logs_its_time_and_the_wait_for_a_slot(self):
+        task = task_with(probe())
+        game = FakeProject(rising())
+        game.play = lambda *a, **k: unreal.Played(0, False, "", 95.0, None, "", {}, 40.0)
+        said = []
+        check.Side("reference", game, task, 60, 60, None, said.append).probe_play("look")
+        self.assertEqual(said, ["  reference: playing look (20 s)",
+                                "  reference: played look in 95 s (40 s of it waiting for a machine slot)"])
+
+    def test_first_seconds_cuts_rows_samples_and_length(self):
+        probe_ = {"seconds": 60.0, "ended": "time", "track": [[0.0, 0, 0, 1], [20.0, 0, 0, 2], [20.5, 0, 0, 3]],
+                  "camera": [], "measures": {"q": [{"t": 19.5, "value": 1}, {"t": 30, "value": 2}]}}
+        cut = check.first_seconds(probe_, 20)
+        self.assertEqual((cut["seconds"], cut["ended"], len(cut["track"]), cut["measures"]["q"]),
+                         (20.0, "time", 2, [{"t": 19.5, "value": 1}]))
+        self.assertEqual(probe_["seconds"], 60.0, "the boot's own probe is left whole")
+        crashed = check.first_seconds({"seconds": 12.0, "ended": "crash", "track": []}, 20)
+        self.assertEqual((crashed["seconds"], crashed["ended"]), (12.0, "crash"), "a play that ended early stays so")
 
 
 class Plays(unittest.TestCase):
@@ -394,6 +479,39 @@ class Cli(unittest.TestCase):
                 code = cli.main([str(repo), "--task", str(path), "--scratch", str(Path(tmp) / "s")])
             self.assertEqual((code, seen), (0, ["metro-runner-fix-x"]))
             self.assertEqual(out.getvalue(), "VALID   metro-runner-fix-x\n")
+
+    def test_a_run_deletes_a_shared_copy_after_its_last_task_and_writes_its_progress(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, start, fix, _ = make_game(tmp)
+            paths, released, progress = [], [], []
+            for name, seed in (("g-fix-one", {"commit": start, "reference": fix}),
+                               ("g-fix-two", {"commit": fix, "reference": fix})):
+                path = Path(tmp) / f"{name}.json"
+                task = task_with(probe())
+                path.write_text(json.dumps({**task, "name": name, "seed": {**task["seed"], **seed}}),
+                                encoding="utf-8")
+                paths.append(str(path))
+            out = Path(tmp) / "out"
+
+            def fake(repo_, task, raw, scratch, out_, **kw):
+                progress.append((out / "progress.txt").read_text(encoding="utf-8"))
+                return {"task": task["name"], "verdict": "VALID", "reasons": [], "seconds": 60}
+
+            with mock.patch.object(check, "check_task", fake), \
+                    mock.patch.object(check.Builds, "release", lambda self, sha: released.append(sha)), \
+                    mock.patch.object(unreal.gfroot, "check_free", lambda *a: 100.0), \
+                    contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                code = cli.main([str(repo), "--task", paths[0], "--task", paths[1], "--scratch",
+                                 str(Path(tmp) / "s"), "--out", str(out)])
+            self.assertEqual(code, 0)
+            self.assertEqual(released, [start, fix], "start after task one; fix, shared, only after task two")
+            self.assertIn("0 of 2 task(s) done", progress[0])
+            self.assertIn("checking g-fix-two", progress[1])
+            final = (out / "progress.txt").read_text(encoding="utf-8")
+            self.assertIn("2 of 2 task(s) done", final)
+            self.assertIn("finished", final)
+            self.assertIn("VALID   g-fix-one  (1 min)", final)
+            self.assertTrue(json.loads((out / "progress.json").read_text(encoding="utf-8"))["finished"])
 
     def test_the_default_scratch_is_on_the_repos_own_drive(self):
         with tempfile.TemporaryDirectory() as tmp:

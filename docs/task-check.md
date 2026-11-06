@@ -16,6 +16,15 @@ python tools\task-check.py C:\Users\<you>\Work\games\<slug> --task C:\Users\<you
 A task is read from the repo's `tasks` branch by name; give the path of a `.json` file instead to check a task you
 haven't committed yet.
 
+**Check a game's tasks in one run** (`--all`, or several `--task`). The run makes one scratch copy per commit and
+builds it once, so a commit that is one task's start and another's reference, or two tasks' start, costs one build;
+each copy is deleted after the last task that needs it (or when the disk runs below the floor, then rebuilt if a later
+task needs it). A shared copy is the commit exactly as committed, so sharing changes no result. A run of 10 tasks
+takes hours, so start it where it can run on its own and come back; a game session starts it as its own process
+(write-tasks skill, section 5). `<out>\progress.txt` (and `progress.json`) is rewritten after every task: how many
+are done, each one's verdict and minutes, and which is running; it says `finished` at the end. Progress lines carry
+the time of day, and each build and play logs how long it took.
+
 Run it from PowerShell (the machine's `ue-heavy.ps1` is a PowerShell script; see "Requirements"). Without `--task` or
 `--all` it lists the tasks on the branch. Each task prints one line, and the exit code is 0 only when every task is
 VALID:
@@ -41,7 +50,8 @@ elsewhere, `--scratch DIR` puts the copies elsewhere, `--direct` runs Unreal wit
   copies go on the repo's own drive (its resolved path, junctions followed), so LFS files are hardlinks of the repo's
   own objects and cost no disk; `--scratch` elsewhere makes them copies. It refuses to start below the machine's
   free-space floor (`min_free_gb`).
-- Time: two cold builds and a few plays, typically 20-60 minutes per task. Every build, play and editor run goes
+- Time: two cold builds and a few plays, typically 20-60 minutes per task; a commit shared by several tasks of one
+  run is built once. Every build, play and editor run goes
   through `<root>\tools\ue-heavy.ps1` when the machine has it, so checks share the machine's job slots with everything
   else; its timeouts count from when a job starts, not the wait for a slot. If PowerShell refuses to load
   `ue-heavy.ps1` (an `AllSigned` execution policy), run the checker from a PowerShell session that may run the
@@ -81,6 +91,13 @@ per side, with the measures of every probe that names it.
 | `{"name": ..., "seconds": ..., "inputs": [...]}` | a task play: keys, axes, widget clicks, cursor moves and teleports at their times, its own `map`, `args` and `every` |
 | `"editor"` | one headless editor pass per side over every `asset` measure (the project as saved) |
 | a boot check | `seconds` of play, no input; `log_absent` reads a 60 s boot's log |
+
+A boot is the same idle game as `"look"`, only longer, so on the side that boots (the reference; a start is never
+booted) one 60 s idle play with look's queries serves both: the boot check reads all of it and `"look"` reads only its
+first 20 s, exactly what a 20 s play would have measured. That saves a game launch per task, and each launch costs
+minutes beyond its scripted seconds. A look probe that reads the log (`"probe": "log"`) keeps its own 20 s play,
+because a log covers the whole play. The kept files are then under `boot_60s\`, not `look\`. Each play's progress
+line says how long it took, and how much of that it waited for a machine slot (`ue-heavy.ps1`).
 
 ### Thresholds
 

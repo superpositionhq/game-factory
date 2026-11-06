@@ -58,9 +58,10 @@ Then write the tasks in `<root>/tasks/<slug>/Tasks/`, commit there (`git -C <roo
 Check every task after committing it on the tasks branch:
 `python <GF_ROOT>/game-factory/tools/validate-game.py <GF_ROOT>/games/<slug>` (it reads the committed `tasks`
 branch, else `origin/tasks`, through git: schema, the format's extra rules, name = file name, seed commits on
-main or the task's `starts/<name>` branch and on UE 5.7, the branch an orphan, nothing under `Tasks/` on main). Before
-committing a task, run the task check on it (section 5, `tools/task-check.py`): only a VALID task is committed and
-shipped. Commit tasks as you go, like any work (commit-always skill), but on the tasks branch only.
+main or the task's `starts/<name>` branch and on UE 5.7, the branch an orphan, nothing under `Tasks/` on main). Commit tasks
+as you go, like any work (commit-always skill), but on the tasks branch only. Then run the task check on all of them
+in one background run (section 5, `tools/task-check.py`): only VALID tasks ship, so fix or remove every INVALID one
+before the game is packaged.
 
 ## 1. The bar: long threads of multiple edits, nothing else (owner, 2026-11-02)
 
@@ -258,12 +259,25 @@ checks; calibrated probes, `code_judge` and `"reference": true` judges need `see
 
 A task is valid only when it passes the task check: its start fails the task and its reference fix passes every
 required check, and every required `still_works`
-probe already passes at the start. Write the probes per [docs/task-probes.md](../../docs/task-probes.md), then run
-the task check on every task before committing it:
-`python <GF_ROOT>/game-factory/tools/task-check.py <GF_ROOT>/games/<slug> --task <path>/Tasks/<name>.json` (a task
-file not committed yet; `--task <name>` checks one on the tasks branch; [docs/task-check.md](../../docs/task-check.md)).
-It builds the start and the reference with the probe plugin, plays them and prints VALID or INVALID with the reasons
-and the measured values. **A task ships only when the task check says VALID**; for INVALID, fix the task (the
+probe already passes at the start. Write the probes per [docs/task-probes.md](../../docs/task-probes.md), then
+check the game's tasks **together, in one background run** (owner, 2026-11-05: one run builds a commit several tasks
+share once, and the person can leave it running and come back). Write and commit every task first, then start the
+check as its own process so it outlives your turn and no tool timeout cuts it short (PowerShell, under either agent):
+
+```powershell
+Start-Process python -WindowStyle Hidden -WorkingDirectory <GF_ROOT>\game-factory `
+  -ArgumentList 'tools\task-check.py', '<GF_ROOT>\games\<slug>', '--all' `
+  -RedirectStandardOutput <GF_ROOT>\games\<slug>\.task-checks\run.out `
+  -RedirectStandardError <GF_ROOT>\games\<slug>\.task-checks\run.log
+```
+
+Create `.task-checks` first if it doesn't exist. Tell the person it is running, roughly how long (about 20-60 minutes
+a task, less where tasks share commits), and that they can leave it. Read
+`<GF_ROOT>\games\<slug>\.task-checks\progress.txt` to see where it stands (rewritten after every task; it says
+`finished` at the end); never start a second run of the same game while one is going. A recheck of the tasks you
+fixed takes `--task <name>` once per task instead of `--all`. `--task <path>/Tasks/<name>.json` checks a file not
+committed yet ([docs/task-check.md](../../docs/task-check.md)). The check builds each start and reference with the
+probe plugin, plays them and writes VALID or INVALID per task with the reasons and the measured values. **A task ships only when the task check says VALID**; for INVALID, fix the task (the
 docs' "Common reasons and fixes"), never the threshold toward what the start happens to measure.
 
 ## 6. Difficulty, limits and what the validator enforces
