@@ -60,7 +60,7 @@ Words used here:
   - `every`: the sampling step, 0.1-1.0 s (default 0.5).
   - `map` (optional): the map and URL options this play opens instead of the task's `play_map`.
   - `args` (optional): game flags on the play's command line, `-Name` or `-Name=value` (name: letters and digits;
-    value: `[A-Za-z0-9_.:=-]{1,60}`, for dev flags like `-DevMenu=3:hp=100000`; any `Name=` inside a value counts as
+    value: `[A-Za-z0-9_.:=,-]{1,60}`, for dev flags like `-DevMenu=2:quest=bull,6:fell`; any `Name=` inside a value counts as
     setting that flag too). Never the engine flags the checker sets itself: ExecCmds, Run, NullRHI, Log,
     Unattended, RenderOffscreen, ResX, ResY, Benchmark, FPS, Game, Windowed, nor the checker's own measurement flags
     (any flag starting with `-TaskProbe`, the TaskProbe plugin's; `tools/validate-game.py` lists what it refuses).

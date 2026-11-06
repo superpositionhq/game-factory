@@ -510,7 +510,7 @@ GRADER_KEYS = ('milestones',)          # the grader's half of a task, with seed.
 
 
 # A task play's command-line flags (docs/task-probes.md, section 1.1): never the checker's own.
-PLAY_ARG = re.compile(r'^-([A-Za-z][A-Za-z0-9]{0,40})(=[A-Za-z0-9_.:=-]{1,60})?$')
+PLAY_ARG = re.compile(r'^-([A-Za-z][A-Za-z0-9]{0,40})(=[A-Za-z0-9_.:=,-]{1,60})?$')
 DENIED_PLAY_ARGS = {'execcmds', 'run', 'nullrhi', 'log', 'unattended', 'renderoffscreen', 'resx', 'resy', 'benchmark',
                     'fps', 'game', 'windowed'}
 TASK_PLAY_DEFAULTS = {'inputs': [], 'map': None, 'args': [], 'every': None}
