@@ -510,7 +510,7 @@ GRADER_KEYS = ('milestones',)          # the grader's half of a task, with seed.
 
 
 # A task play's command-line flags (docs/task-probes.md, section 1.1): never the checker's own.
-PLAY_ARG = re.compile(r'^-([A-Za-z][A-Za-z0-9]{0,40})(=[A-Za-z0-9_.-]{1,40})?$')
+PLAY_ARG = re.compile(r'^-([A-Za-z][A-Za-z0-9]{0,40})(=[A-Za-z0-9_.:=-]{1,60})?$')
 DENIED_PLAY_ARGS = {'execcmds', 'run', 'nullrhi', 'log', 'unattended', 'renderoffscreen', 'resx', 'resy', 'benchmark',
                     'fps', 'game', 'windowed'}
 TASK_PLAY_DEFAULTS = {'inputs': [], 'map': None, 'args': [], 'every': None}
@@ -544,8 +544,11 @@ def probe_errors(c, seed, ref, plays):
             errs.append(f'check {n}: play {pname} has an input at or after its end ({secs} s)')
         for arg in play.get('args') or []:
             mm = PLAY_ARG.match(arg) if isinstance(arg, str) else None
-            if mm and (mm.group(1).lower() in DENIED_PLAY_ARGS or mm.group(1).lower().startswith('taskprobe')):
-                errs.append(f"check {n}: a task play can't set {arg.split('=')[0]}")
+            # the engine reads `Name=` anywhere on its command line, so a `Name=` inside a value sets a flag too
+            names = ([mm.group(1)] + re.findall(r'([A-Za-z][A-Za-z0-9]*)=', arg.split('=', 1)[1] if '=' in arg else '')
+                     if mm else [])
+            for name in (x for x in names if x.lower() in DENIED_PLAY_ARGS or x.lower().startswith('taskprobe')):
+                errs.append(f"check {n}: a task play can't set -{name}")
         whole = dict(TASK_PLAY_DEFAULTS, **play)
         if plays.setdefault(pname, whole) != whole:
             errs.append(f'check {n}: task play {pname} differs from another play of that name')
