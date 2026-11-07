@@ -1901,7 +1901,7 @@
     },
     "PiecesMeasure": {
       "additionalProperties": false,
-      "description": "Placed mesh pieces, whatever their form (docs/task-probes.md, section 2.14): a mesh component with a mesh is one, an instanced one\none per instance, a procedural mesh one per section; counted over all of them, never cut at the rows cap.",
+      "description": "Placed mesh pieces, whatever their form (docs/task-probes.md, section 2.14): a mesh component with a mesh is one, an instanced one\none per instance, a procedural mesh one per section; counted over all of them, never cut at the rows cap.\n`triangles`/`visible_triangles`: the triangles those pieces (those drawn) hold; they depend on the meshes a build\nchose, so their threshold is calibrated or relative to the start, never a literal (tools/validate-game.py).",
       "properties": {
         "agg": {
           "anyOf": [
@@ -1958,7 +1958,9 @@
             "count",
             "visible",
             "components",
-            "actors"
+            "actors",
+            "triangles",
+            "visible_triangles"
           ],
           "title": "Field",
           "type": "string"

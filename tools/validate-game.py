@@ -516,13 +516,17 @@ DENIED_PLAY_ARGS = {'execcmds', 'run', 'nullrhi', 'log', 'unattended', 'renderof
 TASK_PLAY_DEFAULTS = {'inputs': [], 'map': None, 'args': [], 'every': None}
 
 
+PIECE_TRIANGLES = ('triangles', 'visible_triangles')  # pieces fields whose threshold is never a literal
+
+
 def probe_errors(c, seed, ref, plays):
     """A probe check's rules beyond the schema (docs/task-probes.md):
     asset measures only with play "editor" and trace measures only with play "trace"; a trace probe never gates and
     takes a literal value; a task play is not named look/drive/editor/trace, has no input at or after its end, sets no
     grader flag, and same-named task plays are identical; == and != take a literal value; a screen measure's threshold
-    is calibrated or relative to the start (the frame's luminance moves between machines); a calibrated threshold needs
-    seed.reference and a start-relative one a seed."""
+    is calibrated or relative to the start (the frame's luminance moves between machines), and so is a pieces measure's
+    triangles (they depend on the meshes a build chose); a calibrated threshold needs seed.reference and a
+    start-relative one a seed."""
     errs, n = [], c.get('name')
     play = c.get('play')
     measure = c.get('measure') if isinstance(c.get('measure'), dict) else {}
@@ -556,6 +560,9 @@ def probe_errors(c, seed, ref, plays):
     if probe == 'screen' and not rel:
         errs.append(f"check {n}: the frame's luminance moves between machines, so a screen measure's threshold is "
                     'calibrated or relative to the start, never a literal value')
+    if probe == 'pieces' and measure.get('field') in PIECE_TRIANGLES and not rel:
+        errs.append(f'check {n}: how many triangles a fair build draws depends on the meshes it chose, so a pieces '
+                    "measure's triangles threshold is calibrated or relative to the start, never a literal value")
     if rel and expect.get('op') in ('==', '!='):
         errs.append(f'check {n}: == and != take a literal value, never a calibrated threshold')
     if rel == 'calibrate' and not ref:
