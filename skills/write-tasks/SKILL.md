@@ -325,6 +325,7 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 | a fix made only in binary assets failed the code review | the cause is checked by its measured effect (a probe), never by reading the diff |
 | a pixel threshold moved between GPUs | light and colour from the engine (`light`, `grading`); the frame's luminance (`screen`) only calibrated or relative to the start, never a literal |
 | a level dressed with instanced meshes counted as one actor | count placed pieces (`pieces`), not actors or components |
+| a dense forest merged into 3 procedural sections read 108 pieces against a threshold of 423 | count the drawn geometry (`pieces` `visible_triangles`), calibrated or relative to the start, never a literal |
 | a count stopped at 200 rows and a threshold was set on it | counts and `of` read every match (since 2026-11-06); recalibrate a threshold set before |
 | a light's turn read relative to its own actor | `world_yaw:`/`world_pitch:`/`forward:` read the component in the world |
 | a probe that tests the reference's implementation ("SpawnZ = 92") | measure the outcome; another valid fix must pass |
