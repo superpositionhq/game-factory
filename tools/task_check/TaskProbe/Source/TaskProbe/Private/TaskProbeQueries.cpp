@@ -51,6 +51,8 @@
 #include "Internationalization/Regex.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/FileHelper.h"
+#include "Rendering/SkeletalMeshLODRenderData.h"
+#include "Rendering/SkeletalMeshRenderData.h"
 #include "SceneInterface.h"
 #include "SceneView.h"
 #include "SceneViewExtension.h"
@@ -1227,9 +1229,9 @@ static FString OwnerName(const UActorComponent* C)
 // ---------------------------------------------------------------- pieces, screen
 
 /** A procedural mesh component's sections (UProceduralMeshComponent, read by reflection so the game needn't enable its
- *  plugin): each section with triangles, by its local bounds and whether it is visible. False when C has no sections
- *  array (not a procedural mesh). */
-static bool ProcSections(UMeshComponent* C, TFunctionRef<void(const FBox&, bool)> Visit)
+ *  plugin): each section with triangles, by its local bounds, whether it is visible and its triangles (index count / 3;
+ *  0 when the index buffer can't be read). False when C has no sections array (not a procedural mesh). */
+static bool ProcSections(UMeshComponent* C, TFunctionRef<void(const FBox&, bool, int64)> Visit)
 {
 	const FArrayProperty* AP = FindFProperty<FArrayProperty>(C->GetClass(), TEXT("ProcMeshSections"));
 	const FStructProperty* SP = AP ? CastField<FStructProperty>(AP->Inner) : nullptr;
@@ -1244,6 +1246,7 @@ static bool ProcSections(UMeshComponent* C, TFunctionRef<void(const FBox&, bool)
 	for (int32 i = 0; i < Sections.Num(); ++i)
 	{
 		uint8* Section = Sections.GetRawPtr(i);
+		int64 Triangles = 0;
 		if (Indices)
 		{
 			FScriptArrayHelper Tris(Indices, Indices->ContainerPtrToValuePtr<void>(Section));
@@ -1251,13 +1254,14 @@ static bool ProcSections(UMeshComponent* C, TFunctionRef<void(const FBox&, bool)
 			{
 				continue;  // an empty section draws nothing
 			}
+			Triangles = Tris.Num() / 3;
 		}
 		FBox Box(ForceInit);
 		if (BoxProp && BoxProp->Struct && BoxProp->Struct->GetName().StartsWith(TEXT("Box")) && BoxProp->GetElementSize() == sizeof(FBox))
 		{
 			Box = *BoxProp->ContainerPtrToValuePtr<FBox>(Section);
 		}
-		Visit(Box, !VisibleProp || VisibleProp->GetPropertyValue_InContainer(Section));
+		Visit(Box, !VisibleProp || VisibleProp->GetPropertyValue_InContainer(Section), Triangles);
 	}
 	return true;
 }
@@ -1274,6 +1278,30 @@ static FString MeshAssetName(const UMeshComponent* C)
 		return SK->GetSkinnedAsset() ? SK->GetSkinnedAsset()->GetName() : FString();
 	}
 	return FString();
+}
+
+/** The triangles one piece of a static or skeletal mesh component draws at full detail (one instance of an instanced
+ *  one): a Nanite mesh's own triangles (its LOD0 is a reduced fallback), else LOD0's; 0 for any other mesh component
+ *  or a mesh without render data. */
+static int64 PieceTriangles(const UMeshComponent* C)
+{
+	if (const UStaticMeshComponent* SM = Cast<UStaticMeshComponent>(C))
+	{
+		const UStaticMesh* Mesh = SM->GetStaticMesh();
+		if (!Mesh)
+		{
+			return 0;
+		}
+		const int32 Nanite = Mesh->HasValidNaniteData() ? Mesh->GetNumNaniteTriangles() : 0;
+		return Nanite > 0 ? Nanite : Mesh->GetNumTriangles(0);
+	}
+	if (const USkinnedMeshComponent* SK = Cast<USkinnedMeshComponent>(C))
+	{
+		const USkinnedAsset* Asset = SK->GetSkinnedAsset();
+		const FSkeletalMeshRenderData* Data = Asset ? Asset->GetResourceForRendering() : nullptr;
+		return Data && Data->LODRenderData.Num() > 0 ? Data->LODRenderData[0].GetTotalFaces() : 0;
+	}
+	return 0;
 }
 
 /** An 8-bit sRGB value as linear light, 0-1. */
@@ -1943,7 +1971,7 @@ void FTaskProbeQueries::SamplePieces(FQuery& Q, UWorld* World, APlayerController
 		Out.SetField(TEXT("value"), Null());
 		return;
 	}
-	int64 Count = 0, Visible = 0;
+	int64 Count = 0, Visible = 0, Triangles = 0, VisibleTriangles = 0;
 	int32 Components = 0;
 	TSet<const AActor*> Actors;
 	TMap<const UClass*, bool> ClassCache;  // most components share a few classes
@@ -1970,8 +1998,8 @@ void FTaskProbeQueries::SamplePieces(FQuery& Q, UWorld* World, APlayerController
 			continue;  // select.mesh: only pieces of a mesh asset by that name (a procedural mesh has none)
 		}
 		const bool bShown = C->IsVisible() && !C->bHiddenInGame && !(Owner && Owner->IsHidden());
-		int64 N = 0, NV = 0;
-		auto Take = [&](const FVector& Where, bool bDrawn)
+		int64 N = 0, NV = 0, T = 0, TV = 0;
+		auto Take = [&](const FVector& Where, bool bDrawn, int64 Tris)
 		{
 			if (bNear && FVector::Dist(Where, NearP) > Sel.Radius)
 			{
@@ -1979,6 +2007,8 @@ void FTaskProbeQueries::SamplePieces(FQuery& Q, UWorld* World, APlayerController
 			}
 			++N;
 			NV += bDrawn ? 1 : 0;
+			T += Tris;
+			TV += bDrawn ? Tris : 0;
 		};
 		if (const UInstancedStaticMeshComponent* ISM = Cast<UInstancedStaticMeshComponent>(C))
 		{
@@ -1987,38 +2017,44 @@ void FTaskProbeQueries::SamplePieces(FQuery& Q, UWorld* World, APlayerController
 				continue;
 			}
 			const int32 Instances = ISM->GetInstanceCount();
+			const int64 Each = PieceTriangles(ISM);
 			if (!bNear)
 			{
 				N = Instances;
 				NV = bShown ? Instances : 0;
+				T = Instances * Each;
+				TV = bShown ? T : 0;
 			}
 			else
 			{
 				for (int32 i = 0; i < Instances; ++i)
 				{
-					FTransform T;
-					if (ISM->GetInstanceTransform(i, T, true))
+					FTransform Instance;
+					if (ISM->GetInstanceTransform(i, Instance, true))
 					{
-						Take(T.GetLocation(), bShown);
+						Take(Instance.GetLocation(), bShown, Each);
 					}
 				}
 			}
 		}
-		else if (!ProcSections(C, [&](const FBox& Box, bool bSectionVisible)
+		else if (!ProcSections(C, [&](const FBox& Box, bool bSectionVisible, int64 Tris)
 		{
-			Take(Box.IsValid ? C->GetComponentTransform().TransformPosition(Box.GetCenter()) : C->GetComponentLocation(), bShown && bSectionVisible);
+			Take(Box.IsValid ? C->GetComponentTransform().TransformPosition(Box.GetCenter()) : C->GetComponentLocation(), bShown && bSectionVisible,
+				Tris);
 		}))
 		{
 			if (AssetName.IsEmpty() && (Cast<UStaticMeshComponent>(C) || Cast<USkinnedMeshComponent>(C)))
 			{
 				continue;  // an empty mesh draws nothing
 			}
-			Take(C->GetComponentLocation(), bShown);
+			Take(C->GetComponentLocation(), bShown, PieceTriangles(C));
 		}
 		if (N > 0)
 		{
 			Count += N;
 			Visible += NV;
+			Triangles += T;
+			VisibleTriangles += TV;
 			++Components;
 			if (Owner)
 			{
@@ -2031,6 +2067,8 @@ void FTaskProbeQueries::SamplePieces(FQuery& Q, UWorld* World, APlayerController
 	V->SetNumberField(TEXT("visible"), (double)Visible);
 	V->SetNumberField(TEXT("components"), Components);
 	V->SetNumberField(TEXT("actors"), Actors.Num());
+	V->SetNumberField(TEXT("triangles"), (double)Triangles);
+	V->SetNumberField(TEXT("visible_triangles"), (double)VisibleTriangles);
 	Out.SetObjectField(TEXT("value"), V);
 }
 

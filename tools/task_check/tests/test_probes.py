@@ -94,6 +94,19 @@ class Tasks(unittest.TestCase):
             with self.assertRaises(ValueError):
                 task_with(probe(measure=bad))
 
+    def test_a_pieces_triangle_threshold_comes_from_the_start_never_a_literal(self):
+        forest = {"probe": "pieces", "select": {"class": "ProceduralMeshComponent"}, "at": "end"}
+        for field in ("triangles", "visible_triangles"):
+            dense = {**forest, "field": field}
+            with self.assertRaisesRegex(ValueError, "never a literal value"):
+                task_with(probe(measure=dense, expect={"op": ">=", "value": 100000}))
+            task_with(probe(measure=dense, expect={"op": ">=", "calibrate": 0.5}))
+            task_with(probe(measure=dense, expect={"op": ">=", "start_times": 1.5}), seed=NO_FIX)
+        for field in ("count", "visible", "components", "actors"):
+            task_with(probe(measure={**forest, "field": field}, expect={"op": ">=", "value": 423}))
+        with self.assertRaises(ValueError):
+            task_with(probe(measure={**forest, "field": "tris"}, expect={"op": ">=", "calibrate": 0.5}))
+
 
 class Queries(unittest.TestCase):
     def test_queries_are_merged_per_play_and_selection_under_stable_ids(self):
@@ -326,6 +339,26 @@ class FairReadings(unittest.TestCase):
         self.assertEqual(probes.reduce(rocks, play), 1460)
         self.assertEqual(probes.reduce(m(probe="pieces", select={"mesh": "SM_Rock*"}, field="actors", agg="first"),
                                        play), 2)
+
+    def test_pieces_read_the_triangles_they_hold_and_draw(self):
+        """A forest merged into 3 procedural sections reads 3 pieces but every triangle it draws."""
+        forest = m(probe="pieces", select={"class": "ProceduralMeshComponent"}, field="visible_triangles")
+        (query,) = probes.needs(forest)
+        self.assertEqual(query, {"kind": "pieces", "select": {"class": "ProceduralMeshComponent"}},
+                         "one query per selection; the plugin answers every field")
+        value = {"count": 3, "visible": 3, "components": 1, "actors": 1, "triangles": 960000,
+                 "visible_triangles": 900000}
+        play = {"measures": {probes.query_id(query): sampled([{**value, "visible_triangles": 0}, value])}}
+        self.assertEqual(probes.reduce(forest, play), 900000)
+        self.assertEqual(probes.reduce(m(probe="pieces", select={"class": "ProceduralMeshComponent"},
+                                         field="visible_triangles", agg="first"), play), 0)
+        self.assertEqual(probes.reduce(m(probe="pieces", select={"class": "ProceduralMeshComponent"},
+                                         field="triangles"), play), 960000)
+        self.assertEqual(probes.reduce(m(probe="pieces", select={"class": "ProceduralMeshComponent"},
+                                         field="count"), play), 3, "the count reads as before")
+        older = {k: v for k, v in value.items() if "triangles" not in k}
+        self.assertIsNone(probes.reduce(forest, {"measures": {probes.query_id(query): sampled([older])}}),
+                          "a plugin without the reading gives no value, never 0")
 
     def test_screen_luminance_is_sampled_like_the_other_probes(self):
         dark = m(probe="screen", field="luminance", window=[1, 1.5], agg="mean")
