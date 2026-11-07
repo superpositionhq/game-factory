@@ -8,7 +8,8 @@ The engine is the one the machine config gives for the project's EngineAssociati
   developer's checkout builds unity files, and so does the checker);
 - play: UnrealEditor.exe <uproject> [map] -game offscreen at 960x540, a fixed 30 fps, with -TaskProbe and its flags
   (-TaskProbeOut, -TaskProbeSeconds, -TaskProbeShots, -TaskProbeInputs, -TaskProbeQueries, -TaskProbeEvery), the log
-  in Saved/Logs/TaskProbePlay.log, then a task play's own game flags;
+  in Saved/Logs/TaskProbePlay.log, then a task play's own game flags; without sound (-nosound -benchmark) unless the
+  play measures audio (probes.sound_flags: muted, with -benchmark's fixed step);
 - editor_python: UnrealEditor-Cmd.exe <uproject> -run=pythonscript -script=<file>."""
 
 import json
@@ -21,7 +22,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import seeds
+from . import probes, seeds
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent / "machine" / "lib"))
@@ -210,8 +211,9 @@ class Project:
         argv = [self.machine.editor(), self.uproject()]
         if map:
             argv.append(map)
+        sound, step = probes.sound_flags(queries)  # audio off, unless the play measures it
         argv += ["-game", "-RenderOffscreen", f"-ResX={SHOT_SIZE[0]}", f"-ResY={SHOT_SIZE[1]}", "-unattended",
-                 "-nosound", "-nosplash", "-benchmark", "-fps=30", "-TaskProbe", f"-TaskProbeOut={out}",
+                 *sound, "-nosplash", *step, "-fps=30", "-TaskProbe", f"-TaskProbeOut={out}",
                  f"-TaskProbeSeconds={seconds}", f"-TaskProbeShots={shots}", f"-log={LOG_NAME}"]
         if inputs:
             keys = out / "inputs.json"

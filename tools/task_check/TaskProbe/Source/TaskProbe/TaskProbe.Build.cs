@@ -6,6 +6,6 @@ public class TaskProbe : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore" });
-		PrivateDependencyModuleNames.AddRange(new string[] { "AIModule", "ApplicationCore", "Json", "RenderCore", "Slate", "SlateCore", "UMG" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "AIModule", "ApplicationCore", "Json", "PhysicsCore", "RenderCore", "Slate", "SlateCore", "UMG" });
 	}
 }

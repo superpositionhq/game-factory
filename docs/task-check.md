@@ -82,13 +82,15 @@ elsewhere, `--scratch DIR` puts the copies elsewhere, `--direct` runs Unreal wit
 
 Each play is the game started with `-game`, offscreen at 960x540 and a fixed 30 fps, on the task's `play_map` (or the
 task play's own `map`), with the TaskProbe plugin sampling every 0.5 s (a task play's `every`). Each play is played once
-per side, with the measures of every probe that names it.
+per side, with the measures of every probe that names it. A play runs without sound (`-nosound -benchmark`), unless
+one of its measures is `audio`: then it runs with sound, muted (`-muteaudio`, with `-benchmark`'s fixed step and seed
+kept; docs/task-probes.md, section 2.16).
 
 | `play` | What |
 |---|---|
 | `"look"` | 20 s, no input |
 | `"drive"` | 22 s: W 1-6 s, D 6-8 s, W 8-13 s with a jump (SpaceBar) at 9 s, A 13-15 s, W 15-21 s |
-| `{"name": ..., "seconds": ..., "inputs": [...]}` | a task play: keys, axes, widget clicks, cursor moves and teleports at their times, its own `map`, `args` and `every` |
+| `{"name": ..., "seconds": ..., "inputs": [...]}` | a task play: keys, axes, widget clicks, cursor moves, teleports and teleports next to an actor at their times, its own `map`, `args` and `every` |
 | `"editor"` | one headless editor pass per side over every `asset` measure (the project as saved) |
 | a boot check | `seconds` of play, no input; `log_absent` reads a 60 s boot's log |
 

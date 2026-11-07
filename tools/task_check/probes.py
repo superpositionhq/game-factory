@@ -58,11 +58,37 @@ def needs(measure):
         return [{"kind": "pieces", "select": measure["select"]}]
     if probe == "screen":
         return [{"kind": "screen", "rect": measure["rect"]}]
+    if probe == "audio":
+        return [{"kind": "audio", "select": measure["select"]}]
+    if probe == "ground":
+        place = {"xy": measure["xy"]} if measure["xy"] is not None else {"box": measure["box"], "grid": measure["grid"]}
+        return [{"kind": "ground", **place, **({"select": measure["select"]} if measure["select"] is not None else {})}]
     if probe == "grading":  # a post: field is asked for by name; the colour pipeline's settings always come
         return [{"kind": "grading", "fields": [field] if field.startswith("post:") else []}]
     if probe == "spawns":
         return [{"kind": "spawns", "class": measure["class"]}]
     return []  # log
+
+
+# A play that measures audio (an `audio` query) needs the engine's audio device, which -nosound and -benchmark both turn
+# off: it runs muted (-muteaudio: the device mixes every sound, the output is silent) and with what -benchmark gave every
+# play besides (a fixed time step, a fixed seed, no ini writes, no inner exception handler; -TaskProbeSound has the
+# plugin keep the application focused, as -benchmark does). On a machine with no audio output the engine mixes into a
+# null device. Every other play runs as before.
+QUIET = (["-nosound"], ["-benchmark"])
+HEARD = (["-muteaudio"], ["-UseFixedTimeStep", "-FixedSeed", "-NOINI", "-noinnerexception", "-TaskProbeSound"])
+
+
+def hears(queries):
+    """Whether a play's queries (a list, or a query file) measure audio."""
+    found = queries.get("queries") if isinstance(queries, dict) else queries
+    return any(isinstance(q, dict) and q.get("kind") == "audio" for q in found or [])
+
+
+def sound_flags(queries):
+    """(the flags in -nosound's place, the flags in -benchmark's place) of a play's command line: QUIET, or HEARD for a
+    play that measures audio."""
+    return HEARD if hears(queries) else QUIET
 
 
 def query_id(query):
@@ -353,7 +379,7 @@ def series(measure, probe):
                                              for r in rows], measure["of"])))
         return out
     values = [(s["t"], s.get("value") if isinstance(s.get("value"), dict) else {}) for s in samples]
-    if probe_kind in ("camera", "light", "pieces", "screen"):
+    if probe_kind in ("camera", "light", "pieces", "screen", "audio", "ground"):
         return [(t, number(v.get(field))) for t, v in values]
     if probe_kind == "grading":
         if field.startswith("post:"):
