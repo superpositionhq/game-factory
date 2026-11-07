@@ -286,9 +286,19 @@ HISM, foliage, PCG output) or with one procedural mesh of many sections reads as
   - `near`: within `radius` cm of a point, **each piece by its own place** (an instance's location, a section's bounds
     centre, else the component's location).
 - `field`: `count` (pieces), `visible` (pieces drawn in game: component visible, not hidden in game, its actor not
-  hidden, the section visible), `components` (how many mesh components hold them), `actors` (how many actors).
-- Counted over every piece in the plugin, never cut at the rows cap. A literal threshold is fine (a count doesn't
-  depend on the machine).
+  hidden, the section visible), `components` (how many mesh components hold them), `actors` (how many actors),
+  `triangles` (the triangles the pieces hold), `visible_triangles` (the triangles of the pieces drawn, as `visible`).
+- A piece's triangles: a static mesh's LOD0 (a Nanite mesh's own triangles, since its LOD0 is a reduced fallback); an
+  instanced static mesh component's mesh times its instances (each instance by its own place under `near`); a skeletal
+  mesh's LOD0; a procedural mesh section's index count / 3 (read from the component, so the game needn't enable the
+  ProceduralMeshComponent plugin); any other mesh component (a dynamic mesh) 0.
+- Counted over every piece in the plugin, never cut at the rows cap. A literal threshold is fine on `count`,
+  `visible`, `components` and `actors` (a count doesn't depend on the machine).
+- **A `triangles` or `visible_triangles` threshold is calibrated or relative to the start, never a literal value**
+  (`tools/validate-game.py` refuses one): how many triangles a fair build draws depends on the meshes it chose (1500
+  low-poly trees merged into three procedural sections, or 300 detailed ones), so the number only means something
+  against the same game's start or reference. Read it where a count of pieces can't tell a fair build: "the forest is
+  dense" built either way reads as many drawn triangles, but as 3 pieces when merged.
 
 ### 2.15 `screen`: what the player sees, after post-processing
 
@@ -380,7 +390,8 @@ a run on an invalid task is void.
   `seed.commit` and `seed.reference`, never guessed.
 - **Count what the player sees placed.** A fix that moves props into instanced meshes, or a level built from one
   procedural mesh, has fewer actors and components but as many pieces: count with `pieces`, so a fair build that
-  dressed the level another way still passes.
+  dressed the level another way still passes. When a fair build may also merge them (many props in a few procedural
+  sections or one mesh), count the geometry drawn: `visible_triangles`, calibrated or relative to the start.
 - **A light's direction is a world direction.** `rel_yaw:` reads a component against its own actor, so a fix that turns
   the actor instead of the component reads unchanged. "The moon points the same way" is `world_yaw:`, `world_pitch:` or
   `forward:` of the light component.

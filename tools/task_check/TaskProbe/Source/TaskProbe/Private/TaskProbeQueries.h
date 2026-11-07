@@ -45,14 +45,17 @@
 //   components' bounds centre.
 // - components: "rows": [{"name", "class", "owner", <field>}] for registered components of select.class (optionally
 //   select.name, select.owner = an actor selection, select.near); fields count, active, visible, x y z, prop:<path>.
-// - pieces: "value": {"count", "visible", "components", "actors"}: the placed mesh pieces of the registered mesh
-//   components select.class matches (default every mesh component; also select.name, select.mesh = a wildcard on the
-//   mesh asset's name, select.owner, select.near), counted over all of them whatever their form: a static or skeletal
-//   mesh component with a mesh is 1, an instanced (ISM, HISM, foliage) component one per instance, a procedural mesh
-//   component one per section with triangles. near tests each piece's own place (an instance's, a section's bounds
-//   centre). visible: the pieces drawn in game (component visible, not hidden in game, owner not hidden, section
-//   visible); components, actors: how many components and owner actors the pieces come from. Widget components,
-//   editor-only components and empty meshes count nothing.
+// - pieces: "value": {"count", "visible", "components", "actors", "triangles", "visible_triangles"}: the placed mesh
+//   pieces of the registered mesh components select.class matches (default every mesh component; also select.name,
+//   select.mesh = a wildcard on the mesh asset's name, select.owner, select.near), counted over all of them whatever
+//   their form: a static or skeletal mesh component with a mesh is 1, an instanced (ISM, HISM, foliage) component one
+//   per instance, a procedural mesh component one per section with triangles. near tests each piece's own place (an
+//   instance's, a section's bounds centre). visible: the pieces drawn in game (component visible, not hidden in game,
+//   owner not hidden, section visible); components, actors: how many components and owner actors the pieces come
+//   from; triangles, visible_triangles: the triangles those pieces (those drawn) hold: a static mesh's LOD0 (a Nanite
+//   mesh's own triangles), times the instances of an instanced one, a skeletal mesh's LOD0, a procedural mesh
+//   section's index count / 3; any other mesh component 0. Widget components, editor-only components and empty meshes
+//   count nothing.
 // - screen: "value": {"luminance", "luma", "pixels", "size": [w, h]} | null: the frame the player's viewport drew right
 //   after the sample (after post-processing and tone mapping, the HUD canvas included, the UMG and Slate UI not), over
 //   query.rect = [x0, y0, x1, y1] (viewport fractions, default the whole frame): luminance = mean linear Rec. 709
