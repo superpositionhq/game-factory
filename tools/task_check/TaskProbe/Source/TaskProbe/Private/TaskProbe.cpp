@@ -13,6 +13,7 @@
 #include "GameFramework/PlayerController.h"
 #include "HAL/PlatformMisc.h"
 #include "InputKeyEventArgs.h"
+#include "Misc/App.h"
 #include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
@@ -26,6 +27,35 @@
 IMPLEMENT_MODULE(FDefaultModuleImpl, TaskProbe)
 
 DEFINE_LOG_CATEGORY_STATIC(LogTaskProbe, Log, All);
+
+/** A play with sound (-TaskProbeSound) runs without -benchmark, which would turn the engine's audio off: the application
+ *  counts as focused throughout, as -benchmark has it, so a game sees the same focus either way. */
+static bool AlwaysFocused() { return true; }
+
+/** The player pawn placed at Location (a free spot near it, as the engine's teleport finds one), facing Yaw when set. */
+static void PlacePawn(APlayerController* PC, const FVector& Location, bool bHasYaw, double Yaw)
+{
+	APawn* Pawn = PC->GetPawn();
+	if (!Pawn)
+	{
+		return;
+	}
+	FRotator Rot = Pawn->GetActorRotation();
+	if (bHasYaw)
+	{
+		Rot.Yaw = Yaw;
+	}
+	if (!Pawn->TeleportTo(Location, Rot))
+	{
+		Pawn->SetActorLocationAndRotation(Location, Rot, false, nullptr, ETeleportType::TeleportPhysics);
+	}
+	if (bHasYaw)
+	{
+		FRotator Control = PC->GetControlRotation();
+		Control.Yaw = Yaw;
+		PC->SetControlRotation(Control);
+	}
+}
 
 bool UTaskProbe::ShouldCreateSubsystem(UObject* Outer) const
 {
@@ -46,6 +76,10 @@ void UTaskProbe::Initialize(FSubsystemCollectionBase& Collection)
 	Seconds = FMath::Clamp(Seconds, 1.0, 600.0);
 	Every = FMath::Clamp(Every, 0.1, 1.0);
 	Shots = FMath::Clamp(Shots, 0, 64);
+	if (FParse::Param(FCommandLine::Get(), TEXT("TaskProbeSound")))
+	{
+		FApp::SetHasFocusFunction(&AlwaysFocused);
+	}
 	FString InputsPath;
 	if (FParse::Value(FCommandLine::Get(), TEXT("-TaskProbeInputs="), InputsPath))
 	{
@@ -76,8 +110,10 @@ void UTaskProbe::LoadInputs(const FString& Path)
 {
 	// [{"t": 1.5, "key": "SpaceBar", "press": true}, ...] in key-name form FKey understands (W, A, SpaceBar, LeftMouseButton);
 	// also {"t", "key": "MouseX", "axis": 4.0} (an axis event), {"t", "widget": "RetryButton", "click": true} (click a
-	// button), {"t", "cursor": [fx, fy]} (move the mouse cursor to a viewport point, fractions 0-1) and
-	// {"t", "teleport": [x, y, z], "yaw": deg} (place the player pawn)
+	// button), {"t", "cursor": [fx, fy]} (move the mouse cursor to a viewport point, fractions 0-1),
+	// {"t", "teleport": [x, y, z], "yaw": deg} (place the player pawn) and {"t", "teleport_to": <actor select>,
+	// "distance": cm, "offset": [x, y, z], "face": <point>} (place it next to the nearest actor the select matches,
+	// facing that actor or the point)
 	FString Text;
 	if (!FFileHelper::LoadFileToString(Text, *Path))
 	{
@@ -119,6 +155,7 @@ void UTaskProbe::LoadInputs(const FString& Path)
 		FString Name;
 		TArray<double> Numbers;
 		bool bClick = false;
+		const TSharedPtr<FJsonObject>* Target = nullptr;
 		if ((*Obj)->TryGetStringField(TEXT("widget"), K.Widget) && (*Obj)->TryGetBoolField(TEXT("click"), bClick) && bClick && !K.Widget.IsEmpty())
 		{
 			K.Kind = EScriptedKind::Click;
@@ -127,6 +164,22 @@ void UTaskProbe::LoadInputs(const FString& Path)
 		{
 			K.Kind = EScriptedKind::Cursor;
 			K.Cursor = FVector2D(Numbers[0], Numbers[1]);
+		}
+		else if ((*Obj)->TryGetObjectField(TEXT("teleport_to"), Target) && Target->IsValid())
+		{
+			K.Kind = EScriptedKind::TeleportTo;
+			K.Target = *Target;
+			(*Obj)->TryGetNumberField(TEXT("distance"), K.Distance);
+			K.Distance = FMath::Clamp(K.Distance, 0.0, 100000.0);
+			if (ReadNumbers(*Obj, TEXT("offset"), 3, Numbers))
+			{
+				K.Offset = FVector(Numbers[0], Numbers[1], Numbers[2]);
+			}
+			const TSharedPtr<FJsonObject>* Face = nullptr;
+			if ((*Obj)->TryGetObjectField(TEXT("face"), Face) && Face->IsValid())
+			{
+				K.Face = *Face;
+			}
 		}
 		else if (ReadNumbers(*Obj, TEXT("teleport"), 3, Numbers))
 		{
@@ -227,27 +280,22 @@ void UTaskProbe::SendInput(const FScriptedKey& K, UWorld* World, APlayerControll
 		break;
 	}
 	case EScriptedKind::Teleport:
+		PlacePawn(PC, K.Teleport, K.bHasYaw, K.Yaw);
+		break;
+	case EScriptedKind::TeleportTo:
 	{
-		APawn* Pawn = PC->GetPawn();
-		if (!Pawn)
+		FVector Location;
+		double Yaw = 0.0;
+		FString Name;
+		if (!PC->GetPawn() || !TaskProbe::TeleportSpot(World, PC, K.Target, K.Distance, K.Offset, K.Face, Location, Yaw, Name))
 		{
+			UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: teleport_to skipped (%s)"), PC->GetPawn() ? TEXT("no actor matches") : TEXT("no pawn"));
 			break;
 		}
-		FRotator Rot = Pawn->GetActorRotation();
-		if (K.bHasYaw)
-		{
-			Rot.Yaw = K.Yaw;
-		}
-		if (!Pawn->TeleportTo(K.Teleport, Rot))
-		{
-			Pawn->SetActorLocationAndRotation(K.Teleport, Rot, false, nullptr, ETeleportType::TeleportPhysics);
-		}
-		if (K.bHasYaw)
-		{
-			FRotator Control = PC->GetControlRotation();
-			Control.Yaw = K.Yaw;
-			PC->SetControlRotation(Control);
-		}
+		PlacePawn(PC, Location, true, Yaw);
+		const FVector At = PC->GetPawn()->GetActorLocation();
+		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: teleported next to %s: asked (%.0f, %.0f, %.0f) yaw %.1f, now at (%.0f, %.0f, %.0f)"), *Name,
+			Location.X, Location.Y, Location.Z, Yaw, At.X, At.Y, At.Z);
 		break;
 	}
 	}

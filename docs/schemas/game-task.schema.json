@@ -113,7 +113,7 @@
           "title": "At"
         },
         "field": {
-          "pattern": "^(count|x|y|z|yaw|pitch|roll|scale|extent_x|extent_y|extent_z|hidden|collision|speed|prop:[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?(\\.[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?){0,5}|facing_vs_velocity|bone:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz]|rel_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|bb:[A-Za-z_][A-Za-z0-9_]{0,63}|world_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|world_pitch:[A-Za-z_][A-Za-z0-9_]{0,63}|world_roll:[A-Za-z_][A-Za-z0-9_]{0,63}|forward:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz])$",
+          "pattern": "^(count|x|y|z|yaw|pitch|roll|scale|extent_x|extent_y|extent_z|hidden|collision|speed|simulating|spread|prop:[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?(\\.[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?){0,5}|facing_vs_velocity|bone:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz]|rel_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|bb:[A-Za-z_][A-Za-z0-9_]{0,63}|world_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|world_pitch:[A-Za-z_][A-Za-z0-9_]{0,63}|world_roll:[A-Za-z_][A-Za-z0-9_]{0,63}|forward:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz])$",
           "title": "Field",
           "type": "string"
         },
@@ -413,6 +413,176 @@
         "xyz"
       ],
       "title": "AtXYZ",
+      "type": "object"
+    },
+    "AudioMeasure": {
+      "additionalProperties": false,
+      "description": "What the player hears (docs/task-probes.md, section 2.16): the sounds playing that `select` matches, each at its volume at the\nlistener (its own volume, its class's and mixes', times its distance and occlusion attenuation; the output's\nmaster volume left out): `count` (how many), `audible` (how many at 0.001, -60 dB, or louder), `volume` (their sum),\n`max_volume` (the loudest). A play with an audio measure runs with sound (muted). The volumes' threshold is\ncalibrated or relative to the start, never a literal (tools/validate-game.py).",
+      "properties": {
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "delta",
+                "any",
+                "all",
+                "count",
+                "sum",
+                "range",
+                "std",
+                "changes"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 120,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "const": "end",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "field": {
+          "enum": [
+            "count",
+            "audible",
+            "volume",
+            "max_volume"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "probe": {
+          "const": "audio",
+          "title": "Probe",
+          "type": "string"
+        },
+        "select": {
+          "$ref": "#/$defs/AudioSelect"
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        }
+      },
+      "required": [
+        "probe",
+        "field"
+      ],
+      "title": "AudioMeasure",
+      "type": "object"
+    },
+    "AudioSelect": {
+      "additionalProperties": false,
+      "description": "The sounds playing (docs/task-probes.md, section 2.16): by the sound asset's name (`sound`, a wildcard), its sound class's or a parent\nclass's name (`sound_class`, a wildcard), and an owner actor the `owner` select matches; none: every sound.",
+      "properties": {
+        "owner": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Select"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "sound": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9_.*? -]{1,120}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sound"
+        },
+        "sound_class": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9_.*? -]{1,120}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sound Class"
+        }
+      },
+      "title": "AudioSelect",
       "type": "object"
     },
     "Axis": {
@@ -833,6 +1003,7 @@
     },
     "ComponentsMeasure": {
       "additionalProperties": false,
+      "description": "Registered components (docs/task-probes.md, section 2.5): `x`, `y`, `z` and `speed` (cm/s: its physics\nbody's while it simulates, else its own velocity, else how far it moved since the previous sample) of a scene\ncomponent; `extent_x|y|z` (its world bounds' half-size) and `simulating` (its physics, a skeletal mesh's any body)\nof a primitive; `intensity` and `on` (it lights the scene: visible, not hidden in game, its owner not hidden, an\nintensity above 0) of a light. `intensity` and `extent_*` depend on what a build chose, so their threshold is\ncalibrated or relative to the start, never a literal (tools/validate-game.py).",
       "properties": {
         "agg": {
           "anyOf": [
@@ -888,7 +1059,17 @@
           "enum": [
             "count",
             "active",
-            "visible"
+            "visible",
+            "x",
+            "y",
+            "z",
+            "speed",
+            "extent_x",
+            "extent_y",
+            "extent_z",
+            "simulating",
+            "intensity",
+            "on"
           ],
           "title": "Field",
           "type": "string"
@@ -1182,6 +1363,183 @@
         "field"
       ],
       "title": "GradingMeasure",
+      "type": "object"
+    },
+    "GroundMeasure": {
+      "additionalProperties": false,
+      "description": "The ground (docs/task-probes.md, section 2.17): where a trace straight down meets it first (pawns aside; with `select`, only an actor\nit matches counts), at a point `xy` [x, y] (`height`, z in cm; `hit`, 1 when it met anything) or over a box `box`\n[x0, y0, x1, y1] sampled on a `grid` x `grid` lattice (`min`, `max`, `mean` of the heights, `range` = max - min,\nthe relief; `hits`). `range`'s threshold is calibrated or relative to the start, never a literal (tools/validate-game.py).",
+      "properties": {
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "delta",
+                "any",
+                "all",
+                "count",
+                "sum",
+                "range",
+                "std",
+                "changes"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 120,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "const": "end",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "box": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Box"
+        },
+        "field": {
+          "enum": [
+            "height",
+            "hit",
+            "min",
+            "max",
+            "mean",
+            "range",
+            "hits"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "grid": {
+          "default": 8,
+          "maximum": 32,
+          "minimum": 2,
+          "title": "Grid",
+          "type": "integer"
+        },
+        "probe": {
+          "const": "ground",
+          "title": "Probe",
+          "type": "string"
+        },
+        "select": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Select"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        },
+        "xy": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Xy"
+        }
+      },
+      "required": [
+        "probe",
+        "field"
+      ],
+      "title": "GroundMeasure",
       "type": "object"
     },
     "Judge": {
@@ -2064,9 +2422,11 @@
             "mapping": {
               "actors": "#/$defs/ActorsMeasure",
               "asset": "#/$defs/AssetMeasure",
+              "audio": "#/$defs/AudioMeasure",
               "camera": "#/$defs/CameraMeasure",
               "components": "#/$defs/ComponentsMeasure",
               "grading": "#/$defs/GradingMeasure",
+              "ground": "#/$defs/GroundMeasure",
               "light": "#/$defs/LightMeasure",
               "log": "#/$defs/LogMeasure",
               "pawn": "#/$defs/PawnMeasure",
@@ -2117,6 +2477,12 @@
             },
             {
               "$ref": "#/$defs/TraceMeasure"
+            },
+            {
+              "$ref": "#/$defs/AudioMeasure"
+            },
+            {
+              "$ref": "#/$defs/GroundMeasure"
             }
           ],
           "title": "Measure"
@@ -2691,6 +3057,9 @@
               },
               {
                 "$ref": "#/$defs/Teleport"
+              },
+              {
+                "$ref": "#/$defs/TeleportTo"
               }
             ]
           },
@@ -2765,6 +3134,64 @@
       "title": "Teleport",
       "type": "object"
     },
+    "TeleportTo": {
+      "additionalProperties": false,
+      "description": "The player pawn placed next to the actor `teleport_to` selects nearest to it (docs/task-probes.md, section 1.1): `distance` cm from\nit on the pawn's side, level with it, plus `offset` (cm), facing `face` (a point) or else that actor; for a spot a\nbuild chose itself (an ore it placed). Nothing happens when no actor matches.",
+      "properties": {
+        "distance": {
+          "default": 200.0,
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Distance",
+          "type": "number"
+        },
+        "face": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AtXYZ"
+            },
+            {
+              "$ref": "#/$defs/AtPawn"
+            },
+            {
+              "$ref": "#/$defs/AtCamera"
+            },
+            {
+              "$ref": "#/$defs/AtActor"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Face"
+        },
+        "offset": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "title": "Offset",
+          "type": "array"
+        },
+        "t": {
+          "maximum": 120,
+          "minimum": 0,
+          "title": "T",
+          "type": "number"
+        },
+        "teleport_to": {
+          "$ref": "#/$defs/Select"
+        }
+      },
+      "required": [
+        "t",
+        "teleport_to"
+      ],
+      "title": "TeleportTo",
+      "type": "object"
+    },
     "TraceMeasure": {
       "additionalProperties": false,
       "description": "A fact of the agent's own trace (never gating).",
@@ -2823,7 +3250,7 @@
     },
     "WidgetSelect": {
       "additionalProperties": false,
-      "description": "Widgets on screen: UMG widgets in the viewport by their class (WBP_HUD_C, TextBlock) and/or name, or Slate\nwidgets under the game viewport by their type (`slate`: STextBlock, SImage, a game's own S... type); `text`: a\nregular expression the widget's text must match.",
+      "description": "Widgets on screen: UMG widgets in the viewport by their class (WBP_HUD_C, TextBlock) and/or name, or Slate\nwidgets under the game viewport by their type (`slate`: STextBlock, SImage, a game's own S... type); `text`: a\nregular expression the widget's text must match; `visible`: only the widgets drawn (as the `visible` field reads\nthem: never a collapsed or hidden one, nor one under such a parent), so a select counts what is on screen.",
       "properties": {
         "class": {
           "anyOf": [
@@ -2877,6 +3304,19 @@
           ],
           "default": null,
           "title": "Text"
+        },
+        "visible": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Visible"
         }
       },
       "title": "WidgetSelect",

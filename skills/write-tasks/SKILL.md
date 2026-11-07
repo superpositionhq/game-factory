@@ -328,6 +328,13 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 | a dense forest merged into 3 procedural sections read 108 pieces against a threshold of 423 | count the drawn geometry (`pieces` `visible_triangles`), calibrated or relative to the start, never a literal |
 | a count stopped at 200 rows and a threshold was set on it | counts and `of` read every match (since 2026-11-06); recalibrate a threshold set before |
 | a light's turn read relative to its own actor | `world_yaw:`/`world_pitch:`/`forward:` read the component in the world |
+| a lamp hidden in game (or at intensity 0) read as lit | the `light` probe counts only lights the renderer draws; a lamp's `on` and `intensity` are `components` fields |
+| a collapsed warning still counted as shown | `"visible": true` in a widget select counts only what is on screen |
+| every audio component read inactive (plays ran with `-nosound`) | `audio` reads what the player hears; a play with it runs with sound, muted; volumes calibrated or relative to the start |
+| relief judged by the height of one spot | `ground` over a box: `range`, calibrated or relative to the start |
+| a teleport to fixed coordinates missed what each build placed itself | `teleport_to` an actor select (nearest match), facing it or a point |
+| cars that are components of one actor had no position or speed | `components` fields `x`, `y`, `z`, `speed` |
+| a broken crate kept its pieces drawn and tagged, so counts couldn't see it break | actor `simulating` and `spread`, component `extent_*` and `simulating` |
 | a probe that tests the reference's implementation ("SpawnZ = 92") | measure the outcome; another valid fix must pass |
 | the brief said "scenario 1" but not `?Scenario=1` | `play_map` always set and checked at the seed |
 | a HUD widget or class name guessed | read the names from the code and assets at `seed.commit` and `seed.reference` |

@@ -1,6 +1,10 @@
 #include "TaskProbeQueries.h"
 
+#include "ActiveSound.h"
 #include "AIController.h"
+#include "Audio.h"
+#include "AudioDevice.h"
+#include "AudioThread.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "BehaviorTree/BlackboardData.h"
 #include "BehaviorTree/Blackboard/BlackboardKeyType_Bool.h"
@@ -32,6 +36,7 @@
 #include "Components/ProgressBar.h"
 #include "Components/RectLightComponent.h"
 #include "Components/RichTextBlock.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/SkinnedMeshComponent.h"
 #include "Components/SkyLightComponent.h"
 #include "Components/SpotLightComponent.h"
@@ -51,6 +56,7 @@
 #include "Internationalization/Regex.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/FileHelper.h"
+#include "PhysicsEngine/BodyInstance.h"
 #include "Rendering/SkeletalMeshLODRenderData.h"
 #include "Rendering/SkeletalMeshRenderData.h"
 #include "SceneInterface.h"
@@ -58,6 +64,9 @@
 #include "SceneViewExtension.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "Sound/SoundBase.h"
+#include "Sound/SoundClass.h"
+#include "UObject/ObjectKey.h"
 #include "UObject/UObjectIterator.h"
 #include "UObject/UnrealType.h"
 #include "UnrealClient.h"
@@ -70,6 +79,7 @@ namespace TaskProbe
 static constexpr int32 MaxRows = 200;     // rows per sample of one query
 static constexpr int32 MaxQueries = 256;  // queries per play
 static constexpr double TraceLength = 200000.0;  // cm, toward a directional light or the sky
+static constexpr double AudibleVolume = 0.001;  // audio: a sound at least this loud at the listener (-60 dB) is audible
 
 static TSharedPtr<FJsonValue> Null() { return MakeShared<FJsonValueNull>(); }
 static TSharedPtr<FJsonValue> Num(double V)
@@ -748,6 +758,80 @@ static FBox GeometryBox(const AActor* A)
 	return Box;
 }
 
+/** Whether a primitive component simulates physics: its own body, or any body of a skeletal mesh (a ragdoll, pieces
+ *  that broke off). */
+static bool Simulating(const UPrimitiveComponent* P)
+{
+	if (!P)
+	{
+		return false;
+	}
+	if (P->IsSimulatingPhysics())
+	{
+		return true;
+	}
+	if (const USkeletalMeshComponent* SK = Cast<USkeletalMeshComponent>(P))
+	{
+		for (const FBodyInstance* B : SK->Bodies)
+		{
+			if (B && B->IsInstanceSimulatingPhysics())
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+/**
+ * spread: how far apart the parts of the actor's geometry are, the diagonal (cm) of the world-aligned box around their
+ * centres: each mesh component GeometryBox counts by its bounds centre, a skeletal mesh with several physics bodies by
+ * each body's place. 0 with one part, null with none. A whole object reads its parts' own layout; one broken into
+ * pieces that fell or flew apart reads more, whatever still draws them.
+ */
+static TSharedPtr<FJsonValue> Spread(const AActor* A)
+{
+	FBox Box(ForceInit);
+	TInlineComponentArray<UMeshComponent*> Meshes(A);
+	for (const UMeshComponent* M : Meshes)
+	{
+		if (!M || !M->IsRegistered() || M->IsEditorOnly() || !M->IsVisible() || M->bHiddenInGame)
+		{
+			continue;
+		}
+		if (const UStaticMeshComponent* SM = Cast<UStaticMeshComponent>(M); SM && !SM->GetStaticMesh())
+		{
+			continue;
+		}
+		if (const USkinnedMeshComponent* SK = Cast<USkinnedMeshComponent>(M); SK && !SK->GetSkinnedAsset())
+		{
+			continue;
+		}
+		if (M->Bounds.BoxExtent.IsNearlyZero())
+		{
+			continue;
+		}
+		const USkeletalMeshComponent* Skeletal = Cast<USkeletalMeshComponent>(M);
+		int32 Bodies = 0;
+		if (Skeletal && Skeletal->Bodies.Num() > 1)
+		{
+			for (const FBodyInstance* B : Skeletal->Bodies)
+			{
+				if (B && B->IsValidBodyInstance())
+				{
+					Box += B->GetUnrealWorldTransform().GetLocation();
+					++Bodies;
+				}
+			}
+		}
+		if (Bodies == 0)
+		{
+			Box += M->Bounds.Origin;
+		}
+	}
+	return Box.IsValid ? Num(Box.GetSize().Size()) : Null();
+}
+
 static TSharedPtr<FJsonValue> ActorField(AActor* A, const FString& F)
 {
 	if (F.StartsWith(TEXT("prop:")))
@@ -863,6 +947,23 @@ static TSharedPtr<FJsonValue> ActorField(AActor* A, const FString& F)
 	if (F == TEXT("speed"))
 	{
 		return Num(A->GetVelocity().Size());
+	}
+	if (F == TEXT("simulating"))
+	{
+		// any of its primitive components simulates physics (its pieces broke loose, a ragdoll)
+		TInlineComponentArray<UPrimitiveComponent*> Prims(A);
+		for (const UPrimitiveComponent* Prim : Prims)
+		{
+			if (Prim && Prim->IsRegistered() && Simulating(Prim))
+			{
+				return Num(1.0);
+			}
+		}
+		return Num(0.0);
+	}
+	if (F == TEXT("spread"))
+	{
+		return Spread(A);
 	}
 	return Null();
 }
@@ -1087,6 +1188,55 @@ UButton* FindButton(UWorld* World, const FString& Want)
 	return Found;
 }
 
+bool TeleportSpot(UWorld* World, APlayerController* PC, const TSharedPtr<FJsonObject>& Select, double Distance, const FVector& Offset,
+	const TSharedPtr<FJsonObject>& Face, FVector& OutLocation, double& OutYaw, FString& OutName)
+{
+	const APawn* Pawn = PlayerPawn(PC);
+	if (!World || !Pawn || !Select.IsValid())
+	{
+		return false;
+	}
+	TArray<AActor*> Found;
+	int32 Total = 0;
+	FindActors(World, PC, ParseSel(Select), 0, MAX_int32, Found, Total);
+	const FVector From = Pawn->GetActorLocation();
+	const AActor* Target = nullptr;
+	double Best = 0.0;
+	for (const AActor* A : Found)
+	{
+		const double D = FVector::DistSquared(A->GetActorLocation(), From);
+		if (A != Pawn && (!Target || D < Best))
+		{
+			Target = A;
+			Best = D;
+		}
+	}
+	if (!Target)
+	{
+		return false;
+	}
+	const FVector There = Target->GetActorLocation();
+	FVector Side = FVector(From.X - There.X, From.Y - There.Y, 0.0).GetSafeNormal();
+	if (Side.IsNearlyZero())
+	{
+		Side = -Target->GetActorForwardVector().GetSafeNormal2D();  // the pawn is right above it: in front of it
+	}
+	if (Side.IsNearlyZero())
+	{
+		Side = FVector(-1.0, 0.0, 0.0);
+	}
+	OutLocation = There + Side * Distance + Offset;
+	FVector Look = There;
+	if (Face.IsValid() && !ResolvePoint(Face, World, PC, 0, Look))
+	{
+		Look = There;  // the point doesn't resolve: face the target
+	}
+	const FVector Dir = Look - OutLocation;
+	OutYaw = Dir.SizeSquared2D() > 1.0 ? FMath::RadiansToDegrees(FMath::Atan2(Dir.Y, Dir.X)) : Pawn->GetActorRotation().Yaw;
+	OutName = Target->GetName();
+	return true;
+}
+
 // ---------------------------------------------------------------- Slate widgets under the game viewport
 
 /** SImage's brush is behind a protected accessor: call it through a member pointer taken in a derived scope. */
@@ -1214,10 +1364,14 @@ struct FGrade
 	}
 };
 
+/** A light that lights the scene, as the renderer adds it: registered, affecting the world, drawn in game (visible, not
+ *  hidden in game, its owner not hidden: a hidden light is never added to the scene) and of an intensity above 0. */
 static bool LightOn(const ULightComponentBase* L, const UWorld* World)
 {
+	const AActor* Owner = L ? L->GetOwner() : nullptr;
 	return L && L->GetWorld() == World && !L->HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject) && L->IsRegistered() &&
-		L->bAffectsWorld && L->ShouldComponentAddToScene() && L->Intensity > 0.f;
+		L->bAffectsWorld && L->ShouldComponentAddToScene() && L->Intensity > 0.f && L->IsVisible() && !L->bHiddenInGame &&
+		!(Owner && Owner->IsHidden());
 }
 
 static FString OwnerName(const UActorComponent* C)
@@ -1475,7 +1629,7 @@ void FTaskProbeQueries::Load(const FString& Path)
 		return;
 	}
 	static const TSet<FString> Kinds = {TEXT("actors"), TEXT("widgets"), TEXT("light"), TEXT("grading"), TEXT("spawns"), TEXT("camera"), TEXT("components"),
-		TEXT("pieces"), TEXT("screen")};
+		TEXT("pieces"), TEXT("screen"), TEXT("audio"), TEXT("ground")};
 	TSet<FString> Ids;
 	for (const TSharedPtr<FJsonValue>& Item : *List)
 	{
@@ -1541,6 +1695,45 @@ void FTaskProbeQueries::Load(const FString& Path)
 			if (!ViewportHandle.IsValid())
 			{
 				ViewportHandle = UGameViewportClient::OnViewportRendered().AddRaw(this, &FTaskProbeQueries::OnViewportRendered);
+			}
+		}
+		if (Q.Kind == TEXT("ground"))
+		{
+			// xy: [x, y] (one point), or box: [x0, y0, x1, y1] sampled on a grid of grid x grid points (2-32, default 8)
+			const TArray<TSharedPtr<FJsonValue>>* Xy = nullptr;
+			const TArray<TSharedPtr<FJsonValue>>* Box = nullptr;
+			double V[4] = {0.0, 0.0, 0.0, 0.0};
+			auto Numbers = [&V](const TArray<TSharedPtr<FJsonValue>>& A)
+			{
+				for (int32 i = 0; i < A.Num(); ++i)
+				{
+					if (!A[i].IsValid() || !A[i]->TryGetNumber(V[i]))
+					{
+						return false;
+					}
+				}
+				return true;
+			};
+			if (Q.Def->TryGetArrayField(TEXT("box"), Box) && Box->Num() == 4 && Numbers(*Box))
+			{
+				Q.bGroundBox = true;
+				Q.Ground[0] = FMath::Min(V[0], V[2]);
+				Q.Ground[1] = FMath::Min(V[1], V[3]);
+				Q.Ground[2] = FMath::Max(V[0], V[2]);
+				Q.Ground[3] = FMath::Max(V[1], V[3]);
+				double Grid = 8.0;
+				Q.Def->TryGetNumberField(TEXT("grid"), Grid);
+				Q.Grid = FMath::Clamp(FMath::RoundToInt(Grid), 2, 32);
+			}
+			else if (Q.Def->TryGetArrayField(TEXT("xy"), Xy) && Xy->Num() == 2 && Numbers(*Xy))
+			{
+				Q.Ground[0] = Q.Ground[2] = V[0];
+				Q.Ground[1] = Q.Ground[3] = V[1];
+			}
+			else
+			{
+				ErrorList.Add(FString::Printf(TEXT("query '%s': a ground query takes xy [x, y] or box [x0, y0, x1, y1] (null values)"), *Q.Id));
+				Q.Grid = 0;  // nothing to trace
 			}
 		}
 		if ((Q.Kind == TEXT("light") || Q.Kind == TEXT("grading")) && !ViewExtension.IsValid())
@@ -1643,7 +1836,7 @@ void FTaskProbeQueries::Sample(UWorld* World, APlayerController* PC, double T)
 		}
 		else if (Q.Kind == TEXT("components"))
 		{
-			SampleComponents(Q, World, PC, *S);
+			SampleComponents(Q, World, PC, T, *S);
 		}
 		else if (Q.Kind == TEXT("camera"))
 		{
@@ -1652,6 +1845,14 @@ void FTaskProbeQueries::Sample(UWorld* World, APlayerController* PC, double T)
 		else if (Q.Kind == TEXT("pieces"))
 		{
 			SamplePieces(Q, World, PC, *S);
+		}
+		else if (Q.Kind == TEXT("audio"))
+		{
+			SampleAudio(Q, World, PC, *S);
+		}
+		else if (Q.Kind == TEXT("ground"))
+		{
+			SampleGround(Q, World, PC, *S);
 		}
 		else if (Q.Kind == TEXT("screen"))
 		{
@@ -1726,6 +1927,7 @@ void FTaskProbeQueries::SampleActors(FQuery& Q, UWorld* World, APlayerController
 void FTaskProbeQueries::SampleWidgets(FQuery& Q, UWorld* World, FJsonObject& Out)
 {
 	FString Class, Name, Slate, TextRegex;
+	bool bOnScreen = false;  // select.visible: only the widgets drawn (the visible field's test), never a collapsed or hidden one
 	const TSharedPtr<FJsonObject>* SelObj = nullptr;
 	if (Q.Def->TryGetObjectField(TEXT("select"), SelObj) && SelObj->IsValid())
 	{
@@ -1733,6 +1935,7 @@ void FTaskProbeQueries::SampleWidgets(FQuery& Q, UWorld* World, FJsonObject& Out
 		(*SelObj)->TryGetStringField(TEXT("name"), Name);
 		(*SelObj)->TryGetStringField(TEXT("slate"), Slate);
 		(*SelObj)->TryGetStringField(TEXT("text"), TextRegex);
+		(*SelObj)->TryGetBoolField(TEXT("visible"), bOnScreen);
 	}
 	TArray<TSharedPtr<FJsonValue>> Rows;
 	int32 Total = 0;
@@ -1764,6 +1967,10 @@ void FTaskProbeQueries::SampleWidgets(FQuery& Q, UWorld* World, FJsonObject& Out
 					{
 						return;
 					}
+				}
+				if (bOnScreen && !SlateVisible(W))
+				{
+					return;
 				}
 				++Total;
 				Found.Add(W);
@@ -1800,7 +2007,8 @@ void FTaskProbeQueries::SampleWidgets(FQuery& Q, UWorld* World, FJsonObject& Out
 		TArray<UWidget*> Found;
 		auto Visit = [&](UWidget* W)
 		{
-			if (!W || (!Class.IsEmpty() && !WidgetClassMatches(W, Class, bWithOwners)) || (!Name.IsEmpty() && !W->GetName().MatchesWildcard(Name)))
+			if (!W || (!Class.IsEmpty() && !WidgetClassMatches(W, Class, bWithOwners)) || (!Name.IsEmpty() && !W->GetName().MatchesWildcard(Name)) ||
+				(bOnScreen && !WidgetVisible(W)))
 			{
 				return;
 			}
@@ -1836,7 +2044,7 @@ void FTaskProbeQueries::SampleWidgets(FQuery& Q, UWorld* World, FJsonObject& Out
 	SetTotal(Out, Total, Rows.Num(), Q.Fields, Full);
 }
 
-void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out)
+void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerController* PC, double T, FJsonObject& Out)
 {
 	TArray<TSharedPtr<FJsonValue>> Rows;
 	TArray<UActorComponent*> Matched;
@@ -1887,12 +2095,21 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 			Matched.Add(C);
 		}
 	}
+	// speed: where each matched component was at this query's previous sample
+	const bool bSpeed = Q.Fields.Contains(TEXT("speed"));
+	TMap<FObjectKey, FVector> Places;
 	// every match is read; rows hold the first MaxRows, and "full" sums up all of them when there are more
 	TMap<FString, FFull> Full;
 	for (int32 i = 0; i < Matched.Num(); ++i)
 	{
 		UActorComponent* C = Matched[i];
 		const USceneComponent* SC = Cast<USceneComponent>(C);
+		UPrimitiveComponent* Prim = Cast<UPrimitiveComponent>(C);
+		const ULightComponentBase* Light = Cast<ULightComponentBase>(C);
+		if (bSpeed && SC)
+		{
+			Places.Add(FObjectKey(C), SC->GetComponentLocation());
+		}
 		const TSharedRef<FJsonObject> Row = MakeShared<FJsonObject>();
 		for (const FString& F : Q.Fields)
 		{
@@ -1916,6 +2133,39 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 				const FVector L = SC->GetComponentLocation();
 				V = Num(F == TEXT("x") ? L.X : F == TEXT("y") ? L.Y : L.Z);
 			}
+			else if (SC && F == TEXT("speed"))
+			{
+				// cm/s: its physics body's speed while it simulates, else its own velocity (a movement component's), else
+				// how far it moved since this query's previous sample (null the first time it is seen)
+				const FVector Velocity = Prim && Prim->IsSimulatingPhysics() ? Prim->GetPhysicsLinearVelocity() : SC->GetComponentVelocity();
+				const FVector* Before = Q.LastPlaces.Find(FObjectKey(C));
+				if (!Velocity.IsNearlyZero())
+				{
+					V = Num(Velocity.Size());
+				}
+				else if (Before && T > Q.LastT)
+				{
+					V = Num(FVector::Dist(SC->GetComponentLocation(), *Before) / (T - Q.LastT));
+				}
+			}
+			else if (Prim && (F == TEXT("extent_x") || F == TEXT("extent_y") || F == TEXT("extent_z")))
+			{
+				// its world bounds' half-size (a skinned mesh's: around its bones, wherever its bodies went)
+				const FVector E = Prim->Bounds.BoxExtent;
+				V = Num(F == TEXT("extent_x") ? E.X : F == TEXT("extent_y") ? E.Y : E.Z);
+			}
+			else if (Prim && F == TEXT("simulating"))
+			{
+				V = Num(Simulating(Prim) ? 1.0 : 0.0);
+			}
+			else if (Light && F == TEXT("intensity"))
+			{
+				V = Num(Light->Intensity);
+			}
+			else if (Light && F == TEXT("on"))
+			{
+				V = Num(LightOn(Light, World) ? 1.0 : 0.0);
+			}
 			else if (F.StartsWith(TEXT("prop:")))
 			{
 				V = ReadProp(C, F.Mid(5));
@@ -1933,6 +2183,11 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 			Row->SetStringField(TEXT("owner"), C->GetOwner() ? C->GetOwner()->GetName() : FString());
 			Rows.Add(MakeShared<FJsonValueObject>(Row));
 		}
+	}
+	if (bSpeed)
+	{
+		Q.LastPlaces = MoveTemp(Places);
+		Q.LastT = T;
 	}
 	Out.SetArrayField(TEXT("rows"), Rows);
 	SetTotal(Out, Total, Rows.Num(), Q.Fields, Full);
@@ -2127,6 +2382,192 @@ void FTaskProbeQueries::OnViewportRendered(FViewport* Viewport)
 		}
 		Q.Pending.Reset();
 	}
+}
+
+void FTaskProbeQueries::SampleAudio(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out)
+{
+	// what the player hears: the audio device's active sounds, each at its volume at the listener (the player's camera,
+	// or whatever the game listens from): its wave instances' volume (the sound's own, its class's and mixes', the
+	// game's multipliers) times their distance and occlusion attenuation and dynamic volume, summed. The output's
+	// primary volume (the play's -muteaudio, an unfocused window) is left out.
+	FAudioDevice* Device = World ? World->GetAudioDeviceRaw() : nullptr;
+	if (!Device)
+	{
+		Out.SetField(TEXT("value"), Null());  // no audio device (-nosound): nothing is heard, so nothing is measured
+		return;
+	}
+	FString Sound, SoundClass;
+	TSet<FObjectKey> Owners;
+	bool bOwner = false;
+	const TSharedPtr<FJsonObject>* SelObj = nullptr;
+	if (Q.Def->TryGetObjectField(TEXT("select"), SelObj) && SelObj->IsValid())
+	{
+		(*SelObj)->TryGetStringField(TEXT("sound"), Sound);
+		(*SelObj)->TryGetStringField(TEXT("sound_class"), SoundClass);
+		const TSharedPtr<FJsonObject>* OwnerObj = nullptr;
+		if ((*SelObj)->TryGetObjectField(TEXT("owner"), OwnerObj))
+		{
+			bOwner = true;
+			TArray<AActor*> Found;
+			int32 OwnerTotal = 0;
+			FindActors(World, PC, ParseSel(*OwnerObj), 0, MAX_int32, Found, OwnerTotal);
+			for (const AActor* A : Found)
+			{
+				Owners.Add(FObjectKey(A));
+			}
+		}
+	}
+	struct FHeard
+	{
+		FString Sound;
+		TArray<FString> Classes;  // its sound class and the parents of it
+		FObjectKey Owner;
+		double Volume = 0.0;
+	};
+	const TSharedRef<TArray<FHeard>, ESPMode::ThreadSafe> Heard = MakeShared<TArray<FHeard>, ESPMode::ThreadSafe>();
+	FAudioThread::RunCommandOnAudioThread([Device, Heard]()
+	{
+		for (const FActiveSound* Active : Device->GetActiveSounds())
+		{
+			if (!Active)
+			{
+				continue;
+			}
+			FHeard H;
+			const USoundBase* S = Active->GetSound();
+			H.Sound = S ? S->GetName() : FString();
+			for (const USoundClass* K = Active->GetSoundClass(); K && H.Classes.Num() < 16; K = K->ParentClass)
+			{
+				H.Classes.Add(K->GetName());
+			}
+			H.Owner = Active->GetOwnerKey();
+			for (const TPair<UPTRINT, FWaveInstance*>& W : Active->GetWaveInstances())
+			{
+				if (W.Value)
+				{
+					H.Volume += W.Value->GetVolumeWithDistanceAndOcclusionAttenuation() * W.Value->GetDynamicVolume();
+				}
+			}
+			Heard->Add(MoveTemp(H));
+		}
+	});
+	FAudioCommandFence Fence;
+	Fence.BeginFence();
+	Fence.Wait();
+	int32 Count = 0, Audible = 0;
+	double Volume = 0.0, Max = 0.0;
+	FString Loudest;
+	for (const FHeard& H : *Heard)
+	{
+		if ((!Sound.IsEmpty() && !H.Sound.MatchesWildcard(Sound)) || (bOwner && !Owners.Contains(H.Owner)) ||
+			(!SoundClass.IsEmpty() && !H.Classes.ContainsByPredicate([&](const FString& K) { return K.MatchesWildcard(SoundClass); })))
+		{
+			continue;
+		}
+		++Count;
+		Audible += H.Volume >= AudibleVolume ? 1 : 0;
+		Volume += H.Volume;
+		if (Loudest.IsEmpty() || H.Volume > Max)
+		{
+			Max = H.Volume;
+			Loudest = H.Sound;
+		}
+	}
+	const TSharedRef<FJsonObject> V = MakeShared<FJsonObject>();
+	V->SetNumberField(TEXT("count"), Count);
+	V->SetNumberField(TEXT("audible"), Audible);
+	V->SetField(TEXT("volume"), Num(Volume));
+	V->SetField(TEXT("max_volume"), Num(Max));
+	V->SetField(TEXT("loudest"), Count ? Str(Loudest) : Null());
+	Out.SetObjectField(TEXT("value"), V);
+}
+
+void FTaskProbeQueries::SampleGround(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out)
+{
+	if (!World || Q.Grid <= 0)
+	{
+		Out.SetField(TEXT("value"), Null());
+		return;
+	}
+	// the ground at a point: the first thing a trace straight down (on the visibility channel, against complex
+	// collision) meets, pawns aside; with select, only an actor the select matches counts as ground (others are
+	// traced through)
+	const TSharedPtr<FJsonObject>* SelObj = nullptr;
+	const bool bSelect = Q.Def->TryGetObjectField(TEXT("select"), SelObj) && SelObj->IsValid();
+	TSet<const AActor*> Ground;
+	if (bSelect)
+	{
+		TArray<AActor*> Found;
+		int32 Total = 0;
+		FindActors(World, PC, ParseSel(*SelObj), 0, MAX_int32, Found, Total);
+		Ground.Append(Found);
+	}
+	FCollisionQueryParams Params(FName(TEXT("TaskProbeGround")), true);
+	for (TActorIterator<APawn> It(World); It; ++It)
+	{
+		Params.AddIgnoredActor(*It);
+	}
+	auto Down = [&](double X, double Y, double& Z)
+	{
+		FCollisionQueryParams Through = Params;
+		for (int32 Tries = 0; Tries < 32; ++Tries)
+		{
+			FHitResult Hit;
+			if (!World->LineTraceSingleByChannel(Hit, FVector(X, Y, TraceLength), FVector(X, Y, -TraceLength), ECC_Visibility, Through))
+			{
+				return false;
+			}
+			const AActor* HitActor = Hit.GetActor();
+			if (!bSelect || (HitActor && Ground.Contains(HitActor)))
+			{
+				Z = Hit.ImpactPoint.Z;
+				return true;
+			}
+			if (!HitActor)
+			{
+				return false;
+			}
+			Through.AddIgnoredActor(HitActor);
+		}
+		return false;
+	};
+	const TSharedRef<FJsonObject> V = MakeShared<FJsonObject>();
+	if (!Q.bGroundBox)
+	{
+		double Z = 0.0;
+		const bool bHit = Down(Q.Ground[0], Q.Ground[1], Z);
+		V->SetField(TEXT("height"), bHit ? Num(Z) : Null());
+		V->SetNumberField(TEXT("hit"), bHit ? 1 : 0);
+		Out.SetObjectField(TEXT("value"), V);
+		return;
+	}
+	// the box on a grid x grid lattice, its corners and edges included
+	int32 Hits = 0;
+	double Min = 0.0, Max = 0.0, Sum = 0.0;
+	for (int32 i = 0; i < Q.Grid; ++i)
+	{
+		for (int32 j = 0; j < Q.Grid; ++j)
+		{
+			const double X = FMath::Lerp(Q.Ground[0], Q.Ground[2], (double)i / (Q.Grid - 1));
+			const double Y = FMath::Lerp(Q.Ground[1], Q.Ground[3], (double)j / (Q.Grid - 1));
+			double Z = 0.0;
+			if (!Down(X, Y, Z))
+			{
+				continue;
+			}
+			Min = Hits ? FMath::Min(Min, Z) : Z;
+			Max = Hits ? FMath::Max(Max, Z) : Z;
+			Sum += Z;
+			++Hits;
+		}
+	}
+	V->SetField(TEXT("min"), Hits ? Num(Min) : Null());
+	V->SetField(TEXT("max"), Hits ? Num(Max) : Null());
+	V->SetField(TEXT("mean"), Hits ? Num(Sum / Hits) : Null());
+	V->SetField(TEXT("range"), Hits ? Num(Max - Min) : Null());
+	V->SetNumberField(TEXT("hits"), Hits);
+	V->SetNumberField(TEXT("points"), Q.Grid * Q.Grid);
+	Out.SetObjectField(TEXT("value"), V);
 }
 
 void FTaskProbeQueries::SampleLight(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out)

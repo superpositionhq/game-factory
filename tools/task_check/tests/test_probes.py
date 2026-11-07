@@ -380,6 +380,136 @@ class FairReadings(unittest.TestCase):
         self.assertEqual(probes.reduce(down, actors_play(down, [[{"forward:LightComponent0.z": -0.5}]])), -0.5)
 
 
+LAMP = {"probe": "components", "select": {"class": "PointLightComponent", "owner": {"tag": "Lamp"}}, "at": "end"}
+CRATE = {"probe": "actors", "select": {"tag": "Crate"}, "at": "end"}
+
+
+class MoreFairReadings(unittest.TestCase):
+    """docs/task-probes.md (2026-11-07): lights that are off, what is on screen, what the player hears, the ground, a
+    teleport next to an actor, moving components, whole or broken."""
+
+    def test_the_readings_a_build_chooses_take_a_threshold_from_the_start_never_a_literal(self):
+        never = [{**LAMP, "field": "intensity", "of": "max"}, {**LAMP, "field": "extent_z", "of": "max"},
+                 {**CRATE, "field": "spread", "of": "max"},
+                 {"probe": "audio", "select": {"sound_class": "Ambience"}, "field": "volume"},
+                 {"probe": "audio", "field": "max_volume"},
+                 {"probe": "ground", "box": [0, 0, 5000, 5000], "grid": 16, "field": "range"}]
+        for measure in never:
+            with self.assertRaisesRegex(ValueError, "never a literal value"):
+                task_with(probe(measure=measure, expect={"op": ">=", "value": 1}))
+            task_with(probe(measure=measure, expect={"op": ">=", "calibrate": 0.5}))
+            task_with(probe(measure=measure, expect={"op": ">=", "start_times": 2}), seed=NO_FIX)
+        for measure in ({**LAMP, "field": "on"}, {**LAMP, "field": "simulating"},
+                        {**LAMP, "field": "speed", "of": "max"}, {**LAMP, "field": "x", "of": "min"},
+                        {**CRATE, "field": "simulating"}, {"probe": "audio", "field": "count"},
+                        {"probe": "audio", "field": "audible"}, {"probe": "ground", "xy": [100, 200], "field": "height"},
+                        {"probe": "ground", "xy": [0, 0], "field": "hit"},
+                        {"probe": "ground", "box": [0, 0, 10, 10], "field": "max"},
+                        {"probe": "widgets", "select": {"name": "Warn*", "visible": True}, "field": "count"}):
+            task_with(probe(measure=measure, expect={"op": ">=", "value": 1}))
+
+    def test_the_new_readings_refuse_what_they_cant_read(self):
+        for bad in ({"probe": "components", "select": {"class": "PointLightComponent"}, "field": "lumens"},
+                    {"probe": "actors", "select": {"tag": "A"}, "field": "spread_x"},
+                    {"probe": "audio", "select": {"sound": "Rain/*"}, "field": "count"},
+                    {"probe": "audio", "field": "loudest"},
+                    {"probe": "ground", "field": "height"},
+                    {"probe": "ground", "xy": [0, 0], "box": [0, 0, 1, 1], "field": "height"},
+                    {"probe": "ground", "xy": [0, 0], "field": "range"},
+                    {"probe": "ground", "box": [0, 0, 1, 1], "field": "height"},
+                    {"probe": "ground", "box": [5, 0, 1, 1], "field": "max"},
+                    {"probe": "ground", "box": [0, 0, 1, 1], "grid": 64, "field": "max"},
+                    {"probe": "widgets", "select": {"name": "Warn*", "visible": False}, "field": "count"}):
+            with self.assertRaises(ValueError, msg=json.dumps(bad)):
+                task_with(probe(measure=bad))
+
+    def test_lights_read_on_and_their_intensity_as_components(self):
+        lamp = m(**{**LAMP, "field": "on", "of": "any", "at": None})
+        (query,) = probes.needs(lamp)
+        self.assertEqual(query["fields"], ["on"])
+        play = actors_play(lamp, [[{"name": "L", "on": 1, "intensity": 5000.0}], [{"name": "L", "on": 0,
+                                                                                   "intensity": 0.0}]])
+        self.assertEqual(probes.reduce(lamp, play), 0)
+        bright = m(**{**LAMP, "field": "intensity", "of": "max", "at": None, "agg": "first"})
+        self.assertEqual(probes.query_id(probes.needs(bright)[0]), probes.query_id(query), "one query, both fields")
+        self.assertEqual(probes.reduce(bright, play), 5000.0)
+
+    def test_a_visible_widget_select_is_its_own_query(self):
+        shown = m(probe="widgets", select={"name": "Warn*", "visible": True}, field="count")
+        every = m(probe="widgets", select={"name": "Warn*"}, field="count")
+        self.assertEqual(probes.needs(shown)[0]["select"], {"name": "Warn*", "visible": True})
+        self.assertEqual(probes.needs(every)[0]["select"], {"name": "Warn*"}, "a select without it is as it was")
+        self.assertNotEqual(probes.query_id(probes.needs(shown)[0]), probes.query_id(probes.needs(every)[0]))
+        self.assertEqual(probes.reduce(shown, actors_play(shown, [[{"name": "WarnVisible"}]])), 1)
+
+    def test_what_the_player_hears_reduces_from_the_audio_samples(self):
+        jungle = m(probe="audio", select={"sound_class": "SC_Jungle*", "owner": {"tag": "Zone2"}}, field="volume",
+                   agg="mean")
+        (query,) = probes.needs(jungle)
+        self.assertEqual(query, {"kind": "audio", "select": {"sound_class": "SC_Jungle*", "owner": {"tag": "Zone2"}}})
+        self.assertEqual(probes.needs(m(probe="audio", field="count"))[0], {"kind": "audio", "select": {}})
+        value = {"count": 2, "audible": 1, "volume": 0.6, "max_volume": 0.5, "loudest": "Birds"}
+        qid = probes.query_id(query)
+        play = {"measures": {qid: sampled([value, {**value, "volume": 0.2}])}}
+        self.assertAlmostEqual(probes.reduce(jungle, play), 0.4)
+        self.assertIsNone(probes.reduce(jungle, {"measures": {qid: sampled([None])}}),
+                          "a play with no audio device measures nothing, never 0")
+
+    def test_the_ground_reads_a_height_and_a_relief(self):
+        hill = m(probe="ground", xy=[1200, -300], field="height")
+        self.assertEqual(probes.needs(hill), [{"kind": "ground", "xy": [1200.0, -300.0]}])
+        relief = m(probe="ground", box=[0, 0, 8000, 8000], select={"class": "LandscapeProxy"}, field="range")
+        self.assertEqual(probes.needs(relief), [{"kind": "ground", "box": [0.0, 0.0, 8000.0, 8000.0], "grid": 8,
+                                                 "select": {"class": "LandscapeProxy"}}])
+        qid = probes.query_id(probes.needs(relief)[0])
+        self.assertEqual(probes.reduce(relief, {"measures": {qid: sampled([{"min": 0, "max": 300, "range": 300,
+                                                                            "hits": 64, "points": 64}])}}), 300)
+        pid = probes.query_id(probes.needs(hill)[0])
+        self.assertIsNone(probes.reduce(hill, {"measures": {pid: sampled([{"height": None, "hit": 0}])}}))
+
+    def test_a_task_play_teleports_next_to_an_actor(self):
+        play = {"name": "ore", "seconds": 12, "inputs": [
+            {"t": 1, "teleport_to": {"tag": "Ore"}},
+            {"t": 3, "teleport_to": {"class": "OreChunk"}, "distance": 350, "offset": [0, 0, 100],
+             "face": {"actor": {"tag": "Tug"}}}]}
+        first, second = first_check(task_with(probe(play=play, measure={"probe": "pawn", "field": "z"})))["play"][
+            "inputs"]
+        self.assertEqual(first, {"t": 1.0, "teleport_to": {"tag": "Ore"}, "distance": 200.0, "offset": [0, 0, 0]})
+        self.assertEqual(second["face"], {"actor": {"tag": "Tug"}, "offset": [0, 0, 0]})
+        self.assertEqual((second["distance"], second["offset"]), (350.0, [0.0, 0.0, 100.0]))
+        with self.assertRaises(ValueError):
+            task_with(probe(play={**play, "inputs": [{"t": 1, "teleport_to": {"tag": "Ore"}, "yaw": 90}]},
+                            measure={"probe": "pawn", "field": "z"}))
+
+    def test_only_a_play_that_measures_audio_runs_with_sound(self):
+        from task_check import unreal
+
+        heard = task_with(probe(measure={"probe": "audio", "select": {"sound": "Rain*"}, "field": "count"}),
+                          probe("quiet", play={"name": "quiet", "seconds": 10}, measure={"probe": "pawn", "field": "z"}))
+        plays = probes.plan(heard)
+        self.assertTrue(probes.hears(plays["look"]) and probes.hears(probes.query_file(plays["look"])))
+        self.assertFalse(probes.hears(plays["quiet"]) or probes.hears(None))
+        self.assertEqual(probes.sound_flags(None), (["-nosound"], ["-benchmark"]), "every other play as before")
+        seen = []
+        with tempfile.TemporaryDirectory() as folder:
+            Path(folder, "Game.uproject").write_text("{}", encoding="utf-8")
+            machine = types.SimpleNamespace(editor=lambda: "UnrealEditor.exe",
+                                            job=lambda label, argv, cwd, timeout: seen.append(argv) or types.SimpleNamespace(
+                                                exit_code=0, timed_out=False, output="", seconds=1.0, waited=0.0))
+            project = unreal.Project(folder, machine, "start")
+            project.play(5, 0, 60, queries=probes.query_file(plays["look"]))
+            project.play(5, 0, 60)
+        loud, quiet = seen
+        self.assertEqual(quiet[quiet.index("-unattended"):quiet.index("-fps=30") + 1],
+                         ["-unattended", "-nosound", "-nosplash", "-benchmark", "-fps=30"])
+        self.assertEqual(loud[loud.index("-unattended"):loud.index("-fps=30") + 1],
+                         ["-unattended", "-muteaudio", "-nosplash", "-UseFixedTimeStep", "-FixedSeed", "-NOINI",
+                          "-noinnerexception", "-TaskProbeSound", "-fps=30"])
+        with self.assertRaisesRegex(ValueError, "can't set -TaskProbeSound"):
+            task_with(probe(play={"name": "x", "seconds": 5, "args": ["-TaskProbeSound"]},
+                            measure={"probe": "pawn", "field": "z"}))
+
+
 class Angles(unittest.TestCase):
     def test_angles_aggregates_and_the_new_query_kinds_reduce(self):
         self.assertEqual([probes.normal(a) for a in (270, -270, 180, -180, 540, 0)], [-90, 90, 180, 180, 180, 0])
