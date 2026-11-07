@@ -15,8 +15,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 TOOLS = os.path.dirname(HERE)
 REFS = ("tasks", "origin/tasks")  # where a game's tasks live (validate-game.py TASKS_REFS)
 STILL_WORKS = "still_works"  # the milestone of what a task must leave working (write-tasks section 5)
-RUNTIME = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns", "log")
-SAMPLED = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns")
+RUNTIME = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns", "log",
+           "audio", "ground")
+SAMPLED = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns",
+           "audio", "ground")
 WHOLE_SCREEN = [0.0, 0.0, 1.0, 1.0]
 ANGLE_PREFIXES = ("rel_yaw:", "world_yaw:", "world_pitch:", "world_roll:")
 ZERO = [0.0, 0.0, 0.0]
@@ -117,7 +119,8 @@ def select(s):
 def measure(m):
     """A probe's measure with every optional field: window, at, agg, to_angle, to_axis (None when unset), `of`
     ("count") for selections, `field` ("count") for the log, `to` and `point` with their defaults, a pieces measure's
-    `select` ({} when unset) and a screen measure's `rect` (the whole frame when unset)."""
+    `select` ({} when unset), a screen measure's `rect` (the whole frame when unset), an audio measure's `select` ({}
+    when unset) and a ground measure's `xy`, `box`, `select` (None when unset) and `grid` (8)."""
     out = dict(m)
     kind = out["probe"]
     if kind in SAMPLED:
@@ -135,6 +138,13 @@ def measure(m):
             out["select"] = select(out.get("select") or {})
         if kind == "screen":
             out["rect"] = _floats(out.get("rect") or WHOLE_SCREEN)
+        if kind == "audio":
+            out["select"] = select(out.get("select") or {})
+        if kind == "ground":
+            out["xy"] = _floats(out["xy"]) if out.get("xy") is not None else None
+            out["box"] = _floats(out["box"]) if out.get("box") is not None else None
+            out["grid"] = int(out.get("grid", 8))
+            out["select"] = select(out["select"]) if out.get("select") is not None else None
     elif kind == "asset":
         for k in ("asset", "map", "select", "match", "to_angle", "to_axis"):
             out.setdefault(k, None)
@@ -147,12 +157,18 @@ def measure(m):
 
 
 def inputs(rows):
-    """A task play's inputs as the plugin reads them: keys, axes, clicks, cursor moves, and teleports (`yaw` 0 when
-    unset: a teleport always turns the pawn)."""
+    """A task play's inputs as the plugin reads them: keys, axes, clicks, cursor moves, teleports (`yaw` 0 when
+    unset: a teleport always turns the pawn) and teleports next to an actor (`distance` 200 and `offset` 0 when unset,
+    `face` only when set)."""
     out = []
     for r in rows or []:
         row = {"t": float(r["t"])}
-        if "teleport" in r:
+        if "teleport_to" in r:
+            row.update(teleport_to=select(r["teleport_to"]), distance=float(r.get("distance", 200.0)),
+                       offset=_floats(r.get("offset", ZERO)))
+            if r.get("face") is not None:
+                row["face"] = point(r["face"])
+        elif "teleport" in r:
             row.update(teleport=_floats(r["teleport"]), yaw=float(r.get("yaw", 0.0)))
         elif "cursor" in r:
             row.update(cursor=_floats(r["cursor"]))

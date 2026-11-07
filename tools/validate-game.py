@@ -517,6 +517,12 @@ TASK_PLAY_DEFAULTS = {'inputs': [], 'map': None, 'args': [], 'every': None}
 
 
 PIECE_TRIANGLES = ('triangles', 'visible_triangles')  # pieces fields whose threshold is never a literal
+# fields whose threshold is never a literal: how bright a light, how big a component's bounds, how far apart an actor's
+# parts, how loud a sound, how much the ground rises and falls depend on what a build chose (docs/task-probes.md)
+NEVER_LITERAL = {'components': ('intensity', 'extent_x', 'extent_y', 'extent_z'), 'actors': ('spread',),
+                 'audio': ('volume', 'max_volume'), 'ground': ('range',)}
+GROUND_POINT = ('height', 'hit')        # a ground measure at a point `xy`
+GROUND_BOX = ('min', 'max', 'mean', 'range', 'hits')   # a ground measure over a `box`
 
 
 def probe_errors(c, seed, ref, plays):
@@ -525,8 +531,9 @@ def probe_errors(c, seed, ref, plays):
     takes a literal value; a task play is not named look/drive/editor/trace, has no input at or after its end, sets no
     grader flag, and same-named task plays are identical; == and != take a literal value; a screen measure's threshold
     is calibrated or relative to the start (the frame's luminance moves between machines), and so is a pieces measure's
-    triangles (they depend on the meshes a build chose); a calibrated threshold needs seed.reference and a
-    start-relative one a seed."""
+    triangles (they depend on the meshes a build chose) and every NEVER_LITERAL field; a ground measure takes a point
+    `xy` or a `box` and the fields of that one; a calibrated threshold needs seed.reference and a start-relative one a
+    seed."""
     errs, n = [], c.get('name')
     play = c.get('play')
     measure = c.get('measure') if isinstance(c.get('measure'), dict) else {}
@@ -563,6 +570,19 @@ def probe_errors(c, seed, ref, plays):
     if probe == 'pieces' and measure.get('field') in PIECE_TRIANGLES and not rel:
         errs.append(f'check {n}: how many triangles a fair build draws depends on the meshes it chose, so a pieces '
                     "measure's triangles threshold is calibrated or relative to the start, never a literal value")
+    if measure.get('field') in NEVER_LITERAL.get(probe, ()) and not rel:
+        errs.append(f"check {n}: a {probe} measure's {measure.get('field')} depends on what a build chose, so its "
+                    'threshold is calibrated or relative to the start, never a literal value')
+    if probe == 'ground':
+        xy, box, field = measure.get('xy'), measure.get('box'), measure.get('field')
+        if (xy is None) == (box is None):
+            errs.append(f'check {n}: a ground measure takes a point `xy` or a `box`, one of them')
+        elif xy is not None and field not in GROUND_POINT:
+            errs.append(f"check {n}: a ground measure at a point reads {', '.join(GROUND_POINT)}")
+        elif box is not None and field not in GROUND_BOX:
+            errs.append(f"check {n}: a ground measure over a box reads {', '.join(GROUND_BOX)}")
+        elif box is not None and isinstance(box, list) and len(box) == 4 and not (box[0] < box[2] and box[1] < box[3]):
+            errs.append(f'check {n}: a ground box is [x0, y0, x1, y1] with x0 < x1 and y0 < y1')
     if rel and expect.get('op') in ('==', '!='):
         errs.append(f'check {n}: == and != take a literal value, never a calibrated threshold')
     if rel == 'calibrate' and not ref:

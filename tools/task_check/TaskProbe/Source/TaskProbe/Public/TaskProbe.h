@@ -4,6 +4,8 @@
 // and the player's camera (its location, rotation and field of view) every half second, then probe.json in <dir> and
 // a clean exit. Without -TaskProbe it does nothing. -TaskProbeEvery=<0.1-1.0> sets the sample interval (default 0.5 s);
 // the inputs file may also hold axis events, button clicks, cursor moves and pawn teleports (LoadInputs).
+// -TaskProbeSound: the checker's play that measures audio, launched with sound (muted) and a fixed time step instead of
+// -nosound and -benchmark; the application counts as focused throughout, as under -benchmark.
 // With -TaskProbeQueries=<json file> (format game-probe-queries/1) it also evaluates the checker's queries on every half
 // second sample and adds "measures" (and "query_errors" when a query could not be read) to probe.json; see
 // Private/TaskProbeQueries.h and game-factory's docs/task-probes.md and docs/task-check.md.
@@ -33,7 +35,8 @@ private:
 		Axis,
 		Click,
 		Cursor,
-		Teleport
+		Teleport,
+		TeleportTo
 	};
 
 	struct FScriptedKey
@@ -48,6 +51,10 @@ private:
 		FVector Teleport = FVector::ZeroVector;
 		bool bHasYaw = false;
 		double Yaw = 0.0;
+		TSharedPtr<class FJsonObject> Target;  // teleport_to: the actor select whose nearest match the pawn goes next to
+		TSharedPtr<class FJsonObject> Face;  // teleport_to: the point it faces (default the target)
+		double Distance = 200.0;  // teleport_to: cm from the target, on the pawn's side
+		FVector Offset = FVector::ZeroVector;  // teleport_to: added to that place (cm)
 	};
 
 	bool Tick(float DeltaTime);

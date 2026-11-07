@@ -76,7 +76,14 @@ Words used here:
     - the cursor: `{"t": 1.0, "cursor": [0.5, 0.6]}` moves the mouse cursor to a viewport point (fractions 0-1); a
       following `LeftMouseButton` press clicks there;
     - a teleport: `{"t": 0.2, "teleport": [x, y, z], "yaw": 90}` places the player pawn (cm, facing `yaw`): the way
-      to reach a test spot.
+      to reach a test spot;
+    - a teleport next to an actor: `{"t": 0.2, "teleport_to": <actor select>, "distance": 200, "offset": [x, y, z],
+      "face": <Point>}` places the pawn `distance` cm (default 200) from the actor the select matches nearest to it, on
+      the pawn's side and level with it, plus `offset` (default none), facing `face` (a point, section 2.13) or else
+      that actor; the engine's teleport then finds a free spot near there. The way to reach a spot each build chooses
+      itself (the ore a fix placed, a door it moved). No match: nothing happens (the play's log says so).
+  - A play that measures audio (an `audio` measure, section 2.16) runs with sound, muted; every other play runs
+    without (section 2.16).
 - `"editor"`: a headless editor pass over the project as saved; takes only `asset` measures, and `asset` measures
   are taken only there.
 - `"trace"`: the agent's own trace; takes only `trace` measures, and `trace` measures are read only there. Trace
@@ -165,6 +172,13 @@ else first; `pawn_on_screen` = 1 when the pawn's centre projects inside the view
     don't count; no value when the actor draws nothing. World-aligned, so a rotated actor's extent mixes its own axes
     (an actor turned 90 degrees reports its width as `extent_x`);
   - `hidden` (hidden in game), `collision` (any primitive component collides), `speed` (velocity length);
+  - `simulating`: 1 when any of the actor's primitive components simulates physics (its own body, or any body of a
+    skeletal mesh: pieces that broke loose, a ragdoll);
+  - `spread` (cm): how far apart the actor's parts are, the diagonal of the world-aligned box around their centres:
+    each mesh component `extent_*` counts by its bounds centre, a skeletal mesh with several physics bodies by each
+    body's place; 0 with one part, no value when it draws nothing. A whole crate reads its pieces' own layout; one
+    broken into pieces that fell apart reads more, though its pieces stay drawn and tagged. **Its threshold is
+    calibrated or relative to the start, never a literal value**;
   - `prop:<Component>.<Property>[.<Sub>]` or `prop:<Property>`: read by reflection. Numbers and booleans as numbers,
     enums as their index, object references as 1 when set, strings and names through `match`. A component by name or
     class (`SpringArm`, `CharacterMovement`, `StaticMeshComponent0`); an array element as `Materials[0]`;
@@ -184,9 +198,22 @@ else first; `pawn_on_screen` = 1 when the pawn's centre projects inside the view
 ### 2.5 `components`: components in the world
 
 `{"probe": "components", "select": {"class": "NiagaraComponent", "owner": <actor select>, "near": ...}, "field":
-"count|active|visible", ...}`: registered components of a class (particle systems, decals, audio), optionally of an
-owner actor and near a point, so effects that are not actors count too. An instanced mesh component is one component
-however many instances it draws: count placed meshes with `pieces` (section 2.14).
+"count|active|visible|...", ...}`: registered components of a class (particle systems, decals, audio, lights, the
+moving parts of an actor), optionally of an owner actor and near a point, so effects that are not actors count too.
+An instanced mesh component is one component however many instances it draws: count placed meshes with `pieces`
+(section 2.14).
+
+- `field`: `count`; `active`; `visible` (visible, not hidden in game, its actor not hidden);
+- `x`, `y`, `z` (cm) and `speed` (cm/s) of a scene component, as actors have them: `speed` is its physics body's while
+  it simulates, else its own velocity (as a movement component sets it), else how far it moved since the previous
+  sample (no value the first time it is seen). Cars that are components of one road actor read here;
+- `extent_x`, `extent_y`, `extent_z` (a primitive's world bounds half-size, cm) and `simulating` (it simulates
+  physics; a skeletal mesh when any of its bodies does);
+- `intensity` (a light's own intensity, in its units) and `on` (1 when the light lights the scene: registered,
+  affecting the world, visible, not hidden in game, its actor not hidden, of an intensity above 0; the `light`
+  probe counts the same lights). A lamp switched off by intensity 0, by hiding it or by hiding its actor reads 0.
+- **`intensity` and `extent_*` thresholds are calibrated or relative to the start, never a literal value**; `on`,
+  `simulating`, positions and speeds take a literal.
 
 ### 2.6 `widgets`: the UI on screen
 
@@ -198,6 +225,9 @@ however many instances it draws: count placed meshes with `pieces` (section 2.14
 - Slate HUDs: `{"slate": "STextBlock"}` selects Slate widgets under the game viewport by type (STextBlock, SImage,
   SProgressBar, or a game's own S... type), optionally with `"text": "<regex>"`. Widgets that paint everything in their
   own OnPaint, and AHUD canvas drawing, are not measurable.
+- `"visible": true` in the select (UMG or Slate) keeps only the widgets the `visible` field reads 1 for: never a
+  collapsed or hidden widget, nor one under a collapsed or hidden parent, so `count` counts what is on screen (a
+  warning bar's shown messages, not the ones the game keeps collapsed).
 - `field`: `count`; `visible` (visible, and its parents visible); `text` (a TextBlock's text, with `match`); `percent`
   (a ProgressBar); `has_brush` (an Image's brush resource is set); `brush` (the brush resource's path, with `match`);
   `x`, `y`, `w`, `h` (the widget's rectangle in viewport fractions 0-1, from its cached geometry, whatever anchor or
@@ -211,6 +241,10 @@ however many instances it draws: count placed meshes with `pieces` (section 2.14
   trace toward the light; the sky light by its intensity), each with a visibility trace from the light;
 - `exposure`: the auto-exposure the player's camera settled on (as a scale);
 - `brightness`: `illuminance * exposure`, what the player sees at that point.
+
+A light counts when the renderer draws it: registered, affecting the world, visible, not hidden in game, its actor not
+hidden, of an intensity above 0 (`grading`'s sun and sky the same). Before 2026-11-07 a light hidden in game still
+counted.
 
 It sees no post-processing beyond auto-exposure (no exposure bias curve, colour grade, vignette, ambient occlusion,
 bloom); for what reaches the screen, use `screen` (section 2.15).
@@ -323,6 +357,50 @@ measures light arriving at a point and sees none of that.
   Two plays of one build on one machine read the same to about 1e-5. Auto-exposure takes a few seconds to settle after
   the start and after a teleport: put the window after it.
 
+### 2.16 `audio`: what the player hears
+
+```json
+{"probe": "audio", "select": {"sound": "Amb_Jungle*", "sound_class": "Ambience", "owner": {"tag": "Zone2"}},
+ "field": "volume", "window": [4, 8], "agg": "mean"}
+```
+
+The sounds playing, from the audio device itself: a sound a component plays, one played at a location or in 2D,
+music; so ambience a game drives from code reads as well as an `AmbientSound` actor's.
+
+- `select` (optional; none: every sound): `sound` a wildcard on the sound asset's name, `sound_class` a wildcard on
+  its sound class's name or a parent class's, `owner` an actor select its owner (the actor of the component that
+  plays it) is in.
+- Each sound reads its **volume at the listener** (the player's camera, or what the game listens from): its wave
+  instances' volume (its own, its class's and mixes', the game's multipliers) times their distance and occlusion
+  attenuation, summed; the output's master volume is left out.
+- `field`: `count` (how many sounds), `audible` (how many at 0.001, -60 dB, or louder), `volume` (their volumes'
+  sum), `max_volume` (the loudest).
+- **A `volume` or `max_volume` threshold is calibrated or relative to the start, never a literal value**: how loud
+  depends on the sounds a build chose. `count` and `audible` take a literal. Compare places by their own plays or
+  windows: teleport into each zone (section 1.1) and read the zone's sound there.
+- A play with an audio measure runs with sound, muted (`-muteaudio`: every sound is mixed, nothing is heard), with what
+  `-benchmark` gave it otherwise (a fixed time step and seed, no ini writes; the plugin keeps the application
+  focused, as `-benchmark` does). Every other play runs with `-nosound -benchmark` as before, so no audio device
+  exists in it and an audio component reads inactive. A machine with no audio output mixes into the engine's null
+  device. With no audio device at all the value is missing, never 0.
+
+### 2.17 `ground`: the lie of the land
+
+```json
+{"probe": "ground", "xy": [1200, -300], "field": "height"}
+{"probe": "ground", "box": [0, 0, 8000, 8000], "grid": 12, "select": {"class": "LandscapeProxy"}, "field": "range"}
+```
+
+- At a point `xy`: `height` (cm), the z where a trace straight down from 2 km up first meets something (the
+  visibility channel, complex collision, every pawn ignored); `hit` (1 when it met anything).
+- Over a `box` `[x0, y0, x1, y1]`, the same on a `grid` x `grid` lattice (2-32, default 8; corners and edges
+  included): `min`, `max`, `mean` of the heights, `range` (max - min, the relief: rolling hills against a flat
+  plain), `hits` (how many points met ground).
+- `select` (an actor select, optional): only those actors are ground; anything else (trees, rocks, roofs) is traced
+  through.
+- **A `range` threshold is calibrated or relative to the start, never a literal value**; heights take a literal, as
+  an actor's `z` does.
+
 ## 3. What gates, and how a probe fails
 
 - **At least one required probe.** Every task has at least one `probe` check with `"required": true` (the default);
@@ -392,6 +470,10 @@ a run on an invalid task is void.
   procedural mesh, has fewer actors and components but as many pieces: count with `pieces`, so a fair build that
   dressed the level another way still passes. When a fair build may also merge them (many props in a few procedural
   sections or one mesh), count the geometry drawn: `visible_triangles`, calibrated or relative to the start.
+- **Off is not hidden from the counts.** A lamp switched off by hiding it or by intensity 0 is still a registered
+  component: read `on` (or the `light` probe, which counts the same lights), not `count` or `visible` of the actor.
+- **A broken object still draws.** A crate broken into pieces may keep every piece drawn and tagged, so `count` and
+  `visible` can't see it go: read `simulating` or `spread` of the crate, calibrated or relative to the start.
 - **A light's direction is a world direction.** `rel_yaw:` reads a component against its own actor, so a fix that turns
   the actor instead of the component reads unchanged. "The moon points the same way" is `world_yaw:`, `world_pitch:` or
   `forward:` of the light component.
