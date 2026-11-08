@@ -1029,7 +1029,7 @@
     },
     "ComponentsMeasure": {
       "additionalProperties": false,
-      "description": "Registered components (docs/task-probes.md, section 2.5): `x`, `y`, `z` and `speed` (cm/s: its physics\nbody's while it simulates, else its own velocity, else how far it moved since the previous sample) of a scene\ncomponent; `extent_x|y|z` (its world bounds' half-size) and `simulating` (its physics, a skeletal mesh's any body)\nof a primitive; `intensity` and `on` (it lights the scene: visible, not hidden in game, its owner not hidden, an\nintensity above 0) of a light; `changed` (1 when the primitive differs from the first sample it was seen in: hidden\nor shown, its world bounds moved, a skinned mesh's pose moved), `bounds_change` and `pose_change` (cm, the amounts\nbehind it); `lit` (1 when it gives off light: a light that lights the scene, or a drawn mesh whose material is\nemissive or unlit and bright) and `glow` (how much, one amount over every kind of source; docs/task-probes.md, sections 2.4 and 2.5), the way\nto check for light whatever a build made it with. `intensity`, `extent_*`, `bounds_change`, `pose_change` and\n`glow` depend on what a build chose, so their threshold is calibrated or relative to the start, never a literal\n(tools/validate-game.py).",
+      "description": "Registered components (docs/task-probes.md, section 2.5): `x`, `y`, `z` and `speed` (cm/s: its physics\nbody's while it simulates, else its own velocity, else how far it moved since the previous sample) of a scene\ncomponent; `extent_x|y|z` (its world bounds' half-size) and `simulating` (its physics, a skeletal mesh's any body)\nof a primitive; `intensity` and `on` (it lights the scene: visible, not hidden in game, its owner not hidden, an\nintensity above 0) of a light; `changed` (1 when the primitive differs from the first sample it was seen in: hidden\nor shown, its world bounds moved, a skinned mesh's pose moved), `bounds_change` and `pose_change` (cm, the amounts\nbehind it); `lit` (1 when it gives off light: a light that lights the scene, or a drawn mesh whose material is\nemissive or unlit and bright, read from its material graph where that evaluates whole and else as rendered) and `glow` (how much, one amount over every kind of source; docs/task-probes.md, sections 2.4 and 2.5), the way\nto check for light whatever a build made it with. `intensity`, `extent_*`, `bounds_change`, `pose_change` and\n`glow` depend on what a build chose, so their threshold is calibrated or relative to the start, never a literal\n(tools/validate-game.py).",
       "properties": {
         "agg": {
           "anyOf": [
@@ -3257,7 +3257,7 @@
     },
     "UiMeasure": {
       "additionalProperties": false,
-      "description": "What the UI shows on screen, whatever draws it (docs/task-probes.md, section 2.18): the elements on screen in the frame drawn right\nafter each sample, from UMG widgets, Slate widgets and the HUD canvas (AHUD DrawText, DrawRect, DrawTexture and the\ncanvas's other draws) alike, only what is drawn (a collapsed or hidden widget is not). `count` (one per element),\n`text` (with `match`), `x`, `y`, `w`, `h` (its rectangle in viewport fractions); `of` combines the elements\n`select` picks. The way to check what a HUD shows, however a build drew it.",
+      "description": "What the UI shows on screen, whatever draws it (docs/task-probes.md, section 2.18): the elements on screen in the frame drawn right\nafter each sample, from UMG widgets, Slate widgets and the HUD canvas (AHUD DrawText, DrawRect, DrawTexture,\nDrawLine, K2_DrawBox and the canvas's other draws) alike, only what is drawn (a collapsed or hidden widget is not).\n`count` (one per element), `text` (with `match`; digits drawn as seven-segment strokes read as text too), `x`, `y`, `w`, `h` (its rectangle in viewport fractions); `of` combines the elements\n`select` picks. The way to check what a HUD shows, however a build drew it.",
       "properties": {
         "agg": {
           "anyOf": [
@@ -3413,7 +3413,7 @@
     },
     "UiSelect": {
       "additionalProperties": false,
-      "description": "Which of the UI elements on screen (docs/task-probes.md, section 2.18): `kind` (text, box, image), `text` (a regular expression the\nelement's text must match; text elements only) and `rect` [x0, y0, x1, y1] in viewport fractions (the element's\ncentre inside); none: every element on screen.",
+      "description": "Which of the UI elements on screen (docs/task-probes.md, section 2.18): `kind` (text, box, image, line), `text` (a regular expression\nthe element's text must match; text elements only) and `rect` [x0, y0, x1, y1] in viewport fractions (the element's\ncentre inside); none: every element on screen.",
       "properties": {
         "kind": {
           "anyOf": [
@@ -3421,7 +3421,8 @@
               "enum": [
                 "text",
                 "box",
-                "image"
+                "image",
+                "line"
               ],
               "type": "string"
             },

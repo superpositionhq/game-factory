@@ -634,7 +634,8 @@ class UiWhateverDrawsIt(unittest.TestCase):
                           ({"probe": "ui", "select": {"kind": "box", "text": "x"}, "field": "count"}, "picks text"),
                           ({"probe": "ui", "field": "source"}, "allowed"),
                           ({"probe": "ui", "field": "kind"}, "allowed"),
-                          ({"probe": "ui", "select": {"kind": "line"}, "field": "count"}, ""),
+                          ({"probe": "ui", "select": {"kind": "line", "text": "1"}, "field": "count"}, "picks text"),
+                          ({"probe": "ui", "select": {"kind": "stroke"}, "field": "count"}, ""),
                           ({"probe": "ui", "select": {"source": "canvas"}, "field": "count"}, "")]:
             with self.assertRaisesRegex(ValueError, said, msg=json.dumps(bad)):
                 task_with(probe(measure=bad))
@@ -664,6 +665,24 @@ class UiWhateverDrawsIt(unittest.TestCase):
         many = actors_play(count, [[{"count": 1}] * 200])
         many["measures"][probes.query_id(probes.needs(count)[0])][0]["total"] = 260
         self.assertEqual(probes.reduce(count, many), 260, "every element counts, past the rows cap")
+
+    def test_lines_count_by_rect_and_digits_drawn_with_lines_read_as_text(self):
+        # one sample as the plugin reads a canvas HUD that draws "120" in seven-segment strokes and an outlined box:
+        # each stroke a line, the outline one line, and the strokes read as digits one more text element
+        strokes = [{"text": None, "x": 0.104 + 0.004 * i, "y": 0.278, "w": 0.002, "h": 0.035, "source": "canvas",
+                    "kind": "line"} for i in range(13)]
+        outline = {"text": None, "x": 0.104, "y": 0.406, "w": 0.209, "h": 0.057, "source": "canvas", "kind": "line"}
+        number = {"text": "120", "x": 0.124, "y": 0.276, "w": 0.073, "h": 0.078, "source": "canvas", "kind": "text"}
+        for measure in ({"probe": "ui", "select": {"kind": "line", "rect": [0.09, 0.26, 0.2, 0.37]}, "field": "count"},
+                        {"probe": "ui", "select": {"kind": "line"}, "field": "x", "of": "min"}):
+            task_with(probe(measure=measure, expect={"op": ">=", "value": 1}))
+        lines = m(probe="ui", select={"kind": "line", "rect": [0.09, 0.26, 0.2, 0.37]}, field="count")
+        self.assertEqual(lines["select"], {"kind": "line", "rect": [0.09, 0.26, 0.2, 0.37]})
+        self.assertEqual(probes.reduce(lines, actors_play(lines, [strokes])), 13)
+        read = m(**{**UI_TEXT, "match": r"^120$"})
+        self.assertEqual(probes.reduce(read, actors_play(read, [[number]])), 1)
+        every = m(probe="ui", field="count")
+        self.assertEqual(probes.reduce(every, actors_play(every, [strokes + [outline, number]])), 15)
 
 
 class Angles(unittest.TestCase):
