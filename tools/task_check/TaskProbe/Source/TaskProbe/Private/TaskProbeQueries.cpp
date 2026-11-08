@@ -58,6 +58,7 @@
 #include "Engine/TextureRenderTarget2D.h"
 #include "EngineFontServices.h"
 #include "EngineUtils.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Fonts/FontCache.h"
 #include "GameFramework/HUD.h"
 #include "GameFramework/Pawn.h"
@@ -128,6 +129,7 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Notifications/SProgressBar.h"
 #include "Widgets/SViewport.h"
+#include "Widgets/SWindow.h"
 #include "Widgets/Text/SMultiLineEditableText.h"
 #include "Widgets/Text/SRichTextBlock.h"
 #include "Widgets/Text/STextBlock.h"
@@ -4082,6 +4084,1090 @@ static TSharedPtr<FJsonValue> UiField(const FUiElement& E, const FString& F)
 	}
 	return Null();
 }
+
+// Text read from the frame as drawn (UiOcr): the fallback for text no reading above reads, whatever drew it (lines,
+// textures, materials, widgets that paint their own text). Only a ui query that asks for text inside a rect reads it:
+// the frame is captured after the UI is drawn, cropped to the rect, and read here. The reader is small and strict:
+// the text must stand out from an even background in one colour; its marks are split into lines and glyphs, and each
+// glyph is matched against the centre lines of 0-9, A-Z and a few signs (each in the shapes stroke fonts draw them:
+// plain strokes, cut corners, segments, slashed zeros, diagonal 1, 4 and 7). A glyph reads only when one character
+// matches it closely and no other comes near; anything else (a glyph that fits two characters, an unknown mark, a
+// line cut by the rect, a busy background) reads nothing for that line rather than a guess.
+
+struct FOcrPoint
+{
+	double X = 0.0, Y = 0.0;
+};
+
+/** One character's shape: its centre-line segments in the normalised glyph space (OcrNormal), points along them, and
+ *  the distance from every cell of the glyph grid to them. */
+struct FOcrShape
+{
+	TCHAR Char = 0;
+	double Aspect = 0.0;  // max(width, 0.3 height) / height of its centre lines
+	double Step = 0.0;  // the length (in heights) each sample stands for
+	bool bSquare = false;  // it has a square corner (an upright and a level line meeting): a segment font's shape
+	TArray<FOcrPoint> Samples;
+	TArray<float> Dist;
+};
+
+/** One line of text read in an image: its text and its pixel box (x0, y0 inclusive; x1, y1 exclusive). */
+struct FOcrLine
+{
+	FString Text;
+	int32 X0 = 0, Y0 = 0, X1 = 0, Y1 = 0;
+};
+
+// the glyph grid: normalised x (centred, a glyph's width scaled to OcrWidth) and y (0 top, 1 bottom), with a margin
+static constexpr double OcrWidth = 0.6;
+static constexpr double OcrGridX0 = -0.5, OcrGridY0 = -0.25, OcrCell = 0.02;
+static constexpr int32 OcrGridW = 50, OcrGridH = 75;
+// reading a glyph (OcrGlyphScores, OcrGlyphDecide): the loose distance's base (in heights), the tight one's share of it, how much a shape
+// may miss and still fit (loose) and in detail (tight), how much every other character must miss (loose) and by how
+// much more (tight)
+static constexpr double OcrLoose = 0.04, OcrTight = 0.6, OcrFits = 0.1, OcrDetail = 0.4, OcrApart = 0.03, OcrMargin = 0.2;
+// how much worse in detail a glyph's square-cornered shapes must be for it to show cut or round corners
+static constexpr double OcrCorner = 0.08;
+// the marks' cut, a share of the way from the background to the ink
+static constexpr double OcrCut = 0.33;
+
+// Character shapes as centre lines on a 4 x 6 box (x right, y down): polylines of "x,y" points split by ';'. A
+// character has every shape it is commonly drawn in, so characters that look alike in some font (0, O, D; 5, S;
+// 8, B; 1, I) all match such a glyph and it reads nothing.
+static const struct
+{
+	TCHAR Char;
+	const char* Lines;
+} OcrShapeDefs[] = {
+	{TEXT('0'), "1,0 3,0 4,1 4,5 3,6 1,6 0,5 0,1 1,0"},
+	{TEXT('0'), "0,0 4,0 4,6 0,6 0,0"},
+	{TEXT('0'), "1.5,0 2.5,0 4,1.5 4,4.5 2.5,6 1.5,6 0,4.5 0,1.5 1.5,0"},
+	{TEXT('0'), "1,0 3,0 4,1 4,5 3,6 1,6 0,5 0,1 1,0;4,1 0,5"},
+	{TEXT('0'), "1,0 3,0 4,1 4,5 3,6 1,6 0,5 0,1 1,0;3,1.5 1,4.5"},
+	{TEXT('0'), "0,0 4,0 4,6 0,6 0,0;4,0 0,6"},
+	{TEXT('0'), "1.5,0 2.5,0 4,1.5 4,4.5 2.5,6 1.5,6 0,4.5 0,1.5 1.5,0;3.5,1 0.5,5"},
+	{TEXT('O'), "1,0 3,0 4,1 4,5 3,6 1,6 0,5 0,1 1,0"},
+	{TEXT('O'), "0,0 4,0 4,6 0,6 0,0"},
+	{TEXT('O'), "1.5,0 2.5,0 4,1.5 4,4.5 2.5,6 1.5,6 0,4.5 0,1.5 1.5,0"},
+	{TEXT('D'), "0,0 2.5,0 4,1.5 4,4.5 2.5,6 0,6 0,0"},
+	{TEXT('D'), "0,0 4,0 4,6 0,6 0,0"},
+	{TEXT('Q'), "1,0 3,0 4,1 4,5 3,6 1,6 0,5 0,1 1,0;2.5,4.5 4,6"},
+	{TEXT('Q'), "0,0 4,0 4,6 0,6 0,0;2.5,4.5 4,6"},
+	{TEXT('1'), "2,0 2,6"},
+	{TEXT('1'), "1,1 2,0 2,6"},
+	{TEXT('1'), "0.5,1.5 2,0 2,6"},
+	{TEXT('1'), "1,1 2,0 2,6;1,6 3,6"},
+	{TEXT('I'), "2,0 2,6"},
+	{TEXT('I'), "1,0 3,0;2,0 2,6;1,6 3,6"},
+	{TEXT('2'), "0,1 1,0 3,0 4,1 4,2 0,6 4,6"},
+	{TEXT('2'), "0,1 1,0 3,0 4,1 4,2.5 0,6 4,6"},
+	{TEXT('2'), "0,0 4,0 4,3 0,3 0,6 4,6"},
+	{TEXT('2'), "0,1 1,0 3,0 4,1 4,2 3,3 1,3 0,4 0,6 4,6"},
+	{TEXT('2'), "0,0 4,0 4,2 0,6 4,6"},
+	{TEXT('Z'), "0,0 4,0 0,6 4,6"},
+	{TEXT('Z'), "0,0 4,0 4,1 0,5 0,6 4,6"},
+	{TEXT('3'), "0,0 4,0 4,6 0,6;0,3 4,3"},
+	{TEXT('3'), "0,1 1,0 3,0 4,1 4,2 3,3 4,4 4,5 3,6 1,6 0,5;1,3 3,3"},
+	{TEXT('3'), "0,1 1,0 3,0 4,1 4,2 3,3 4,4 4,5 3,6 1,6 0,5;2,3 3,3"},
+	{TEXT('3'), "0,0 4,0 2,2.5 3,2.5 4,3.5 4,5 3,6 1,6 0,5"},
+	{TEXT('3'), "0,0 4,0 1.5,3 3,3 4,4 4,5 3,6 0,6"},
+	{TEXT('4'), "3,6 3,0 0,4 4,4"},
+	{TEXT('4'), "3,6 3,0 0,4.5 4,4.5"},
+	{TEXT('4'), "0,0 0,3 4,3;4,0 4,6"},
+	{TEXT('4'), "0,0 0,4 4,4;3,2 3,6"},
+	{TEXT('4'), "2.5,6 2.5,0 0,4 4,4"},
+	{TEXT('5'), "4,0 0,0 0,3 4,3 4,6 0,6"},
+	{TEXT('5'), "4,0 0,0 0,3 3,3 4,4 4,5 3,6 0,6"},
+	{TEXT('5'), "4,0 0,0 0,2.5 3,2.5 4,3.5 4,5 3,6 1,6 0,5"},
+	{TEXT('5'), "4,0 0,0 0,3 3,3 4,4 4,5 3,6 1,6 0,5"},
+	{TEXT('5'), "4,0 1,0 0,1 0,3 3,3 4,4 4,5 3,6 0,6"},
+	{TEXT('5'), "4,0 1,0 0,1 0,2 1,3 3,3 4,4 4,5 3,6 0,6"},
+	{TEXT('S'), "4,1 3,0 1,0 0,1 0,2 1,3 3,3 4,4 4,5 3,6 1,6 0,5"},
+	{TEXT('S'), "4,0 0,0 0,3 4,3 4,6 0,6"},
+	{TEXT('S'), "4,1 3,0 1,0 0,1 0,2 1,3 3,3 4,4 4,5 3,6 0,6"},
+	{TEXT('S'), "4,0.5 3.5,0 1,0 0,1 0,2 1,3 3,3 4,4 4,5 3,6 1,6 0,5"},
+	{TEXT('6'), "4,0 0,0 0,6 4,6 4,3 0,3"},
+	{TEXT('6'), "0,0 0,6 4,6 4,3 0,3"},
+	{TEXT('6'), "3,0 1,0 0,1 0,5 1,6 3,6 4,5 4,4 3,3 0,3"},
+	{TEXT('6'), "4,1 3,0 1,0 0,1 0,5 1,6 3,6 4,5 4,4 3,3 0,3"},
+	{TEXT('6'), "3,0 0,3 0,5 1,6 3,6 4,5 4,4 3,3 0,3"},
+	{TEXT('6'), "4,0 1,0 0,1 0,5 1,6 3,6 4,5 4,4 3,3 0,3"},
+	{TEXT('G'), "4,1 3,0 1,0 0,1 0,5 1,6 3,6 4,5 4,3 2,3"},
+	{TEXT('G'), "4,0 0,0 0,6 4,6 4,3 2,3"},
+	{TEXT('G'), "4,0 1,0 0,1 0,5 1,6 4,6 4,3 2,3"},
+	{TEXT('7'), "0,0 4,0 1,6"},
+	{TEXT('7'), "0,0 4,0 4,6"},
+	{TEXT('7'), "0,1 0,0 4,0 4,6"},
+	{TEXT('7'), "0,0 4,0 4,1 1.5,6"},
+	{TEXT('7'), "0,0 4,0 2,6"},
+	{TEXT('7'), "0,0 4,0 4,1.5 2,6"},
+	{TEXT('8'), "1,0 3,0 4,1 4,2 3,3 1,3 0,2 0,1 1,0;1,3 0,4 0,5 1,6 3,6 4,5 4,4 3,3"},
+	{TEXT('8'), "0,0 4,0 4,6 0,6 0,0;0,3 4,3"},
+	{TEXT('8'), "1,0 3,0 4,1 4,5 3,6 1,6 0,5 0,1 1,0;0,3 4,3"},
+	{TEXT('B'), "0,0 3,0 4,1 4,2 3,3 0,3;3,3 4,4 4,5 3,6 0,6 0,0"},
+	{TEXT('B'), "0,0 4,0 4,6 0,6 0,0;0,3 4,3"},
+	{TEXT('B'), "0,0 3,0 4,1 4,2 3,3 4,4 4,5 3,6 0,6 0,0;0,3 3,3"},
+	{TEXT('9'), "4,3 0,3 0,0 4,0 4,6 0,6"},
+	{TEXT('9'), "4,3 0,3 0,0 4,0 4,6"},
+	{TEXT('9'), "4,3 1,3 0,2 0,1 1,0 3,0 4,1 4,5 3,6 1,6"},
+	{TEXT('9'), "4,3 1,3 0,2 0,1 1,0 3,0 4,1 4,6"},
+	{TEXT('9'), "4,3 1,3 0,2 0,1 1,0 3,0 4,1 4,3 1,6"},
+	{TEXT('9'), "4,3 1,3 0,2 0,1 1,0 3,0 4,1 4,5 3,6 0,6"},
+	{TEXT('A'), "0,6 2,0 4,6;1,3.5 3,3.5"},
+	{TEXT('A'), "0,6 0,1 1,0 3,0 4,1 4,6;0,3 4,3"},
+	{TEXT('A'), "0,6 0,0 4,0 4,6;0,3 4,3"},
+	{TEXT('A'), "0,6 0,2 2,0 4,2 4,6;0,3.5 4,3.5"},
+	{TEXT('A'), "0,6 1.5,0 2.5,0 4,6;0.75,3.5 3.25,3.5"},
+	{TEXT('C'), "4,0 1,0 0,1 0,5 1,6 4,6"},
+	{TEXT('C'), "4,0 0,0 0,6 4,6"},
+	{TEXT('C'), "4,1 3,0 1,0 0,1 0,5 1,6 3,6 4,5"},
+	{TEXT('E'), "4,0 0,0 0,6 4,6;0,3 3,3"},
+	{TEXT('E'), "4,0 0,0 0,6 4,6;0,3 4,3"},
+	{TEXT('F'), "4,0 0,0 0,6;0,3 3,3"},
+	{TEXT('F'), "4,0 0,0 0,6;0,3 4,3"},
+	{TEXT('H'), "0,0 0,6;4,0 4,6;0,3 4,3"},
+	{TEXT('J'), "4,0 4,5 3,6 1,6 0,5 0,4"},
+	{TEXT('J'), "4,0 4,6 0,6 0,4"},
+	{TEXT('J'), "1,0 4,0;3,0 3,5 2,6 1,6 0,5"},
+	{TEXT('K'), "0,0 0,6;4,0 0,3.5;1.5,2.5 4,6"},
+	{TEXT('K'), "0,0 0,6;4,0 0,3 4,6"},
+	{TEXT('K'), "0,0 0,6;0,3 2,3 4,0;2,3 4,6"},
+	{TEXT('L'), "0,0 0,6 4,6"},
+	{TEXT('M'), "0,6 0,0 2,3 4,0 4,6"},
+	{TEXT('M'), "0,6 0,0 2,4 4,0 4,6"},
+	{TEXT('M'), "0,6 0,0 2,2 4,0 4,6"},
+	{TEXT('M'), "0,6 1,0 2,3 3,0 4,6"},
+	{TEXT('M'), "0,6 0,0 2,6 4,0 4,6"},
+	{TEXT('N'), "0,6 0,0 4,6 4,0"},
+	{TEXT('P'), "0,6 0,0 3,0 4,1 4,2 3,3 0,3"},
+	{TEXT('P'), "0,6 0,0 4,0 4,3 0,3"},
+	{TEXT('R'), "0,6 0,0 3,0 4,1 4,2 3,3 0,3;2,3 4,6"},
+	{TEXT('R'), "0,6 0,0 4,0 4,3 0,3;2,3 4,6"},
+	{TEXT('R'), "0,6 0,0 3,0 4,1 4,2 3,3 0,3;3,3 4,4 4,6"},
+	{TEXT('R'), "0,6 0,0 3,0 4,1 4,2 3,3 0,3;1,3 4,6"},
+	{TEXT('T'), "0,0 4,0;2,0 2,6"},
+	{TEXT('U'), "0,0 0,5 1,6 3,6 4,5 4,0"},
+	{TEXT('U'), "0,0 0,6 4,6 4,0"},
+	{TEXT('V'), "0,0 2,6 4,0"},
+	{TEXT('V'), "0,0 0,3 2,6 4,3 4,0"},
+	{TEXT('W'), "0,0 1,6 2,3 3,6 4,0"},
+	{TEXT('W'), "0,0 0,6 2,3 4,6 4,0"},
+	{TEXT('W'), "0,0 1,6 2,2 3,6 4,0"},
+	{TEXT('W'), "0,0 0,6 2,4 4,6 4,0"},
+	{TEXT('X'), "0,0 4,6;4,0 0,6"},
+	{TEXT('Y'), "0,0 2,3 4,0;2,3 2,6"},
+	{TEXT('Y'), "0,0 2,2.5 4,0;2,2.5 2,6"},
+	{TEXT('%'), "4,0 0,6;0,0 1.2,0 1.2,1.5 0,1.5 0,0;2.8,4.5 4,4.5 4,6 2.8,6 2.8,4.5"},
+	{TEXT('%'), "4,0 0,6;0.5,0 1,0 1.5,0.5 1.5,1 1,1.5 0.5,1.5 0,1 0,0.5 0.5,0;3,4.5 3.5,4.5 4,5 4,5.5 3.5,6 3,6 2.5,5.5 2.5,5 3,4.5"},
+	{TEXT('/'), "4,0 0,6"},
+};
+
+static FOcrPoint OcrNormal(double X, double Y, double CentreX, double Top, double ScaleX, double Height)
+{
+	return FOcrPoint{(X - CentreX) / ScaleX * OcrWidth, (Y - Top) / Height};
+}
+
+static int32 OcrCellAt(const FOcrPoint& P)
+{
+	const int32 Cx = FMath::Clamp(FMath::FloorToInt((P.X - OcrGridX0) / OcrCell), 0, OcrGridW - 1);
+	const int32 Cy = FMath::Clamp(FMath::FloorToInt((P.Y - OcrGridY0) / OcrCell), 0, OcrGridH - 1);
+	return Cy * OcrGridW + Cx;
+}
+
+static double OcrSegDist(const FOcrPoint& P, const FOcrPoint& A, const FOcrPoint& B)
+{
+	const double Dx = B.X - A.X, Dy = B.Y - A.Y;
+	const double L = Dx * Dx + Dy * Dy;
+	const double T = L > 0.0 ? FMath::Clamp(((P.X - A.X) * Dx + (P.Y - A.Y) * Dy) / L, 0.0, 1.0) : 0.0;
+	const double Ex = A.X + T * Dx - P.X, Ey = A.Y + T * Dy - P.Y;
+	return FMath::Sqrt(Ex * Ex + Ey * Ey);
+}
+
+/** Every character shape, parsed and laid on the glyph grid once. */
+static const TArray<FOcrShape>& OcrShapes()
+{
+	static TArray<FOcrShape> Shapes;
+	if (!Shapes.IsEmpty())
+	{
+		return Shapes;
+	}
+	for (const auto& Def : OcrShapeDefs)
+	{
+		// parse the polylines into segments
+		TArray<FOcrPoint> A, B;
+		TArray<FOcrPoint> Line;
+		const char* S = Def.Lines;
+		auto Flush = [&]()
+		{
+			for (int32 i = 0; i + 1 < Line.Num(); ++i)
+			{
+				A.Add(Line[i]);
+				B.Add(Line[i + 1]);
+			}
+			Line.Reset();
+		};
+		while (*S)
+		{
+			if (*S == ';')
+			{
+				Flush();
+				++S;
+				continue;
+			}
+			if (*S == ' ')
+			{
+				++S;
+				continue;
+			}
+			double V[2] = {0.0, 0.0};
+			for (int32 k = 0; k < 2; ++k)
+			{
+				double Whole = 0.0, Frac = 0.0, Scale = 1.0;
+				bool bFrac = false;
+				while ((*S >= '0' && *S <= '9') || *S == '.')
+				{
+					if (*S == '.')
+					{
+						bFrac = true;
+					}
+					else if (bFrac)
+					{
+						Scale *= 0.1;
+						Frac += (*S - '0') * Scale;
+					}
+					else
+					{
+						Whole = Whole * 10.0 + (*S - '0');
+					}
+					++S;
+				}
+				V[k] = Whole + Frac;
+				if (k == 0 && *S == ',')
+				{
+					++S;
+				}
+			}
+			Line.Add(FOcrPoint{V[0], V[1]});
+		}
+		Flush();
+		FOcrShape Shape;
+		for (int32 i = 0; i + 1 < A.Num(); ++i)
+		{
+			const bool bJoin = A[i + 1].X == B[i].X && A[i + 1].Y == B[i].Y;
+			const bool bLevelUpright = (A[i].Y == B[i].Y && A[i + 1].X == B[i + 1].X) || (A[i].X == B[i].X && A[i + 1].Y == B[i + 1].Y);
+			Shape.bSquare = Shape.bSquare || (bJoin && bLevelUpright);
+		}
+		double X0 = 1e9, X1 = -1e9, Y0 = 1e9, Y1 = -1e9;
+		for (int32 i = 0; i < A.Num(); ++i)
+		{
+			X0 = FMath::Min(X0, FMath::Min(A[i].X, B[i].X));
+			X1 = FMath::Max(X1, FMath::Max(A[i].X, B[i].X));
+			Y0 = FMath::Min(Y0, FMath::Min(A[i].Y, B[i].Y));
+			Y1 = FMath::Max(Y1, FMath::Max(A[i].Y, B[i].Y));
+		}
+		const double H = FMath::Max(Y1 - Y0, 1e-6);
+		const double Sx = FMath::Max(X1 - X0, 0.3 * H);
+		Shape.Char = Def.Char;
+		Shape.Aspect = Sx / H;
+		for (int32 i = 0; i < A.Num(); ++i)
+		{
+			A[i] = OcrNormal(A[i].X, A[i].Y, (X0 + X1) / 2.0, Y0, Sx, H);
+			B[i] = OcrNormal(B[i].X, B[i].Y, (X0 + X1) / 2.0, Y0, Sx, H);
+			const double Dx = B[i].X - A[i].X, Dy = B[i].Y - A[i].Y;
+			const int32 Steps = FMath::Max(1, FMath::RoundToInt(FMath::Sqrt(Dx * Dx + Dy * Dy) / 0.02));
+			for (int32 k = (i > 0 && A[i].X == B[i - 1].X && A[i].Y == B[i - 1].Y) ? 1 : 0; k <= Steps; ++k)
+			{
+				Shape.Samples.Add(FOcrPoint{A[i].X + Dx * k / Steps, A[i].Y + Dy * k / Steps});
+			}
+		}
+		double Length = 0.0;
+		for (int32 i = 0; i < A.Num(); ++i)
+		{
+			// lengths in heights: x back from the normalised width
+			const double Dx = (B[i].X - A[i].X) / OcrWidth * Sx / H, Dy = B[i].Y - A[i].Y;
+			Length += FMath::Sqrt(Dx * Dx + Dy * Dy);
+		}
+		Shape.Step = Length / FMath::Max(1, Shape.Samples.Num());
+		Shape.Dist.SetNumUninitialized(OcrGridW * OcrGridH);
+		for (int32 Cy = 0; Cy < OcrGridH; ++Cy)
+		{
+			for (int32 Cx = 0; Cx < OcrGridW; ++Cx)
+			{
+				const FOcrPoint P{OcrGridX0 + (Cx + 0.5) * OcrCell, OcrGridY0 + (Cy + 0.5) * OcrCell};
+				double D = 1e9;
+				for (int32 i = 0; i < A.Num(); ++i)
+				{
+					D = FMath::Min(D, OcrSegDist(P, A[i], B[i]));
+				}
+				Shape.Dist[Cy * OcrGridW + Cx] = (float)D;
+			}
+		}
+		Shapes.Add(Shape);
+	}
+	return Shapes;
+}
+
+/** Thins a binary image (1 = mark, a blank border of one pixel) to lines one pixel wide (Zhang-Suen). */
+static void OcrThin(TArray<uint8>& Im, int32 W, int32 H)
+{
+	TArray<int32> Del;
+	bool bChanged = true;
+	while (bChanged)
+	{
+		bChanged = false;
+		for (int32 Pass = 0; Pass < 2; ++Pass)
+		{
+			Del.Reset();
+			for (int32 y = 1; y < H - 1; ++y)
+			{
+				for (int32 x = 1; x < W - 1; ++x)
+				{
+					const int32 i = y * W + x;
+					if (!Im[i])
+					{
+						continue;
+					}
+					const uint8 P[8] = {Im[i - W], Im[i - W + 1], Im[i + 1], Im[i + W + 1], Im[i + W], Im[i + W - 1], Im[i - 1], Im[i - W - 1]};
+					int32 Count = 0, Turns = 0;
+					for (int32 k = 0; k < 8; ++k)
+					{
+						Count += P[k];
+						Turns += (!P[k] && P[(k + 1) % 8]) ? 1 : 0;
+					}
+					if (Count < 2 || Count > 6 || Turns != 1)
+					{
+						continue;
+					}
+					// P: 0 north, 2 east, 4 south, 6 west
+					if (Pass == 0 ? (P[0] && P[2] && P[4]) || (P[2] && P[4] && P[6]) : (P[0] && P[2] && P[6]) || (P[0] && P[4] && P[6]))
+					{
+						continue;
+					}
+					Del.Add(i);
+				}
+			}
+			for (const int32 i : Del)
+			{
+				Im[i] = 0;
+			}
+			bChanged = bChanged || !Del.IsEmpty();
+		}
+	}
+}
+
+/** A connected mark (8-connected pixels), its box (inclusive) and pixels. */
+struct FOcrMark
+{
+	int32 X0 = 0, Y0 = 0, X1 = 0, Y1 = 0;
+	TArray<int32> Pixels;
+	bool bEdge = false;  // touches the image's edge
+	int32 W() const { return X1 - X0 + 1; }
+	int32 H() const { return Y1 - Y0 + 1; }
+};
+
+/** How a glyph scores against one character's shapes (OcrGlyphScores): the best of all its shapes [0], of those
+ *  without square corners [1] and of those with [2]; Fit loose, Detail tight (lengths in heights; lower is better). */
+struct FOcrScore
+{
+	TCHAR Char = 0;
+	double Fit[3] = {1e9, 1e9, 1e9};
+	double Detail[3] = {1e9, 1e9, 1e9};
+	const FOcrShape* Shape[3] = {nullptr, nullptr, nullptr};
+};
+
+/** A glyph: marks side by side merged, its box (inclusive), how it scored, and what it read as (0: nothing). */
+struct FOcrGlyph
+{
+	int32 X0 = 0, Y0 = 0, X1 = 0, Y1 = 0;
+	TArray<int32> Marks;
+	TArray<FOcrScore> Scores;
+	double Stroke = 0.0, CentreX = 0.0, Top = 0.0, ScaleX = 0.0, Height = 0.0, Loose = 0.0;  // its centre lines' frame
+	TCHAR Char = 0;
+	int32 W() const { return X1 - X0 + 1; }
+	int32 H() const { return Y1 - Y0 + 1; }
+};
+
+/** Which pixels are marks: the image's edge must be one even colour (its median), the marks must stand far apart from
+ *  it (Otsu's split of the colour distance to it, the two classes well separated) and be the fewer. False when not. */
+static bool OcrMarks(const TArray<FColor>& Px, int32 W, int32 H, TArray<uint8>& Mask)
+{
+	if (W < 8 || H < 8 || Px.Num() < W * H)
+	{
+		return false;
+	}
+	TArray<int32> Rs, Gs, Bs;
+	auto Edge = [&](int32 x, int32 y)
+	{
+		const FColor& C = Px[y * W + x];
+		Rs.Add(C.R);
+		Gs.Add(C.G);
+		Bs.Add(C.B);
+	};
+	for (int32 x = 0; x < W; ++x)
+	{
+		Edge(x, 0);
+		Edge(x, H - 1);
+	}
+	for (int32 y = 1; y < H - 1; ++y)
+	{
+		Edge(0, y);
+		Edge(W - 1, y);
+	}
+	auto Median = [](TArray<int32>& V)
+	{
+		V.Sort([](int32 L, int32 R) { return L < R; });
+		return V[V.Num() / 2];
+	};
+	const int32 Br = Median(Rs), Bg = Median(Gs), Bb = Median(Bs);
+	TArray<float> D;
+	D.SetNumUninitialized(W * H);
+	int32 Hist[256] = {0};
+	for (int32 i = 0; i < W * H; ++i)
+	{
+		const double Dr = Px[i].R - Br, Dg = Px[i].G - Bg, Db = Px[i].B - Bb;
+		D[i] = (float)FMath::Sqrt((Dr * Dr + Dg * Dg + Db * Db) / 3.0);
+		++Hist[FMath::Clamp(FMath::FloorToInt(D[i]), 0, 255)];
+	}
+	// Otsu's split
+	const double N = (double)W * H;
+	double Sum = 0.0, SumSq = 0.0;
+	for (int32 k = 0; k < 256; ++k)
+	{
+		Sum += (k + 0.5) * Hist[k];
+		SumSq += (k + 0.5) * (k + 0.5) * Hist[k];
+	}
+	const double Total = SumSq / N - (Sum / N) * (Sum / N);
+	double BestBetween = -1.0, Below = 0.0, SumBelow = 0.0;
+	int32 Split = 0;
+	for (int32 k = 0; k < 255; ++k)
+	{
+		Below += Hist[k];
+		SumBelow += (k + 0.5) * Hist[k];
+		if (Below <= 0.0 || Below >= N)
+		{
+			continue;
+		}
+		const double M0 = SumBelow / Below, M1 = (Sum - SumBelow) / (N - Below);
+		const double Between = Below * (N - Below) / (N * N) * (M1 - M0) * (M1 - M0);
+		if (Between > BestBetween)
+		{
+			BestBetween = Between;
+			Split = k + 1;  // marks: distance >= Split
+		}
+	}
+	if (Total <= 1.0 || BestBetween / Total < 0.8)
+	{
+		return false;  // no clear split between the background and the marks
+	}
+	TArray<float> Fore, Back;
+	for (int32 i = 0; i < W * H; ++i)
+	{
+		(D[i] >= Split ? Fore : Back).Add(D[i]);
+	}
+	if (Fore.Num() < 8 || Fore.Num() > 0.45 * N)
+	{
+		return false;
+	}
+	Fore.Sort([](float L, float R) { return L < R; });
+	Back.Sort([](float L, float R) { return L < R; });
+	const double Ink = Fore[(int32)(Fore.Num() * 0.9)];
+	const double Paper = Back[(int32)(Back.Num() * 0.98)];
+	if (Ink < 40.0 || Ink < 3.0 * Paper)
+	{
+		return false;  // too faint, or a background that varies
+	}
+	// marks at a third of the way from the background to the ink (a thin line half on two rows still reads); faint
+	// ink from a sixth of the way, to see strokes the marks lost
+	const double Cut = Paper + OcrCut * (Ink - Paper), Faint = Paper + 0.16 * (Ink - Paper);
+	Mask.SetNumZeroed(W * H);
+	int32 EdgeMarks = 0;
+	for (int32 i = 0; i < W * H; ++i)
+	{
+		Mask[i] = (uint8)(D[i] >= Cut ? 2 : (D[i] >= Faint ? 1 : 0));
+	}
+	for (int32 x = 0; x < W; ++x)
+	{
+		EdgeMarks += (Mask[x] == 2) + (Mask[(H - 1) * W + x] == 2);
+	}
+	for (int32 y = 1; y < H - 1; ++y)
+	{
+		EdgeMarks += (Mask[y * W] == 2) + (Mask[y * W + W - 1] == 2);
+	}
+	return EdgeMarks <= 0.1 * (2 * W + 2 * H);
+}
+
+/** Scores one glyph against every character shape (FOcrGlyph::Scores), by how much of the glyph's centre lines lies
+ *  far from the shape's and how much of the shape's lies far from the glyph's (lengths in capital heights): at a loose
+ *  distance whether it fits at all (the larger of the two), at a tight one the detail that tells near shapes apart
+ *  (the two added). False when the glyph is too small or too bold to read. */
+static bool OcrGlyphScores(FOcrGlyph& G, const TArray<FOcrMark>& Marks, int32 W)
+{
+	// the glyph alone, with a blank border, thinned to its centre lines
+	const int32 Gw = G.W() + 2, Gh = G.H() + 2;
+	TArray<uint8> Im;
+	Im.SetNumZeroed(Gw * Gh);
+	int32 Area = 0;
+	for (const int32 m : G.Marks)
+	{
+		for (const int32 p : Marks[m].Pixels)
+		{
+			Im[(p / W - G.Y0 + 1) * Gw + p % W - G.X0 + 1] = 1;
+			++Area;
+		}
+	}
+	OcrThin(Im, Gw, Gh);
+	TArray<FOcrPoint> Skel;
+	for (int32 y = 0; y < Gh; ++y)
+	{
+		for (int32 x = 0; x < Gw; ++x)
+		{
+			if (Im[y * Gw + x])
+			{
+				Skel.Add(FOcrPoint{x - 1 + 0.5, y - 1 + 0.5});
+			}
+		}
+	}
+	if (Skel.Num() < 4)
+	{
+		return false;
+	}
+	// stroke width, and the box of the centre lines (the glyph's box less half a stroke on each side)
+	G.Stroke = FMath::Max(1.0, (double)Area / Skel.Num());
+	const double Cx0 = 0.5 * FMath::Min(G.Stroke, (double)G.W());
+	G.CentreX = G.W() / 2.0;
+	G.Top = 0.5 * G.Stroke;
+	G.Height = G.H() - G.Stroke;
+	if (G.Height < 4.0)
+	{
+		return false;
+	}
+	// how far a centre line may stray (in heights): a little, a pixel's rounding and half a stroke. A glyph too small
+	// or too bold for that to stay small reads nothing.
+	G.Loose = OcrLoose + 0.6 / G.Height + 0.5 * G.Stroke / G.Height;
+	const double Tight = OcrTight * G.Loose;
+	if (G.Loose > 0.15)
+	{
+		return false;
+	}
+	G.ScaleX = FMath::Max(G.W() - 2.0 * Cx0, 0.3 * G.Height);
+	const double Aspect = G.ScaleX / G.Height;
+	for (FOcrPoint& P : Skel)
+	{
+		P = OcrNormal(P.X, P.Y, G.CentreX, G.Top, G.ScaleX, G.Height);
+	}
+	// distance from every cell of the grid to the glyph's centre lines
+	TArray<float> Dist;
+	Dist.SetNumUninitialized(OcrGridW * OcrGridH);
+	for (int32 Cy = 0; Cy < OcrGridH; ++Cy)
+	{
+		for (int32 Cx = 0; Cx < OcrGridW; ++Cx)
+		{
+			const double Px = OcrGridX0 + (Cx + 0.5) * OcrCell, Py = OcrGridY0 + (Cy + 0.5) * OcrCell;
+			double D = 1e9;
+			for (const FOcrPoint& S : Skel)
+			{
+				D = FMath::Min(D, (S.X - Px) * (S.X - Px) + (S.Y - Py) * (S.Y - Py));
+			}
+			Dist[Cy * OcrGridW + Cx] = (float)FMath::Sqrt(D);
+		}
+	}
+	// each character's best shapes: of all, of those without square corners, of those with
+	for (const FOcrShape& Shape : OcrShapes())
+	{
+		if (FMath::Max(Aspect, Shape.Aspect) / FMath::Min(Aspect, Shape.Aspect) > 1.8)
+		{
+			continue;  // far too narrow or too wide for it
+		}
+		int32 FarG = 0, FarS = 0, OffG = 0, OffS = 0;
+		for (const FOcrPoint& P : Skel)
+		{
+			const double D = Shape.Dist[OcrCellAt(P)];
+			FarG += D > G.Loose ? 1 : 0;
+			OffG += D > Tight ? 1 : 0;
+		}
+		for (const FOcrPoint& P : Shape.Samples)
+		{
+			const double D = Dist[OcrCellAt(P)];
+			FarS += D > G.Loose ? 1 : 0;
+			OffS += D > Tight ? 1 : 0;
+		}
+		const double L = FMath::Max(FarG / G.Height, FarS * Shape.Step), T = OffG / G.Height + OffS * Shape.Step;
+		int32 c = 0;
+		while (c < G.Scores.Num() && G.Scores[c].Char != Shape.Char)
+		{
+			++c;
+		}
+		if (c == G.Scores.Num())
+		{
+			FOcrScore S;
+			S.Char = Shape.Char;
+			G.Scores.Add(S);
+		}
+		FOcrScore& S = G.Scores[c];
+		S.Fit[0] = FMath::Min(S.Fit[0], L);
+		if (T < S.Detail[0])
+		{
+			S.Detail[0] = T;
+			S.Shape[0] = &Shape;
+		}
+		const int32 k = Shape.bSquare ? 2 : 1;
+		S.Fit[k] = FMath::Min(S.Fit[k], L);
+		if (T < S.Detail[k])
+		{
+			S.Detail[k] = T;
+			S.Shape[k] = &Shape;
+		}
+	}
+	return true;
+}
+
+/** Reads a scored glyph: the character whose shape fits and is best in detail, when every other character's best
+ *  shape both misses by some length when loose and is far worse in detail, and no ink around the glyph (faint ink
+ *  too) lies away from that shape (a stroke the marks lost); else 0. When the glyph shows cut or round corners (its
+ *  character's best shape has none square, and its square-cornered shapes are worse in detail), other characters'
+ *  square-cornered shapes are not near it: a 5 with cut corners is not a seven-segment S, while a 5 drawn with
+ *  square segments is one, and reads nothing. */
+static TCHAR OcrGlyphDecide(const FOcrGlyph& G, const TArray<uint8>& Mask, int32 W, int32 H)
+{
+	int32 Best = INDEX_NONE;
+	for (int32 c = 0; c < G.Scores.Num(); ++c)
+	{
+		if (G.Scores[c].Fit[0] <= OcrFits && (Best == INDEX_NONE || G.Scores[c].Detail[0] < G.Scores[Best].Detail[0]))
+		{
+			Best = c;
+		}
+	}
+	if (Best == INDEX_NONE || G.Scores[Best].Detail[0] > OcrDetail)
+	{
+		return 0;  // nothing fits, or nothing fits in detail
+	}
+	const FOcrScore& B = G.Scores[Best];
+	const bool bCut = !B.Shape[0]->bSquare && B.Shape[2] && B.Detail[2] - B.Detail[0] >= OcrCorner;
+	const int32 k = bCut ? 1 : 0;
+	for (int32 c = 0; c < G.Scores.Num(); ++c)
+	{
+		const FOcrScore& S = G.Scores[c];
+		if (c != Best && S.Shape[k] && (S.Fit[k] < OcrApart || S.Detail[k] - B.Detail[0] < OcrMargin))
+		{
+			return 0;  // another character comes near
+		}
+	}
+	// ink around the glyph (faint too) away from the lines of every shape of the character: a stroke the marks lost,
+	// so it may be another
+	TArray<FOcrPoint> Ink;
+	for (int32 y = FMath::Max(0, G.Y0 - 1); y <= FMath::Min(H - 1, G.Y1 + 1); ++y)
+	{
+		for (int32 x = FMath::Max(0, G.X0 - 1); x <= FMath::Min(W - 1, G.X1 + 1); ++x)
+		{
+			if (Mask[y * W + x])
+			{
+				Ink.Add(OcrNormal(x - G.X0 + 0.5, y - G.Y0 + 0.5, G.CentreX, G.Top, G.ScaleX, G.Height));
+			}
+		}
+	}
+	int32 Stray = Ink.Num();
+	for (const FOcrShape& Shape : OcrShapes())
+	{
+		if (Shape.Char != B.Char)
+		{
+			continue;
+		}
+		int32 Far = 0;
+		for (const FOcrPoint& P : Ink)
+		{
+			Far += Shape.Dist[OcrCellAt(P)] > G.Loose + 0.5 * G.Stroke / G.Height ? 1 : 0;
+		}
+		Stray = FMath::Min(Stray, Far);
+	}
+	return Stray <= FMath::Max(2.0, 0.03 * Ink.Num()) ? B.Char : 0;
+}
+
+/** A glyph shorter than the line's capitals: a full stop, a hyphen or a colon by its place and shape, else 0. */
+static TCHAR OcrSmallChar(const FOcrGlyph& G, const TArray<FOcrMark>& Marks, int32 Top, int32 Bottom)
+{
+	const double Cap = Bottom - Top + 1;
+	auto Dot = [&](const FOcrMark& M)
+	{
+		const double Fill = (double)M.Pixels.Num() / (M.W() * M.H());
+		return M.H() <= 0.3 * Cap && M.W() <= 0.35 * Cap && M.W() <= 2.5 * M.H() && M.H() <= 2.5 * M.W() && Fill >= 0.5;
+	};
+	if (G.Marks.Num() == 1)
+	{
+		const FOcrMark& M = Marks[G.Marks[0]];
+		const double Fill = (double)M.Pixels.Num() / (M.W() * M.H());
+		if (Dot(M) && Bottom - M.Y1 <= 0.12 * Cap)
+		{
+			return TEXT('.');
+		}
+		const double Mid = (M.Y0 + M.Y1) / 2.0 - Top;
+		if (M.H() <= 0.25 * Cap && M.W() >= 2 * M.H() && M.W() >= 0.25 * Cap && M.W() <= 0.9 * Cap && Fill >= 0.6 && Mid >= 0.3 * Cap &&
+			Mid <= 0.7 * Cap)
+		{
+			return TEXT('-');
+		}
+	}
+	if (G.Marks.Num() == 2)
+	{
+		const FOcrMark& A = Marks[G.Marks[0]].Y0 < Marks[G.Marks[1]].Y0 ? Marks[G.Marks[0]] : Marks[G.Marks[1]];
+		const FOcrMark& B = &A == &Marks[G.Marks[0]] ? Marks[G.Marks[1]] : Marks[G.Marks[0]];
+		if (Dot(A) && Dot(B) && B.Y0 > A.Y1 && Bottom - B.Y1 <= 0.12 * Cap && A.Y0 - Top >= 0.15 * Cap)
+		{
+			return TEXT(':');
+		}
+	}
+	return 0;
+}
+
+/** Reads the text lines in an image (W x H): each line of glyphs read whole, or not at all. */
+static void OcrRead(const TArray<FColor>& Px, int32 W, int32 H, TArray<FOcrLine>& Out)
+{
+	TArray<uint8> Mask;
+	if (!OcrMarks(Px, W, H, Mask))
+	{
+		return;
+	}
+	// connected marks
+	TArray<FOcrMark> All;
+	TArray<int32> Label;
+	Label.Init(INDEX_NONE, W * H);
+	TArray<int32> Stack;
+	for (int32 Start = 0; Start < W * H; ++Start)
+	{
+		if (Mask[Start] != 2 || Label[Start] != INDEX_NONE)
+		{
+			continue;
+		}
+		FOcrMark M;
+		M.X0 = M.X1 = Start % W;
+		M.Y0 = M.Y1 = Start / W;
+		const int32 Id = All.Num();
+		Stack.Reset();
+		Stack.Add(Start);
+		Label[Start] = Id;
+		while (!Stack.IsEmpty())
+		{
+			const int32 p = Stack.Pop();
+			M.Pixels.Add(p);
+			const int32 x = p % W, y = p / W;
+			M.X0 = FMath::Min(M.X0, x);
+			M.X1 = FMath::Max(M.X1, x);
+			M.Y0 = FMath::Min(M.Y0, y);
+			M.Y1 = FMath::Max(M.Y1, y);
+			for (int32 dy = -1; dy <= 1; ++dy)
+			{
+				for (int32 dx = -1; dx <= 1; ++dx)
+				{
+					const int32 nx = x + dx, ny = y + dy;
+					if (nx < 0 || ny < 0 || nx >= W || ny >= H)
+					{
+						continue;
+					}
+					const int32 q = ny * W + nx;
+					if (Mask[q] == 2 && Label[q] == INDEX_NONE)
+					{
+						Label[q] = Id;
+						Stack.Add(q);
+					}
+				}
+			}
+		}
+		M.bEdge = M.X0 == 0 || M.Y0 == 0 || M.X1 == W - 1 || M.Y1 == H - 1;
+		All.Add(M);
+	}
+	// set aside: specks (two pixels or less), frames (a hollow mark around others a quarter to 0.7 of its height) and
+	// rules (long marks a fifth of a glyph's height thin or less), and marks the edge cuts. Each refuses a line it
+	// crosses, unless it is around the line or a speck inside one of its glyphs.
+	TArray<int32> Kept, Aside;
+	TArray<int32> Heights;
+	for (const FOcrMark& M : All)
+	{
+		if (M.Pixels.Num() > 2 && M.W() < 4 * M.H())
+		{
+			Heights.Add(M.H());
+		}
+	}
+	Heights.Sort([](int32 L, int32 R) { return L < R; });
+	const int32 Typical = Heights.IsEmpty() ? 0 : Heights[Heights.Num() / 2];
+	for (int32 i = 0; i < All.Num(); ++i)
+	{
+		const FOcrMark& M = All[i];
+		bool bAside = M.Pixels.Num() <= 2 || M.bEdge;
+		if (!bAside && Typical > 0 && M.W() >= 2.5 * Typical && M.H() <= FMath::Max(2.0, 0.2 * Typical))
+		{
+			bAside = true;  // a rule
+		}
+		if (!bAside)
+		{
+			int32 Inner = 0;
+			for (int32 j = 0; j < All.Num(); ++j)
+			{
+				const FOcrMark& O = All[j];
+				if (j != i && O.Pixels.Num() > 2 && O.X0 > M.X0 && O.X1 < M.X1 && O.Y0 > M.Y0 && O.Y1 < M.Y1)
+				{
+					Inner = FMath::Max(Inner, O.H());
+				}
+			}
+			if (Inner >= 0.25 * M.H() && M.H() >= 1.4 * Inner)
+			{
+				const int32 Band = FMath::Max(2, FMath::RoundToInt(0.12 * FMath::Min(M.W(), M.H())));
+				int32 Rim = 0;
+				for (const int32 p : M.Pixels)
+				{
+					const int32 x = p % W, y = p / W;
+					Rim += (x - M.X0 < Band || M.X1 - x < Band || y - M.Y0 < Band || M.Y1 - y < Band) ? 1 : 0;
+				}
+				bAside = Rim >= 0.95 * M.Pixels.Num();  // a frame
+			}
+		}
+		(bAside ? Aside : Kept).Add(i);
+	}
+	// lines: marks that overlap in height by at least half the shorter one
+	TArray<int32> Parent;
+	for (int32 k = 0; k < Kept.Num(); ++k)
+	{
+		Parent.Add(k);
+	}
+	auto Root = [&](int32 k)
+	{
+		while (Parent[k] != k)
+		{
+			k = Parent[k] = Parent[Parent[k]];
+		}
+		return k;
+	};
+	for (int32 a = 0; a < Kept.Num(); ++a)
+	{
+		for (int32 b = a + 1; b < Kept.Num(); ++b)
+		{
+			const FOcrMark& A = All[Kept[a]];
+			const FOcrMark& B = All[Kept[b]];
+			const int32 Over = FMath::Min(A.Y1, B.Y1) - FMath::Max(A.Y0, B.Y0) + 1;
+			if (Over >= 0.5 * FMath::Min(A.H(), B.H()))
+			{
+				Parent[Root(a)] = Root(b);
+			}
+		}
+	}
+	for (int32 r = 0; r < Kept.Num(); ++r)
+	{
+		if (Root(r) != r)
+		{
+			continue;
+		}
+		TArray<int32> Line;
+		for (int32 k = 0; k < Kept.Num(); ++k)
+		{
+			if (Root(k) == r)
+			{
+				Line.Add(Kept[k]);
+			}
+		}
+		Line.Sort([&](int32 L, int32 R) { return All[L].X0 < All[R].X0; });
+		// glyphs: marks that overlap side to side by at least 0.4 of the narrower
+		TArray<FOcrGlyph> Glyphs;
+		for (const int32 i : Line)
+		{
+			const FOcrMark& M = All[i];
+			if (!Glyphs.IsEmpty())
+			{
+				FOcrGlyph& G = Glyphs.Last();
+				const int32 Over = FMath::Min(G.X1, M.X1) - FMath::Max(G.X0, M.X0) + 1;
+				if (Over > 0 && Over >= 0.4 * FMath::Min(G.W(), M.W()))
+				{
+					G.X0 = FMath::Min(G.X0, M.X0);
+					G.X1 = FMath::Max(G.X1, M.X1);
+					G.Y0 = FMath::Min(G.Y0, M.Y0);
+					G.Y1 = FMath::Max(G.Y1, M.Y1);
+					G.Marks.Add(i);
+					continue;
+				}
+			}
+			FOcrGlyph G;
+			G.X0 = M.X0;
+			G.X1 = M.X1;
+			G.Y0 = M.Y0;
+			G.Y1 = M.Y1;
+			G.Marks.Add(i);
+			Glyphs.Add(G);
+		}
+		int32 Top = H, Bottom = -1, Cap = 0;
+		for (const FOcrGlyph& G : Glyphs)
+		{
+			Cap = FMath::Max(Cap, G.H());
+		}
+		for (const FOcrGlyph& G : Glyphs)
+		{
+			if (G.H() >= 0.75 * Cap)
+			{
+				Top = FMath::Min(Top, G.Y0);
+				Bottom = FMath::Max(Bottom, G.Y1);
+			}
+		}
+		if (Cap < 7 || Bottom - Top + 1 > 1.25 * Cap)
+		{
+			continue;  // too small to read, or capitals not on one line
+		}
+		// a mark set aside that crosses the line: a cut glyph, a stroke through it, a speck between its glyphs
+		bool bCrossed = false;
+		for (const int32 i : Aside)
+		{
+			const FOcrMark& M = All[i];
+			if (M.X0 <= Glyphs[0].X0 && M.X1 >= Glyphs.Last().X1 && M.Y0 <= Top && M.Y1 >= Bottom)
+			{
+				continue;  // around the line
+			}
+			if (M.Y1 < Top || M.Y0 > Bottom || M.X1 < Glyphs[0].X0 - Cap || M.X0 > Glyphs.Last().X1 + Cap)
+			{
+				continue;  // clear of it
+			}
+			bool bInGlyph = false;
+			for (const FOcrGlyph& G : Glyphs)
+			{
+				bInGlyph = bInGlyph || (M.Pixels.Num() <= 2 && M.X0 >= G.X0 - 1 && M.X1 <= G.X1 + 1 && M.Y0 >= G.Y0 - 1 && M.Y1 <= G.Y1 + 1);
+			}
+			bCrossed = bCrossed || !bInGlyph;
+		}
+		if (bCrossed)
+		{
+			continue;
+		}
+		for (FOcrGlyph& G : Glyphs)
+		{
+			if (G.H() < 0.75 * Cap)
+			{
+				G.Char = OcrSmallChar(G, All, Top, Bottom);
+			}
+			else if (G.Y0 - Top <= 0.2 * Cap && Bottom - G.Y1 <= 0.2 * Cap && OcrGlyphScores(G, All, W))
+			{
+				G.Char = OcrGlyphDecide(G, Mask, W, H);
+			}
+		}
+		// spaces: a gap of half a capital's height where glyphs stand further apart than the line's usual pitch; items:
+		// glyphs two and a half capitals' heights apart are separate texts
+		TArray<double> Pitch;
+		for (int32 g = 1; g < Glyphs.Num(); ++g)
+		{
+			Pitch.Add((Glyphs[g].X0 + Glyphs[g].X1 - Glyphs[g - 1].X0 - Glyphs[g - 1].X1) / 2.0);
+		}
+		TArray<double> Sorted = Pitch;
+		Sorted.Sort([](double L, double R) { return L < R; });
+		const double Usual = Sorted.IsEmpty() ? 0.0 : Sorted[(Sorted.Num() - 1) / 2];
+		int32 First = 0;
+		for (int32 g = 1; g <= Glyphs.Num(); ++g)
+		{
+			const int32 Gap = g < Glyphs.Num() ? Glyphs[g].X0 - Glyphs[g - 1].X1 - 1 : 0;
+			if (g < Glyphs.Num() && Gap < 2.5 * Cap)
+			{
+				continue;
+			}
+			// one item: glyphs First .. g-1
+			FOcrLine L;
+			L.X0 = W;
+			L.Y0 = H;
+			bool bAll = true;
+			int32 Letters = 0;
+			for (int32 k = First; k < g; ++k)
+			{
+				const FOcrGlyph& G = Glyphs[k];
+				if (k > First)
+				{
+					const int32 Space = G.X0 - Glyphs[k - 1].X1 - 1;
+					if (Space >= 0.9 * Cap || (Space >= 0.45 * Cap && Pitch[k - 1] >= 1.45 * Usual && Glyphs.Num() > 2))
+					{
+						L.Text.AppendChar(TEXT(' '));
+					}
+				}
+				bAll = bAll && G.Char != 0;
+				L.Text.AppendChar(G.Char ? G.Char : TEXT('?'));
+				Letters += (G.Char >= TEXT('A') && G.Char <= TEXT('Z')) || (G.Char >= TEXT('0') && G.Char <= TEXT('9')) ? 1 : 0;
+				L.X0 = FMath::Min(L.X0, G.X0);
+				L.Y0 = FMath::Min(L.Y0, G.Y0);
+				L.X1 = FMath::Max(L.X1, G.X1 + 1);
+				L.Y1 = FMath::Max(L.Y1, G.Y1 + 1);
+			}
+			// two glyphs at least: a lone shape (a bar, a ring, a cross, an icon) is as likely a mark as a character
+			if (bAll && Letters > 0 && g - First >= 2)
+			{
+				Out.Add(L);
+			}
+			First = g;
+		}
+	}
+}
+
+/** The frame as drawn, the UI included, for ui text in a rect (UiOcr): the game's window drawn again and read back the
+ *  way the engine takes a screenshot with its UI (FSlateApplication::TakeScreenshot, from the same point of the
+ *  frame), cut to the game viewport. False without a renderer or a window. */
+static bool UiFrame(TArray<FColor>& Out, int32& OutW, int32& OutH)
+{
+	UGameViewportClient* GVC = GEngine ? GEngine->GameViewport.Get() : nullptr;
+	const TSharedPtr<SWindow> Window = GVC ? GVC->GetWindow() : nullptr;
+	FVector2D Pos, Size;
+	if (!FApp::CanEverRender() || !FSlateApplication::IsInitialized() || !Window.IsValid() || !ViewportRect(Pos, Size))
+	{
+		return false;
+	}
+	TArray<FColor> Shot;
+	FIntVector Got(0, 0, 0);
+	if (!FSlateApplication::Get().TakeScreenshot(Window.ToSharedRef(), Shot, Got) || Got.X <= 0 || Got.Y <= 0 || Shot.Num() < Got.X * Got.Y)
+	{
+		return false;
+	}
+	// the viewport inside the window, as TakeScreenshot places a widget
+	const FVector2D Off = Pos - FVector2D(Window->GetPositionInScreen());
+	const int32 X0 = FMath::Clamp(FMath::RoundToInt(Off.X), 0, Got.X - 1), Y0 = FMath::Clamp(FMath::RoundToInt(Off.Y), 0, Got.Y - 1);
+	OutW = FMath::Clamp(FMath::RoundToInt(Size.X), 1, Got.X - X0);
+	OutH = FMath::Clamp(FMath::RoundToInt(Size.Y), 1, Got.Y - Y0);
+	Out.SetNumUninitialized(OutW * OutH);
+	for (int32 y = 0; y < OutH; ++y)
+	{
+		FMemory::Memcpy(Out.GetData() + y * OutW, Shot.GetData() + (int64)(Y0 + y) * Got.X + X0, OutW * sizeof(FColor));
+	}
+	return true;
+}
+
+/** ui text read from the frame as drawn inside a select rect (viewport fractions): the rect cut from the frame and read
+ *  (OcrRead), each line a text element, "source" "ocr". A line where a text element already read stands (UMG, Slate,
+ *  canvas) is left to that element, so nothing reads twice. */
+static void UiOcr(const TArray<FColor>& Frame, int32 W, int32 H, const double Rect[4], const TArray<FUiElement>& Found, TArray<FUiElement>& Out)
+{
+	const int32 X0 = FMath::Clamp(FMath::FloorToInt(FMath::Min(Rect[0], Rect[2]) * W), 0, W - 1);
+	const int32 Y0 = FMath::Clamp(FMath::FloorToInt(FMath::Min(Rect[1], Rect[3]) * H), 0, H - 1);
+	const int32 X1 = FMath::Clamp(FMath::CeilToInt(FMath::Max(Rect[0], Rect[2]) * W), X0 + 1, W);
+	const int32 Y1 = FMath::Clamp(FMath::CeilToInt(FMath::Max(Rect[1], Rect[3]) * H), Y0 + 1, H);
+	const int32 Cw = X1 - X0, Ch = Y1 - Y0;
+	TArray<FColor> Crop;
+	Crop.SetNumUninitialized(Cw * Ch);
+	for (int32 y = 0; y < Ch; ++y)
+	{
+		FMemory::Memcpy(Crop.GetData() + y * Cw, Frame.GetData() + (int64)(Y0 + y) * W + X0, Cw * sizeof(FColor));
+	}
+	TArray<FOcrLine> Lines;
+	OcrRead(Crop, Cw, Ch, Lines);
+	for (const FOcrLine& L : Lines)
+	{
+		FUiElement E;
+		E.Source = TEXT("ocr");
+		E.Kind = TEXT("text");
+		E.Name = TEXT("ScreenText");
+		E.Class = E.Name;
+		E.Text = L.Text;
+		E.bHasRect = true;
+		E.X = (double)(X0 + L.X0) / W;
+		E.Y = (double)(Y0 + L.Y0) / H;
+		E.W = (double)(L.X1 - L.X0) / W;
+		E.H = (double)(L.Y1 - L.Y0) / H;
+		bool bRead = false;
+		for (const FUiElement& T : Found)
+		{
+			bRead = bRead || (T.Kind == TEXT("text") && T.bHasRect && T.X < E.X + E.W && E.X < T.X + T.W && T.Y < E.Y + E.H && E.Y < T.Y + T.H);
+		}
+		if (!bRead)
+		{
+			Out.Add(E);
+		}
+	}
+}
 }  // namespace TaskProbe
 
 using namespace TaskProbe;
@@ -4312,6 +5398,17 @@ void FTaskProbeQueries::Load(const FString& Path)
 		}
 		if (Q.Kind == TEXT("ui"))
 		{
+			// a select of text in a rect also reads the frame as drawn (UiOcr); only such a query pays for the capture.
+			// The select alone decides, so every measure on it counts and reads the same elements.
+			const TSharedPtr<FJsonObject>* UiSel = nullptr;
+			const TArray<TSharedPtr<FJsonValue>>* UiRect = nullptr;
+			FString UiKind, UiText;
+			if (Q.Def->TryGetObjectField(TEXT("select"), UiSel) && UiSel->IsValid() && (*UiSel)->TryGetArrayField(TEXT("rect"), UiRect) && UiRect->Num() == 4)
+			{
+				(*UiSel)->TryGetStringField(TEXT("kind"), UiKind);
+				(*UiSel)->TryGetStringField(TEXT("text"), UiText);
+				Q.bOcr = UiKind == TEXT("text") || (UiKind.IsEmpty() && !UiText.IsEmpty());
+			}
 			// filled in from the next frame the viewport draws: what the HUD canvas held, the Slate tree then
 			if (!ViewportHandle.IsValid())
 			{
@@ -5050,14 +6147,19 @@ void FTaskProbeQueries::OnViewportRendered(FViewport* Viewport)
 	{
 		return;
 	}
+	// screen before ui: a ui read of text in a rect draws the window again, UI and all
+	if (bWantFrame)
+	{
+		ReadScreen(Viewport);
+	}
 	if (bWantUi)
 	{
 		FillUi();
 	}
-	if (!bWantFrame)
-	{
-		return;
-	}
+}
+
+void FTaskProbeQueries::ReadScreen(FViewport* Viewport)
+{
 	const FIntPoint Size = Viewport->GetSizeXY();
 	if (Size.X <= 0 || Size.Y <= 0)
 	{
@@ -5137,6 +6239,10 @@ void FTaskProbeQueries::FillUi()
 		Found.Append(CanvasNow);
 	}
 	CanvasNow.Reset();
+	// the frame as drawn, captured once and only when a query asks for text in a rect (UiOcr)
+	TArray<FColor> Frame;
+	int32 FrameW = 0, FrameH = 0;
+	bool bFrameTried = false, bFrame = false;
 	for (FQuery& Q : Queries)
 	{
 		if (Q.Kind != TEXT("ui") || Q.Pending.Num() == 0)
@@ -5166,9 +6272,33 @@ void FTaskProbeQueries::FillUi()
 			}
 		}
 		const TOptional<FRegexPattern> Pattern = TextRegex.IsEmpty() ? TOptional<FRegexPattern>() : TOptional<FRegexPattern>(FRegexPattern(TextRegex));
-		TArray<const FUiElement*> Picked;
+		// text read from the frame in the rect: this query's own rows, after every element read the other ways
+		TArray<FUiElement> Read;
+		if (Q.bOcr && bRect)
+		{
+			if (!bFrameTried)
+			{
+				bFrameTried = true;
+				bFrame = UiFrame(Frame, FrameW, FrameH);
+			}
+			if (bFrame)
+			{
+				UiOcr(Frame, FrameW, FrameH, Rect, Found, Read);
+			}
+		}
+		TArray<const FUiElement*> Candidates;
 		for (const FUiElement& E : Found)
 		{
+			Candidates.Add(&E);
+		}
+		for (const FUiElement& E : Read)
+		{
+			Candidates.Add(&E);
+		}
+		TArray<const FUiElement*> Picked;
+		for (const FUiElement* Each : Candidates)
+		{
+			const FUiElement& E = *Each;
 			if ((!Kind.IsEmpty() && E.Kind != Kind) || (Pattern.IsSet() && E.Kind != TEXT("text")))
 			{
 				continue;

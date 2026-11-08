@@ -114,7 +114,11 @@
 //   "image" (a brush or canvas quad with a texture or material), "line" (a canvas line; an outline, four lines one
 //   after another closing a rectangle, once as its rectangle; strokes read as digits stay lines too). Fields: count
 //   (1), text (null but for text), x, y, w, h (viewport fractions). select.kind, select.text (a regex on the text) and select.rect ([x0, y0, x1, y1]: the element's centre
-//   inside) choose; "source" and "kind" ride along for the logs. No rows when no frame was drawn.
+//   inside) choose; "source" and "kind" ride along for the logs. No rows when no frame was drawn. A select of text in
+//   a rect (select.rect with select.kind "text", or with select.text) also reads the frame as drawn, UI included,
+//   inside the rect (UiOcr): each line of digits, capitals and a few signs it can read for sure, where no element
+//   above already reads text, is a text element of "source" "ocr" (name and class "ScreenText"). Other queries take
+//   no capture and never see these rows.
 
 #pragma once
 
@@ -206,6 +210,7 @@ private:
 		TMap<FObjectKey, TArray<FObjectKey>> FirstParts;  // changed (actors): each actor's parts at its first sample
 		double LastT = 0.0;
 		TArray<TSharedPtr<FJsonObject>> Pending;  // screen, ui: samples waiting for the next drawn frame
+		bool bOcr = false;  // ui: a select of text in a rect, read from the frame as drawn too (UiOcr)
 		TArray<TSharedPtr<FJsonValue>> Samples;
 	};
 
@@ -215,6 +220,7 @@ private:
 	void OnSpawned(AActor* Actor);
 	void OnDestroyed(AActor* Actor);
 	void OnViewportRendered(FViewport* Viewport);
+	void ReadScreen(FViewport* Viewport);
 	void OnHudPostRender(AHUD* Hud, UCanvas* DebugCanvas);
 	void FillUi();
 

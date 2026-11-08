@@ -513,7 +513,7 @@ a widget's own state (a progress bar's percent, a brush).
 - `field`: `count` (one per element); `text` (the string shown, with `match`); `x`, `y`, `w`, `h` (the element's
   rectangle in viewport fractions 0-1). `of` combines the elements, as for widgets: `"field": "text", "match": ...,
   "of": "any"` is 1 when some element shows matching text, `"of": "count"` how many do.
-- Each row also carries `source` (`umg`, `slate` or `canvas`) and `kind`, for the logs; they are not fields a check
+- Each row also carries `source` (`umg`, `slate`, `canvas` or `ocr`) and `kind`, for the logs; they are not fields a check
   reads, so a threshold never depends on how a build drew its HUD.
 - Canvas text is read back from the glyphs the canvas drew (the font cache's characters), so it is the string as
   drawn. Spaces are read from the gaps between glyphs: write `\s*` (or `\s+`) where a string has a space.
@@ -525,8 +525,24 @@ a widget's own state (a progress bar's percent, a brush).
   about a sixth of a digit's width), digits closer than about a third of a width, a lone 1 or a run of 1s alone,
   letters, slanted strokes. When a readout drawn with lines doesn't read as text, grade it by its strokes: `count`
   (or `x`, `y`) of `line` elements in its `rect`, calibrated or relative to the start, changes as the number changes.
+- Text however it is drawn, read from the frame. A `select` of text in a `rect` (`"kind": "text"`, or a `text`
+  regex, with a `rect`) also reads the frame as drawn, after the UI, inside that rect: text drawn with slanted lines,
+  stroked letters, a texture or a material reads there too. Each line it can read for sure joins the text elements as
+  one `text` element (`source` `ocr`), so `match` and `of` read it like any other; a line another element already
+  reads as text is left to that element, so nothing reads twice. It reads digits 0-9, capital letters A-Z and `%`, `/`,
+  `.`, `-`, `:`, in the shapes line-drawn and segment fonts give them (plain strokes, cut or rounded corners, segments,
+  a slashed 0, diagonals in 1, 4 and 7). Only such a select takes the capture; every other measure reads as before.
+  - It reads nothing rather than guess: text that doesn't stand out in one colour from an even background behind it;
+    a line that runs out of the rect or that another mark crosses; a glyph two characters fit (an unslashed 0 and O,
+    a 5 and S or an 8 and B drawn as segments, a plain bar for 1 and I); a lone character; lower case; slanted
+    (italic) text; glyphs too small or too bold for their strokes to be told apart. A line with any glyph it can't
+    read reads as nothing, not in part.
+  - Give the rect a margin around the text so its edge is background, and write `\s*` where the text has a space.
+    Where the text still doesn't read, grade the readout by its `line` elements in the rect, as above.
+  - It needs a renderer: a play without one reads no text from the frame.
 - Limits: a widget that paints its own text or shapes in OnPaint (no text block or brush), material tiles (`DrawMaterial`), the debug canvas (on-screen debug messages, stats)
-  and anything a build draws in the 3D scene (a widget component, a text render component) are not UI elements here;
+  and anything a build draws in the 3D scene (a widget component, a text render component) are not UI elements here
+  (their text can still read from the frame, above);
   a canvas glyph whose font isn't in memory reads as `?`. The UMG/Slate geometry is the layout's, so a widget scaled
   or moved by a render transform reads at its laid-out place.
 
