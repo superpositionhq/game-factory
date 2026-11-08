@@ -161,6 +161,16 @@ else first; `pawn_on_screen` = 1 when the pawn's centre projects inside the view
     `ASCCastlePiece` and its Blueprint children); a Blueprint class by its asset name (`BP_Wall_C`).
   - `tag`: an actor tag. `name`: a wildcard on the actor's name or label.
   - `near`: within `radius` cm of a point. `{"player": true}`: the player pawn.
+  - `has`: a component the actor carries, `{"has": {"class": ..., "lit": true, "visible": true, "near": {"point":
+    <Point>, "radius": cm}}}`: the actor matches when at least one of its own components (registered, editor-only
+    ones left out) matches every key given. `class` is the component's class or a parent, as a `components` select
+    names it; `lit: true` reads it as the components `lit` field does (a light that lights the scene, or a drawn mesh
+    whose material is emissive or unlit and bright, from its material graph or else as rendered); `visible: true` as
+    the components `visible` field does; `near` measures from the component's own place, not the actor's. At least
+    one key, and only `true` for `lit` and `visible`. The way to select by what an actor does ("an actor that gives
+    light", "an actor with a drawn mesh near here") rather than by the class or name a build gave it. It works in
+    every actor select: these, other measures' (`owner`, `ground`), points (section 2.13) and `teleport_to`
+    (section 1.1). A map as saved (`asset`) takes no `has`.
 - `field`:
   - `count`: the selection's size (`of` ignored);
   - `x`, `y`, `z` (cm), `yaw`, `pitch`, `roll` (degrees), `scale`;
