@@ -192,6 +192,18 @@ else first; `pawn_on_screen` = 1 when the pawn's centre projects inside the view
     over its parts; `pose_change` (cm): how far its skinned meshes' bones moved since then in their own space, summed
     over every bone (no value without a skinned mesh). **Their thresholds are calibrated or relative to the start,
     never a literal value**; `changed` takes a literal;
+  - `lit`: 1 when the actor gives off light, whatever made it: any of its own light components lights the scene (as
+    `on` reads it, section 2.5, and its light function, if any, isn't black), or any of its mesh components with a mesh
+    is drawn (visible, not hidden in game, the actor not hidden) with a material whose emissive luminance is above
+    0.01 (an emissive material, or an unlit one, whose colour is its emissive). **This is the way to check for light**:
+    a lamp lit by a light component and a lamp drawn by a glowing material read the same. Takes a literal;
+  - `glow`: how much light, one amount summed over its lit sources so either kind compares: a light's intensity in
+    candelas (point, spot and rect lights; a directional light's lux and a sky light's scale as they are) times its
+    colour's luminance and its light function's; a mesh's brightest material's emissive luminance (emissive 1 taken
+    as 1 cd/m2) times a quarter of the surface of its local bounds in m2, scaled (the candelas a glowing surface that
+    size gives every way). **Its threshold is calibrated or relative to the start, never a literal value**. A row
+    with `lit` or `glow` also carries `glow_sources`, the kinds lit (`light`, `emissive`, `unlit`), for the logs; it
+    is not a field to measure. How a material's emissive is read, and its limits: section 2.5;
   - `prop:<Component>.<Property>[.<Sub>]` or `prop:<Property>`: read by reflection. Numbers and booleans as numbers,
     enums as their index, object references as 1 when set, strings and names through `match`. A component by name or
     class (`SpringArm`, `CharacterMovement`, `StaticMeshComponent0`); an array element as `Materials[0]`;
@@ -213,6 +225,9 @@ else first; `pawn_on_screen` = 1 when the pawn's centre projects inside the view
 `{"probe": "components", "select": {"class": "NiagaraComponent", "owner": <actor select>, "near": ...}, "field":
 "count|active|visible|...", ...}`: registered components of a class (particle systems, decals, audio, lights, the
 moving parts of an actor), optionally of an owner actor and near a point, so effects that are not actors count too.
+`"mesh": "<wildcard>"` keeps mesh components whose mesh asset's name matches (as `pieces` has it), and
+`"visible": true` only the components drawn (as the `visible` field reads them), so one part, a lamp's bulb, can be
+picked out.
 An instanced mesh component is one component however many instances it draws: count placed meshes with `pieces`
 (section 2.14).
 
@@ -225,11 +240,29 @@ An instanced mesh component is one component however many instances it draws: co
 - `changed`, `bounds_change`, `pose_change`: a primitive against the first sample it was seen in, as an actor's
   (section 2.4) for one part: hidden or shown, its world bounds moved, a skinned mesh's pose moved (`pose_change` has
   no value unless it is skinned);
+- `lit` and `glow`: as an actor's (section 2.4), for one source: a light component, or a mesh component with its
+  materials; no value for any other component. **Check for light with these**, whatever the build made it with;
 - `intensity` (a light's own intensity, in its units) and `on` (1 when the light lights the scene: registered,
   affecting the world, visible, not hidden in game, its actor not hidden, of an intensity above 0; the `light`
   probe counts the same lights). A lamp switched off by intensity 0, by hiding it or by hiding its actor reads 0.
-- **`intensity`, `extent_*`, `bounds_change` and `pose_change` thresholds are calibrated or relative to the start,
-  never a literal value**; `on`, `simulating`, `changed`, positions and speeds take a literal.
+  They see light components only: use them when a task really needs a light component, else `lit` and `glow`.
+- **`intensity`, `extent_*`, `bounds_change`, `pose_change` and `glow` thresholds are calibrated or relative to the
+  start, never a literal value**; `on`, `lit`, `simulating`, `changed`, positions and speeds take a literal.
+
+How `lit` and `glow` read a mesh's materials: every material the mesh draws with (its own, overrides, dynamic material
+instances, its overlay), each with its parameter values at that sample. The base material's emissive input (or its
+material attributes, or its Substrate front material) is evaluated as bounds per channel over constants, scalar and
+vector parameters (an instance's override, a dynamic instance's current value, custom primitive data), parameter
+collections, static switches, material function calls, reroutes and the arithmetic nodes; the brightest bound counts.
+Limits:
+- an input it can't evaluate (a texture, vertex colour, time, a custom node) counts as at most 1 per channel, white;
+- a mesh counts its brightest material over its whole bounds, so a lamp post with a small glowing bulb reads the
+  post's size: compare a `glow` with itself, calibrated or relative to the start, or select the bulb by `mesh`;
+- the graph is editor-only data, there in the uncooked `-game` play the checker runs. Without it (a cooked build) an
+  unconnected emissive reads 0 and a connected one by the parameters named for it (Emissive, Emission, Emit, Glow: the
+  brightest such colour times every such scalar), else no value;
+- particle effects, decals and text are not sources; a sky dome drawn with an unlit material reads lit, so select the
+  lamp (by owner, tag, `mesh` or `near`), not every mesh in the level.
 
 ### 2.6 `widgets`: the UI on screen
 
@@ -263,7 +296,8 @@ hidden, of an intensity above 0 (`grading`'s sun and sky the same). Before 2026-
 counted.
 
 It sees no post-processing beyond auto-exposure (no exposure bias curve, colour grade, vignette, ambient occlusion,
-bloom); for what reaches the screen, use `screen` (section 2.15).
+bloom); for what reaches the screen, use `screen` (section 2.15). It sees light components only: whether a lamp is on,
+whatever lit it (a light, or a mesh drawn by a glowing material), is `lit` of the lamp (section 2.4).
 
 ### 2.8 `grading`: the colour pipeline
 
@@ -487,7 +521,10 @@ a run on an invalid task is void.
   dressed the level another way still passes. When a fair build may also merge them (many props in a few procedural
   sections or one mesh), count the geometry drawn: `visible_triangles`, calibrated or relative to the start.
 - **Off is not hidden from the counts.** A lamp switched off by hiding it or by intensity 0 is still a registered
-  component: read `on` (or the `light` probe, which counts the same lights), not `count` or `visible` of the actor.
+  component: read `lit` of the lamp, not `count` or `visible` of the actor.
+- **A lamp need not be a light.** A build may light a lamp with a light component, or draw it with an emissive
+  material switched by a parameter, with no light component at all: read `lit` (and `glow`, calibrated or relative to
+  the start), which see both. `on`, `intensity` and the `light` probe see light components only.
 - **A broken object still draws.** A crate broken into pieces may keep every piece drawn and tagged, so `count` and
   `visible` can't see it go: read `simulating` or `spread` of the crate, calibrated or relative to the start.
 - **An object can break without physics.** A build may break it by hiding a part, or by playing an animation on its
