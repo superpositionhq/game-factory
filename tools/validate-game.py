@@ -527,6 +527,7 @@ NEVER_LITERAL = {'components': ('intensity', 'extent_x', 'extent_y', 'extent_z',
                  'ground': ('range',)}
 GROUND_POINT = ('height', 'hit')        # a ground measure at a point `xy`
 GROUND_BOX = ('min', 'max', 'mean', 'range', 'hits')   # a ground measure over a `box`
+UI_SIGNATURE_AGGS = ('changes', 'any', 'all', 'count')  # a ui signature's value means nothing; whether it changes does
 
 
 def probe_errors(c, seed, ref, plays):
@@ -537,7 +538,8 @@ def probe_errors(c, seed, ref, plays):
     grader flag, and same-named task plays are identical; == and != take a literal value; a screen measure's threshold
     is calibrated or relative to the start (the frame's luminance moves between machines), and so is a pieces measure's
     triangles (they depend on the meshes a build chose) and every NEVER_LITERAL field; a ground measure takes a point
-    `xy` or a `box` and the fields of that one; a ui measure takes `match` exactly when it reads text, regular
+    `xy` or a `box` and the fields of that one; a ui measure takes `match` exactly when it reads text, `agg` changes,
+    any, all or count when it reads its signature, regular
     expressions that compile and a select rect [x0, y0, x1, y1] with x0 < x1 and y0 < y1; a calibrated threshold needs
     seed.reference and a start-relative one a seed."""
     errs, n = [], c.get('name')
@@ -595,6 +597,8 @@ def probe_errors(c, seed, ref, plays):
         sel = measure.get('select') if isinstance(measure.get('select'), dict) else {}
         if (measure.get('field') == 'text') != (measure.get('match') is not None):
             errs.append(f'check {n}: a ui measure takes `match` exactly when its field is text')
+        if measure.get('field') == 'signature' and measure.get('agg') not in UI_SIGNATURE_AGGS:
+            errs.append(f'check {n}: a ui signature is read with `agg` changes, any, all or count')
         for pattern in (measure.get('match'), sel.get('text')):
             try:
                 re.compile(pattern) if isinstance(pattern, str) else None

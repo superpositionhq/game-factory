@@ -244,7 +244,8 @@ A probe names one measurement and its threshold:
 - `measure.probe`: `pawn` (track: x/y/z/speed/moved/dist), `camera` (distance/height/pitch/fov/occluded/
   pawn_on_screen), `actors` (select by class, tag, name, near; count, transform, extent, hidden, collision, speed,
   `prop:<Component>.<Property>` by reflection), `widgets` (visible, text, percent, has_brush), `ui` (what the HUD
-  shows, whatever draws it: text, count, place of UMG, Slate and canvas elements alike), `light` (illuminance,
+  shows, whatever draws it: text, count, place of UMG, Slate and canvas elements alike;
+  signature with agg changes for a readout that updates), `light` (illuminance,
   exposure, brightness at a point), `grading` (the colour pipeline: cast, warmth, tint, saturation, contrast, grey),
   `spawns`, `log`, `asset` (editor: material_default, material:<prop>, mesh_collision, asset properties).
 - `expect`: a literal (`{"op": ">=", "value": 1}`) for facts (counts, booleans, "not the default material"), or
@@ -343,6 +344,7 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 | a lamp lit by a custom node or a texture in a shared material read lit from the start, so it could not turn on | `lit` and `glow` as they are: a mesh whose material graph can't be evaluated whole is read as rendered |
 | a readout drawn with canvas lines read as absent to `ui` | `ui` `line` elements (count or place in a `rect`, relative to the start), or `text` where the digits are drawn seven-segment style |
 | a readout drawn with slanted lines or stroked letters read no text | `ui` `text` with `match` on a `select` of `"kind": "text"` with a `rect` around the readout (read from the frame as drawn); else its `line` elements in the `rect` |
+| a task needs a readout to keep updating, and it may be drawn as text or as lines | `ui` `signature` with `"agg": "changes"` on a `select` with a `rect` around the readout (calibrated or relative to the start) |
 | a probe that tests the reference's implementation ("SpawnZ = 92") | measure the outcome; another valid fix must pass |
 | the brief said "scenario 1" but not `?Scenario=1` | `play_map` always set and checked at the seed |
 | a HUD widget or class name guessed | read the names from the code and assets at `seed.commit` and `seed.reference` |
