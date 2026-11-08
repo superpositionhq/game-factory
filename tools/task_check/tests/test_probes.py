@@ -736,6 +736,24 @@ class UiWhateverDrawsIt(unittest.TestCase):
         self.assertEqual(probes.reduce(every, actors_play(every, [strokes + [outline, number]])), 15)
 
 
+    def test_text_read_from_the_frame_joins_the_text_elements(self):
+        # a select of text in a rect also reads the frame as drawn there: one sample as the plugin reads a canvas HUD
+        # that draws "125 M" with slanted lines, the line read as a text element of source "ocr"
+        rect = [0.031, 0.167, 0.208, 0.259]
+        read = {"text": "125 M", "x": 0.046, "y": 0.183, "w": 0.143, "h": 0.059, "source": "ocr", "kind": "text"}
+        measure = {"probe": "ui", "select": {"kind": "text", "rect": rect}, "field": "text", "match": r"^125\s*M$",
+                   "of": "any"}
+        task_with(probe(measure=measure, expect={"op": ">=", "value": 1}))
+        text = m(**measure)
+        self.assertEqual(text["select"], {"kind": "text", "rect": rect})
+        self.assertEqual(probes.reduce(m(**measure, at=[0]), actors_play(text, [[read], []])), 1)
+        self.assertEqual(probes.reduce(m(**measure, at=[0.5]), actors_play(text, [[read], []])), 0, "nothing read: 0")
+        count = m(probe="ui", select={"kind": "text", "rect": rect}, field="count")
+        umg = {**UI_ROWS[0], "x": 0.042, "y": 0.556}
+        self.assertEqual(probes.reduce(count, actors_play(count, [[read, umg]])), 2)
+        regex = m(probe="ui", select={"text": r"\d+\s*M", "rect": rect}, field="count")
+        self.assertEqual(probes.reduce(regex, actors_play(regex, [[read]])), 1)
+
 class Angles(unittest.TestCase):
     def test_angles_aggregates_and_the_new_query_kinds_reduce(self):
         self.assertEqual([probes.normal(a) for a in (270, -270, 180, -180, 540, 0)], [-90, 90, 180, 180, 180, 0])
