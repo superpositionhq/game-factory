@@ -3327,7 +3327,7 @@
     },
     "UiMeasure": {
       "additionalProperties": false,
-      "description": "What the UI shows on screen, whatever draws it (docs/task-probes.md, section 2.18): the elements on screen in the frame drawn right\nafter each sample, from UMG widgets, Slate widgets and the HUD canvas (AHUD DrawText, DrawRect, DrawTexture,\nDrawLine, K2_DrawBox and the canvas's other draws) alike, only what is drawn (a collapsed or hidden widget is not).\n`count` (one per element), `text` (with `match`; digits drawn as seven-segment strokes read as text too), `x`, `y`, `w`, `h` (its rectangle in viewport fractions); `of` combines the elements\n`select` picks. The way to check what a HUD shows, however a build drew it.",
+      "description": "What the UI shows on screen, whatever draws it (docs/task-probes.md, section 2.18): the elements on screen in the frame drawn right\nafter each sample, from UMG widgets, Slate widgets and the HUD canvas (AHUD DrawText, DrawRect, DrawTexture,\nDrawLine, K2_DrawBox and the canvas's other draws) alike, only what is drawn (a collapsed or hidden widget is not).\n`count` (one per element), `text` (with `match`; digits drawn as seven-segment strokes read as text too, and a\nselect of text with a `rect` also reads the frame as drawn there, however the text was drawn), `x`, `y`, `w`, `h` (its rectangle in viewport fractions); `of` combines the elements\n`select` picks. The way to check what a HUD shows, however a build drew it.",
       "properties": {
         "agg": {
           "anyOf": [
