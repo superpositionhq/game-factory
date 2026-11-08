@@ -334,6 +334,7 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 | every audio component read inactive (plays ran with `-nosound`) | `audio` reads what the player hears; a play with it runs with sound, muted; volumes calibrated or relative to the start |
 | relief judged by the height of one spot | `ground` over a box: `range`, calibrated or relative to the start |
 | a teleport to fixed coordinates missed what each build placed itself | `teleport_to` an actor select (nearest match), facing it or a point |
+| a select by class or tag also matched the scene's own actors, or named the class the reference happened to use | select by what the actor carries: `has` (a component that is `lit`, `visible`, of a `class`, `near` a point) |
 | cars that are components of one actor had no position or speed | `components` fields `x`, `y`, `z`, `speed` |
 | a broken crate kept its pieces drawn and tagged, so counts couldn't see it break | actor `simulating` and `spread`, component `extent_*` and `simulating` |
 | an object that breaks by hiding a part or by animating its pieces read whole to `spread`, `extent_*` and `simulating` | actor or component `changed` (since the start; `bounds_change` and `pose_change` calibrated or relative to the start) |

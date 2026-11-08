@@ -35,8 +35,8 @@ class Report:
     def count(self, sev): return sum(1 for s, _, _ in self.items if s == sev)
 
 
-# ---- a small JSON Schema subset validator (type, required, properties, additionalProperties: false, enum, const,
-# ---- pattern, minLength, minimum, items, minItems, $ref "#/$defs/...") --------------------------------------------
+# ---- a small JSON Schema subset validator (type, required, properties, additionalProperties: false, minProperties,
+# ---- enum, const, pattern, minLength, minimum, items, minItems, $ref "#/$defs/...") --------------------------------
 TYPES = {'object': dict, 'array': list, 'string': str, 'boolean': bool, 'null': type(None)}
 
 
@@ -95,6 +95,8 @@ def check_schema(value, schema, root=None, path='$'):
         if 'exclusiveMaximum' in schema and value >= schema['exclusiveMaximum']:
             yield f'{path}: {value} >= {schema["exclusiveMaximum"]}'
     if isinstance(value, dict):
+        if 'minProperties' in schema and len(value) < schema['minProperties']:
+            yield f'{path}: needs at least {schema["minProperties"]} key(s)'
         for k in schema.get('required', []):
             if k not in value:
                 yield f'{path}: missing "{k}"'
@@ -529,7 +531,8 @@ GROUND_BOX = ('min', 'max', 'mean', 'range', 'hits')   # a ground measure over a
 
 def probe_errors(c, seed, ref, plays):
     """A probe check's rules beyond the schema (docs/task-probes.md):
-    asset measures only with play "editor" and trace measures only with play "trace"; a trace probe never gates and
+    asset measures only with play "editor" and trace measures only with play "trace"; an asset measure's select takes
+    no `has`; a trace probe never gates and
     takes a literal value; a task play is not named look/drive/editor/trace, has no input at or after its end, sets no
     grader flag, and same-named task plays are identical; == and != take a literal value; a screen measure's threshold
     is calibrated or relative to the start (the frame's luminance moves between machines), and so is a pieces measure's
@@ -547,6 +550,8 @@ def probe_errors(c, seed, ref, plays):
         errs.append(f'check {n}: asset measures are taken by the editor pass (play "editor"), and it takes nothing else')
     if (probe == 'trace') != (pname == 'trace'):
         errs.append(f'check {n}: trace measures are read from the trace (play "trace"), and it gives nothing else')
+    if probe == 'asset' and isinstance(measure.get('select'), dict) and measure['select'].get('has') is not None:
+        errs.append(f'check {n}: a map as saved is read without its components drawn, so its select takes no `has`')
     rel = 'calibrate' if 'calibrate' in expect else ('start' if 'start_times' in expect or 'start_plus' in expect else None)
     if probe == 'trace' and (c.get('required', True) or rel):
         errs.append(f'check {n}: a trace probe never gates (required: false) and takes a literal value')
