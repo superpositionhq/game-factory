@@ -608,6 +608,64 @@ class LitWhateverMadeTheLight(unittest.TestCase):
         self.assertNotEqual(probes.query_id(probes.needs(every)[0]), probes.query_id(query))
 
 
+UI_TEXT = {"probe": "ui", "select": {"kind": "text"}, "field": "text", "match": r"AMMO\s*\d+", "of": "any"}
+# one sample's elements as the plugin reads them: a UMG text block, a Slate text block, a canvas string and
+# a canvas rect (a collapsed UMG text block is not on screen, so not a row); source and kind ride along for the logs
+UI_ROWS = [{"text": "HP 75%", "x": 0.021, "y": 0.203, "w": 0.083, "h": 0.035, "source": "umg", "kind": "text"},
+           {"text": "ITEMS 7", "x": 0.021, "y": 0.278, "w": 0.05, "h": 0.015, "source": "slate", "kind": "text"},
+           {"text": "AMMO 30", "x": 0.042, "y": 0.225, "w": 0.106, "h": 0.033, "source": "canvas", "kind": "text"},
+           {"text": None, "x": 0.042, "y": 0.296, "w": 0.208, "h": 0.03, "source": "canvas", "kind": "box"}]
+
+
+class UiWhateverDrawsIt(unittest.TestCase):
+    """docs/task-probes.md, section 2.18: one reading for what the UI shows on screen, whether a build drew it with
+    UMG widgets, Slate widgets or on the HUD canvas."""
+
+    def test_text_takes_match_and_every_field_a_literal(self):
+        for measure in (UI_TEXT, {**UI_TEXT, "of": "count", "select": {"text": "AMMO", "rect": [0, 0, 0.5, 0.5]}},
+                        {"probe": "ui", "field": "count"},
+                        {"probe": "ui", "select": {"kind": "box", "rect": [0, 0.2, 0.5, 0.4]}, "field": "count"},
+                        {"probe": "ui", "select": {"text": "AMMO"}, "field": "y", "of": "first"}):
+            task_with(probe(measure=measure, expect={"op": ">=", "value": 1}))
+        for bad, said in [({**UI_TEXT, "match": None}, "exactly when its field is text"),
+                          ({"probe": "ui", "field": "count", "match": "x"}, "exactly when its field is text"),
+                          ({**UI_TEXT, "match": "AMMO("}, "isn't a regular expression"),
+                          ({"probe": "ui", "select": {"rect": [0.5, 0, 0.2, 1]}, "field": "count"}, "x0 < x1"),
+                          ({"probe": "ui", "select": {"kind": "box", "text": "x"}, "field": "count"}, "picks text"),
+                          ({"probe": "ui", "field": "source"}, "allowed"),
+                          ({"probe": "ui", "field": "kind"}, "allowed"),
+                          ({"probe": "ui", "select": {"kind": "line"}, "field": "count"}, ""),
+                          ({"probe": "ui", "select": {"source": "canvas"}, "field": "count"}, "")]:
+            with self.assertRaisesRegex(ValueError, said, msg=json.dumps(bad)):
+                task_with(probe(measure=bad))
+
+    def test_one_query_per_select_its_fields_merged(self):
+        text = m(**UI_TEXT)
+        (query,) = probes.needs(text)
+        self.assertEqual(query, {"kind": "ui", "select": {"kind": "text"}, "fields": ["text"]})
+        count = m(probe="ui", select={"kind": "text"}, field="count")
+        self.assertEqual(probes.query_id(probes.needs(count)[0]), probes.query_id(query))
+        self.assertEqual(m(probe="ui", field="count")["select"], {})
+        boxes = m(probe="ui", select={"kind": "box", "rect": [0, 0.2, 0.5, 0.4]}, field="count")
+        self.assertNotEqual(probes.query_id(probes.needs(boxes)[0]), probes.query_id(query))
+
+    def test_umg_slate_and_canvas_read_the_same(self):
+        text = m(**UI_TEXT)
+        play = actors_play(text, [UI_ROWS, [r for r in UI_ROWS if r["source"] != "canvas"], None])
+        self.assertEqual(probes.reduce({**text, "at": [0]}, play), 1, "the canvas string")
+        self.assertEqual(probes.reduce({**text, "at": [0.5]}, play), 0, "no matching text on screen: 0")
+        self.assertIsNone(probes.reduce({**text, "at": [1.0]}, play), "no frame drawn after the sample: no value")
+        shown = m(**{**UI_TEXT, "match": r"HP\s*\d+%|ITEMS|AMMO", "of": "count"})
+        self.assertEqual(probes.reduce({**shown, "at": [0]}, actors_play(shown, [UI_ROWS])), 3)
+        place = m(probe="ui", select={"text": "AMMO"}, field="y", of="first")
+        self.assertEqual(probes.reduce(place, actors_play(place, [[UI_ROWS[2]]])), 0.225)
+        count = m(probe="ui", select={"kind": "box"}, field="count")
+        self.assertEqual(probes.reduce(count, actors_play(count, [[UI_ROWS[3]] * 3])), 3)
+        many = actors_play(count, [[{"count": 1}] * 200])
+        many["measures"][probes.query_id(probes.needs(count)[0])][0]["total"] = 260
+        self.assertEqual(probes.reduce(count, many), 260, "every element counts, past the rows cap")
+
+
 class Angles(unittest.TestCase):
     def test_angles_aggregates_and_the_new_query_kinds_reduce(self):
         self.assertEqual([probes.normal(a) for a in (270, -270, 180, -180, 540, 0)], [-90, 90, 180, 180, 180, 0])
