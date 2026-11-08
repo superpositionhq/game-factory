@@ -336,6 +336,7 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 | cars that are components of one actor had no position or speed | `components` fields `x`, `y`, `z`, `speed` |
 | a broken crate kept its pieces drawn and tagged, so counts couldn't see it break | actor `simulating` and `spread`, component `extent_*` and `simulating` |
 | an object that breaks by hiding a part or by animating its pieces read whole to `spread`, `extent_*` and `simulating` | actor or component `changed` (since the start; `bounds_change` and `pose_change` calibrated or relative to the start) |
+| a lamp drawn by an emissive material rather than a light component read dark to `on`, `intensity` and `light` | actor or component `lit` (any light component or glowing mesh; `glow` calibrated or relative to the start) |
 | a probe that tests the reference's implementation ("SpawnZ = 92") | measure the outcome; another valid fix must pass |
 | the brief said "scenario 1" but not `?Scenario=1` | `play_map` always set and checked at the seed |
 | a HUD widget or class name guessed | read the names from the code and assets at `seed.commit` and `seed.reference` |

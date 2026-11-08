@@ -26,7 +26,11 @@
 //   drawn, its world bounds moved more than 1 cm, or a skinned mesh's pose moved: its bones more than 5 cm in all, in
 //   its own space, or its local bounds more than 1 cm), bounds_change (cm: the furthest any face of a mesh component's
 //   world bounds moved since then, the largest over its components), pose_change (cm: how far its skinned meshes'
-//   bones moved since then in their own space, summed; null without a skinned mesh).
+//   bones moved since then in their own space, summed; null without a skinned mesh), lit (1 when any of its light
+//   sources is lit: a light component that lights the scene, or a drawn mesh component whose brightest material's
+//   emissive luminance is above 0.01), glow (those sources' amounts summed: a light's intensity in candelas times its
+//   colour's luminance and its light function's, a mesh's emissive luminance times a quarter of its local bounds'
+//   surface in m2); with either, the row's "glow_sources" names the kinds lit ("light", "emissive", "unlit").
 // - widgets: "rows": [{"name", "class", <field>: value}] over the UMG trees in the viewport. select.class alone matches
 //   the widget's own class; with select.name it also matches an enclosing user widget's class. visible = visible,
 //   render opacity > 0, and every parent (through enclosing user widgets) the same. x, y, w, h: the cached geometry in
@@ -56,12 +60,14 @@
 //   "occluded", "pawn_on_screen"} (the pawn fields null without a pawn), the pawn's centre being its colliding
 //   components' bounds centre.
 // - components: "rows": [{"name", "class", "owner", <field>}] for registered components of select.class (optionally
-//   select.name, select.owner = an actor selection, select.near); fields count, active, visible, x y z, prop:<path>,
+//   select.name, select.owner = an actor selection, select.near, select.mesh = a wildcard on a mesh component's mesh
+//   asset's name, select.visible = only components drawn, as the visible field reads them); fields count, active, visible, x y z, prop:<path>,
 //   speed (cm/s: its physics body's while it simulates, else its own velocity, else how far it moved since the query's
 //   previous sample; null the first time it is seen), extent_x|y|z (a primitive's world bounds half-size), simulating
 //   (a primitive's physics, as actors'), intensity (a light's), on (a light lights the scene, as light counts it),
 //   changed, bounds_change, pose_change (a primitive against the first sample it was seen in, as actors' for one part;
-//   pose_change null unless skinned).
+//   pose_change null unless skinned), lit and glow (a light component's or a mesh component's, as actors' for one
+//   source; null for any other component; "glow_sources" with them).
 // - pieces: "value": {"count", "visible", "components", "actors", "triangles", "visible_triangles"}: the placed mesh
 //   pieces of the registered mesh components select.class matches (default every mesh component; also select.name,
 //   select.mesh = a wildcard on the mesh asset's name, select.owner, select.near), counted over all of them whatever
