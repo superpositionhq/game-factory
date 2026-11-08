@@ -179,6 +179,19 @@ else first; `pawn_on_screen` = 1 when the pawn's centre projects inside the view
     body's place; 0 with one part, no value when it draws nothing. A whole crate reads its pieces' own layout; one
     broken into pieces that fell apart reads more, though its pieces stay drawn and tagged. **Its threshold is
     calibrated or relative to the start, never a literal value**;
+  - `changed`: 1 when the actor differs from the first sample it was seen in (the play's first sample, for an actor
+    there from the start), else 0. Its parts are its own registered mesh components with a mesh, drawn or hidden (as
+    `extent_*` counts them, hidden ones too). It reads 1 when a part was hidden or shown (visible, not hidden in game,
+    the actor not hidden), a part drawn then is gone or a part drawn now was not there, a part's world bounds moved
+    more than 1 cm (moved, turned, scaled), or a skinned mesh's pose moved: its bones more than 5 cm in all, in the
+    mesh's own space, or its local bounds more than 1 cm. So an object that breaks by hiding a part, or by animating
+    its pieces in place with no physics, reads 1, as one that moves does; one left alone reads 0. An object animated
+    from the start (a looping idle) reads 1 too: read it after the start of the play that matters, or read
+    `pose_change`;
+  - `bounds_change` (cm): the furthest any face of a part's world bounds moved since that first sample, the largest
+    over its parts; `pose_change` (cm): how far its skinned meshes' bones moved since then in their own space, summed
+    over every bone (no value without a skinned mesh). **Their thresholds are calibrated or relative to the start,
+    never a literal value**; `changed` takes a literal;
   - `prop:<Component>.<Property>[.<Sub>]` or `prop:<Property>`: read by reflection. Numbers and booleans as numbers,
     enums as their index, object references as 1 when set, strings and names through `match`. A component by name or
     class (`SpringArm`, `CharacterMovement`, `StaticMeshComponent0`); an array element as `Materials[0]`;
@@ -209,11 +222,14 @@ An instanced mesh component is one component however many instances it draws: co
   sample (no value the first time it is seen). Cars that are components of one road actor read here;
 - `extent_x`, `extent_y`, `extent_z` (a primitive's world bounds half-size, cm) and `simulating` (it simulates
   physics; a skeletal mesh when any of its bodies does);
+- `changed`, `bounds_change`, `pose_change`: a primitive against the first sample it was seen in, as an actor's
+  (section 2.4) for one part: hidden or shown, its world bounds moved, a skinned mesh's pose moved (`pose_change` has
+  no value unless it is skinned);
 - `intensity` (a light's own intensity, in its units) and `on` (1 when the light lights the scene: registered,
   affecting the world, visible, not hidden in game, its actor not hidden, of an intensity above 0; the `light`
   probe counts the same lights). A lamp switched off by intensity 0, by hiding it or by hiding its actor reads 0.
-- **`intensity` and `extent_*` thresholds are calibrated or relative to the start, never a literal value**; `on`,
-  `simulating`, positions and speeds take a literal.
+- **`intensity`, `extent_*`, `bounds_change` and `pose_change` thresholds are calibrated or relative to the start,
+  never a literal value**; `on`, `simulating`, `changed`, positions and speeds take a literal.
 
 ### 2.6 `widgets`: the UI on screen
 
@@ -474,6 +490,9 @@ a run on an invalid task is void.
   component: read `on` (or the `light` probe, which counts the same lights), not `count` or `visible` of the actor.
 - **A broken object still draws.** A crate broken into pieces may keep every piece drawn and tagged, so `count` and
   `visible` can't see it go: read `simulating` or `spread` of the crate, calibrated or relative to the start.
+- **An object can break without physics.** A build may break it by hiding a part, or by playing an animation on its
+  skinned pieces, so nothing simulates and no part moves apart: read `changed` of the object (1 when anything about it
+  changed since the start), so either way of breaking it reads the same.
 - **A light's direction is a world direction.** `rel_yaw:` reads a component against its own actor, so a fix that turns
   the actor instead of the component reads unchanged. "The moon points the same way" is `world_yaw:`, `world_pitch:` or
   `forward:` of the light component.

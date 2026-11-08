@@ -510,6 +510,46 @@ class MoreFairReadings(unittest.TestCase):
                             measure={"probe": "pawn", "field": "z"}))
 
 
+BOX = {"probe": "actors", "select": {"tag": "Box"}, "at": "end"}
+BOX_PART = {"probe": "components", "select": {"class": "SkeletalMeshComponent", "owner": {"tag": "Box"}}, "at": "end"}
+
+
+class ChangedSinceTheStart(unittest.TestCase):
+    """docs/task-probes.md, sections 2.4 and 2.5: whether an object changed since the play began, so one that breaks by
+    hiding a part or by animating its pieces reads as broken."""
+
+    def test_changed_takes_a_literal_and_the_amounts_behind_it_never_do(self):
+        for measure in ({**BOX, "field": "changed", "of": "any"}, {**BOX_PART, "field": "changed", "of": "any"}):
+            task_with(probe(measure=measure, expect={"op": ">=", "value": 1}))
+        for measure in ({**BOX, "field": "bounds_change", "of": "max"},
+                        {**BOX, "field": "pose_change", "of": "max"},
+                        {**BOX_PART, "field": "bounds_change", "of": "max"},
+                        {**BOX_PART, "field": "pose_change", "of": "max"}):
+            with self.assertRaisesRegex(ValueError, "never a literal value"):
+                task_with(probe(measure=measure, expect={"op": ">=", "value": 1}))
+            task_with(probe(measure=measure, expect={"op": ">=", "calibrate": 0.5}))
+            task_with(probe(measure=measure, expect={"op": ">=", "start_times": 2}), seed=NO_FIX)
+        for bad in ({**BOX, "field": "changed_since"}, {**BOX_PART, "field": "pose"}):
+            with self.assertRaises(ValueError, msg=json.dumps(bad)):
+                task_with(probe(measure=bad))
+
+    def test_one_query_reads_changed_and_its_amounts(self):
+        broken = m(**{**BOX, "field": "changed", "of": "any", "at": None})
+        (query,) = probes.needs(broken)
+        self.assertEqual((query["kind"], query["fields"]), ("actors", ["changed"]))
+        posed = m(**{**BOX, "field": "pose_change", "of": "max", "at": None})
+        self.assertEqual(probes.query_id(probes.needs(posed)[0]), probes.query_id(query), "one query, both fields")
+        play = actors_play(broken, [[{"name": "Box", "changed": 0, "bounds_change": 0.0, "pose_change": 0.0}],
+                                    [{"name": "Box", "changed": 1, "bounds_change": 0.0, "pose_change": 2400.0}]])
+        self.assertEqual(probes.reduce(broken, play), 1)
+        self.assertEqual(probes.reduce(m(**{**BOX, "field": "changed", "of": "any", "at": None, "agg": "first"}),
+                                       play), 0)
+        self.assertEqual(probes.reduce(posed, play), 2400.0)
+        bare = m(**{**BOX, "field": "pose_change", "of": "max", "at": None})
+        self.assertIsNone(probes.reduce(bare, actors_play(bare, [[{"name": "Crate", "pose_change": None}]])),
+                          "no skinned mesh: no value, never 0")
+
+
 class Angles(unittest.TestCase):
     def test_angles_aggregates_and_the_new_query_kinds_reduce(self):
         self.assertEqual([probes.normal(a) for a in (270, -270, 180, -180, 540, 0)], [-90, 90, 180, 180, 180, 0])
