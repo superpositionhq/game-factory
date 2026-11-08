@@ -832,6 +832,168 @@ static TSharedPtr<FJsonValue> Spread(const AActor* A)
 	return Box.IsValid ? Num(Box.GetSize().Size()) : Null();
 }
 
+static constexpr double ChangeBounds = 1.0;  // cm: changed when a part's world, or a skinned mesh's local, bounds moved more
+static constexpr double ChangePose = 5.0;  // cm: changed when a skinned mesh's bones moved more than this in all
+
+static bool IsChangeField(const FString& F)
+{
+	return F == TEXT("changed") || F == TEXT("bounds_change") || F == TEXT("pose_change");
+}
+
+/** A part as it is now, for changed: drawn (visible, not hidden in game, its owner not hidden), its world bounds and, of
+ *  a skinned mesh, its local bounds and every bone's place in the component's own space (a follower's from its leader
+ *  pose), so a pose that moves reads whether or not its bounds do and whatever the component itself does. */
+static FPartState PartState(const UPrimitiveComponent* P)
+{
+	FPartState S;
+	const AActor* Owner = P->GetOwner();
+	S.bDrawn = P->IsRegistered() && P->IsVisible() && !P->bHiddenInGame && !(Owner && Owner->IsHidden());
+	S.World = P->Bounds.GetBox();
+	if (const USkinnedMeshComponent* SK = Cast<USkinnedMeshComponent>(P))
+	{
+		S.bSkinned = true;
+		if (SK->GetSkinnedAsset())
+		{
+			S.Local = SK->CalcBounds(FTransform::Identity).GetBox();
+			const int32 N = SK->GetNumBones();
+			S.Bones.Reserve(N);
+			for (int32 i = 0; i < N; ++i)
+			{
+				S.Bones.Add(SK->GetBoneTransform(i, FTransform::Identity).GetLocation());
+			}
+		}
+	}
+	return S;
+}
+
+/** How far (cm) the furthest face of a box moved; -1 when only one of them is a box. */
+static double BoxMove(const FBox& A, const FBox& B)
+{
+	if (!A.IsValid || !B.IsValid)
+	{
+		return A.IsValid == B.IsValid ? 0.0 : -1.0;
+	}
+	return (A.Min - B.Min).GetAbs().ComponentMax((A.Max - B.Max).GetAbs()).GetMax();
+}
+
+/** A part against its first sample: changed, bounds_change (its world bounds' furthest face, cm) and pose_change (its
+ *  bones' moves summed, cm; only for a skinned mesh). */
+struct FChangeReading
+{
+	bool bChanged = false;
+	bool bAny = false;  // a part was compared (else bounds_change is null)
+	bool bPose = false;  // a skinned mesh was compared (else pose_change is null)
+	double Bounds = 0.0;
+	double Pose = 0.0;
+};
+
+static FChangeReading PartChange(const FPartState& First, const FPartState& Now)
+{
+	FChangeReading C;
+	C.bAny = true;
+	const double World = BoxMove(First.World, Now.World);
+	C.Bounds = FMath::Max(World, 0.0);
+	C.bChanged = First.bDrawn != Now.bDrawn || World < 0.0 || World > ChangeBounds;
+	if (First.bSkinned && Now.bSkinned)
+	{
+		C.bPose = true;
+		const int32 N = FMath::Min(First.Bones.Num(), Now.Bones.Num());
+		for (int32 i = 0; i < N; ++i)
+		{
+			C.Pose += FVector::Dist(First.Bones[i], Now.Bones[i]);
+		}
+		const double Local = BoxMove(First.Local, Now.Local);
+		C.bChanged |= First.Bones.Num() != Now.Bones.Num() || C.Pose > ChangePose || Local < 0.0 || Local > ChangeBounds;
+	}
+	return C;
+}
+
+static TSharedPtr<FJsonValue> ChangeField(const FChangeReading& C, const FString& F)
+{
+	if (F == TEXT("changed")) return Num(C.bChanged ? 1.0 : 0.0);
+	if (F == TEXT("bounds_change")) return C.bAny ? Num(C.Bounds) : Null();
+	if (F == TEXT("pose_change")) return C.bPose ? Num(C.Pose) : Null();
+	return Null();
+}
+
+/** The parts changed compares of an actor: its own registered mesh components with a mesh (static, instanced,
+ *  skeletal, spline, procedural and dynamic meshes, world-space widgets), drawn or hidden; editor-only ones and empty
+ *  meshes left out, as GeometryBox leaves them. */
+static void ChangeParts(const AActor* A, TArray<UMeshComponent*>& Out)
+{
+	TInlineComponentArray<UMeshComponent*> Meshes(A);
+	for (UMeshComponent* M : Meshes)
+	{
+		if (!M || !M->IsRegistered() || M->IsEditorOnly())
+		{
+			continue;
+		}
+		if (const UStaticMeshComponent* SM = Cast<UStaticMeshComponent>(M); SM && !SM->GetStaticMesh())
+		{
+			continue;
+		}
+		if (const USkinnedMeshComponent* SK = Cast<USkinnedMeshComponent>(M); SK && !SK->GetSkinnedAsset())
+		{
+			continue;
+		}
+		Out.Add(M);
+	}
+}
+
+/**
+ * An actor against the first sample it was seen in: changed when any part changed (PartChange), a part drawn then is
+ * gone, or a part not there then is drawn now; bounds_change the largest of its parts'; pose_change its skinned
+ * meshes' summed. The first sample records every part and reads unchanged.
+ */
+static FChangeReading ActorChange(AActor* A, TMap<FObjectKey, FPartState>& Firsts, TMap<FObjectKey, TArray<FObjectKey>>& FirstParts)
+{
+	FChangeReading Out;
+	TArray<UMeshComponent*> Parts;
+	ChangeParts(A, Parts);
+	const FObjectKey ActorKey(A);
+	const TArray<FObjectKey>* Before = FirstParts.Find(ActorKey);
+	TArray<FObjectKey> Keys;
+	for (const UMeshComponent* M : Parts)
+	{
+		const FObjectKey Key(M);
+		Keys.Add(Key);
+		const FPartState Now = PartState(M);
+		if (!Before)
+		{
+			Firsts.Add(Key, Now);
+			Out.bAny = true;
+			Out.bPose |= Now.bSkinned;
+			continue;
+		}
+		const FPartState* First = Before->Contains(Key) ? Firsts.Find(Key) : nullptr;
+		if (!First)
+		{
+			Out.bChanged |= Now.bDrawn;  // a part added since, drawn
+			continue;
+		}
+		const FChangeReading C = PartChange(*First, Now);
+		Out.bChanged |= C.bChanged;
+		Out.bAny = true;
+		Out.Bounds = FMath::Max(Out.Bounds, C.Bounds);
+		Out.bPose |= C.bPose;
+		Out.Pose += C.Pose;
+	}
+	if (!Before)
+	{
+		FirstParts.Add(ActorKey, MoveTemp(Keys));
+		return Out;
+	}
+	for (const FObjectKey& Key : *Before)
+	{
+		const FPartState* First = Firsts.Find(Key);
+		if (!Keys.Contains(Key) && First && First->bDrawn)
+		{
+			Out.bChanged = true;  // a part drawn then is gone
+		}
+	}
+	return Out;
+}
+
 static TSharedPtr<FJsonValue> ActorField(AActor* A, const FString& F)
 {
 	if (F.StartsWith(TEXT("prop:")))
@@ -1901,9 +2063,11 @@ void FTaskProbeQueries::SampleActors(FQuery& Q, UWorld* World, APlayerController
 	{
 		AActor* A = Found[i];
 		const TSharedRef<FJsonObject> Row = MakeShared<FJsonObject>();
+		// changed, bounds_change, pose_change: against the first sample this query saw the actor in
+		const FChangeReading Change = Q.Fields.ContainsByPredicate(IsChangeField) ? ActorChange(A, Q.Firsts, Q.FirstParts) : FChangeReading();
 		for (const FString& F : Q.Fields)
 		{
-			const TSharedPtr<FJsonValue> V = ActorField(A, F);
+			const TSharedPtr<FJsonValue> V = IsChangeField(F) ? ChangeField(Change, F) : ActorField(A, F);
 			if (bFull)
 			{
 				Full.FindOrAdd(F).Add(V);
@@ -2110,6 +2274,23 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 		{
 			Places.Add(FObjectKey(C), SC->GetComponentLocation());
 		}
+		// changed, bounds_change, pose_change: a primitive against the first sample this query saw it in
+		FChangeReading Change;
+		if (Prim && Q.Fields.ContainsByPredicate(IsChangeField))
+		{
+			const FObjectKey Key(C);
+			const FPartState Now = PartState(Prim);
+			if (const FPartState* First = Q.Firsts.Find(Key))
+			{
+				Change = PartChange(*First, Now);
+			}
+			else
+			{
+				Change.bAny = true;
+				Change.bPose = Now.bSkinned;
+				Q.Firsts.Add(Key, Now);
+			}
+		}
 		const TSharedRef<FJsonObject> Row = MakeShared<FJsonObject>();
 		for (const FString& F : Q.Fields)
 		{
@@ -2157,6 +2338,10 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 			else if (Prim && F == TEXT("simulating"))
 			{
 				V = Num(Simulating(Prim) ? 1.0 : 0.0);
+			}
+			else if (Prim && IsChangeField(F))
+			{
+				V = ChangeField(Change, F);
 			}
 			else if (Light && F == TEXT("intensity"))
 			{

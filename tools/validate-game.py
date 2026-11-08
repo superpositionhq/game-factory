@@ -518,9 +518,11 @@ TASK_PLAY_DEFAULTS = {'inputs': [], 'map': None, 'args': [], 'every': None}
 
 PIECE_TRIANGLES = ('triangles', 'visible_triangles')  # pieces fields whose threshold is never a literal
 # fields whose threshold is never a literal: how bright a light, how big a component's bounds, how far apart an actor's
-# parts, how loud a sound, how much the ground rises and falls depend on what a build chose (docs/task-probes.md)
-NEVER_LITERAL = {'components': ('intensity', 'extent_x', 'extent_y', 'extent_z'), 'actors': ('spread',),
-                 'audio': ('volume', 'max_volume'), 'ground': ('range',)}
+# parts, how far an object's bounds or pose moved, how loud a sound, how much the ground rises and falls depend on what
+# a build chose (docs/task-probes.md)
+NEVER_LITERAL = {'components': ('intensity', 'extent_x', 'extent_y', 'extent_z', 'bounds_change', 'pose_change'),
+                 'actors': ('spread', 'bounds_change', 'pose_change'), 'audio': ('volume', 'max_volume'),
+                 'ground': ('range',)}
 GROUND_POINT = ('height', 'hit')        # a ground measure at a point `xy`
 GROUND_BOX = ('min', 'max', 'mean', 'range', 'hits')   # a ground measure over a `box`
 

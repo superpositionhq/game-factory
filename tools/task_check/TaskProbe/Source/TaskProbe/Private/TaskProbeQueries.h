@@ -21,7 +21,12 @@
 //   under 10 cm/s), bb:<Key> (an AI controller's, or a pawn's AI controller's, blackboard value), simulating (1 when any
 //   of its primitive components simulates physics: its own body or a skeletal mesh's body), spread (how far apart its
 //   geometry's parts are: the diagonal of the box around the centres of the mesh components extent_ counts, a skeletal
-//   mesh with several physics bodies by each body's place; 0 with one part, null with none).
+//   mesh with several physics bodies by each body's place; 0 with one part, null with none), changed (1 when the actor
+//   differs from the first sample it was seen in: one of its mesh components was hidden or shown, removed or added
+//   drawn, its world bounds moved more than 1 cm, or a skinned mesh's pose moved: its bones more than 5 cm in all, in
+//   its own space, or its local bounds more than 1 cm), bounds_change (cm: the furthest any face of a mesh component's
+//   world bounds moved since then, the largest over its components), pose_change (cm: how far its skinned meshes'
+//   bones moved since then in their own space, summed; null without a skinned mesh).
 // - widgets: "rows": [{"name", "class", <field>: value}] over the UMG trees in the viewport. select.class alone matches
 //   the widget's own class; with select.name it also matches an enclosing user widget's class. visible = visible,
 //   render opacity > 0, and every parent (through enclosing user widgets) the same. x, y, w, h: the cached geometry in
@@ -54,7 +59,9 @@
 //   select.name, select.owner = an actor selection, select.near); fields count, active, visible, x y z, prop:<path>,
 //   speed (cm/s: its physics body's while it simulates, else its own velocity, else how far it moved since the query's
 //   previous sample; null the first time it is seen), extent_x|y|z (a primitive's world bounds half-size), simulating
-//   (a primitive's physics, as actors'), intensity (a light's), on (a light lights the scene, as light counts it).
+//   (a primitive's physics, as actors'), intensity (a light's), on (a light lights the scene, as light counts it),
+//   changed, bounds_change, pose_change (a primitive against the first sample it was seen in, as actors' for one part;
+//   pose_change null unless skinned).
 // - pieces: "value": {"count", "visible", "components", "actors", "triangles", "visible_triangles"}: the placed mesh
 //   pieces of the registered mesh components select.class matches (default every mesh component; also select.name,
 //   select.mesh = a wildcard on the mesh asset's name, select.owner, select.near), counted over all of them whatever
@@ -109,6 +116,17 @@ UButton* FindButton(UWorld* World, const FString& Want);
  *  pawn's side of it (level, plus Offset), and the yaw that faces Face (a point, as a query's) or else that actor. */
 bool TeleportSpot(UWorld* World, APlayerController* PC, const TSharedPtr<FJsonObject>& Select, double Distance, const FVector& Offset,
 	const TSharedPtr<FJsonObject>& Face, FVector& OutLocation, double& OutYaw, FString& OutName);
+
+/** A drawn part (a primitive component) as changed compares it: drawn or not, its world bounds and, of a skinned
+ *  mesh, its local bounds and its bones' places in its own space. */
+struct FPartState
+{
+	bool bDrawn = false;
+	bool bSkinned = false;
+	FBox World = FBox(ForceInit);
+	FBox Local = FBox(ForceInit);
+	TArray<FVector> Bones;
+};
 }
 
 class FTaskProbeQueries
@@ -142,6 +160,8 @@ private:
 		bool bGroundBox = false;  // ground: a box sampled on a grid, else one point
 		int32 Grid = 8;  // ground: grid x grid points over the box (0: the query gave no place)
 		TMap<FObjectKey, FVector> LastPlaces;  // components: each one's place at the previous sample (for speed)
+		TMap<FObjectKey, TaskProbe::FPartState> Firsts;  // changed: each part as the first sample it was seen in had it
+		TMap<FObjectKey, TArray<FObjectKey>> FirstParts;  // changed (actors): each actor's parts at its first sample
 		double LastT = 0.0;
 		TArray<TSharedPtr<FJsonObject>> Pending;  // screen: samples waiting for the next drawn frame
 		TArray<TSharedPtr<FJsonValue>> Samples;
