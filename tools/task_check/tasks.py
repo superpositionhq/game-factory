@@ -102,14 +102,15 @@ def point(p):
 
 
 def select(s):
-    """An actor, widget or component selection as written, without unset keys, its `near` and `owner` filled in."""
+    """An actor, widget or component selection as written, without unset keys, its `near`, `owner` and `has` filled
+    in."""
     out = {}
     for k, v in s.items():
         if v is None:
             continue
         if k == "near":
             out[k] = {"point": point(v["point"]), "radius": float(v["radius"])}
-        elif k == "owner":
+        elif k in ("owner", "has"):
             out[k] = select(v)
         else:
             out[k] = v

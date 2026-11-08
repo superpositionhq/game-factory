@@ -267,13 +267,47 @@ static bool ReadVec(const TSharedPtr<FJsonObject>& O, const TCHAR* Key, FVector&
 	return true;
 }
 
+/** An actor select's `has`: a component the actor carries that matches every key given (CarriesComponent). */
+struct FHasSel
+{
+	FString Class;
+	bool bLit = false;
+	bool bVisible = false;
+	TSharedPtr<FJsonObject> NearPoint;
+	double Radius = 0.0;
+};
+
 struct FSel
 {
 	FString Class, Tag, Name;
 	bool bPlayer = false;
 	TSharedPtr<FJsonObject> NearPoint;
 	double Radius = 0.0;
+	TSharedPtr<FHasSel> Has;  // only with `has`
 };
+
+/** has: the renderer its `lit` reads a mesh with when the material graph can't say (FGlowRender): the query set's while
+ *  it samples, teleport_to's own while it picks; none elsewhere (the graph's bound, as without a renderer). */
+static FGlowRender* SelectRender = nullptr;
+
+/** O's `near`, {"point": <Point>, "radius": cm}: its point (an empty one, which matches nothing, when it has none). */
+static void ParseNear(const TSharedPtr<FJsonObject>& O, TSharedPtr<FJsonObject>& OutPoint, double& OutRadius)
+{
+	const TSharedPtr<FJsonObject>* Near = nullptr;
+	if (O->TryGetObjectField(TEXT("near"), Near) && Near->IsValid())
+	{
+		const TSharedPtr<FJsonObject>* Point = nullptr;
+		if ((*Near)->TryGetObjectField(TEXT("point"), Point))
+		{
+			OutPoint = *Point;
+		}
+		else
+		{
+			OutPoint = MakeShared<FJsonObject>();  // a near without a point matches nothing
+		}
+		(*Near)->TryGetNumberField(TEXT("radius"), OutRadius);
+	}
+}
 
 static FSel ParseSel(const TSharedPtr<FJsonObject>& O)
 {
@@ -286,19 +320,15 @@ static FSel ParseSel(const TSharedPtr<FJsonObject>& O)
 	O->TryGetStringField(TEXT("tag"), S.Tag);
 	O->TryGetStringField(TEXT("name"), S.Name);
 	O->TryGetBoolField(TEXT("player"), S.bPlayer);
-	const TSharedPtr<FJsonObject>* Near = nullptr;
-	if (O->TryGetObjectField(TEXT("near"), Near) && Near->IsValid())
+	ParseNear(O, S.NearPoint, S.Radius);
+	const TSharedPtr<FJsonObject>* Has = nullptr;
+	if (O->TryGetObjectField(TEXT("has"), Has) && Has->IsValid())
 	{
-		const TSharedPtr<FJsonObject>* Point = nullptr;
-		if ((*Near)->TryGetObjectField(TEXT("point"), Point))
-		{
-			S.NearPoint = *Point;
-		}
-		else
-		{
-			S.NearPoint = MakeShared<FJsonObject>();  // a near without a point matches nothing
-		}
-		(*Near)->TryGetNumberField(TEXT("radius"), S.Radius);
+		S.Has = MakeShared<FHasSel>();
+		(*Has)->TryGetStringField(TEXT("class"), S.Has->Class);
+		(*Has)->TryGetBoolField(TEXT("lit"), S.Has->bLit);
+		(*Has)->TryGetBoolField(TEXT("visible"), S.Has->bVisible);
+		ParseNear(*Has, S.Has->NearPoint, S.Has->Radius);
 	}
 	return S;
 }
@@ -306,6 +336,7 @@ static FSel ParseSel(const TSharedPtr<FJsonObject>& O)
 static APawn* PlayerPawn(APlayerController* PC) { return PC ? PC->GetPawn() : nullptr; }
 
 static bool ResolvePoint(const TSharedPtr<FJsonObject>& P, UWorld* World, APlayerController* PC, int32 Depth, FVector& Out);
+static bool CarriesComponent(const AActor* A, const FHasSel& Has, UWorld* World, const FVector& NearP);
 
 /** The actors a selection matches (Out holds at most Limit; Total counts them all). */
 static void FindActors(UWorld* World, APlayerController* PC, const FSel& S, int32 Depth, int32 Limit, TArray<AActor*>& Out, int32& Total)
@@ -318,6 +349,11 @@ static void FindActors(UWorld* World, APlayerController* PC, const FSel& S, int3
 	FVector NearP = FVector::ZeroVector;
 	const bool bNear = S.NearPoint.IsValid();
 	if (bNear && !ResolvePoint(S.NearPoint, World, PC, Depth + 1, NearP))
+	{
+		return;
+	}
+	FVector HasNearP = FVector::ZeroVector;  // has: the point its component must be near
+	if (S.Has.IsValid() && S.Has->NearPoint.IsValid() && !ResolvePoint(S.Has->NearPoint, World, PC, Depth + 1, HasNearP))
 	{
 		return;
 	}
@@ -341,6 +377,10 @@ static void FindActors(UWorld* World, APlayerController* PC, const FSel& S, int3
 			return false;
 		}
 		if (bNear && FVector::Dist(A->GetActorLocation(), NearP) > S.Radius)
+		{
+			return false;
+		}
+		if (S.Has.IsValid() && !CarriesComponent(A, *S.Has, World, HasNearP))
 		{
 			return false;
 		}
@@ -1408,8 +1448,11 @@ UButton* FindButton(UWorld* World, const FString& Want)
 	return Found;
 }
 
-bool TeleportSpot(UWorld* World, APlayerController* PC, const TSharedPtr<FJsonObject>& Select, double Distance, const FVector& Offset,
-	const TSharedPtr<FJsonObject>& Face, FVector& OutLocation, double& OutYaw, FString& OutName)
+/** Do, with a renderer of its own for a `has` `lit` while none is set (defined after FGlowRender). */
+static void WithSelectRender(TFunctionRef<void()> Do);
+
+static bool TeleportSpotNow(UWorld* World, APlayerController* PC, const TSharedPtr<FJsonObject>& Select, double Distance,
+	const FVector& Offset, const TSharedPtr<FJsonObject>& Face, FVector& OutLocation, double& OutYaw, FString& OutName)
 {
 	const APawn* Pawn = PlayerPawn(PC);
 	if (!World || !Pawn || !Select.IsValid())
@@ -1455,6 +1498,14 @@ bool TeleportSpot(UWorld* World, APlayerController* PC, const TSharedPtr<FJsonOb
 	OutYaw = Dir.SizeSquared2D() > 1.0 ? FMath::RadiansToDegrees(FMath::Atan2(Dir.Y, Dir.X)) : Pawn->GetActorRotation().Yaw;
 	OutName = Target->GetName();
 	return true;
+}
+
+bool TeleportSpot(UWorld* World, APlayerController* PC, const TSharedPtr<FJsonObject>& Select, double Distance, const FVector& Offset,
+	const TSharedPtr<FJsonObject>& Face, FVector& OutLocation, double& OutYaw, FString& OutName)
+{
+	bool bFound = false;
+	WithSelectRender([&] { bFound = TeleportSpotNow(World, PC, Select, Distance, Offset, Face, OutLocation, OutYaw, OutName); });
+	return bFound;
 }
 
 // ---------------------------------------------------------------- Slate widgets under the game viewport
@@ -2700,6 +2751,58 @@ static FGlowReading ActorGlow(const AActor* A, UWorld* World, FGlowRender* Rende
 	}
 	R.bRead = R.bLit || !bUnread;
 	return R;
+}
+
+/** has: A carries a component that matches every key the select's `has` gives: `class` (the component's class or a
+ *  parent, as a components select names it), `visible` (drawn, as the components `visible` field reads it), `lit` (it
+ *  gives off light, as the components `lit` field reads it: a light that lights the scene, or a drawn mesh whose
+ *  material is emissive or unlit and bright, from its graph or else as rendered) and `near` (the component's own place
+ *  within `radius` cm of the point). Its own registered components, editor-only ones left out. */
+static bool CarriesComponent(const AActor* A, const FHasSel& Has, UWorld* World, const FVector& NearP)
+{
+	TInlineComponentArray<UActorComponent*> Components(A);
+	for (UActorComponent* C : Components)
+	{
+		if (!C || !C->IsRegistered() || C->IsEditorOnly() || !ClassMatches(C->GetClass(), Has.Class))
+		{
+			continue;
+		}
+		const USceneComponent* SC = Cast<USceneComponent>(C);
+		if (Has.NearPoint.IsValid() && (!SC || FVector::Dist(SC->GetComponentLocation(), NearP) > Has.Radius))
+		{
+			continue;
+		}
+		if (Has.bVisible && (!SC || !SC->IsVisible() || SC->bHiddenInGame || A->IsHidden()))
+		{
+			continue;
+		}
+		if (Has.bLit)
+		{
+			FGlowReading Glow;
+			if (const ULightComponentBase* Light = Cast<ULightComponentBase>(C))
+			{
+				AddLight(Glow, Light, World);
+			}
+			else if (const UMeshComponent* Mesh = Cast<UMeshComponent>(C))
+			{
+				AddMesh(Glow, Mesh, World, SelectRender);
+			}
+			if (!Glow.bLit)
+			{
+				continue;
+			}
+		}
+		return true;
+	}
+	return false;
+}
+
+static void WithSelectRender(TFunctionRef<void()> Do)
+{
+	FGlowRender Own;
+	Own.NewSample();
+	TGuardValue<FGlowRender*> Render(SelectRender, SelectRender ? SelectRender : &Own);
+	Do();
 }
 
 static TSharedPtr<FJsonValue> GlowField(const FGlowReading& R, const FString& F)
@@ -4337,6 +4440,7 @@ void FTaskProbeQueries::Sample(UWorld* World, APlayerController* PC, double T)
 {
 	Hook(World);
 	GlowRender->NewSample();
+	TGuardValue<TaskProbe::FGlowRender*> SelectScope(TaskProbe::SelectRender, GlowRender.Get());  // has: lit
 	for (FQuery& Q : Queries)
 	{
 		const TSharedRef<FJsonObject> S = MakeShared<FJsonObject>();

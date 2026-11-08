@@ -608,6 +608,57 @@ class LitWhateverMadeTheLight(unittest.TestCase):
         self.assertNotEqual(probes.query_id(probes.needs(every)[0]), probes.query_id(query))
 
 
+LIT_HERE = {"has": {"lit": True, "near": {"point": {"xyz": [500, 0, 100]}, "radius": 300}}}
+LIT_HERE_SENT = {"has": {"lit": True, "near": {"point": {"xyz": [500.0, 0.0, 100.0]}, "radius": 300.0}}}
+
+
+class ActorsByAComponent(unittest.TestCase):
+    """docs/task-probes.md, section 2.4: an actor select's `has` picks actors by a component they carry (one that
+    gives light, a drawn mesh near a point), whatever class or name a build gave them."""
+
+    def test_has_works_wherever_an_actor_select_does(self):
+        play = {"name": "away", "seconds": 10, "inputs": [
+            {"t": 2, "teleport_to": LIT_HERE, "distance": 400},
+            {"t": 4, "teleport_to": {"tag": "Prop", "has": {"class": "PointLightComponent", "visible": True}},
+             "face": {"actor": {"has": {"lit": True}}}}]}
+        task = task_with(
+            probe("a", measure={"probe": "actors", "select": LIT_HERE, "field": "count"}),
+            probe("b", play=play, measure={"probe": "pawn", "field": "dist", "to": {"actor": {"has": {"lit": True}}}}),
+            probe("c", measure={"probe": "components", "select": {"class": "StaticMeshComponent",
+                                                                  "owner": {"has": {"class": "PointLightComponent"}}},
+                                "field": "count"}),
+            probe("d", measure={"probe": "ground", "xy": [0, 0], "select": {"has": {"visible": True}},
+                                "field": "height"}))
+        first, second = tasks.checks(task)[1][1]["play"]["inputs"]
+        self.assertEqual(first["teleport_to"], LIT_HERE_SENT)
+        self.assertEqual(second["teleport_to"], {"tag": "Prop", "has": {"class": "PointLightComponent",
+                                                                        "visible": True}})
+        self.assertEqual(second["face"], {"actor": {"has": {"lit": True}}, "offset": [0, 0, 0]})
+        found = m(probe="actors", select=LIT_HERE, field="count")
+        (query,) = probes.needs(found)
+        self.assertEqual(query["select"], LIT_HERE_SENT)
+        owner = m(probe="components", select={"class": "StaticMeshComponent",
+                                              "owner": {"has": {"class": "PointLightComponent"}}}, field="count")
+        self.assertEqual(probes.needs(owner)[0]["select"]["owner"], {"has": {"class": "PointLightComponent"}})
+        plain = m(probe="actors", select={"tag": "Prop"}, field="count")
+        self.assertEqual(probes.needs(plain)[0]["select"], {"tag": "Prop"}, "a select without has is sent as before")
+        lit = m(probe="actors", select={"tag": "Prop", "has": {"lit": True}}, field="count")
+        self.assertNotEqual(probes.query_id(probes.needs(lit)[0]), probes.query_id(probes.needs(plain)[0]))
+        self.assertEqual(probes.reduce(found, actors_play(found, [[{"count": 1}], [{"count": 1}] * 2])), 2)
+
+    def test_has_refuses_what_it_cant_read(self):
+        for has in ({}, {"lit": False}, {"visible": False}, {"tag": "Lamp"}, {"class": "Point Light"},
+                    {"near": {"point": {"xyz": [0, 0, 0]}}}):
+            with self.assertRaises(ValueError, msg=json.dumps(has)):
+                task_with(probe(measure={"probe": "actors", "select": {"has": has}, "field": "count"}))
+        with self.assertRaises(ValueError):
+            task_with(probe(measure={"probe": "components", "select": {"class": "StaticMeshComponent",
+                                                                       "has": {"lit": True}}, "field": "count"}))
+        with self.assertRaisesRegex(ValueError, "takes no `has`"):
+            task_with(probe(play="editor", measure={"probe": "asset", "map": "/Game/Maps/L_A",
+                                                    "select": {"tag": "Lamp", "has": {"lit": True}}, "field": "count"}))
+
+
 UI_TEXT = {"probe": "ui", "select": {"kind": "text"}, "field": "text", "match": r"AMMO\s*\d+", "of": "any"}
 # one sample's elements as the plugin reads them: a UMG text block, a Slate text block, a canvas string and
 # a canvas rect (a collapsed UMG text block is not on screen, so not a row); source and kind ride along for the logs
