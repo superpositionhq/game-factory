@@ -202,8 +202,9 @@ else first; `pawn_on_screen` = 1 when the pawn's centre projects inside the view
     colour's luminance and its light function's; a mesh's brightest material's emissive luminance (emissive 1 taken
     as 1 cd/m2) times a quarter of the surface of its local bounds in m2, scaled (the candelas a glowing surface that
     size gives every way). **Its threshold is calibrated or relative to the start, never a literal value**. A row
-    with `lit` or `glow` also carries `glow_sources`, the kinds lit (`light`, `emissive`, `unlit`), for the logs; it
-    is not a field to measure. How a material's emissive is read, and its limits: section 2.5;
+    with `lit` or `glow` also carries `glow_sources`, the kinds lit (`light`, `emissive`, `unlit`), and `glow_read`,
+    how its meshes were read (`graph`, `render`, `bound`), for the logs; neither is a field to measure. How a mesh's
+    emissive is read, and its limits: section 2.5;
   - `prop:<Component>.<Property>[.<Sub>]` or `prop:<Property>`: read by reflection. Numbers and booleans as numbers,
     enums as their index, object references as 1 when set, strings and names through `match`. A component by name or
     class (`SpringArm`, `CharacterMovement`, `StaticMeshComponent0`); an array element as `Materials[0]`;
@@ -249,20 +250,39 @@ An instanced mesh component is one component however many instances it draws: co
 - **`intensity`, `extent_*`, `bounds_change`, `pose_change` and `glow` thresholds are calibrated or relative to the
   start, never a literal value**; `on`, `lit`, `simulating`, `changed`, positions and speeds take a literal.
 
-How `lit` and `glow` read a mesh's materials: every material the mesh draws with (its own, overrides, dynamic material
-instances, its overlay), each with its parameter values at that sample. The base material's emissive input (or its
-material attributes, or its Substrate front material) is evaluated as bounds per channel over constants, scalar and
-vector parameters (an instance's override, a dynamic instance's current value, custom primitive data), parameter
-collections, static switches, material function calls, reroutes and the arithmetic nodes; the brightest bound counts.
+How `lit` and `glow` read a mesh, one of two ways; which one depends on its materials' graphs alone, never on
+parameter values:
+- **From its material graphs**, when every material the mesh draws with (its own, overrides, dynamic material
+  instances, its overlay) evaluates whole with its parameter values at that sample: the base material's emissive input
+  (or its material attributes, or its Substrate front material) over constants, scalar and vector parameters (an
+  instance's override, a dynamic instance's current value, custom primitive data), parameter collections, static
+  switches, material function calls, reroutes and the arithmetic nodes. The brightest material counts, over the
+  mesh's whole bounds.
+- **As rendered**, when any graph holds an input it can't evaluate (a texture, a custom HLSL node, vertex colour,
+  time, a blend of attribute sets) or isn't there (a cooked build): the mesh is drawn alone, as the player's view would
+  draw it at that sample, without any light (a scene capture that shows only it, orthographic, from four fixed views
+  around it, HDR scene colour, every light, sky, global illumination, reflection, fog and atmosphere off), so what is
+  left is what it gives off itself. `lit`: its brightest pixel's luminance above 0.01. `glow`: the views' luminance x
+  pixel area summed, over the area of its bounds box they see, times a quarter of the box's surface: the same amount
+  as from the graph for a mesh glowing all over, that part's share for a mesh glowing in part (a lamp that is one
+  region of a larger mesh's material, say). A custom node, custom primitive data, a dynamic parameter, a texture or time reads as drawn.
+  A mesh whose graph's upper bound is at or under 0.01 is dark whatever its inputs and isn't rendered.
+- Without a renderer (`-nullrhi`), the graph's bound instead: an input it can't evaluate counts as at most 1 per
+  channel (white); a cooked build's material reads 0 when its emissive is unconnected, else by the parameters named for
+  it (Emissive, Emission, Emit, Glow), else no value. The checker's plays render offscreen (`-RenderOffscreen`), which
+  renders the captures (tested on Windows; on Linux `-RenderOffscreen` renders with Vulkan without a display and
+  should read alike).
+
 Limits:
-- an input it can't evaluate (a texture, vertex colour, time, a custom node) counts as at most 1 per channel, white;
-- a mesh counts its brightest material over its whole bounds, so a lamp post with a small glowing bulb reads the
-  post's size: compare a `glow` with itself, calibrated or relative to the start, or select the bulb by `mesh`;
-- the graph is editor-only data, there in the uncooked `-game` play the checker runs. Without it (a cooked build) an
-  unconnected emissive reads 0 and a connected one by the parameters named for it (Emissive, Emission, Emit, Glow: the
-  brightest such colour times every such scalar), else no value;
-- particle effects, decals and text are not sources; a sky dome drawn with an unlit material reads lit, so select the
-  lamp (by owner, tag, `mesh` or `near`), not every mesh in the level.
+- a mesh read from its graphs counts its brightest material over its whole bounds, so a lamp post with a small glowing
+  bulb reads the post's size: compare a `glow` with itself, calibrated or relative to the start, or select the bulb by
+  `mesh`;
+- a mesh drawn only on its inside (a sky dome, a room seen from within) is rendered from outside, usually as nothing,
+  so it reads dark that way; a mesh hidden from scene captures, or drawn only for its owner, reads dark that way too;
+- rendering is done on the game thread at the sample, each mesh once per sample, at most 64 meshes a sample (past
+  that, the graph's bound);
+- a light's light function is read from its graph; particle effects, decals and text are not sources; select the lamp
+  (by owner, tag, `mesh` or `near`), not every mesh in the level.
 
 ### 2.6 `widgets`: the UI on screen
 
@@ -463,8 +483,8 @@ music; so ambience a game drives from code reads as well as an `AmbientSound` ac
 ```
 
 One reading for the UI on screen, however a build drew it: UMG widgets, Slate widgets and the HUD canvas
-(`AHUD::DrawHUD` with `DrawText`, `DrawRect`, `DrawTexture`, `UCanvas` `K2_DrawText` and the canvas's other text,
-tile and texture draws) read the same. A HUD a build drew on the canvas, and one another build made of widgets, both
+(`AHUD::DrawHUD` with `DrawText`, `DrawRect`, `DrawTexture`, `DrawLine`, `UCanvas` `K2_DrawText`, `K2_DrawBox` and
+the canvas's other text, tile, texture and line draws) read the same. A HUD a build drew on the canvas, and one another build made of widgets, both
 pass a check written with `ui`. **This is the way to check what a HUD or menu shows**; `widgets` (section 2.6) stays for
 a widget's own state (a progress bar's percent, a brush).
 
@@ -473,9 +493,11 @@ a widget's own state (a progress bar's percent, a brush).
   not read, nor is a canvas draw that is fully transparent or off the frame. No value when no frame is drawn.
 - Each element is one row: a widget that draws (a text block, rich text, an editable text with text or a hint; an
   image; a border, a button, a progress bar, a colour block), or one canvas draw (a string, a rect, a texture or
-  tile).
+  tile, a line).
 - `select` (optional; default every element): `kind` (`text`, `box`: a rect, border, button, bar or untextured brush,
-  `image`: a brush or canvas draw with a texture or material); `text` (a regular expression the element's text must
+  `image`: a brush or canvas draw with a texture or material, `line`: a canvas line, `DrawLine` or `K2_DrawLine`, its
+  rectangle as drawn; an outline, `K2_DrawBox` or four lines one after another closing a rectangle, once, as its
+  rectangle); `text` (a regular expression the element's text must
   match; text elements only); `rect` `[x0, y0, x1, y1]` in viewport fractions, x0 < x1 and y0 < y1 (the element's centre
   inside).
 - `field`: `count` (one per element); `text` (the string shown, with `match`); `x`, `y`, `w`, `h` (the element's
@@ -486,8 +508,14 @@ a widget's own state (a progress bar's percent, a brush).
 - Canvas text is read back from the glyphs the canvas drew (the font cache's characters), so it is the string as
   drawn. Spaces are read from the gaps between glyphs: write `\s*` (or `\s+`) where a string has a space.
   A shadow or outline is the same text drawn twice and reads once.
-- Limits: a widget that paints its own text or shapes in OnPaint (no text block or brush), canvas lines and outlined
-  boxes (`DrawLine`, `K2_DrawBox`), material tiles (`DrawMaterial`), the debug canvas (on-screen debug messages, stats)
+- Digits drawn with lines read as text too, when they are drawn seven-segment style (horizontal strokes at a digit's
+  top, middle and bottom, upright strokes at its left and right; 0-9 with the usual 6, 7 and 9 variants): one `text`
+  element per number, digits of one height side by side on one line. The strokes stay `line` elements. It reads
+  nothing rather than guess: a number boxed in tightly or crossed by another stroke, segments far apart (more than
+  about a sixth of a digit's width), digits closer than about a third of a width, a lone 1 or a run of 1s alone,
+  letters, slanted strokes. When a readout drawn with lines doesn't read as text, grade it by its strokes: `count`
+  (or `x`, `y`) of `line` elements in its `rect`, calibrated or relative to the start, changes as the number changes.
+- Limits: a widget that paints its own text or shapes in OnPaint (no text block or brush), material tiles (`DrawMaterial`), the debug canvas (on-screen debug messages, stats)
   and anything a build draws in the 3D scene (a widget component, a text render component) are not UI elements here;
   a canvas glyph whose font isn't in memory reads as `?`. The UMG/Slate geometry is the layout's, so a widget scaled
   or moved by a render transform reads at its laid-out place.

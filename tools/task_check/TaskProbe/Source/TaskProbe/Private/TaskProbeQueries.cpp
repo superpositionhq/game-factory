@@ -39,6 +39,7 @@
 #include "Components/ProgressBar.h"
 #include "Components/RectLightComponent.h"
 #include "Components/RichTextBlock.h"
+#include "Components/SceneCaptureComponent2D.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/SkinnedMeshComponent.h"
 #include "Components/SkyLightComponent.h"
@@ -54,6 +55,7 @@
 #include "Engine/SkinnedAsset.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/Texture.h"
+#include "Engine/TextureRenderTarget2D.h"
 #include "EngineFontServices.h"
 #include "EngineUtils.h"
 #include "Fonts/FontCache.h"
@@ -100,6 +102,8 @@
 #include "Materials/MaterialExpressionVectorParameter.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialParameterCollectionInstance.h"
+#include "MaterialShared.h"
+#include "Misc/App.h"
 #include "Misc/FileHelper.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "Rendering/SkeletalMeshLODRenderData.h"
@@ -114,6 +118,7 @@
 #include "TextureResource.h"
 #include "Types/ReflectionMetadata.h"
 #include "UObject/ObjectKey.h"
+#include "UObject/StrongObjectPtr.h"
 #include "UObject/UObjectIterator.h"
 #include "UObject/UnrealType.h"
 #include "UnrealClient.h"
@@ -1724,9 +1729,6 @@ struct FRange
 	}
 };
 
-/** An input the reading can't evaluate (a texture, vertex colour, time, a custom node): at most white. */
-static FRange Unknown() { return FRange::Of(0.0, 1.0, 4); }
-
 /** Each channel of A and B combined by Fn(aLo, aHi, bLo, bHi, Lo, Hi). */
 template <typename FnType>
 static FRange Combine(const FRange& A, const FRange& B, FnType Fn)
@@ -1856,7 +1858,17 @@ struct FGraph
 	const UPrimitiveComponent* Prim = nullptr;
 	const UWorld* World = nullptr;
 	int32 Budget = GraphBudget;
+	bool bUnknown = false;  // an input it couldn't evaluate was on the way: the value is a bound, not the value
 };
+
+/** An input the reading can't evaluate (a texture, vertex colour, time, a custom node): at most white, and the graph's
+ *  value a bound from then on. Which inputs those are depends on the graph alone, never on parameter values, so a
+ *  material is read the same way at every sample. */
+static FRange Unknown(FGraph& G)
+{
+	G.bUnknown = true;
+	return FRange::Of(0.0, 1.0, 4);
+}
 
 static FRange Eval(FGraph& G, const FExpressionInput& In, const FGraphCall* Call);
 static FRange EmissiveOf(FGraph& G, const FExpressionInput& In, const FGraphCall* Call);
@@ -1995,7 +2007,7 @@ static FRange Node(FGraph& G, UMaterialExpression* E, int32 OutputIndex, const F
 		{
 			return FRange::Color(C, 4);
 		}
-		return Unknown();
+		return Unknown(G);
 	}
 	if (const UMaterialExpressionMultiply* X = Cast<UMaterialExpressionMultiply>(E))
 	{
@@ -2117,13 +2129,13 @@ static FRange Node(FGraph& G, UMaterialExpression* E, int32 OutputIndex, const F
 	}
 	if (const UMaterialExpressionNamedRerouteUsage* X = Cast<UMaterialExpressionNamedRerouteUsage>(E))
 	{
-		return X->Declaration ? EvalOr(G, X->Declaration->Input, Call, 0.0) : Unknown();
+		return X->Declaration ? EvalOr(G, X->Declaration->Input, Call, 0.0) : Unknown(G);
 	}
 	if (const UMaterialExpressionMaterialFunctionCall* X = Cast<UMaterialExpressionMaterialFunctionCall>(E))
 	{
 		const UMaterialExpressionFunctionOutput* Out = X->FunctionOutputs.IsValidIndex(OutputIndex) ? X->FunctionOutputs[OutputIndex].ExpressionOutput.Get() : nullptr;
 		const FGraphCall Inner{X, Call};
-		return Out ? EvalOr(G, Out->A, &Inner, 0.0) : Unknown();
+		return Out ? EvalOr(G, Out->A, &Inner, 0.0) : Unknown(G);
 	}
 	if (const UMaterialExpressionFunctionInput* X = Cast<UMaterialExpressionFunctionInput>(E))
 	{
@@ -2133,7 +2145,7 @@ static FRange Node(FGraph& G, UMaterialExpression* E, int32 OutputIndex, const F
 	{
 		return EvalOr(G, X->A, Call, 0.0);
 	}
-	return Unknown();
+	return Unknown(G);
 }
 
 static FRange Eval(FGraph& G, const FExpressionInput& In, const FGraphCall* Call)
@@ -2145,7 +2157,7 @@ static FRange Eval(FGraph& G, const FExpressionInput& In, const FGraphCall* Call
 	}
 	if (--G.Budget < 0)
 	{
-		return Unknown();
+		return Unknown(G);
 	}
 	const FRange V = Node(G, E, In.OutputIndex, Call);
 	return In.Mask ? Pick(V, In.MaskR != 0, In.MaskG != 0, In.MaskB != 0, In.MaskA != 0) : V;
@@ -2162,7 +2174,7 @@ static FRange EmissiveOf(FGraph& G, const FExpressionInput& In, const FGraphCall
 	}
 	if (--G.Budget < 0)
 	{
-		return Unknown();
+		return Unknown(G);
 	}
 	if (const UMaterialExpressionMakeMaterialAttributes* X = Cast<UMaterialExpressionMakeMaterialAttributes>(E))
 	{
@@ -2170,6 +2182,7 @@ static FRange EmissiveOf(FGraph& G, const FExpressionInput& In, const FGraphCall
 	}
 	if (const UMaterialExpressionBlendMaterialAttributes* X = Cast<UMaterialExpressionBlendMaterialAttributes>(E))
 	{
+		G.bUnknown = true;  // either attribute set: a bound
 		return Hull(EmissiveOf(G, X->A, Call), EmissiveOf(G, X->B, Call));
 	}
 	if (const UMaterialExpressionReroute* X = Cast<UMaterialExpressionReroute>(E))
@@ -2182,13 +2195,13 @@ static FRange EmissiveOf(FGraph& G, const FExpressionInput& In, const FGraphCall
 	}
 	if (const UMaterialExpressionNamedRerouteUsage* X = Cast<UMaterialExpressionNamedRerouteUsage>(E))
 	{
-		return X->Declaration ? EmissiveOf(G, X->Declaration->Input, Call) : Unknown();
+		return X->Declaration ? EmissiveOf(G, X->Declaration->Input, Call) : Unknown(G);
 	}
 	if (const UMaterialExpressionMaterialFunctionCall* X = Cast<UMaterialExpressionMaterialFunctionCall>(E))
 	{
 		const UMaterialExpressionFunctionOutput* Out = X->FunctionOutputs.IsValidIndex(In.OutputIndex) ? X->FunctionOutputs[In.OutputIndex].ExpressionOutput.Get() : nullptr;
 		const FGraphCall Inner{X, Call};
-		return Out ? EmissiveOf(G, Out->A, &Inner) : Unknown();
+		return Out ? EmissiveOf(G, Out->A, &Inner) : Unknown(G);
 	}
 	if (const UMaterialExpressionFunctionInput* X = Cast<UMaterialExpressionFunctionInput>(E))
 	{
@@ -2221,13 +2234,14 @@ static FRange EmissiveOf(FGraph& G, const FExpressionInput& In, const FGraphCall
 		}
 		return Sum;
 	}
-	return Unknown();  // SetMaterialAttributes and other attribute nodes
+	return Unknown(G);  // SetMaterialAttributes and other attribute nodes
 }
 #endif  // WITH_EDITORONLY_DATA
 
 /** A material's emissive from its graph (editor-only data, there in an uncooked -game play): the base material's
- *  emissive input evaluated with the instance's parameter values now. False without the graph (a cooked build). */
-static bool GraphEmissive(const UMaterialInterface* MI, const UPrimitiveComponent* Prim, const UWorld* World, double& Out)
+ *  emissive input evaluated with the instance's parameter values now; bExact when every input on the way could be
+ *  evaluated (else Out is the bound). False without the graph (a cooked build). */
+static bool GraphEmissive(const UMaterialInterface* MI, const UPrimitiveComponent* Prim, const UWorld* World, double& Out, bool& bExact)
 {
 #if WITH_EDITORONLY_DATA
 	const UMaterial* Base = MI ? MI->GetMaterial() : nullptr;
@@ -2258,6 +2272,7 @@ static bool GraphEmissive(const UMaterialInterface* MI, const UPrimitiveComponen
 		V = Ed->EmissiveColor.UseConstant ? FRange::Color(Ed->EmissiveColor.Constant, 3) : FRange::Of(0.0, 0.0);
 	}
 	Out = RangeLuminance(V);
+	bExact = !G.bUnknown;
 	return true;
 #else
 	return false;
@@ -2316,11 +2331,227 @@ static bool NamedEmissive(const UMaterialInterface* MI, double& Out)
 	return bAny;
 }
 
-/** A material's emissive luminance now: from its graph, else by its parameters' names; false when neither can say. */
+/** A material's emissive luminance now: from its graph, else by its parameters' names; false when neither can say.
+ *  bExact: the graph was evaluated whole (no texture, custom node or other input it can only bound), so Out is the
+ *  value, not a bound or a guess by names. */
+static bool MaterialEmissive(const UMaterialInterface* MI, const UPrimitiveComponent* Prim, const UWorld* World, double& Out, bool& bExact)
+{
+	bExact = false;
+	return GraphEmissive(MI, Prim, World, Out, bExact) || NamedEmissive(MI, Out);
+}
+
 static bool MaterialEmissive(const UMaterialInterface* MI, const UPrimitiveComponent* Prim, const UWorld* World, double& Out)
 {
-	return GraphEmissive(MI, Prim, World, Out) || NamedEmissive(MI, Out);
+	bool bExact = false;
+	return MaterialEmissive(MI, Prim, World, Out, bExact);
 }
+
+// ---------------------------------------------------------------- lit, glow: a mesh's emissive as rendered
+
+static constexpr int32 GlowRenderSize = 128;  // pixels square, each view of a mesh
+static constexpr int32 GlowRenderBudget = 64;  // meshes rendered per sample at most (each mesh once per sample)
+
+/** The four views a mesh is rendered from: the directions to a regular tetrahedron's corners in its own frame, so each
+ *  face of its local bounds box is seen from two of them at the same slant. */
+static const FVector GlowViews[4] = {FVector(1.0, 1.0, 1.0), FVector(1.0, -1.0, -1.0), FVector(-1.0, 1.0, -1.0), FVector(-1.0, -1.0, 1.0)};
+
+/** Show flags off in the render: every light and what light does (direct lights, the sky, global illumination,
+ *  reflections, ambient occlusion, shadows), the sky, fog and clouds behind the mesh, and what blurs or rescales a
+ *  frame. What is left in scene colour is what the mesh gives off itself: emissive and unlit shading. */
+static const TCHAR* const GlowDarkFlags[] = {
+	TEXT("DirectLighting"), TEXT("DeferredLighting"), TEXT("DirectionalLights"), TEXT("PointLights"), TEXT("SpotLights"),
+	TEXT("RectLights"), TEXT("MegaLights"), TEXT("SkyLighting"), TEXT("GlobalIllumination"), TEXT("LumenGlobalIllumination"),
+	TEXT("LumenReflections"), TEXT("ReflectionEnvironment"), TEXT("ScreenSpaceReflections"), TEXT("AmbientCubemap"),
+	TEXT("AmbientOcclusion"), TEXT("ScreenSpaceAO"), TEXT("DistanceFieldAO"), TEXT("VolumetricLightmap"),
+	TEXT("IndirectLightingCache"), TEXT("Specular"), TEXT("DynamicShadows"), TEXT("ContactShadows"), TEXT("CapsuleShadows"),
+	TEXT("LightShafts"), TEXT("LightFunctions"), TEXT("Atmosphere"), TEXT("Fog"), TEXT("VolumetricFog"), TEXT("Cloud"),
+	TEXT("TemporalAA"), TEXT("AntiAliasing"), TEXT("MotionBlur"), TEXT("Bloom"), TEXT("EyeAdaptation"), TEXT("LocalExposure"),
+	TEXT("DepthOfField"), TEXT("Decals")};
+
+/** A mesh's emissive as the renderer draws it: what its materials give off at that sample (custom nodes, textures,
+ *  custom primitive data, dynamic parameters and time included), the same pixels a player's view gets before light
+ *  is added. */
+struct FGlowRendered
+{
+	bool bRead = false;
+	double Mean = 0.0;  // luminance over its local bounds box, mean of the four views: summed luminance x pixel area / box area seen
+	double Peak = 0.0;  // the brightest pixel's luminance
+};
+
+/** Renders one mesh at a time in isolation (a scene capture showing only it, from four fixed views around it,
+ *  orthographic, its light-free scene colour in HDR) and reads the pixels back. One per query set; its capture and
+ *  render targets are transient objects it keeps, registered with the world only while it renders, so no query ever
+ *  sees them. */
+class FGlowRender
+{
+public:
+	void NewSample()
+	{
+		Cache.Reset();
+		Budget = GlowRenderBudget;
+	}
+
+	/** False when nothing can be rendered (no renderer: -nullrhi; no scene; the budget spent; a material still compiling). */
+	FGlowRendered Read(const UMeshComponent* M, UWorld* World)
+	{
+		if (const FGlowRendered* Seen = Cache.Find(FObjectKey(M)))
+		{
+			return *Seen;
+		}
+		FGlowRendered R;
+		if (Budget > 0 && World && World->Scene && FApp::CanEverRender() && Ready(M, World))
+		{
+			--Budget;
+			R = Render(M, World);
+		}
+		Cache.Add(FObjectKey(M), R);
+		return R;
+	}
+
+private:
+	/** Its materials' shaders are there to draw with: one still compiling is finished first (an uncooked play compiles
+	 *  them as they are first drawn; till then the renderer draws a default material in their place). */
+	static bool Ready(const UMeshComponent* M, const UWorld* World)
+	{
+		TArray<UMaterialInterface*> Used;
+		M->GetUsedMaterials(Used);
+		for (UMaterialInterface* MI : Used)
+		{
+			if (!MI || !MI->IsCompiling())
+			{
+				continue;
+			}
+			if (FMaterialResource* Res = World->Scene ? MI->GetMaterialResource(World->Scene->GetShaderPlatform()) : nullptr)
+			{
+				Res->FinishCompilation();
+			}
+			if (MI->IsCompiling())
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	void Setup()
+	{
+		if (!Capture.IsValid())
+		{
+			USceneCaptureComponent2D* C = NewObject<USceneCaptureComponent2D>(GetTransientPackage(), NAME_None, RF_Transient);
+			C->bCaptureEveryFrame = false;
+			C->bCaptureOnMovement = false;
+			C->bAlwaysPersistRenderingState = false;
+			C->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
+			C->CaptureSource = SCS_SceneColorHDR;
+			C->ProjectionType = ECameraProjectionMode::Orthographic;
+			// exposure 1: the scene colour holds the emissive as the material gives it (1 = 1 cd/m2)
+			C->PostProcessBlendWeight = 1.f;
+			C->PostProcessSettings.bOverride_AutoExposureMethod = true;
+			C->PostProcessSettings.AutoExposureMethod = AEM_Manual;
+			C->PostProcessSettings.bOverride_AutoExposureBias = true;
+			C->PostProcessSettings.AutoExposureBias = 0.f;
+			C->PostProcessSettings.bOverride_AutoExposureApplyPhysicalCameraExposure = true;
+			C->PostProcessSettings.AutoExposureApplyPhysicalCameraExposure = false;
+			TArray<FEngineShowFlagsSetting> Settings;
+			for (const TCHAR* Name : GlowDarkFlags)
+			{
+				FEngineShowFlagsSetting Setting;
+				Setting.ShowFlagName = Name;
+				Setting.Enabled = false;
+				Settings.Add(Setting);
+			}
+			C->SetShowFlagSettings(Settings);
+			Capture.Reset(C);
+		}
+		for (TStrongObjectPtr<UTextureRenderTarget2D>& T : Targets)
+		{
+			if (!T.IsValid())
+			{
+				UTextureRenderTarget2D* RT = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), NAME_None, RF_Transient);
+				RT->RenderTargetFormat = RTF_RGBA16f;
+				RT->ClearColor = FLinearColor::Black;
+				RT->bAutoGenerateMips = false;
+				RT->InitAutoFormat(GlowRenderSize, GlowRenderSize);
+				RT->UpdateResourceImmediate(true);
+				T.Reset(RT);
+			}
+		}
+	}
+
+	static void DarkFlags(FEngineShowFlags& Flags)
+	{
+		for (const TCHAR* Name : GlowDarkFlags)
+		{
+			const int32 Index = FEngineShowFlags::FindIndexByName(Name);
+			if (Index != INDEX_NONE)
+			{
+				Flags.SetSingleFlag(Index, false);
+			}
+		}
+	}
+
+	FGlowRendered Render(const UMeshComponent* M, UWorld* World)
+	{
+		FGlowRendered R;
+		Setup();
+		USceneCaptureComponent2D* C = Capture.Get();
+		// the mesh's local bounds box, in the world: its centre, size (cm) and the sphere around it
+		const FTransform& X = M->GetComponentTransform();
+		const FBoxSphereBounds Local = M->CalcBounds(FTransform::Identity);
+		const FVector Size = Local.BoxExtent * 2.0 * X.GetScale3D().GetAbs();
+		const FVector Centre = X.TransformPosition(Local.Origin);
+		const double Radius = FMath::Max(Size.Size() / 2.0, 1.0);
+		const double Width = Radius * 2.0 * 1.02;  // the box from any side, with a margin
+		C->RegisterComponentWithWorld(World);
+		DarkFlags(C->ShowFlags);
+		C->ShowOnlyComponents.Reset();
+		C->ShowOnlyComponents.Add(const_cast<UMeshComponent*>(M));
+		C->OrthoWidth = (float)Width;
+		double Seen = 0.0;  // the box's area the views see (m2)
+		for (int32 v = 0; v < 4; ++v)
+		{
+			const FVector Dir = X.GetRotation().RotateVector(GlowViews[v].GetSafeNormal());  // from the mesh toward the camera
+			const FVector N = GlowViews[v].GetSafeNormal();
+			Seen += (FMath::Abs(N.X) * Size.Y * Size.Z + FMath::Abs(N.Y) * Size.X * Size.Z + FMath::Abs(N.Z) * Size.X * Size.Y) / 10000.0;
+			C->SetWorldLocationAndRotation(Centre + Dir * (Radius + 50.0), FRotationMatrix::MakeFromX(-Dir).Rotator());
+			C->TextureTarget = Targets[v].Get();
+			C->CaptureScene();
+		}
+		const double PixelArea = FMath::Square(Width / GlowRenderSize) / 10000.0;  // m2
+		double Sum = 0.0;
+		bool bRead = true;
+		for (int32 v = 0; v < 4 && bRead; ++v)
+		{
+			FTextureRenderTargetResource* Res = Targets[v]->GameThread_GetRenderTargetResource();
+			TArray<FFloat16Color> Pixels;
+			bRead = Res && Res->ReadFloat16Pixels(Pixels) && Pixels.Num() >= GlowRenderSize * GlowRenderSize;
+			for (const FFloat16Color& P : Pixels)
+			{
+				const double L = Luminance(P.R.GetFloat(), P.G.GetFloat(), P.B.GetFloat());
+				if (FMath::IsFinite(L) && L > 0.0)
+				{
+					Sum += L * PixelArea;
+					R.Peak = FMath::Max(R.Peak, L);
+				}
+			}
+		}
+		C->ShowOnlyComponents.Reset();
+		C->TextureTarget = nullptr;
+		C->UnregisterComponent();
+		R.bRead = bRead;
+		R.Mean = bRead && Seen > 1e-8 ? Sum / Seen : 0.0;
+		return R;
+	}
+
+	TStrongObjectPtr<USceneCaptureComponent2D> Capture;
+	TStrongObjectPtr<UTextureRenderTarget2D> Targets[4];
+	TMap<FObjectKey, FGlowRendered> Cache;  // each mesh once per sample, whichever queries read it
+	int32 Budget = GlowRenderBudget;
+};
+
+/** How a source's amount was read (glow_read, for logs): its material graph evaluated whole; rendered; or a bound
+ *  (the graph's with an input it can't evaluate, or by parameter names) when it couldn't be rendered. */
+static constexpr uint8 ReadGraph = 1, ReadRender = 2, ReadBound = 4;
 
 /** lit and glow of one actor or component, summed over its sources (lights and meshes). */
 struct FGlowReading
@@ -2329,6 +2560,7 @@ struct FGlowReading
 	bool bLit = false;
 	double Glow = 0.0;
 	uint8 Kinds = 0;  // GlowLight | GlowEmissive | GlowUnlit: the sources that are lit
+	uint8 Reads = 0;  // ReadGraph | ReadRender | ReadBound: how its meshes were read
 };
 
 /** A light component as a source: lit when it lights the scene (LightOn) and its light function, if any, isn't black;
@@ -2364,33 +2596,70 @@ static void AddLight(FGlowReading& R, const ULightComponentBase* L, const UWorld
 	}
 }
 
-/** A mesh component as a source: its brightest material's emissive luminance (every material it draws with: its own,
- *  overrides and dynamic instances with their parameters now, its overlay). Lit when it is drawn (visible, not hidden
- *  in game, its owner not hidden) and that is above EmissiveFloor; glow that luminance times a quarter of the surface
- *  of its local bounds (m2, scaled), the candelas a lamp that size would give every way. False when no material could
- *  be read. */
-static bool AddMesh(FGlowReading& R, const UMeshComponent* M, const UWorld* World)
+/** A mesh component as a source, lit when it is drawn (visible, not hidden in game, its owner not hidden) and its
+ *  emissive luminance is above EmissiveFloor; glow that luminance times a quarter of the surface of its local bounds
+ *  (m2, scaled), the candelas a lamp that size would give every way. Its emissive is read one of two ways:
+ *  - every material it draws with (its own, overrides and dynamic instances with their parameters now, its overlay)
+ *    has a graph the reading evaluates whole: the brightest material's luminance, as if it covered the whole mesh;
+ *  - else (a custom node, a texture, a per-primitive or time input, a cooked build's material) it is rendered alone,
+ *    without light (FGlowRender): lit by its brightest pixel, glow by its luminance over the box summed and averaged
+ *    over four views, which is the same amount for a box lit all over and less where only part of it glows.
+ *  When it can't be rendered (no renderer), the graph's bound or the parameter names, as when there was no render.
+ *  False when no material could be read. */
+static bool AddMesh(FGlowReading& R, const UMeshComponent* M, UWorld* World, FGlowRender* Render)
 {
 	TArray<UMaterialInterface*> Used;
 	M->GetUsedMaterials(Used);
 	bool bRead = Used.IsEmpty();
+	bool bAllRead = true;  // every material it draws with said how bright it can be
+	bool bExact = true;
+	bool bAllUnlit = !Used.IsEmpty();
 	double Best = 0.0;
 	bool bUnlit = false;
 	for (const UMaterialInterface* MI : Used)
 	{
 		double L = 0.0;
+		bool bThisExact = false;
 		if (!MI)
 		{
 			bRead = true;
+			continue;
 		}
-		else if (MaterialEmissive(MI, M, World, L))
+		bAllUnlit &= MI->GetShadingModels().HasOnlyShadingModel(MSM_Unlit);
+		if (MaterialEmissive(MI, M, World, L, bThisExact))
 		{
 			bRead = true;
+			bExact &= bThisExact;
 			if (L > Best)
 			{
 				Best = L;
 				bUnlit = MI->GetShadingModels().HasOnlyShadingModel(MSM_Unlit);
 			}
+		}
+		else
+		{
+			bExact = bAllRead = false;
+		}
+	}
+	const AActor* Owner = M->GetOwner();
+	const bool bDrawn = M->IsRegistered() && M->IsVisible() && !M->bHiddenInGame && !(Owner && Owner->IsHidden());
+	const FVector Size = M->CalcBounds(FTransform::Identity).BoxExtent * 2.0 * M->GetComponentTransform().GetScale3D().GetAbs();
+	const double Area = 2.0 * (Size.X * Size.Y + Size.Y * Size.Z + Size.Z * Size.X) / 10000.0;
+	// a bound at or under the floor is dark whatever the inputs are: nothing to render
+	if (!bExact && bDrawn && Render && !(bAllRead && Best <= EmissiveFloor))
+	{
+		const FGlowRendered Seen = Render->Read(M, World);
+		if (Seen.bRead)
+		{
+			R.bRead = true;
+			R.Reads |= ReadRender;
+			if (Seen.Peak > EmissiveFloor)
+			{
+				R.bLit = true;
+				R.Glow += Seen.Mean * Area / 4.0;
+				R.Kinds |= bAllUnlit ? GlowUnlit : GlowEmissive;
+			}
+			return true;
 		}
 	}
 	if (!bRead)
@@ -2398,14 +2667,11 @@ static bool AddMesh(FGlowReading& R, const UMeshComponent* M, const UWorld* Worl
 		return false;
 	}
 	R.bRead = true;
-	const AActor* Owner = M->GetOwner();
-	const bool bDrawn = M->IsRegistered() && M->IsVisible() && !M->bHiddenInGame && !(Owner && Owner->IsHidden());
+	R.Reads |= bExact ? ReadGraph : ReadBound;
 	if (!bDrawn || Best <= EmissiveFloor)
 	{
 		return true;
 	}
-	const FVector Size = M->CalcBounds(FTransform::Identity).BoxExtent * 2.0 * M->GetComponentTransform().GetScale3D().GetAbs();
-	const double Area = 2.0 * (Size.X * Size.Y + Size.Y * Size.Z + Size.Z * Size.X) / 10000.0;
 	R.bLit = true;
 	R.Glow += Best * Area / 4.0;
 	R.Kinds |= bUnlit ? GlowUnlit : GlowEmissive;
@@ -2413,7 +2679,7 @@ static bool AddMesh(FGlowReading& R, const UMeshComponent* M, const UWorld* Worl
 }
 
 /** An actor's sources: its own registered light components and the mesh components changed compares (ChangeParts). */
-static FGlowReading ActorGlow(const AActor* A, const UWorld* World)
+static FGlowReading ActorGlow(const AActor* A, UWorld* World, FGlowRender* Render)
 {
 	FGlowReading R;
 	R.bRead = true;  // an actor with nothing that gives light reads 0
@@ -2430,7 +2696,7 @@ static FGlowReading ActorGlow(const AActor* A, const UWorld* World)
 	ChangeParts(A, Meshes);
 	for (const UMeshComponent* M : Meshes)
 	{
-		bUnread |= !AddMesh(R, M, World);
+		bUnread |= !AddMesh(R, M, World, Render);
 	}
 	R.bRead = R.bLit || !bUnread;
 	return R;
@@ -2452,6 +2718,16 @@ static FString GlowSources(const FGlowReading& R)
 	if (R.Kinds & GlowEmissive) Kinds.Add(TEXT("emissive"));
 	if (R.Kinds & GlowUnlit) Kinds.Add(TEXT("unlit"));
 	return FString::Join(Kinds, TEXT(","));
+}
+
+/** How its meshes were read, for logs: "graph", "render", "bound", comma-separated; empty without a mesh. */
+static FString GlowReads(const FGlowReading& R)
+{
+	TArray<FString> Reads;
+	if (R.Reads & ReadGraph) Reads.Add(TEXT("graph"));
+	if (R.Reads & ReadRender) Reads.Add(TEXT("render"));
+	if (R.Reads & ReadBound) Reads.Add(TEXT("bound"));
+	return FString::Join(Reads, TEXT(","));
 }
 
 /** An 8-bit sRGB value as linear light, 0-1. */
@@ -2688,6 +2964,46 @@ struct TUiCharsReader
 };
 template struct TUiCharsReader<FUiCharsTag, &FCharacterList::MappedEntries>;
 
+/** A line the canvas batched (DrawLine, K2_DrawLine, each side of K2_DrawBox): its ends and thickness (0: one pixel),
+ *  in canvas units. */
+struct FUiStroke
+{
+	FVector2D A = FVector2D::ZeroVector;
+	FVector2D B = FVector2D::ZeroVector;
+	double Thickness = 0.0;
+};
+
+struct FUiLinesTag
+{
+	friend void ReadLines(FUiLinesTag, const FBatchedElements& B, TArray<FUiStroke>& Out);
+};
+template<typename Tag, auto Thin, auto Thick>
+struct TUiLinesReader
+{
+	friend void ReadLines(Tag, const FBatchedElements& B, TArray<FUiStroke>& Out)
+	{
+		// one-pixel lines: their ends in pairs; thick lines: one entry each
+		const TArray<FSimpleElementVertex>& Ends = B.*Thin;
+		for (int32 i = 0; i + 1 < Ends.Num(); i += 2)
+		{
+			const FVector4d P = Ends[i].Position.GetVector4d(), Q = Ends[i + 1].Position.GetVector4d();
+			FUiStroke S;
+			S.A = FVector2D(P.X, P.Y);
+			S.B = FVector2D(Q.X, Q.Y);
+			Out.Add(S);
+		}
+		for (const auto& L : B.*Thick)
+		{
+			FUiStroke S;
+			S.A = FVector2D(L.Start.X, L.Start.Y);
+			S.B = FVector2D(L.End.X, L.End.Y);
+			S.Thickness = L.Thickness;
+			Out.Add(S);
+		}
+	}
+};
+template struct TUiLinesReader<FUiLinesTag, &FBatchedElements::LineVertices, &FBatchedElements::ThickLines>;
+
 /** A glyph placed in a font texture: the character and how a string lays it out (in the font's own pixels; a canvas
  *  draw scales them by the quad's size over USize). */
 /** AHUD's canvas is protected: read through a member pointer taken in a derived scope (never constructed). */
@@ -2902,10 +3218,634 @@ static void UiStrings(const TArray<FUiGlyphQuad>& Quads, TArray<FUiElement>& Out
 	Flush();
 }
 
+/** A canvas element's rectangle in viewport fractions from a box in canvas pixels. */
+static void CanvasRect(const FBox2D& Box, const FVector2D& Pixels, FUiElement& E)
+{
+	E.bHasRect = true;
+	E.X = Box.Min.X / Pixels.X;
+	E.Y = Box.Min.Y / Pixels.Y;
+	E.W = (Box.Max.X - Box.Min.X) / Pixels.X;
+	E.H = (Box.Max.Y - Box.Min.Y) / Pixels.Y;
+}
+
+/** A stroke's box as drawn: its ends, widened by half its thickness (a one-pixel line by half a pixel). */
+static FBox2D StrokeBox(const FUiStroke& S)
+{
+	const double Half = FMath::Max(S.Thickness, 1.0) / 2.0;
+	FBox2D Box(ForceInit);
+	Box += S.A;
+	Box += S.B;
+	return Box.ExpandBy(Half);
+}
+
+/** Four strokes, one after another, that close an axis-aligned rectangle (K2_DrawBox draws its four sides so; so do four
+ *  DrawLine calls around a box): each lies on a different side of their box and runs its length. */
+static bool ClosesBox(const FUiStroke* S, FBox2D& OutBox)
+{
+	FBox2D Box(ForceInit);
+	for (int32 i = 0; i < 4; ++i)
+	{
+		Box += S[i].A;
+		Box += S[i].B;
+	}
+	const double W = Box.Max.X - Box.Min.X, H = Box.Max.Y - Box.Min.Y;
+	if (W < 1.0 || H < 1.0)
+	{
+		return false;
+	}
+	const double Tol = FMath::Max(1.0, 0.02 * FMath::Max(W, H));
+	uint8 Sides = 0;  // top, bottom, left, right
+	for (int32 i = 0; i < 4; ++i)
+	{
+		const FUiStroke& L = S[i];
+		const double X0 = FMath::Min(L.A.X, L.B.X), X1 = FMath::Max(L.A.X, L.B.X), Y0 = FMath::Min(L.A.Y, L.B.Y), Y1 = FMath::Max(L.A.Y, L.B.Y);
+		const bool bAcross = X1 - X0 >= W - 2.0 * Tol && Y1 - Y0 <= Tol;
+		const bool bDown = Y1 - Y0 >= H - 2.0 * Tol && X1 - X0 <= Tol;
+		uint8 Side = 0;
+		if (bAcross && FMath::Abs(Y0 - Box.Min.Y) <= Tol) Side = 1;
+		else if (bAcross && FMath::Abs(Y1 - Box.Max.Y) <= Tol) Side = 2;
+		else if (bDown && FMath::Abs(X0 - Box.Min.X) <= Tol) Side = 4;
+		else if (bDown && FMath::Abs(X1 - Box.Max.X) <= Tol) Side = 8;
+		if (!Side || (Sides & Side))
+		{
+			return false;
+		}
+		Sides |= Side;
+	}
+	OutBox = Box.ExpandBy(FMath::Max(S[0].Thickness, 1.0) / 2.0);
+	return Sides == 15;
+}
+
+/** The line elements of a frame's strokes, in the order drawn: one per stroke, an outline (four strokes closing a
+ *  rectangle one after another) once, as its rectangle. Off-canvas and zero-length strokes are left out. */
+static void UiLines(const TArray<FUiStroke>& Strokes, const FVector2D& Pixels, TArray<FUiElement>& Out)
+{
+	for (int32 i = 0; i < Strokes.Num();)
+	{
+		FBox2D Box(ForceInit);
+		const bool bOutline = i + 3 < Strokes.Num() && ClosesBox(&Strokes[i], Box);
+		if (!bOutline)
+		{
+			Box = StrokeBox(Strokes[i]);
+		}
+		const int32 Used = bOutline ? 4 : 1;
+		const bool bOnCanvas = Box.Max.X > 0.0 && Box.Min.X < Pixels.X && Box.Max.Y > 0.0 && Box.Min.Y < Pixels.Y;
+		if (bOnCanvas && (bOutline || FVector2D::Distance(Strokes[i].A, Strokes[i].B) >= 0.5))
+		{
+			FUiElement E;
+			E.Source = TEXT("canvas");
+			E.Kind = TEXT("line");
+			E.Name = bOutline ? TEXT("CanvasOutline") : TEXT("CanvasLine");
+			E.Class = E.Name;
+			CanvasRect(Box, Pixels, E);
+			Out.Add(MoveTemp(E));
+		}
+		i += Used;
+	}
+}
+
+// Digits drawn with strokes (UiStrokeText). A seven-segment digit is three horizontal strokes at most (top, middle,
+// bottom) of one width, one above the other, and upright strokes at their left and right ends; a 1 is upright strokes
+// alone in one column. The reading groups a frame's strokes into such cells, reads each, and refuses whatever is
+// ambiguous (a stroke it could not place, a cell inside a box, a stroke left over at a digit's edge): what it can't
+// tell apart reads no text rather than a wrong one.
+
+static double StrokeLength(const FUiStroke& S) { return FVector2D::Distance(S.A, S.B); }
+static double StrokeWidth(const FUiStroke& S) { return FMath::Max(S.Thickness, 1.0); }
+static double MidX(const FUiStroke& S) { return (S.A.X + S.B.X) / 2.0; }
+static double MidY(const FUiStroke& S) { return (S.A.Y + S.B.Y) / 2.0; }
+static double MinX(const FUiStroke& S) { return FMath::Min(S.A.X, S.B.X); }
+static double MaxX(const FUiStroke& S) { return FMath::Max(S.A.X, S.B.X); }
+static double MinY(const FUiStroke& S) { return FMath::Min(S.A.Y, S.B.Y); }
+static double MaxY(const FUiStroke& S) { return FMath::Max(S.A.Y, S.B.Y); }
+static bool Level(const FUiStroke& S) { return FMath::Abs(S.B.Y - S.A.Y) <= 0.2 * FMath::Abs(S.B.X - S.A.X); }
+static bool Upright(const FUiStroke& S) { return !Level(S) && FMath::Abs(S.B.X - S.A.X) <= 0.2 * FMath::Abs(S.B.Y - S.A.Y); }
+
+static double PointToStroke(const FVector2D& P, const FUiStroke& S)
+{
+	return FMath::Sqrt(FMath::PointDistToSegmentSquared(FVector(P, 0.0), FVector(S.A, 0.0), FVector(S.B, 0.0)));
+}
+
+/** A seven-segment digit by its lit segments (a top, b top right, c bottom right, d bottom, e bottom left, f top left,
+ *  g middle: bits 0-6), with the usual variants (a 6 without its top, a 7 with its top left, a 9 without its bottom);
+ *  0 for none. */
+static TCHAR SevenSegment(uint8 Mask)
+{
+	switch (Mask)
+	{
+	case 0x3F: return TEXT('0');
+	case 0x06: return TEXT('1');
+	case 0x5B: return TEXT('2');
+	case 0x4F: return TEXT('3');
+	case 0x66: return TEXT('4');
+	case 0x6D: return TEXT('5');
+	case 0x7D: case 0x7C: return TEXT('6');
+	case 0x07: case 0x27: return TEXT('7');
+	case 0x7F: return TEXT('8');
+	case 0x6F: case 0x67: return TEXT('9');
+	default: return 0;
+	}
+}
+
+/** The box around strokes' centre lines. */
+static constexpr int32 NoDigit = INDEX_NONE;  // in a cell: its strokes are no digit (a box's side)
+
+static FBox2D CentreBox(const TArray<int32>& Cell, const TArray<FUiStroke>& Strokes)
+{
+	FBox2D Box(ForceInit);
+	for (const int32 i : Cell)
+	{
+		if (i == NoDigit)
+		{
+			continue;
+		}
+		Box += Strokes[i].A;
+		Box += Strokes[i].B;
+	}
+	return Box;
+}
+
+/** One cell's strokes read as a seven-segment digit: horizontal strokes across its width at its top, middle or bottom,
+ *  upright strokes at its left or right over its upper half, lower half or both; a cell of upright strokes alone in one
+ *  column (no wider than a fifth of its height, without a gap of more than 0.3 of it) is a 1. 0 when the strokes are
+ *  anything else: a slanted stroke, a stroke inside the cell, a shape no digit has, a cell not 1.2-4 times as tall as
+ *  wide, more than three heights of horizontal strokes. */
+static TCHAR StrokeDigit(const TArray<int32>& Cell, const TArray<FUiStroke>& Strokes)
+{
+	const FBox2D Box = CentreBox(Cell, Strokes);
+	const double W = Box.Max.X - Box.Min.X, H = Box.Max.Y - Box.Min.Y;
+	if (Cell.IsEmpty() || Cell.Contains(NoDigit) || H < 4.0)
+	{
+		return 0;
+	}
+	if (W <= 0.2 * H)
+	{
+		TArray<FVector2D> Spans;
+		for (const int32 i : Cell)
+		{
+			if (!Upright(Strokes[i]))
+			{
+				return 0;
+			}
+			Spans.Add(FVector2D(MinY(Strokes[i]), MaxY(Strokes[i])));
+		}
+		Spans.Sort([](const FVector2D& L, const FVector2D& R) { return L.X < R.X; });
+		double Reach = Spans[0].Y, Gaps = 0.0;
+		for (const FVector2D& Span : Spans)
+		{
+			Gaps += FMath::Max(0.0, Span.X - Reach);
+			Reach = FMath::Max(Reach, Span.Y);
+		}
+		return Gaps <= 0.3 * H ? TEXT('1') : 0;
+	}
+	if (H < 1.2 * W || H > 4.0 * W)
+	{
+		return 0;
+	}
+	uint8 Mask = 0;
+	const double Mid = Box.Min.Y + H / 2.0;
+	TArray<double> Heights;
+	for (const int32 i : Cell)
+	{
+		const FUiStroke& S = Strokes[i];
+		if (Level(S))
+		{
+			if (MaxX(S) - MinX(S) < 0.6 * W)
+			{
+				return 0;
+			}
+			const double R = (MidY(S) - Box.Min.Y) / H;
+			Mask |= (uint8)(R <= 0.2 ? 0x01 : (R >= 0.35 && R <= 0.65) ? 0x40 : R >= 0.8 ? 0x08 : 0x80);
+			Heights.Add(MidY(S));
+		}
+		else if (Upright(S))
+		{
+			const double Q = (MidX(S) - Box.Min.X) / W;
+			const bool bLeft = Q <= 0.2, bRight = Q >= 0.8;
+			const bool bUpper = FMath::Min(MaxY(S), Mid) - FMath::Max(MinY(S), Box.Min.Y) >= 0.25 * H;
+			const bool bLower = FMath::Min(MaxY(S), Box.Max.Y) - FMath::Max(MinY(S), Mid) >= 0.25 * H;
+			if ((!bLeft && !bRight) || (!bUpper && !bLower))
+			{
+				return 0;
+			}
+			Mask |= (uint8)((bRight && bUpper ? 0x02 : 0) | (bRight && bLower ? 0x04 : 0) | (bLeft && bLower ? 0x10 : 0) | (bLeft && bUpper ? 0x20 : 0));
+		}
+		else
+		{
+			return 0;
+		}
+	}
+	// at most three heights of horizontal strokes (a box drawn around a digit adds more)
+	Heights.Sort();
+	int32 Levels = 0;
+	for (int32 k = 0; k < Heights.Num(); ++k)
+	{
+		Levels += k == 0 || Heights[k] - Heights[k - 1] > FMath::Max(1.5, 0.1 * (Heights.Last() - Heights[0])) ? 1 : 0;
+	}
+	return (Mask & 0x80) || Levels > 3 ? 0 : SevenSegment(Mask);
+}
+
+/** A frame's strokes grouped into digit cells (indices into Strokes): each run of horizontal strokes of one width one
+ *  above the other (both ends within 15% of their length, at most 4.5 lengths apart) is a cell, and each upright stroke
+ *  of a digit's proportions joins the cell at whose left or right end it stands (within 0.3 of the cell's width), at the
+ *  cell's height, nearest first; upright strokes farther out than a cell's own on one side go free; free upright
+ *  strokes in one column, one under the other, are a cell each (a 1), unless they meet a horizontal stroke (a box's
+ *  side). A slanted stroke joins every cell it is near, which then reads nothing. */
+static void StrokeCells(const TArray<FUiStroke>& Strokes, TArray<TArray<int32>>& OutCells)
+{
+	TArray<int32> Hs, Vs, Others;
+	for (int32 i = 0; i < Strokes.Num(); ++i)
+	{
+		const FUiStroke& S = Strokes[i];
+		if (Level(S))
+		{
+			if (StrokeLength(S) >= 2.0)
+			{
+				Hs.Add(i);
+			}
+		}
+		else if (Upright(S))
+		{
+			if (StrokeLength(S) >= 2.0)
+			{
+				Vs.Add(i);
+			}
+		}
+		else
+		{
+			Others.Add(i);
+		}
+	}
+	// cells of horizontal strokes
+	TArray<int32> Parent;
+	for (int32 k = 0; k < Hs.Num(); ++k)
+	{
+		Parent.Add(k);
+	}
+	auto Find = [&Parent](int32 k)
+	{
+		while (Parent[k] != k)
+		{
+			Parent[k] = Parent[Parent[k]];
+			k = Parent[k];
+		}
+		return k;
+	};
+	for (int32 p = 0; p < Hs.Num(); ++p)
+	{
+		for (int32 q = p + 1; q < Hs.Num(); ++q)
+		{
+			const FUiStroke& A = Strokes[Hs[p]];
+			const FUiStroke& B = Strokes[Hs[q]];
+			const double La = StrokeLength(A), Lb = StrokeLength(B);
+			const double Tol = FMath::Max(1.5, 0.15 * FMath::Min(La, Lb)) + (StrokeWidth(A) + StrokeWidth(B)) / 4.0;
+			if (FMath::Abs(MinX(A) - MinX(B)) <= Tol && FMath::Abs(MaxX(A) - MaxX(B)) <= Tol && FMath::Abs(MinY(A) - MinY(B)) <= 4.5 * FMath::Min(La, Lb))
+			{
+				Parent[Find(p)] = Find(q);
+			}
+		}
+	}
+	struct FCell
+	{
+		TArray<int32> Strokes;
+		double X0, X1, Y0, Y1;
+	};
+	TArray<FCell> Cells;
+	TMap<int32, int32> CellOf;
+	for (int32 k = 0; k < Hs.Num(); ++k)
+	{
+		const FUiStroke& S = Strokes[Hs[k]];
+		const int32 Root = Find(k);
+		if (const int32* Found = CellOf.Find(Root))
+		{
+			FCell& C = Cells[*Found];
+			C.Strokes.Add(Hs[k]);
+			C.X0 = FMath::Min(C.X0, MinX(S));
+			C.X1 = FMath::Max(C.X1, MaxX(S));
+			C.Y0 = FMath::Min(C.Y0, MinY(S));
+			C.Y1 = FMath::Max(C.Y1, MaxY(S));
+		}
+		else
+		{
+			CellOf.Add(Root, Cells.Num());
+			Cells.Add({{Hs[k]}, MinX(S), MaxX(S), MinY(S), MaxY(S)});
+		}
+	}
+	// upright strokes join cells, best first
+	TArray<int32> Left = Vs;
+	while (Left.Num() > 0)
+	{
+		int32 BestV = INDEX_NONE, BestC = INDEX_NONE;
+		int32 BestBand = 2;
+		double BestD = 0.0;
+		for (int32 vi = 0; vi < Left.Num(); ++vi)
+		{
+			const FUiStroke& V = Strokes[Left[vi]];
+			const double X = MidX(V), Vy0 = MinY(V), Vy1 = MaxY(V), Lv = Vy1 - Vy0;
+			for (int32 ci = 0; ci < Cells.Num(); ++ci)
+			{
+				const FCell& C = Cells[ci];
+				const double W = C.X1 - C.X0;
+				const double D = FMath::Min(FMath::Abs(X - C.X0), FMath::Abs(X - C.X1));
+				if (D > 0.3 * W + StrokeWidth(V) / 2.0 || W > 3.0 * Lv || Lv > 4.5 * W || Vy1 < C.Y0 - Lv || Vy0 > C.Y1 + Lv)
+				{
+					continue;
+				}
+				const double Overlap = FMath::Max(0.0, FMath::Min(Vy1, C.Y1 + Lv) - FMath::Max(Vy0, C.Y0 - Lv));
+				const int32 Band = Overlap >= 0.5 * Lv ? 0 : 1;
+				if (Band < BestBand || (Band == BestBand && D < BestD))
+				{
+					BestBand = Band;
+					BestD = D;
+					BestV = vi;
+					BestC = ci;
+				}
+			}
+		}
+		if (BestV == INDEX_NONE)
+		{
+			break;
+		}
+		const FUiStroke& V = Strokes[Left[BestV]];
+		FCell& C = Cells[BestC];
+		C.Strokes.Add(Left[BestV]);
+		C.Y0 = FMath::Min(C.Y0, MinY(V));
+		C.Y1 = FMath::Max(C.Y1, MaxY(V));
+		Left.RemoveAt(BestV);
+	}
+	TArray<int32> Free = Left;
+	for (FCell& C : Cells)
+	{
+		const double W = C.X1 - C.X0, Centre = (C.X0 + C.X1) / 2.0;
+		auto Release = [&](TFunctionRef<bool(const FUiStroke&)> Out)
+		{
+			for (int32 k = C.Strokes.Num() - 1; k >= 0; --k)
+			{
+				const FUiStroke& S = Strokes[C.Strokes[k]];
+				if (Upright(S) && Out(S))
+				{
+					Free.Add(C.Strokes[k]);
+					C.Strokes.RemoveAt(k);
+				}
+			}
+		};
+		// a side with upright strokes in two columns: the ones nearest the edge are the digit's, the others go free
+		for (const bool bRightSide : {false, true})
+		{
+			const double Edge = bRightSide ? C.X1 : C.X0;
+			double Near = TNumericLimits<double>::Max();
+			int32 Count = 0;
+			for (const int32 i : C.Strokes)
+			{
+				const FUiStroke& S = Strokes[i];
+				if (Upright(S) && (MidX(S) > Centre) == bRightSide)
+				{
+					Near = FMath::Min(Near, FMath::Abs(MidX(S) - Edge));
+					++Count;
+				}
+			}
+			if (Count >= 2)
+			{
+				Release([&](const FUiStroke& S)
+				{
+					return (MidX(S) > Centre) == bRightSide && FMath::Abs(MidX(S) - Edge) > Near + FMath::Max(1.0, 0.05 * W) + StrokeWidth(S) / 2.0;
+				});
+			}
+		}
+		// a digit's own upright strokes stand as far out on its left as on its right: farther ones on the left are a 1's
+		double Own = TNumericLimits<double>::Max();
+		bool bLefts = false;
+		for (const int32 i : C.Strokes)
+		{
+			const FUiStroke& S = Strokes[i];
+			if (Upright(S) && MidX(S) > Centre)
+			{
+				Own = FMath::Min(Own, FMath::Max(0.0, MidX(S) - C.X1));
+			}
+			bLefts |= Upright(S) && MidX(S) < Centre;
+		}
+		if (bLefts && Own < TNumericLimits<double>::Max())
+		{
+			Release([&](const FUiStroke& S)
+			{
+				return MidX(S) < Centre && C.X0 - MidX(S) > Own + FMath::Max(1.0, 0.05 * W) + StrokeWidth(S) / 2.0;
+			});
+		}
+	}
+	for (const int32 o : Others)
+	{
+		const FUiStroke& S = Strokes[o];
+		for (FCell& C : Cells)
+		{
+			const double M = 0.3 * (C.X1 - C.X0) + StrokeWidth(S);
+			if (MaxX(S) >= C.X0 - M && MinX(S) <= C.X1 + M && MaxY(S) >= C.Y0 - M && MinY(S) <= C.Y1 + M)
+			{
+				C.Strokes.Add(o);
+			}
+		}
+	}
+	for (const FCell& C : Cells)
+	{
+		OutCells.Add(C.Strokes);
+	}
+	// 1s: free upright strokes in one column, one under the other
+	Parent.Reset();
+	for (int32 k = 0; k < Free.Num(); ++k)
+	{
+		Parent.Add(k);
+	}
+	for (int32 p = 0; p < Free.Num(); ++p)
+	{
+		for (int32 q = p + 1; q < Free.Num(); ++q)
+		{
+			const FUiStroke& P = Strokes[Free[p]];
+			const FUiStroke& Q = Strokes[Free[q]];
+			const double Lmin = FMath::Min(StrokeLength(P), StrokeLength(Q));
+			const double Gap = FMath::Max(MinY(Q) - MaxY(P), MinY(P) - MaxY(Q));
+			if (FMath::Abs(MidX(P) - MidX(Q)) <= FMath::Max(1.5, 0.1 * Lmin) + (StrokeWidth(P) + StrokeWidth(Q)) / 2.0 && Gap <= Lmin)
+			{
+				Parent[Find(p)] = Find(q);
+			}
+		}
+	}
+	TMap<int32, int32> OneOf;
+	TArray<TArray<int32>> Ones;
+	for (int32 k = 0; k < Free.Num(); ++k)
+	{
+		const int32 Root = Find(k);
+		const int32* Found = OneOf.Find(Root);
+		const int32 At = Found ? *Found : Ones.AddDefaulted();
+		OneOf.Add(Root, At);
+		Ones[At].Add(Free[k]);
+	}
+	for (TArray<int32>& One : Ones)
+	{
+		// one that meets a horizontal stroke is a box's side, no 1: the cell gets a stroke that reads nothing
+		bool bTouches = false;
+		for (const int32 v : One)
+		{
+			for (const int32 h : Hs)
+			{
+				const double Reach = 1.5 + (StrokeWidth(Strokes[v]) + StrokeWidth(Strokes[h])) / 2.0;
+				bTouches |= PointToStroke(Strokes[v].A, Strokes[h]) <= Reach || PointToStroke(Strokes[v].B, Strokes[h]) <= Reach;
+			}
+		}
+		if (bTouches)
+		{
+			One.Add(NoDigit);
+		}
+		OutCells.Add(MoveTemp(One));
+	}
+}
+
+/** Numbers drawn with strokes (DrawLine and the like) read back as text: the strokes grouped into digit cells
+ *  (StrokeCells), each read as a seven-segment digit (StrokeDigit), and digits of one height side by side on one line
+ *  joined into a string. Refused, so read as nothing: a cell that holds another stroke inside it (a box around a
+ *  number), a digit with a stroke left over at its edge (one that may have been its own), a join across strokes left
+ *  over between two digits, a string of 1s alone (a lone upright stroke is more often a rule than a 1). Letters,
+ *  slanted strokes and other shapes read no text. In canvas pixels. */
+static void UiStrokeText(const TArray<FUiStroke>& All, const FVector2D& Pixels, TArray<FUiElement>& Out)
+{
+	if (All.Num() == 0 || All.Num() > 1000)
+	{
+		return;  // none, or more strokes than a HUD draws numbers with: no reading
+	}
+	TArray<TArray<int32>> Cells;
+	StrokeCells(All, Cells);
+	struct FDigit
+	{
+		TCHAR Char = 0;
+		FBox2D Box = FBox2D(ForceInit);  // the centre lines'
+		FBox2D Drawn = FBox2D(ForceInit);  // as drawn
+	};
+	TArray<FDigit> Read;
+	TArray<int32> Unread;  // the strokes of cells that read nothing
+	for (const TArray<int32>& Cell : Cells)
+	{
+		TCHAR C = StrokeDigit(Cell, All);
+		const FBox2D Box = CentreBox(Cell, All);
+		if (C)
+		{
+			// a cell with another stroke inside it is a box around something, not a digit
+			double M = 1.0;
+			for (const int32 i : Cell)
+			{
+				M = FMath::Max(M, 1.0 + StrokeWidth(All[i]));  // a digit's cell holds no NoDigit
+			}
+			for (int32 i = 0; i < All.Num() && C; ++i)
+			{
+				const double X = MidX(All[i]), Y = MidY(All[i]);
+				if (!Cell.Contains(i) && X > Box.Min.X + M && X < Box.Max.X - M && Y > Box.Min.Y + M && Y < Box.Max.Y - M)
+				{
+					C = 0;
+				}
+			}
+		}
+		if (C)
+		{
+			FDigit D;
+			D.Char = C;
+			D.Box = Box;
+			for (const int32 i : Cell)
+			{
+				D.Drawn += StrokeBox(All[i]);
+			}
+			Read.Add(D);
+		}
+		else
+		{
+			for (const int32 i : Cell)
+			{
+				if (i != NoDigit)
+				{
+					Unread.Add(i);
+				}
+			}
+		}
+	}
+	// a stroke of a digit's size left over at a digit's edge may have been part of it: that digit reads nothing
+	auto Between = [&](double X0, double X1, double Y0, double Y1, double MaxLength)
+	{
+		for (const int32 i : Unread)
+		{
+			const FUiStroke& S = All[i];
+			if (StrokeLength(S) <= MaxLength && MidX(S) >= X0 && MidX(S) <= X1 && MinY(S) < Y1 && MaxY(S) > Y0)
+			{
+				return true;
+			}
+		}
+		return false;
+	};
+	TArray<FDigit> Digits;
+	for (const FDigit& D : Read)
+	{
+		const double H = D.Box.Max.Y - D.Box.Min.Y;
+		const double Tol = 0.3 * (D.Box.Max.X - D.Box.Min.X) + (D.Drawn.Max.X - D.Drawn.Min.X - (D.Box.Max.X - D.Box.Min.X));
+		if (!Between(D.Box.Min.X - Tol, D.Box.Max.X + Tol, D.Box.Min.Y, D.Box.Max.Y, 1.5 * H))
+		{
+			Digits.Add(D);
+		}
+	}
+	Digits.Sort([](const FDigit& L, const FDigit& R) { return L.Box.Min.X < R.Box.Min.X; });
+	TArray<bool> Taken;
+	Taken.Init(false, Digits.Num());
+	for (int32 i = 0; i < Digits.Num(); ++i)
+	{
+		if (Taken[i])
+		{
+			continue;
+		}
+		Taken[i] = true;
+		FString Text;
+		Text.AppendChar(Digits[i].Char);
+		FBox2D Drawn = Digits[i].Drawn;
+		const FDigit* Last = &Digits[i];
+		const double H = Digits[i].Box.Max.Y - Digits[i].Box.Min.Y;
+		for (int32 j = i + 1; j < Digits.Num(); ++j)
+		{
+			const FDigit& D = Digits[j];
+			const double Hj = D.Box.Max.Y - D.Box.Min.Y;
+			const double Overlap = FMath::Min(D.Box.Max.Y, Last->Box.Max.Y) - FMath::Max(D.Box.Min.Y, Last->Box.Min.Y);
+			const double Gap = D.Box.Min.X - Last->Box.Max.X;
+			if (Taken[j] || Hj < 0.75 * H || Hj > 1.33 * H || Overlap < 0.7 * FMath::Min(H, Hj) || Gap < -0.1 * H || Gap > 1.6 * FMath::Max(H, Hj))
+			{
+				continue;
+			}
+			if (Between(Last->Box.Max.X + 1e-3, D.Box.Min.X - 1e-3, D.Box.Min.Y, D.Box.Max.Y, 1.5 * H))
+			{
+				continue;  // a digit between them didn't read
+			}
+			Taken[j] = true;
+			Text.AppendChar(D.Char);
+			Drawn += D.Drawn;
+			Last = &D;
+		}
+		bool bOnlyOnes = true;
+		for (const TCHAR C : Text)
+		{
+			bOnlyOnes &= C == TEXT('1');
+		}
+		const bool bOnCanvas = Drawn.Max.X > 0.0 && Drawn.Min.X < Pixels.X && Drawn.Max.Y > 0.0 && Drawn.Min.Y < Pixels.Y;
+		if (bOnlyOnes || !bOnCanvas)
+		{
+			continue;
+		}
+		FUiElement E;
+		E.Source = TEXT("canvas");
+		E.Kind = TEXT("text");
+		E.Name = TEXT("CanvasStrokeText");
+		E.Class = E.Name;
+		E.Text = Text;
+		CanvasRect(Drawn, Pixels, E);
+		Out.Add(MoveTemp(E));
+	}
+}
+
 /** What a canvas holds when the HUD has drawn: its batched triangles, read back as strings (quads on a font texture),
  *  boxes (on the white texture) and images (on any other texture), each run of triangles that share vertices one
- *  element; nearly transparent ones and ones off the canvas left out. Positions in canvas pixels, the DPI scale
- *  applied to what was not drawn already scaled (glyphs are). */
+ *  element; its batched lines as line elements (UiLines), and as text where they draw digits (UiStrokeText); nearly
+ *  transparent ones and ones off the canvas left out (a line is always drawn opaque). Positions in canvas pixels, the
+ *  DPI scale applied to what was not drawn already scaled (glyphs are). */
 static void UiCanvas(FCanvas& Canvas, TArray<FUiElement>& Out)
 {
 	const FRenderTarget* Target = Canvas.GetRenderTarget();
@@ -2921,6 +3861,7 @@ static void UiCanvas(FCanvas& Canvas, TArray<FUiElement>& Out)
 	bool bGlyphsRead = false;
 	TArray<FUiGlyphQuad> Quads;  // the frame's glyph quads in the order drawn
 	TArray<FUiElement> Shapes;
+	TArray<FUiStroke> Strokes;  // every line of the frame, for digits drawn with strokes
 	for (FCanvas::FCanvasSortElement& Sorted : Canvas.SortedElements)
 	{
 		for (FCanvasBaseRenderItem* Item : Sorted.RenderBatchArray)
@@ -2931,6 +3872,17 @@ static void UiCanvas(FCanvas& Canvas, TArray<FUiElement>& Out)
 			{
 				continue;
 			}
+			// lines (DrawLine, K2_DrawLine, K2_DrawBox's sides): line elements, and strokes that may draw digits
+			TArray<FUiStroke> Lines;
+			ReadLines(FUiLinesTag(), *Elements, Lines);
+			for (FUiStroke& S : Lines)
+			{
+				S.A *= Dpi;
+				S.B *= Dpi;
+				S.Thickness *= Dpi;
+			}
+			UiLines(Lines, Pixels, Shapes);
+			Strokes.Append(Lines);
 			TArray<FUiTri> Tris;
 			const TArray<FSimpleElementVertex>* Verts = nullptr;
 			ReadBatch(FUiBatchTag(), *Elements, Tris, Verts);
@@ -3007,6 +3959,7 @@ static void UiCanvas(FCanvas& Canvas, TArray<FUiElement>& Out)
 		}
 	}
 	UiStrings(Quads, Out, Pixels);
+	UiStrokeText(Strokes, Pixels, Out);
 	Out.Append(MoveTemp(Shapes));
 }
 
@@ -3137,6 +4090,7 @@ public:
 // ---------------------------------------------------------------- FTaskProbeQueries
 
 FTaskProbeQueries::FTaskProbeQueries()
+	: GlowRender(MakeUnique<FGlowRender>())
 {
 	WorldInitHandle = FWorldDelegates::OnPostWorldInitialization.AddRaw(this, &FTaskProbeQueries::OnWorldInit);
 }
@@ -3382,6 +4336,7 @@ void FTaskProbeQueries::OnDestroyed(AActor* Actor)
 void FTaskProbeQueries::Sample(UWorld* World, APlayerController* PC, double T)
 {
 	Hook(World);
+	GlowRender->NewSample();
 	for (FQuery& Q : Queries)
 	{
 		const TSharedRef<FJsonObject> S = MakeShared<FJsonObject>();
@@ -3479,7 +4434,7 @@ void FTaskProbeQueries::SampleActors(FQuery& Q, UWorld* World, APlayerController
 		const FChangeReading Change = Q.Fields.ContainsByPredicate(IsChangeField) ? ActorChange(A, Q.Firsts, Q.FirstParts) : FChangeReading();
 		// lit, glow: over its lights and meshes
 		const bool bGlow = Q.Fields.ContainsByPredicate(IsGlowField);
-		const FGlowReading Glow = bGlow ? ActorGlow(A, World) : FGlowReading();
+		const FGlowReading Glow = bGlow ? ActorGlow(A, World, GlowRender.Get()) : FGlowReading();
 		for (const FString& F : Q.Fields)
 		{
 			const TSharedPtr<FJsonValue> V = IsChangeField(F) ? ChangeField(Change, F) : IsGlowField(F) ? GlowField(Glow, F) : ActorField(A, F);
@@ -3499,6 +4454,10 @@ void FTaskProbeQueries::SampleActors(FQuery& Q, UWorld* World, APlayerController
 			if (bGlow && Glow.bRead)
 			{
 				Row->SetStringField(TEXT("glow_sources"), GlowSources(Glow));  // for logs, never a threshold
+				if (Glow.Reads)
+				{
+					Row->SetStringField(TEXT("glow_read"), GlowReads(Glow));  // for logs, never a threshold
+				}
 			}
 			Rows.Add(MakeShared<FJsonValueObject>(Row));
 		}
@@ -3743,7 +4702,7 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 		}
 		else if (const UMeshComponent* Mesh = bGlow ? Cast<UMeshComponent>(C) : nullptr)
 		{
-			AddMesh(Glow, Mesh, World);
+			AddMesh(Glow, Mesh, World, GlowRender.Get());
 		}
 		const TSharedRef<FJsonObject> Row = MakeShared<FJsonObject>();
 		for (const FString& F : Q.Fields)
@@ -3827,6 +4786,10 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 			if (bGlow && Glow.bRead)
 			{
 				Row->SetStringField(TEXT("glow_sources"), GlowSources(Glow));  // for logs, never a threshold
+				if (Glow.Reads)
+				{
+					Row->SetStringField(TEXT("glow_read"), GlowReads(Glow));  // for logs, never a threshold
+				}
 			}
 			Rows.Add(MakeShared<FJsonValueObject>(Row));
 		}

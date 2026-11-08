@@ -27,10 +27,16 @@
 //   its own space, or its local bounds more than 1 cm), bounds_change (cm: the furthest any face of a mesh component's
 //   world bounds moved since then, the largest over its components), pose_change (cm: how far its skinned meshes'
 //   bones moved since then in their own space, summed; null without a skinned mesh), lit (1 when any of its light
-//   sources is lit: a light component that lights the scene, or a drawn mesh component whose brightest material's
-//   emissive luminance is above 0.01), glow (those sources' amounts summed: a light's intensity in candelas times its
-//   colour's luminance and its light function's, a mesh's emissive luminance times a quarter of its local bounds'
-//   surface in m2); with either, the row's "glow_sources" names the kinds lit ("light", "emissive", "unlit").
+//   sources is lit: a light component that lights the scene, or a drawn mesh component whose emissive luminance is
+//   above 0.01), glow (those sources' amounts summed: a light's intensity in candelas times its colour's luminance and
+//   its light function's, a mesh's emissive luminance times a quarter of its local bounds' surface in m2). A mesh's
+//   emissive is its brightest material's, from the material graphs evaluated with the parameter values now, when every
+//   graph evaluates whole; else (a custom node, a texture, any input the graph can only bound, a cooked material) the
+//   mesh rendered alone without light from four views (a scene capture showing only it, orthographic, HDR scene colour):
+//   lit by its brightest pixel, its luminance over its local bounds box the mean of the four views' summed luminance x
+//   pixel area over the box's seen area; the graph's bound when nothing renders (-nullrhi). With either field, the
+//   row's "glow_sources" names the kinds lit ("light", "emissive", "unlit") and "glow_read" how its meshes were read
+//   ("graph", "render", "bound").
 // - widgets: "rows": [{"name", "class", <field>: value}] over the UMG trees in the viewport. select.class alone matches
 //   the widget's own class; with select.name it also matches an enclosing user widget's class. visible = visible,
 //   render opacity > 0, and every parent (through enclosing user widgets) the same. x, y, w, h: the cached geometry in
@@ -100,12 +106,14 @@
 //   right after the sample, whatever drew them: the Slate tree under the game viewport (UMG widgets are Slate widgets
 //   underneath; "source" "umg" when the widget carries UMG's reflection metadata, else "slate"), walked through
 //   visible widgets only (a collapsed or hidden widget, or one at render opacity 0, and everything under it is not on
-//   screen), and the HUD canvas (AHUD's canvas as it stands when the HUD has drawn, "source" "canvas": every quad the
-//   frame's DrawText, DrawRect, DrawTexture, DrawTile and canvas items batched, text read back from the glyphs the
-//   font cache placed). kind: "text" (a TextBlock, rich text or editable text with text, a canvas string), "box" (a
-//   drawn border, button, progress bar, colour block, a brush without a resource, a canvas rect), "image" (a brush or
-//   canvas quad with a texture or material). Fields: count (1), text (null but for text), x, y, w, h (viewport
-//   fractions). select.kind, select.text (a regex on the text) and select.rect ([x0, y0, x1, y1]: the element's centre
+//   screen), and the HUD canvas (AHUD's canvas as it stands when the HUD has drawn, "source" "canvas": every quad and
+//   line the frame's DrawText, DrawRect, DrawTexture, DrawTile, DrawLine, K2_DrawBox and canvas items batched, text
+//   read back from the glyphs the font cache placed, and digits drawn as seven-segment strokes read back from the
+//   lines). kind: "text" (a TextBlock, rich text or editable text with text, a canvas string, digits drawn with
+//   strokes), "box" (a drawn border, button, progress bar, colour block, a brush without a resource, a canvas rect),
+//   "image" (a brush or canvas quad with a texture or material), "line" (a canvas line; an outline, four lines one
+//   after another closing a rectangle, once as its rectangle; strokes read as digits stay lines too). Fields: count
+//   (1), text (null but for text), x, y, w, h (viewport fractions). select.kind, select.text (a regex on the text) and select.rect ([x0, y0, x1, y1]: the element's centre
 //   inside) choose; "source" and "kind" ride along for the logs. No rows when no frame was drawn.
 
 #pragma once
@@ -127,6 +135,8 @@ class UButton;
 
 namespace TaskProbe
 {
+class FGlowRender;
+
 /** A point of the game viewport, in viewport fractions 0-1, in Slate's absolute (desktop) space. */
 bool ViewportPoint(double Fx, double Fy, FVector2D& OutAbsolute);
 /** The first enabled, visible UMG button in the viewport whose name (wildcard) or class matches. */
@@ -232,4 +242,5 @@ private:
 	TArray<TaskProbe::FUiElement> CanvasNow;  // ui: what the HUD canvas held when the HUD had drawn
 	uint64 CanvasFrame = 0;  // ui: the frame (GFrameCounter) CanvasNow is of
 	TSharedPtr<FTaskProbeViewExtension, ESPMode::ThreadSafe> ViewExtension;
+	TUniquePtr<TaskProbe::FGlowRender> GlowRender;  // lit, glow: meshes whose emissive is read as rendered
 };
