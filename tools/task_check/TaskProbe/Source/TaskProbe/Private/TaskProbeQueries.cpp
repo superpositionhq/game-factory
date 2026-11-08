@@ -54,7 +54,43 @@
 #include "GameFramework/PlayerController.h"
 #include "Interfaces/Interface_PostProcessVolume.h"
 #include "Internationalization/Regex.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialExpressionAbs.h"
+#include "Materials/MaterialExpressionAdd.h"
+#include "Materials/MaterialExpressionAppendVector.h"
+#include "Materials/MaterialExpressionBlendMaterialAttributes.h"
+#include "Materials/MaterialExpressionClamp.h"
+#include "Materials/MaterialExpressionCollectionParameter.h"
+#include "Materials/MaterialExpressionComponentMask.h"
+#include "Materials/MaterialExpressionConstant.h"
+#include "Materials/MaterialExpressionConstant2Vector.h"
+#include "Materials/MaterialExpressionConstant3Vector.h"
+#include "Materials/MaterialExpressionConstant4Vector.h"
+#include "Materials/MaterialExpressionCosine.h"
+#include "Materials/MaterialExpressionDivide.h"
+#include "Materials/MaterialExpressionFunctionInput.h"
+#include "Materials/MaterialExpressionFunctionOutput.h"
+#include "Materials/MaterialExpressionLinearInterpolate.h"
+#include "Materials/MaterialExpressionMakeMaterialAttributes.h"
+#include "Materials/MaterialExpressionMaterialFunctionCall.h"
+#include "Materials/MaterialExpressionMax.h"
+#include "Materials/MaterialExpressionMin.h"
+#include "Materials/MaterialExpressionMultiply.h"
+#include "Materials/MaterialExpressionNamedReroute.h"
+#include "Materials/MaterialExpressionOneMinus.h"
+#include "Materials/MaterialExpressionPower.h"
+#include "Materials/MaterialExpressionReroute.h"
+#include "Materials/MaterialExpressionSaturate.h"
+#include "Materials/MaterialExpressionScalarParameter.h"
+#include "Materials/MaterialExpressionSine.h"
+#include "Materials/MaterialExpressionStaticBoolParameter.h"
+#include "Materials/MaterialExpressionStaticSwitch.h"
+#include "Materials/MaterialExpressionStaticSwitchParameter.h"
+#include "Materials/MaterialExpressionSubstrate.h"
+#include "Materials/MaterialExpressionSubtract.h"
+#include "Materials/MaterialExpressionVectorParameter.h"
 #include "Materials/MaterialInterface.h"
+#include "Materials/MaterialParameterCollectionInstance.h"
 #include "Misc/FileHelper.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "Rendering/SkeletalMeshLODRenderData.h"
@@ -1620,6 +1656,787 @@ static int64 PieceTriangles(const UMeshComponent* C)
 	return 0;
 }
 
+// lit, glow: whether something gives off light and how much, one reading over every way a build makes light (a light
+// component, a mesh drawn with an emissive or unlit material)
+
+static constexpr double EmissiveFloor = 0.01;  // lit: an emissive surface brighter than this (luminance; emissive 1 = 1 cd/m2)
+static constexpr int32 GraphBudget = 4096;  // expressions one material reading visits at most
+static constexpr uint8 GlowLight = 1, GlowEmissive = 2, GlowUnlit = 4;  // glow_sources
+
+static bool IsGlowField(const FString& F) { return F == TEXT("lit") || F == TEXT("glow"); }
+
+static double Luminance(double R, double G, double B) { return 0.2126 * R + 0.7152 * G + 0.0722 * B; }
+
+/** What a material value can be, per channel: the lowest and highest (N channels, 1-4; one channel stands for all). */
+struct FRange
+{
+	double Lo[4] = {0.0, 0.0, 0.0, 0.0};
+	double Hi[4] = {0.0, 0.0, 0.0, 0.0};
+	int32 N = 1;
+	double L(int32 i) const { return Lo[FMath::Min(i, N - 1)]; }
+	double H(int32 i) const { return Hi[FMath::Min(i, N - 1)]; }
+	bool Exact() const
+	{
+		for (int32 i = 0; i < N; ++i)
+		{
+			if (Lo[i] != Hi[i]) return false;
+		}
+		return true;
+	}
+	static FRange Of(double Low, double High, int32 Channels = 1)
+	{
+		FRange R;
+		R.N = Channels;
+		for (int32 i = 0; i < 4; ++i)
+		{
+			R.Lo[i] = Low;
+			R.Hi[i] = High;
+		}
+		return R;
+	}
+	static FRange Color(const FLinearColor& C, int32 Channels)
+	{
+		FRange R;
+		R.N = Channels;
+		const double V[4] = {C.R, C.G, C.B, C.A};
+		for (int32 i = 0; i < 4; ++i)
+		{
+			R.Lo[i] = R.Hi[i] = V[i];
+		}
+		return R;
+	}
+};
+
+/** An input the reading can't evaluate (a texture, vertex colour, time, a custom node): at most white. */
+static FRange Unknown() { return FRange::Of(0.0, 1.0, 4); }
+
+/** Each channel of A and B combined by Fn(aLo, aHi, bLo, bHi, Lo, Hi). */
+template <typename FnType>
+static FRange Combine(const FRange& A, const FRange& B, FnType Fn)
+{
+	FRange R;
+	R.N = FMath::Max(A.N, B.N);
+	for (int32 i = 0; i < R.N; ++i)
+	{
+		Fn(A.L(i), A.H(i), B.L(i), B.H(i), R.Lo[i], R.Hi[i]);
+	}
+	return R;
+}
+
+static void Span(std::initializer_list<double> Values, double& Lo, double& Hi)
+{
+	Lo = TNumericLimits<double>::Max();
+	Hi = TNumericLimits<double>::Lowest();
+	for (const double V : Values)
+	{
+		if (!FMath::IsFinite(V))
+		{
+			Lo = 0.0;  // unbounded (a division by 0, a power of 0 below 0): read as an unknown input
+			Hi = 1.0;
+			return;
+		}
+		Lo = FMath::Min(Lo, V);
+		Hi = FMath::Max(Hi, V);
+	}
+}
+
+static FRange Mul(const FRange& A, const FRange& B)
+{
+	return Combine(A, B, [](double a, double b, double c, double d, double& Lo, double& Hi) { Span({a * c, a * d, b * c, b * d}, Lo, Hi); });
+}
+
+static FRange Add(const FRange& A, const FRange& B)
+{
+	return Combine(A, B, [](double a, double b, double c, double d, double& Lo, double& Hi) { Lo = a + c; Hi = b + d; });
+}
+
+static FRange Sub(const FRange& A, const FRange& B)
+{
+	return Combine(A, B, [](double a, double b, double c, double d, double& Lo, double& Hi) { Lo = a - d; Hi = b - c; });
+}
+
+static FRange Div(const FRange& A, const FRange& B)
+{
+	return Combine(A, B, [](double a, double b, double c, double d, double& Lo, double& Hi)
+	{
+		if (c > 0.0 || d < 0.0)
+		{
+			Span({a / c, a / d, b / c, b / d}, Lo, Hi);
+		}
+		else
+		{
+			Lo = 0.0;  // a divisor that can be 0
+			Hi = 1.0;
+		}
+	});
+}
+
+static FRange MaxOf(const FRange& A, const FRange& B)
+{
+	return Combine(A, B, [](double a, double b, double c, double d, double& Lo, double& Hi) { Lo = FMath::Max(a, c); Hi = FMath::Max(b, d); });
+}
+
+static FRange MinOf(const FRange& A, const FRange& B)
+{
+	return Combine(A, B, [](double a, double b, double c, double d, double& Lo, double& Hi) { Lo = FMath::Min(a, c); Hi = FMath::Min(b, d); });
+}
+
+/** Either value: a switch the reading can't settle. */
+static FRange Hull(const FRange& A, const FRange& B)
+{
+	return Combine(A, B, [](double a, double b, double c, double d, double& Lo, double& Hi) { Lo = FMath::Min(a, c); Hi = FMath::Max(b, d); });
+}
+
+/** The channels a mask keeps, in order (none set: all of them). */
+static FRange Pick(const FRange& V, bool R, bool G, bool B, bool A)
+{
+	const bool Keep[4] = {R, G, B, A};
+	FRange Out;
+	Out.N = 0;
+	for (int32 i = 0; i < 4; ++i)
+	{
+		if (Keep[i])
+		{
+			Out.Lo[Out.N] = V.L(i);
+			Out.Hi[Out.N] = V.H(i);
+			++Out.N;
+		}
+	}
+	return Out.N > 0 ? Out : V;
+}
+
+static FRange Append(const FRange& A, const FRange& B)
+{
+	FRange Out = A;
+	for (int32 i = 0; i < B.N && Out.N < 4; ++i)
+	{
+		Out.Lo[Out.N] = B.Lo[i];
+		Out.Hi[Out.N] = B.Hi[i];
+		++Out.N;
+	}
+	return Out;
+}
+
+/** The emissive of a value, as a luminance: its highest red, green and blue (one channel: grey), never below 0. */
+static double RangeLuminance(const FRange& V)
+{
+	return FMath::Max(0.0, Luminance(FMath::Max(V.H(0), 0.0), FMath::Max(V.H(1), 0.0), FMath::Max(V.H(2), 0.0)));
+}
+
+#if WITH_EDITORONLY_DATA
+/** The material function call a graph is being read inside, for its inputs. */
+struct FGraphCall
+{
+	const UMaterialExpressionMaterialFunctionCall* Call = nullptr;
+	const FGraphCall* Parent = nullptr;
+};
+
+/** A material graph being read: whose parameter values (a material instance's, a dynamic one's overrides included),
+ *  the primitive's custom data and the world's parameter collections. */
+struct FGraph
+{
+	const UMaterialInterface* Material = nullptr;
+	const UPrimitiveComponent* Prim = nullptr;
+	const UWorld* World = nullptr;
+	int32 Budget = GraphBudget;
+};
+
+static FRange Eval(FGraph& G, const FExpressionInput& In, const FGraphCall* Call);
+static FRange EmissiveOf(FGraph& G, const FExpressionInput& In, const FGraphCall* Call);
+
+/** An input's value, or Default when nothing is connected to it. */
+static FRange EvalOr(FGraph& G, const FExpressionInput& In, const FGraphCall* Call, double Default)
+{
+	return In.Expression ? Eval(G, In, Call) : FRange::Of(Default, Default);
+}
+
+/** What a call passes to a function input: its connected input, in the caller's graph; null when nothing is. */
+static const FExpressionInput* CallInput(const UMaterialExpressionFunctionInput* X, const FGraphCall* Call)
+{
+	if (!Call || !Call->Call)
+	{
+		return nullptr;
+	}
+	for (const FFunctionExpressionInput& FI : Call->Call->FunctionInputs)
+	{
+		if ((FI.ExpressionInput == X || (X->Id.IsValid() && FI.ExpressionInputId == X->Id)) && FI.Input.Expression)
+		{
+			return &FI.Input;
+		}
+	}
+	return nullptr;
+}
+
+static FRange FunctionInputValue(FGraph& G, const UMaterialExpressionFunctionInput* X, const FGraphCall* Call)
+{
+	if (const FExpressionInput* In = CallInput(X, Call))
+	{
+		return Eval(G, *In, Call->Parent);
+	}
+	if (X->Preview.Expression)
+	{
+		return Eval(G, X->Preview, Call);  // its default, in the function's own graph
+	}
+	return FRange::Color(FLinearColor(X->PreviewValue.X, X->PreviewValue.Y, X->PreviewValue.Z, X->PreviewValue.W), 4);
+}
+
+static bool SwitchValue(const FGraph& G, const UMaterialExpressionStaticBoolParameter* X)
+{
+	bool bValue = X->DefaultValue != 0;
+	FGuid Id;
+	if (G.Material)
+	{
+		G.Material->GetStaticSwitchParameterValue(FHashedMaterialParameterInfo(X->ParameterName), bValue, Id);
+	}
+	return bValue;
+}
+
+/** One expression's value at OutputIndex (its full value; the input reading it applies its own mask). */
+static FRange Node(FGraph& G, UMaterialExpression* E, int32 OutputIndex, const FGraphCall* Call)
+{
+	if (const UMaterialExpressionConstant* X = Cast<UMaterialExpressionConstant>(E))
+	{
+		return FRange::Of(X->R, X->R);
+	}
+	if (const UMaterialExpressionConstant2Vector* X = Cast<UMaterialExpressionConstant2Vector>(E))
+	{
+		return FRange::Color(FLinearColor(X->R, X->G, 0.f, 0.f), 2);
+	}
+	if (const UMaterialExpressionConstant3Vector* X = Cast<UMaterialExpressionConstant3Vector>(E))
+	{
+		return FRange::Color(X->Constant, 3);
+	}
+	if (const UMaterialExpressionConstant4Vector* X = Cast<UMaterialExpressionConstant4Vector>(E))
+	{
+		return FRange::Color(X->Constant, 4);
+	}
+	if (const UMaterialExpressionScalarParameter* X = Cast<UMaterialExpressionScalarParameter>(E))
+	{
+		// its value now: the primitive's custom data, else the material instance's (a dynamic one's override included)
+		float V = X->DefaultValue;
+		if (X->bUseCustomPrimitiveData)
+		{
+			const TArray<float>& Data = G.Prim ? G.Prim->GetCustomPrimitiveData().Data : TArray<float>();
+			V = Data.IsValidIndex(X->PrimitiveDataIndex) ? Data[X->PrimitiveDataIndex] : V;
+		}
+		else if (G.Material)
+		{
+			G.Material->GetScalarParameterValue(FHashedMaterialParameterInfo(X->ParameterName), V);
+		}
+		return FRange::Of(V, V);
+	}
+	if (const UMaterialExpressionVectorParameter* X = Cast<UMaterialExpressionVectorParameter>(E))
+	{
+		FLinearColor C = X->DefaultValue;
+		if (X->bUseCustomPrimitiveData)
+		{
+			const TArray<float>& Data = G.Prim ? G.Prim->GetCustomPrimitiveData().Data : TArray<float>();
+			float* Out[4] = {&C.R, &C.G, &C.B, &C.A};
+			for (int32 i = 0; i < 4; ++i)
+			{
+				if (Data.IsValidIndex(X->PrimitiveDataIndex + i))
+				{
+					*Out[i] = Data[X->PrimitiveDataIndex + i];
+				}
+			}
+		}
+		else if (G.Material)
+		{
+			G.Material->GetVectorParameterValue(FHashedMaterialParameterInfo(X->ParameterName), C);
+		}
+		return FRange::Color(C, 4);
+	}
+	if (const UMaterialExpressionStaticSwitchParameter* X = Cast<UMaterialExpressionStaticSwitchParameter>(E))
+	{
+		return SwitchValue(G, X) ? EvalOr(G, X->A, Call, 0.0) : EvalOr(G, X->B, Call, 0.0);
+	}
+	if (const UMaterialExpressionStaticBoolParameter* X = Cast<UMaterialExpressionStaticBoolParameter>(E))
+	{
+		const double V = SwitchValue(G, X) ? 1.0 : 0.0;
+		return FRange::Of(V, V);
+	}
+	if (const UMaterialExpressionStaticSwitch* X = Cast<UMaterialExpressionStaticSwitch>(E))
+	{
+		const FRange V = EvalOr(G, X->Value, Call, X->DefaultValue ? 1.0 : 0.0);
+		if (V.Exact())
+		{
+			return V.Lo[0] != 0.0 ? EvalOr(G, X->A, Call, 0.0) : EvalOr(G, X->B, Call, 0.0);
+		}
+		return Hull(EvalOr(G, X->A, Call, 0.0), EvalOr(G, X->B, Call, 0.0));
+	}
+	if (const UMaterialExpressionCollectionParameter* X = Cast<UMaterialExpressionCollectionParameter>(E))
+	{
+		// a material parameter collection's value now, in this world
+		const UMaterialParameterCollectionInstance* Inst = X->Collection && G.World ? G.World->GetParameterCollectionInstance(X->Collection) : nullptr;
+		float S = 0.f;
+		FLinearColor C;
+		if (Inst && Inst->GetScalarParameterValue(X->ParameterName, S))
+		{
+			return FRange::Of(S, S);
+		}
+		if (Inst && Inst->GetVectorParameterValue(X->ParameterName, C))
+		{
+			return FRange::Color(C, 4);
+		}
+		return Unknown();
+	}
+	if (const UMaterialExpressionMultiply* X = Cast<UMaterialExpressionMultiply>(E))
+	{
+		return Mul(EvalOr(G, X->A, Call, X->ConstA), EvalOr(G, X->B, Call, X->ConstB));
+	}
+	if (const UMaterialExpressionAdd* X = Cast<UMaterialExpressionAdd>(E))
+	{
+		return Add(EvalOr(G, X->A, Call, X->ConstA), EvalOr(G, X->B, Call, X->ConstB));
+	}
+	if (const UMaterialExpressionSubtract* X = Cast<UMaterialExpressionSubtract>(E))
+	{
+		return Sub(EvalOr(G, X->A, Call, X->ConstA), EvalOr(G, X->B, Call, X->ConstB));
+	}
+	if (const UMaterialExpressionDivide* X = Cast<UMaterialExpressionDivide>(E))
+	{
+		return Div(EvalOr(G, X->A, Call, X->ConstA), EvalOr(G, X->B, Call, X->ConstB));
+	}
+	if (const UMaterialExpressionMax* X = Cast<UMaterialExpressionMax>(E))
+	{
+		return MaxOf(EvalOr(G, X->A, Call, X->ConstA), EvalOr(G, X->B, Call, X->ConstB));
+	}
+	if (const UMaterialExpressionMin* X = Cast<UMaterialExpressionMin>(E))
+	{
+		return MinOf(EvalOr(G, X->A, Call, X->ConstA), EvalOr(G, X->B, Call, X->ConstB));
+	}
+	if (const UMaterialExpressionLinearInterpolate* X = Cast<UMaterialExpressionLinearInterpolate>(E))
+	{
+		// a + t (b - a) is linear in each of a, b and t, so its bounds are at their bounds' corners
+		const FRange A = EvalOr(G, X->A, Call, X->ConstA), B = EvalOr(G, X->B, Call, X->ConstB), T = EvalOr(G, X->Alpha, Call, X->ConstAlpha);
+		FRange R;
+		R.N = FMath::Max3(A.N, B.N, T.N);
+		for (int32 i = 0; i < R.N; ++i)
+		{
+			const double a0 = A.L(i), a1 = A.H(i), b0 = B.L(i), b1 = B.H(i), t0 = T.L(i), t1 = T.H(i);
+			Span({a0 + t0 * (b0 - a0), a0 + t0 * (b1 - a0), a1 + t0 * (b0 - a1), a1 + t0 * (b1 - a1),
+				a0 + t1 * (b0 - a0), a0 + t1 * (b1 - a0), a1 + t1 * (b0 - a1), a1 + t1 * (b1 - a1)}, R.Lo[i], R.Hi[i]);
+		}
+		return R;
+	}
+	if (const UMaterialExpressionClamp* X = Cast<UMaterialExpressionClamp>(E))
+	{
+		// clamp is increasing in its input, its min and its max
+		const FRange V = EvalOr(G, X->Input, Call, 0.0), Lo = EvalOr(G, X->Min, Call, X->MinDefault), Hi = EvalOr(G, X->Max, Call, X->MaxDefault);
+		FRange R;
+		R.N = FMath::Max3(V.N, Lo.N, Hi.N);
+		for (int32 i = 0; i < R.N; ++i)
+		{
+			const bool bMin = X->ClampMode != CMODE_ClampMax, bMax = X->ClampMode != CMODE_ClampMin;
+			double L = V.L(i), H = V.H(i);
+			if (bMin) { L = FMath::Max(L, Lo.L(i)); H = FMath::Max(H, Lo.H(i)); }
+			if (bMax) { L = FMath::Min(L, Hi.L(i)); H = FMath::Min(H, Hi.H(i)); }
+			R.Lo[i] = L;
+			R.Hi[i] = H;
+		}
+		return R;
+	}
+	if (const UMaterialExpressionSaturate* X = Cast<UMaterialExpressionSaturate>(E))
+	{
+		return MinOf(MaxOf(EvalOr(G, X->Input, Call, 0.0), FRange::Of(0.0, 0.0)), FRange::Of(1.0, 1.0));
+	}
+	if (const UMaterialExpressionPower* X = Cast<UMaterialExpressionPower>(E))
+	{
+		return Combine(EvalOr(G, X->Base, Call, 0.0), EvalOr(G, X->Exponent, Call, X->ConstExponent),
+			[](double a, double b, double c, double d, double& Lo, double& Hi)
+			{
+				a = FMath::Max(a, 0.0);  // the shader's pow of a negative base is undefined
+				b = FMath::Max(b, 0.0);
+				Span({FMath::Pow(a, c), FMath::Pow(a, d), FMath::Pow(b, c), FMath::Pow(b, d)}, Lo, Hi);
+			});
+	}
+	if (const UMaterialExpressionOneMinus* X = Cast<UMaterialExpressionOneMinus>(E))
+	{
+		return Sub(FRange::Of(1.0, 1.0), EvalOr(G, X->Input, Call, 0.0));
+	}
+	if (const UMaterialExpressionAbs* X = Cast<UMaterialExpressionAbs>(E))
+	{
+		FRange V = EvalOr(G, X->Input, Call, 0.0);
+		for (int32 i = 0; i < V.N; ++i)
+		{
+			const double L = V.Lo[i], H = V.Hi[i];
+			V.Lo[i] = L >= 0.0 ? L : H <= 0.0 ? -H : 0.0;
+			V.Hi[i] = FMath::Max(FMath::Abs(L), FMath::Abs(H));
+		}
+		return V;
+	}
+	if (E->IsA<UMaterialExpressionSine>() || E->IsA<UMaterialExpressionCosine>())
+	{
+		const bool bSine = E->IsA<UMaterialExpressionSine>();
+		const UMaterialExpressionSine* S = Cast<UMaterialExpressionSine>(E);
+		const UMaterialExpressionCosine* C = Cast<UMaterialExpressionCosine>(E);
+		FRange V = EvalOr(G, bSine ? S->Input : C->Input, Call, 0.0);
+		if (!V.Exact())
+		{
+			return FRange::Of(-1.0, 1.0);
+		}
+		const double Period = bSine ? S->Period : C->Period;
+		for (int32 i = 0; i < V.N; ++i)
+		{
+			const double X = Period > 0.0 ? V.Lo[i] * 2.0 * UE_DOUBLE_PI / Period : V.Lo[i];
+			V.Lo[i] = V.Hi[i] = bSine ? FMath::Sin(X) : FMath::Cos(X);
+		}
+		return V;
+	}
+	if (const UMaterialExpressionComponentMask* X = Cast<UMaterialExpressionComponentMask>(E))
+	{
+		return Pick(EvalOr(G, X->Input, Call, 0.0), X->R, X->G, X->B, X->A);
+	}
+	if (const UMaterialExpressionAppendVector* X = Cast<UMaterialExpressionAppendVector>(E))
+	{
+		return Append(EvalOr(G, X->A, Call, 0.0), EvalOr(G, X->B, Call, 0.0));
+	}
+	if (const UMaterialExpressionReroute* X = Cast<UMaterialExpressionReroute>(E))
+	{
+		return EvalOr(G, X->Input, Call, 0.0);
+	}
+	if (const UMaterialExpressionNamedRerouteDeclaration* X = Cast<UMaterialExpressionNamedRerouteDeclaration>(E))
+	{
+		return EvalOr(G, X->Input, Call, 0.0);
+	}
+	if (const UMaterialExpressionNamedRerouteUsage* X = Cast<UMaterialExpressionNamedRerouteUsage>(E))
+	{
+		return X->Declaration ? EvalOr(G, X->Declaration->Input, Call, 0.0) : Unknown();
+	}
+	if (const UMaterialExpressionMaterialFunctionCall* X = Cast<UMaterialExpressionMaterialFunctionCall>(E))
+	{
+		const UMaterialExpressionFunctionOutput* Out = X->FunctionOutputs.IsValidIndex(OutputIndex) ? X->FunctionOutputs[OutputIndex].ExpressionOutput.Get() : nullptr;
+		const FGraphCall Inner{X, Call};
+		return Out ? EvalOr(G, Out->A, &Inner, 0.0) : Unknown();
+	}
+	if (const UMaterialExpressionFunctionInput* X = Cast<UMaterialExpressionFunctionInput>(E))
+	{
+		return FunctionInputValue(G, X, Call);
+	}
+	if (const UMaterialExpressionFunctionOutput* X = Cast<UMaterialExpressionFunctionOutput>(E))
+	{
+		return EvalOr(G, X->A, Call, 0.0);
+	}
+	return Unknown();
+}
+
+static FRange Eval(FGraph& G, const FExpressionInput& In, const FGraphCall* Call)
+{
+	UMaterialExpression* E = In.Expression;
+	if (!E)
+	{
+		return FRange::Of(0.0, 0.0);
+	}
+	if (--G.Budget < 0)
+	{
+		return Unknown();
+	}
+	const FRange V = Node(G, E, In.OutputIndex, Call);
+	return In.Mask ? Pick(V, In.MaskR != 0, In.MaskG != 0, In.MaskB != 0, In.MaskA != 0) : V;
+}
+
+/** The emissive a material-attributes or Substrate value carries: a MakeMaterialAttributes' or a BSDF's own emissive
+ *  input, either attribute set of a blend, the sum over a Substrate operator's inputs (mixing, layering, adding). */
+static FRange EmissiveOf(FGraph& G, const FExpressionInput& In, const FGraphCall* Call)
+{
+	UMaterialExpression* E = In.Expression;
+	if (!E)
+	{
+		return FRange::Of(0.0, 0.0);
+	}
+	if (--G.Budget < 0)
+	{
+		return Unknown();
+	}
+	if (const UMaterialExpressionMakeMaterialAttributes* X = Cast<UMaterialExpressionMakeMaterialAttributes>(E))
+	{
+		return EvalOr(G, X->EmissiveColor, Call, 0.0);
+	}
+	if (const UMaterialExpressionBlendMaterialAttributes* X = Cast<UMaterialExpressionBlendMaterialAttributes>(E))
+	{
+		return Hull(EmissiveOf(G, X->A, Call), EmissiveOf(G, X->B, Call));
+	}
+	if (const UMaterialExpressionReroute* X = Cast<UMaterialExpressionReroute>(E))
+	{
+		return EmissiveOf(G, X->Input, Call);
+	}
+	if (const UMaterialExpressionNamedRerouteDeclaration* X = Cast<UMaterialExpressionNamedRerouteDeclaration>(E))
+	{
+		return EmissiveOf(G, X->Input, Call);
+	}
+	if (const UMaterialExpressionNamedRerouteUsage* X = Cast<UMaterialExpressionNamedRerouteUsage>(E))
+	{
+		return X->Declaration ? EmissiveOf(G, X->Declaration->Input, Call) : Unknown();
+	}
+	if (const UMaterialExpressionMaterialFunctionCall* X = Cast<UMaterialExpressionMaterialFunctionCall>(E))
+	{
+		const UMaterialExpressionFunctionOutput* Out = X->FunctionOutputs.IsValidIndex(In.OutputIndex) ? X->FunctionOutputs[In.OutputIndex].ExpressionOutput.Get() : nullptr;
+		const FGraphCall Inner{X, Call};
+		return Out ? EmissiveOf(G, Out->A, &Inner) : Unknown();
+	}
+	if (const UMaterialExpressionFunctionInput* X = Cast<UMaterialExpressionFunctionInput>(E))
+	{
+		if (const FExpressionInput* Passed = CallInput(X, Call))
+		{
+			return EmissiveOf(G, *Passed, Call->Parent);
+		}
+		return X->Preview.Expression ? EmissiveOf(G, X->Preview, Call) : FRange::Of(0.0, 0.0);
+	}
+	if (const UMaterialExpressionFunctionOutput* X = Cast<UMaterialExpressionFunctionOutput>(E))
+	{
+		return EmissiveOf(G, X->A, Call);
+	}
+	if (E->IsA<UMaterialExpressionSubstrateBSDF>())
+	{
+		// a BSDF's emissive input (Slab, Unlit, Simple Clear Coat, ...), found by name
+		const FStructProperty* P = FindFProperty<FStructProperty>(E->GetClass(), TEXT("EmissiveColor"));
+		if (P && P->Struct && P->Struct->GetFName() == TEXT("ExpressionInput"))
+		{
+			return EvalOr(G, *P->ContainerPtrToValuePtr<FExpressionInput>(E), Call, 0.0);
+		}
+		FRange Sum = FRange::Of(0.0, 0.0);
+		for (FExpressionInputIterator It{E}; It; ++It)
+		{
+			if (It->Expression && (It->Expression->IsA<UMaterialExpressionSubstrateBSDF>() || It->Expression->IsA<UMaterialExpressionMaterialFunctionCall>() ||
+				It->Expression->IsA<UMaterialExpressionRerouteBase>()))
+			{
+				Sum = Add(Sum, EmissiveOf(G, *It.Input, Call));
+			}
+		}
+		return Sum;
+	}
+	return Unknown();  // SetMaterialAttributes and other attribute nodes
+}
+#endif  // WITH_EDITORONLY_DATA
+
+/** A material's emissive from its graph (editor-only data, there in an uncooked -game play): the base material's
+ *  emissive input evaluated with the instance's parameter values now. False without the graph (a cooked build). */
+static bool GraphEmissive(const UMaterialInterface* MI, const UPrimitiveComponent* Prim, const UWorld* World, double& Out)
+{
+#if WITH_EDITORONLY_DATA
+	const UMaterial* Base = MI ? MI->GetMaterial() : nullptr;
+	const UMaterialEditorOnlyData* Ed = Base ? Base->GetEditorOnlyData() : nullptr;
+	if (!Ed)
+	{
+		return false;
+	}
+	FGraph G;
+	G.Material = MI;
+	G.Prim = Prim;
+	G.World = World;
+	FRange V;
+	if (Base->bUseMaterialAttributes)
+	{
+		V = EmissiveOf(G, Ed->MaterialAttributes, nullptr);
+	}
+	else if (Ed->EmissiveColor.Expression)
+	{
+		V = Eval(G, Ed->EmissiveColor, nullptr);
+	}
+	else if (Ed->FrontMaterial.Expression)
+	{
+		V = EmissiveOf(G, Ed->FrontMaterial, nullptr);
+	}
+	else
+	{
+		V = Ed->EmissiveColor.UseConstant ? FRange::Color(Ed->EmissiveColor.Constant, 3) : FRange::Of(0.0, 0.0);
+	}
+	Out = RangeLuminance(V);
+	return true;
+#else
+	return false;
+#endif
+}
+
+/** Without the graph (a cooked build): an emissive input left unconnected reads 0; a connected one by the material's
+ *  parameters named for it (Emissive, Emission, Emit, Glow): the brightest such colour times every such scalar. False
+ *  when it is connected and no parameter says how bright. */
+static bool NamedEmissive(const UMaterialInterface* MI, double& Out)
+{
+	const UMaterial* Base = MI ? MI->GetMaterial() : nullptr;
+	if (!Base)
+	{
+		return false;
+	}
+	if (!Base->bUseMaterialAttributes && !Base->IsPropertyConnected(MP_EmissiveColor) && !Base->HasSubstrateFrontMaterialConnected())
+	{
+		Out = 0.0;
+		return true;
+	}
+	auto Named = [](const FName& N)
+	{
+		const FString S = N.ToString();
+		return S.Contains(TEXT("Emissive")) || S.Contains(TEXT("Emission")) || S.Contains(TEXT("Emit")) || S.Contains(TEXT("Glow"));
+	};
+	bool bAny = false;
+	double Strength = 1.0, Color = 1.0;
+	bool bColor = false;
+	TArray<FMaterialParameterInfo> Infos;
+	TArray<FGuid> Ids;
+	MI->GetAllScalarParameterInfo(Infos, Ids);
+	for (const FMaterialParameterInfo& Info : Infos)
+	{
+		float V = 0.f;
+		if (Named(Info.Name) && MI->GetScalarParameterValue(FHashedMaterialParameterInfo(Info), V))
+		{
+			Strength *= V;
+			bAny = true;
+		}
+	}
+	Infos.Reset();
+	Ids.Reset();
+	MI->GetAllVectorParameterInfo(Infos, Ids);
+	for (const FMaterialParameterInfo& Info : Infos)
+	{
+		FLinearColor C;
+		if (Named(Info.Name) && MI->GetVectorParameterValue(FHashedMaterialParameterInfo(Info), C))
+		{
+			const double L = Luminance(C.R, C.G, C.B);
+			Color = bColor ? FMath::Max(Color, L) : L;
+			bColor = bAny = true;
+		}
+	}
+	Out = FMath::Max(0.0, Color * Strength);
+	return bAny;
+}
+
+/** A material's emissive luminance now: from its graph, else by its parameters' names; false when neither can say. */
+static bool MaterialEmissive(const UMaterialInterface* MI, const UPrimitiveComponent* Prim, const UWorld* World, double& Out)
+{
+	return GraphEmissive(MI, Prim, World, Out) || NamedEmissive(MI, Out);
+}
+
+/** lit and glow of one actor or component, summed over its sources (lights and meshes). */
+struct FGlowReading
+{
+	bool bRead = false;  // it was read (else lit and glow are null)
+	bool bLit = false;
+	double Glow = 0.0;
+	uint8 Kinds = 0;  // GlowLight | GlowEmissive | GlowUnlit: the sources that are lit
+};
+
+/** A light component as a source: lit when it lights the scene (LightOn) and its light function, if any, isn't black;
+ *  glow its intensity in candelas (point, spot and rect lights; a directional light's lux and a sky light's scale as
+ *  they are) times its colour's luminance and its light function's. */
+static void AddLight(FGlowReading& R, const ULightComponentBase* L, const UWorld* World)
+{
+	R.bRead = true;
+	if (!LightOn(L, World))
+	{
+		return;
+	}
+	double I = L->Intensity;
+	if (const ULocalLightComponent* Local = Cast<ULocalLightComponent>(L))
+	{
+		const USpotLightComponent* Spot = Cast<USpotLightComponent>(L);
+		const float Cos = Spot ? FMath::Cos(FMath::DegreesToRadians(Spot->OuterConeAngle)) : -1.f;
+		I *= ULocalLightComponent::GetUnitsConversionFactor(Local->IntensityUnits, ELightUnits::Candelas, Cos);
+	}
+	const FLinearColor C(L->LightColor);
+	I *= Luminance(C.R, C.G, C.B);
+	const ULightComponent* LC = Cast<ULightComponent>(L);
+	double Function = 1.0;
+	if (LC && LC->LightFunctionMaterial && MaterialEmissive(LC->LightFunctionMaterial, nullptr, World, Function))
+	{
+		I *= Function;
+	}
+	if (I > 0.0)
+	{
+		R.bLit = true;
+		R.Glow += I;
+		R.Kinds |= GlowLight;
+	}
+}
+
+/** A mesh component as a source: its brightest material's emissive luminance (every material it draws with: its own,
+ *  overrides and dynamic instances with their parameters now, its overlay). Lit when it is drawn (visible, not hidden
+ *  in game, its owner not hidden) and that is above EmissiveFloor; glow that luminance times a quarter of the surface
+ *  of its local bounds (m2, scaled), the candelas a lamp that size would give every way. False when no material could
+ *  be read. */
+static bool AddMesh(FGlowReading& R, const UMeshComponent* M, const UWorld* World)
+{
+	TArray<UMaterialInterface*> Used;
+	M->GetUsedMaterials(Used);
+	bool bRead = Used.IsEmpty();
+	double Best = 0.0;
+	bool bUnlit = false;
+	for (const UMaterialInterface* MI : Used)
+	{
+		double L = 0.0;
+		if (!MI)
+		{
+			bRead = true;
+		}
+		else if (MaterialEmissive(MI, M, World, L))
+		{
+			bRead = true;
+			if (L > Best)
+			{
+				Best = L;
+				bUnlit = MI->GetShadingModels().HasOnlyShadingModel(MSM_Unlit);
+			}
+		}
+	}
+	if (!bRead)
+	{
+		return false;
+	}
+	R.bRead = true;
+	const AActor* Owner = M->GetOwner();
+	const bool bDrawn = M->IsRegistered() && M->IsVisible() && !M->bHiddenInGame && !(Owner && Owner->IsHidden());
+	if (!bDrawn || Best <= EmissiveFloor)
+	{
+		return true;
+	}
+	const FVector Size = M->CalcBounds(FTransform::Identity).BoxExtent * 2.0 * M->GetComponentTransform().GetScale3D().GetAbs();
+	const double Area = 2.0 * (Size.X * Size.Y + Size.Y * Size.Z + Size.Z * Size.X) / 10000.0;
+	R.bLit = true;
+	R.Glow += Best * Area / 4.0;
+	R.Kinds |= bUnlit ? GlowUnlit : GlowEmissive;
+	return true;
+}
+
+/** An actor's sources: its own registered light components and the mesh components changed compares (ChangeParts). */
+static FGlowReading ActorGlow(const AActor* A, const UWorld* World)
+{
+	FGlowReading R;
+	R.bRead = true;  // an actor with nothing that gives light reads 0
+	bool bUnread = false;
+	TInlineComponentArray<ULightComponentBase*> Lights(A);
+	for (const ULightComponentBase* L : Lights)
+	{
+		if (L && L->IsRegistered() && !L->IsEditorOnly())
+		{
+			AddLight(R, L, World);
+		}
+	}
+	TArray<UMeshComponent*> Meshes;
+	ChangeParts(A, Meshes);
+	for (const UMeshComponent* M : Meshes)
+	{
+		bUnread |= !AddMesh(R, M, World);
+	}
+	R.bRead = R.bLit || !bUnread;
+	return R;
+}
+
+static TSharedPtr<FJsonValue> GlowField(const FGlowReading& R, const FString& F)
+{
+	if (!R.bRead) return Null();
+	if (F == TEXT("lit")) return Num(R.bLit ? 1.0 : 0.0);
+	if (F == TEXT("glow")) return Num(R.Glow);
+	return Null();
+}
+
+/** The kinds of source that are lit, for logs: "light", "emissive", "unlit", comma-separated. */
+static FString GlowSources(const FGlowReading& R)
+{
+	TArray<FString> Kinds;
+	if (R.Kinds & GlowLight) Kinds.Add(TEXT("light"));
+	if (R.Kinds & GlowEmissive) Kinds.Add(TEXT("emissive"));
+	if (R.Kinds & GlowUnlit) Kinds.Add(TEXT("unlit"));
+	return FString::Join(Kinds, TEXT(","));
+}
+
 /** An 8-bit sRGB value as linear light, 0-1. */
 static double SrgbToLinear(uint8 V)
 {
@@ -2065,9 +2882,12 @@ void FTaskProbeQueries::SampleActors(FQuery& Q, UWorld* World, APlayerController
 		const TSharedRef<FJsonObject> Row = MakeShared<FJsonObject>();
 		// changed, bounds_change, pose_change: against the first sample this query saw the actor in
 		const FChangeReading Change = Q.Fields.ContainsByPredicate(IsChangeField) ? ActorChange(A, Q.Firsts, Q.FirstParts) : FChangeReading();
+		// lit, glow: over its lights and meshes
+		const bool bGlow = Q.Fields.ContainsByPredicate(IsGlowField);
+		const FGlowReading Glow = bGlow ? ActorGlow(A, World) : FGlowReading();
 		for (const FString& F : Q.Fields)
 		{
-			const TSharedPtr<FJsonValue> V = IsChangeField(F) ? ChangeField(Change, F) : ActorField(A, F);
+			const TSharedPtr<FJsonValue> V = IsChangeField(F) ? ChangeField(Change, F) : IsGlowField(F) ? GlowField(Glow, F) : ActorField(A, F);
 			if (bFull)
 			{
 				Full.FindOrAdd(F).Add(V);
@@ -2081,6 +2901,10 @@ void FTaskProbeQueries::SampleActors(FQuery& Q, UWorld* World, APlayerController
 		{
 			Row->SetStringField(TEXT("name"), A->GetName());
 			Row->SetStringField(TEXT("class"), A->GetClass()->GetName());
+			if (bGlow && Glow.bRead)
+			{
+				Row->SetStringField(TEXT("glow_sources"), GlowSources(Glow));  // for logs, never a threshold
+			}
 			Rows.Add(MakeShared<FJsonValueObject>(Row));
 		}
 	}
@@ -2216,6 +3040,14 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 	const TSharedPtr<FJsonObject>* SelObj = nullptr;
 	Q.Def->TryGetObjectField(TEXT("select"), SelObj);
 	const FSel Sel = ParseSel(SelObj ? *SelObj : TSharedPtr<FJsonObject>());
+	// mesh: a wildcard on a mesh component's mesh asset; visible: only components drawn (as the visible field reads them)
+	FString MeshSel;
+	bool bDrawnOnly = false;
+	if (SelObj && SelObj->IsValid())
+	{
+		(*SelObj)->TryGetStringField(TEXT("mesh"), MeshSel);
+		(*SelObj)->TryGetBoolField(TEXT("visible"), bDrawnOnly);
+	}
 	bool bOk = World != nullptr;
 	// owner: an actor selection the component's owner must be in
 	TSet<const AActor*> Owners;
@@ -2255,6 +3087,22 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 			{
 				continue;
 			}
+			if (!MeshSel.IsEmpty())
+			{
+				const UMeshComponent* M = Cast<UMeshComponent>(C);
+				if (!M || !MeshAssetName(M).MatchesWildcard(MeshSel))
+				{
+					continue;
+				}
+			}
+			if (bDrawnOnly)
+			{
+				const AActor* Owner = C->GetOwner();
+				if (!SC || !SC->IsVisible() || SC->bHiddenInGame || (Owner && Owner->IsHidden()))
+				{
+					continue;
+				}
+			}
 			++Total;
 			Matched.Add(C);
 		}
@@ -2290,6 +3138,17 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 				Change.bPose = Now.bSkinned;
 				Q.Firsts.Add(Key, Now);
 			}
+		}
+		// lit, glow: a light component or a mesh component as a source; null for any other component
+		const bool bGlow = Q.Fields.ContainsByPredicate(IsGlowField);
+		FGlowReading Glow;
+		if (bGlow && Light)
+		{
+			AddLight(Glow, Light, World);
+		}
+		else if (const UMeshComponent* Mesh = bGlow ? Cast<UMeshComponent>(C) : nullptr)
+		{
+			AddMesh(Glow, Mesh, World);
 		}
 		const TSharedRef<FJsonObject> Row = MakeShared<FJsonObject>();
 		for (const FString& F : Q.Fields)
@@ -2351,6 +3210,10 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 			{
 				V = Num(LightOn(Light, World) ? 1.0 : 0.0);
 			}
+			else if (IsGlowField(F))
+			{
+				V = GlowField(Glow, F);
+			}
 			else if (F.StartsWith(TEXT("prop:")))
 			{
 				V = ReadProp(C, F.Mid(5));
@@ -2366,6 +3229,10 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 			Row->SetStringField(TEXT("name"), C->GetName());
 			Row->SetStringField(TEXT("class"), C->GetClass()->GetName());
 			Row->SetStringField(TEXT("owner"), C->GetOwner() ? C->GetOwner()->GetName() : FString());
+			if (bGlow && Glow.bRead)
+			{
+				Row->SetStringField(TEXT("glow_sources"), GlowSources(Glow));  // for logs, never a threshold
+			}
 			Rows.Add(MakeShared<FJsonValueObject>(Row));
 		}
 	}

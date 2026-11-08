@@ -550,6 +550,64 @@ class ChangedSinceTheStart(unittest.TestCase):
                           "no skinned mesh: no value, never 0")
 
 
+GLOW_LAMP = {"probe": "actors", "select": {"tag": "Lamp"}, "at": "end"}
+GLOW_BULB = {"probe": "components", "at": "end",
+             "select": {"class": "StaticMeshComponent", "owner": {"tag": "Lamp"}, "mesh": "SM_Bulb*", "visible": True}}
+
+
+class LitWhateverMadeTheLight(unittest.TestCase):
+    """docs/task-probes.md, sections 2.4 and 2.5: one reading for whether something gives off light and how much,
+    whether a build lit it with a light component or with a mesh drawn by an emissive or unlit material."""
+
+    def test_lit_takes_a_literal_and_glow_never_does(self):
+        for measure in ({**GLOW_LAMP, "field": "lit", "of": "any"}, {**GLOW_BULB, "field": "lit", "of": "any"}):
+            task_with(probe(measure=measure, expect={"op": ">=", "value": 1}))
+        for measure in ({**GLOW_LAMP, "field": "glow", "of": "sum"}, {**GLOW_BULB, "field": "glow", "of": "max"}):
+            with self.assertRaisesRegex(ValueError, "never a literal value"):
+                task_with(probe(measure=measure, expect={"op": ">=", "value": 1}))
+            task_with(probe(measure=measure, expect={"op": ">=", "calibrate": 0.5}))
+            task_with(probe(measure=measure, expect={"op": ">=", "start_times": 2}), seed=NO_FIX)
+        for bad in ({**GLOW_LAMP, "field": "glow_sources"}, {**GLOW_LAMP, "field": "emissive"},
+                    {**GLOW_BULB, "field": "glow_sources"},
+                    {**GLOW_BULB, "select": {"class": "StaticMeshComponent", "visible": False}, "field": "lit"},
+                    {**GLOW_BULB, "select": {"class": "StaticMeshComponent", "mesh": "Bulb/SM_Bulb"}, "field": "lit"}):
+            with self.assertRaises(ValueError, msg=json.dumps(bad)):
+                task_with(probe(measure=bad))
+
+    def test_one_query_reads_lit_and_glow_over_every_kind_of_source(self):
+        lit = m(**{**GLOW_LAMP, "field": "lit", "of": "any", "at": None})
+        (query,) = probes.needs(lit)
+        self.assertEqual((query["kind"], query["fields"]), ("actors", ["lit"]))
+        glow = m(**{**GLOW_LAMP, "field": "glow", "of": "sum", "at": None})
+        self.assertEqual(probes.query_id(probes.needs(glow)[0]), probes.query_id(query), "one query, both fields")
+        # a light, a mesh whose emissive parameter went up, an unlit mesh and a hidden glowing mesh, as the plugin reads
+        # them (glow_sources rides along for the logs)
+        play = actors_play(lit, [[{"name": "Light", "lit": 1, "glow": 800.0, "glow_sources": "light"},
+                                  {"name": "Param", "lit": 0, "glow": 0.0, "glow_sources": ""},
+                                  {"name": "Hidden", "lit": 0, "glow": 0.0, "glow_sources": ""}],
+                                 [{"name": "Light", "lit": 0, "glow": 0.0, "glow_sources": ""},
+                                  {"name": "Param", "lit": 1, "glow": 24.84, "glow_sources": "emissive"},
+                                  {"name": "Unlit", "lit": 1, "glow": 3.0, "glow_sources": "unlit"},
+                                  {"name": "Hidden", "lit": 0, "glow": 0.0, "glow_sources": ""}]])
+        self.assertEqual(probes.reduce(lit, play), 1)
+        self.assertEqual(probes.reduce(m(**{**GLOW_LAMP, "field": "lit", "of": "count", "at": None}), play), 2)
+        self.assertEqual(probes.reduce(glow, play), 27.84)
+        first = m(**{**GLOW_LAMP, "field": "glow", "of": "sum", "at": None, "agg": "first"})
+        self.assertEqual(probes.reduce(first, play), 800.0)
+        bare = m(**{**GLOW_LAMP, "field": "glow", "of": "max", "at": None})
+        self.assertIsNone(probes.reduce(bare, actors_play(bare, [[{"name": "Fx", "lit": None, "glow": None}]])),
+                          "unread: no value, never 0")
+
+    def test_a_component_select_by_mesh_or_drawn_is_its_own_query(self):
+        bulbs = m(**{**GLOW_BULB, "field": "lit", "of": "any", "at": None})
+        (query,) = probes.needs(bulbs)
+        self.assertEqual(query["select"], {"class": "StaticMeshComponent", "owner": {"tag": "Lamp"}, "mesh": "SM_Bulb*",
+                                           "visible": True})
+        every = m(probe="components", select={"class": "StaticMeshComponent", "owner": {"tag": "Lamp"}}, field="lit",
+                  of="any")
+        self.assertNotEqual(probes.query_id(probes.needs(every)[0]), probes.query_id(query))
+
+
 class Angles(unittest.TestCase):
     def test_angles_aggregates_and_the_new_query_kinds_reduce(self):
         self.assertEqual([probes.normal(a) for a in (270, -270, 180, -180, 540, 0)], [-90, 90, 180, 180, 180, 0])
