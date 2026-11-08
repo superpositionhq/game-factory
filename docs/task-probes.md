@@ -490,6 +490,7 @@ music; so ambience a game drives from code reads as well as an `AmbientSound` ac
 ```json
 {"probe": "ui", "select": {"kind": "text"}, "field": "text", "match": "AMMO\\s*\\d+", "of": "any", "at": "end"}
 {"probe": "ui", "select": {"kind": "box", "rect": [0, 0.8, 1, 1]}, "field": "count", "window": [5, 10], "agg": "min"}
+{"probe": "ui", "select": {"rect": [0.02, 0.02, 0.3, 0.12]}, "field": "signature", "window": [5, 15], "agg": "changes"}
 ```
 
 One reading for the UI on screen, however a build drew it: UMG widgets, Slate widgets and the HUD canvas
@@ -511,8 +512,24 @@ a widget's own state (a progress bar's percent, a brush).
   match; text elements only); `rect` `[x0, y0, x1, y1]` in viewport fractions, x0 < x1 and y0 < y1 (the element's centre
   inside).
 - `field`: `count` (one per element); `text` (the string shown, with `match`); `x`, `y`, `w`, `h` (the element's
-  rectangle in viewport fractions 0-1). `of` combines the elements, as for widgets: `"field": "text", "match": ...,
+  rectangle in viewport fractions 0-1); `signature` (whether what the select shows updates, below). `of` combines the elements, as for widgets: `"field": "text", "match": ...,
   "of": "any"` is 1 when some element shows matching text, `"of": "count"` how many do.
+- Whether a readout updates, however it is drawn: `"field": "signature"` is one value a sample for everything the
+  `select` picks: each element's `kind`, `text` and rectangle (`x`, `y`, `w`, `h` rounded to 0.002 of the viewport),
+  taken as a set, and how many matched. It is 0 when the select picks nothing, otherwise a number that means nothing
+  but itself; `source`, names and the order of the rows are left out. Read it with `"agg": "changes"`: how many
+  samples (every 0.5 s) show something other than the sample before. A text readout whose string changes counts, and
+  so does a readout drawn with lines whose strokes change, whatever reads or doesn't read its text; a readout that
+  stays the same reads 0. Appearing or going (to or from 0) is a change; a sample with no frame drawn has no value.
+  - A signature takes `agg` `changes`, `any`, `all` or `count` (`all`: something shown in every sample; `count`:
+    samples showing something), nothing else. `of` is ignored.
+  - A literal threshold on a count of changes is valid, but a calibrated or start-relative threshold is the safer
+    choice: a readout that also moves, blinks or animates changes for reasons of its own, and one that updates more
+    slowly than the samples changes less often. Keep the `rect` on the readout alone, with a margin, and the
+    `window` where its value is known to change.
+  - Limits: geometry right at a 0.002 step can flip between samples on sub-pixel motion; a change that changes back
+    before the next sample is not seen; a readout no `ui` element reads (below) has no signature but 0, unless its
+    text reads from the frame.
 - Each row also carries `source` (`umg`, `slate`, `canvas` or `ocr`) and `kind`, for the logs; they are not fields a check
   reads, so a threshold never depends on how a build drew its HUD.
 - Canvas text is read back from the glyphs the canvas drew (the font cache's characters), so it is the string as

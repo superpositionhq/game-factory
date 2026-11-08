@@ -61,7 +61,8 @@ def needs(measure):
     if probe == "audio":
         return [{"kind": "audio", "select": measure["select"]}]
     if probe == "ui":
-        return [{"kind": "ui", "select": measure["select"], "fields": [] if field == "count" else [field]}]
+        fields = UI_SIGNED if field == "signature" else [] if field == "count" else [field]
+        return [{"kind": "ui", "select": measure["select"], "fields": list(fields)}]
     if probe == "ground":
         place = {"xy": measure["xy"]} if measure["xy"] is not None else {"box": measure["box"], "grid": measure["grid"]}
         return [{"kind": "ground", **place, **({"select": measure["select"]} if measure["select"] is not None else {})}]
@@ -167,6 +168,8 @@ def combine(values, of):
 
 
 ROWS = object()  # every_match: the rows alone read the measure
+UI_SIGNED = ("h", "text", "w", "x", "y")  # what a ui signature is made of, besides each row's kind
+UI_GRID = 0.002  # a ui signature's geometry, rounded to this fraction of the viewport
 
 
 def _count(value):
@@ -178,6 +181,24 @@ def selected_count(sample, rows):
     most 200 rows), else the rows."""
     total = sample.get("total")
     return float(total) if _count(total) and total > rows else float(rows)
+
+
+def ui_signature(sample, rows):
+    """One number for what a ui select shows in one sample: 0 when it picks nothing, else a hash (1 to 2^31 - 1) of its
+    elements' kinds, texts and rectangles (rounded to UI_GRID) as a set, and how many matched. Two samples showing the
+    same thing read the same, so `agg: changes` counts how often what the select shows changed, however it was drawn
+    (a text's string, the strokes of a line-drawn readout); its value is otherwise meaningless."""
+    total = selected_count(sample, len(rows))
+    if not total:
+        return 0.0
+
+    def cell(v):
+        return round(v / UI_GRID) if _count(v) else None
+
+    items = sorted(json.dumps([r.get("kind") if isinstance(r.get("kind"), str) else "",
+                               r.get("text") if isinstance(r.get("text"), str) else "",
+                               *(cell(r.get(k)) for k in ("x", "y", "w", "h"))]) for r in rows)
+    return float(int(_hash([total, items], 8), 16) % (2 ** 31 - 1) + 1)
 
 
 def every_match(sample, rows, field, of):
@@ -374,6 +395,9 @@ def series(measure, probe):
                 out.append((s["t"], None))
                 continue
             rows = [r for r in s.get("rows") or [] if isinstance(r, dict)]
+            if field == "signature":
+                out.append((s["t"], ui_signature(s, rows)))
+                continue
             whole = every_match(s, len(rows), field, measure["of"]) if measure.get("match") is None and not turned else ROWS
             if field == "count":
                 out.append((s["t"], selected_count(s, len(rows))))
