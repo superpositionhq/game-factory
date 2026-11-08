@@ -117,8 +117,8 @@ When the start can't be measured (its play ended before the window), a calibrate
   `any` (1 if any sample is non-zero), `all` (1 if every sample is non-zero), `count` (number of non-zero samples),
   `sum`, `range` (max minus min), `std` (standard deviation), `changes` (how many times the value changes between
   consecutive samples). Default `last` (`sum` for `spawns`).
-- `of` (`actors`, `components`, `widgets`, and `asset` with a `select`): how the selected actors, components or
-  widgets combine within one sample: `count` (how many match and have a non-zero value), `any`, `all`, `min`, `max`,
+- `of` (`actors`, `components`, `widgets`, `ui`, and `asset` with a `select`): how the selected actors, components,
+  widgets or UI elements combine within one sample: `count` (how many match and have a non-zero value), `any`, `all`, `min`, `max`,
   `mean`, `sum`, `first`. **Default `count`.** A measure that reads a value (a position, an extent, a `prop:`, a text
   match, a percent) needs `"of": "first"` or another value reducer, or it counts instead of reading. With `"field":
   "count"`, `of` is ignored.
@@ -273,7 +273,10 @@ Limits:
   inside a shared split-screen overlay, and the custom widgets inside that HUD).
 - Slate HUDs: `{"slate": "STextBlock"}` selects Slate widgets under the game viewport by type (STextBlock, SImage,
   SProgressBar, or a game's own S... type), optionally with `"text": "<regex>"`. Widgets that paint everything in their
-  own OnPaint, and AHUD canvas drawing, are not measurable.
+  own OnPaint, and AHUD canvas drawing, are not measurable here.
+- **To check what a HUD shows, whatever draws it, use `ui` (section 2.18).** `widgets` reads a named widget's own
+  state, so it sees a HUD only when a build made it with that widget; a HUD drawn on the canvas, or with other
+  widgets, reads as absent.
 - `"visible": true` in the select (UMG or Slate) keeps only the widgets the `visible` field reads 1 for: never a
   collapsed or hidden widget, nor one under a collapsed or hidden parent, so `count` counts what is on screen (a
   warning bar's shown messages, not the ones the game keeps collapsed).
@@ -396,7 +399,8 @@ post-processing and tone mapping (exposure and its bias, colour grading, vignett
 measures light arriving at a point and sees none of that.
 
 - `rect`: `[x0, y0, x1, y1]` in viewport fractions 0-1, x0 < x1 and y0 < y1 (default `[0, 0, 1, 1]`, the whole frame).
-  Keep it on the scene the task is about and off HUD drawn with the AHUD canvas.
+  Keep it on the scene the task is about and off HUD drawn with the AHUD canvas. What the HUD shows is `ui`
+  (section 2.18), not luminance.
 - `field`: `luminance`, the mean linear Rec. 709 luminance of the displayed pixels (sRGB decoded, 0-1); `luma`, the
   mean Rec. 709 luma of the encoded values (0-1, closer to perceived brightness).
 - What is read: the frame drawn right after each sample (one frame later at the checker's 30 fps), as the engine's own
@@ -450,6 +454,43 @@ music; so ambience a game drives from code reads as well as an `AmbientSound` ac
   through.
 - **A `range` threshold is calibrated or relative to the start, never a literal value**; heights take a literal, as
   an actor's `z` does.
+
+### 2.18 `ui`: what the UI shows on screen, whatever draws it
+
+```json
+{"probe": "ui", "select": {"kind": "text"}, "field": "text", "match": "AMMO\\s*\\d+", "of": "any", "at": "end"}
+{"probe": "ui", "select": {"kind": "box", "rect": [0, 0.8, 1, 1]}, "field": "count", "window": [5, 10], "agg": "min"}
+```
+
+One reading for the UI on screen, however a build drew it: UMG widgets, Slate widgets and the HUD canvas
+(`AHUD::DrawHUD` with `DrawText`, `DrawRect`, `DrawTexture`, `UCanvas` `K2_DrawText` and the canvas's other text,
+tile and texture draws) read the same. A HUD a build drew on the canvas, and one another build made of widgets, both
+pass a check written with `ui`. **This is the way to check what a HUD or menu shows**; `widgets` (section 2.6) stays for
+a widget's own state (a progress bar's percent, a brush).
+
+- What is read: the elements on screen in the frame drawn right after each sample (one frame later at the checker's
+  30 fps). Only what is on screen: a collapsed or hidden widget, one at render opacity 0, and everything under it are
+  not read, nor is a canvas draw that is fully transparent or off the frame. No value when no frame is drawn.
+- Each element is one row: a widget that draws (a text block, rich text, an editable text with text or a hint; an
+  image; a border, a button, a progress bar, a colour block), or one canvas draw (a string, a rect, a texture or
+  tile).
+- `select` (optional; default every element): `kind` (`text`, `box`: a rect, border, button, bar or untextured brush,
+  `image`: a brush or canvas draw with a texture or material); `text` (a regular expression the element's text must
+  match; text elements only); `rect` `[x0, y0, x1, y1]` in viewport fractions, x0 < x1 and y0 < y1 (the element's centre
+  inside).
+- `field`: `count` (one per element); `text` (the string shown, with `match`); `x`, `y`, `w`, `h` (the element's
+  rectangle in viewport fractions 0-1). `of` combines the elements, as for widgets: `"field": "text", "match": ...,
+  "of": "any"` is 1 when some element shows matching text, `"of": "count"` how many do.
+- Each row also carries `source` (`umg`, `slate` or `canvas`) and `kind`, for the logs; they are not fields a check
+  reads, so a threshold never depends on how a build drew its HUD.
+- Canvas text is read back from the glyphs the canvas drew (the font cache's characters), so it is the string as
+  drawn. Spaces are read from the gaps between glyphs: write `\s*` (or `\s+`) where a string has a space.
+  A shadow or outline is the same text drawn twice and reads once.
+- Limits: a widget that paints its own text or shapes in OnPaint (no text block or brush), canvas lines and outlined
+  boxes (`DrawLine`, `K2_DrawBox`), material tiles (`DrawMaterial`), the debug canvas (on-screen debug messages, stats)
+  and anything a build draws in the 3D scene (a widget component, a text render component) are not UI elements here;
+  a canvas glyph whose font isn't in memory reads as `?`. The UMG/Slate geometry is the layout's, so a widget scaled
+  or moved by a render transform reads at its laid-out place.
 
 ## 3. What gates, and how a probe fails
 
@@ -533,5 +574,8 @@ a run on an invalid task is void.
 - **A light's direction is a world direction.** `rel_yaw:` reads a component against its own actor, so a fix that turns
   the actor instead of the component reads unchanged. "The moon points the same way" is `world_yaw:`, `world_pitch:` or
   `forward:` of the light component.
+- **A HUD need not be widgets.** A build may draw its HUD with widgets or on the canvas (`AHUD::DrawHUD`): check
+  what it shows with `ui` (text with `match`, counts by `kind` and `rect`), which reads both the same; `widgets` sees
+  only the widget it names.
 - **Brightness on screen goes through calibration.** A `screen` threshold is always calibrated between the start and
   the fix (or relative to the start), and its window starts after auto-exposure settles.

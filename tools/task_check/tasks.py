@@ -16,9 +16,9 @@ TOOLS = os.path.dirname(HERE)
 REFS = ("tasks", "origin/tasks")  # where a game's tasks live (validate-game.py TASKS_REFS)
 STILL_WORKS = "still_works"  # the milestone of what a task must leave working (write-tasks section 5)
 RUNTIME = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns", "log",
-           "audio", "ground")
+           "audio", "ground", "ui")
 SAMPLED = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns",
-           "audio", "ground")
+           "audio", "ground", "ui")
 WHOLE_SCREEN = [0.0, 0.0, 1.0, 1.0]
 ANGLE_PREFIXES = ("rel_yaw:", "world_yaw:", "world_pitch:", "world_roll:")
 ZERO = [0.0, 0.0, 0.0]
@@ -120,7 +120,8 @@ def measure(m):
     """A probe's measure with every optional field: window, at, agg, to_angle, to_axis (None when unset), `of`
     ("count") for selections, `field` ("count") for the log, `to` and `point` with their defaults, a pieces measure's
     `select` ({} when unset), a screen measure's `rect` (the whole frame when unset), an audio measure's `select` ({}
-    when unset) and a ground measure's `xy`, `box`, `select` (None when unset) and `grid` (8)."""
+    when unset), a ground measure's `xy`, `box`, `select` (None when unset) and `grid` (8), and a ui measure's `select`
+    ({} when unset), `of` ("count") and `match` (None)."""
     out = dict(m)
     kind = out["probe"]
     if kind in SAMPLED:
@@ -139,6 +140,10 @@ def measure(m):
         if kind == "screen":
             out["rect"] = _floats(out.get("rect") or WHOLE_SCREEN)
         if kind == "audio":
+            out["select"] = select(out.get("select") or {})
+        if kind == "ui":
+            out.setdefault("of", "count")
+            out.setdefault("match", None)
             out["select"] = select(out.get("select") or {})
         if kind == "ground":
             out["xy"] = _floats(out["xy"]) if out.get("xy") is not None else None

@@ -18,9 +18,12 @@
 #include "BehaviorTree/Blackboard/BlackboardKeyType_Rotator.h"
 #include "BehaviorTree/Blackboard/BlackboardKeyType_String.h"
 #include "BehaviorTree/Blackboard/BlackboardKeyType_Vector.h"
+#include "BatchedElements.h"
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
 #include "Camera/PlayerCameraManager.h"
+#include "CanvasBatchedElementRenderItem.h"
+#include "CanvasTypes.h"
 #include "CollisionQueryParams.h"
 #include "Components/ActorComponent.h"
 #include "Components/Button.h"
@@ -42,16 +45,22 @@
 #include "Components/SpotLightComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextBlock.h"
+#include "Engine/Canvas.h"
 #include "Engine/Engine.h"
+#include "Engine/Font.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/HitResult.h"
 #include "Engine/Scene.h"
 #include "Engine/SkinnedAsset.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/Texture.h"
+#include "EngineFontServices.h"
 #include "EngineUtils.h"
+#include "Fonts/FontCache.h"
+#include "GameFramework/HUD.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "GlobalRenderResources.h"
 #include "Interfaces/Interface_PostProcessVolume.h"
 #include "Internationalization/Regex.h"
 #include "Materials/Material.h"
@@ -102,12 +111,20 @@
 #include "Serialization/JsonSerializer.h"
 #include "Sound/SoundBase.h"
 #include "Sound/SoundClass.h"
+#include "TextureResource.h"
+#include "Types/ReflectionMetadata.h"
 #include "UObject/ObjectKey.h"
 #include "UObject/UObjectIterator.h"
 #include "UObject/UnrealType.h"
 #include "UnrealClient.h"
+#include "Widgets/Colors/SColorBlock.h"
 #include "Widgets/Images/SImage.h"
+#include "Widgets/Input/SEditableText.h"
+#include "Widgets/Layout/SBorder.h"
+#include "Widgets/Notifications/SProgressBar.h"
 #include "Widgets/SViewport.h"
+#include "Widgets/Text/SMultiLineEditableText.h"
+#include "Widgets/Text/SRichTextBlock.h"
 #include "Widgets/Text/STextBlock.h"
 
 namespace TaskProbe
@@ -2453,6 +2470,562 @@ static double SrgbToLinear(uint8 V)
 	}
 	return Table[V];
 }
+
+// ---------------------------------------------------------------- ui: what the UI shows on screen, whatever draws it
+
+static constexpr float UiAlphaFloor = 0.004f;  // an element drawn at this alpha or less is not on screen
+
+/** An element's rectangle in viewport fractions from Slate geometry; false when it has no size or lies off screen. */
+static bool UiRect(const FGeometry& G, FUiElement& E)
+{
+	FVector2D VPos, VSize;
+	const FVector2D Pos(G.GetAbsolutePosition());
+	const FVector2D Size(G.GetAbsoluteSize());
+	if (!ViewportRect(VPos, VSize) || Size.X <= 0.0 || Size.Y <= 0.0)
+	{
+		return false;
+	}
+	E.X = (Pos.X - VPos.X) / VSize.X;
+	E.Y = (Pos.Y - VPos.Y) / VSize.Y;
+	E.W = Size.X / VSize.X;
+	E.H = Size.Y / VSize.Y;
+	E.bHasRect = true;
+	return E.X + E.W > 0.0 && E.X < 1.0 && E.Y + E.H > 0.0 && E.Y < 1.0;
+}
+
+/** A brush that paints something: drawn as an image, box or border, not fully transparent. */
+static bool BrushDraws(const FSlateBrush* Brush)
+{
+	return Brush && Brush->DrawAs != ESlateBrushDrawType::NoDrawType &&
+		(!Brush->TintColor.IsColorSpecified() || Brush->TintColor.GetSpecifiedColor().A > UiAlphaFloor);
+}
+
+/** Rich text as shown: its markup (<Style>...</>, <img .../>) left out, &lt; &gt; &amp; &quot; as the characters. */
+static FString PlainRichText(const FString& Marked)
+{
+	static const FRegexPattern Tag(TEXT("</>|<[A-Za-z_][^<>]*>"));
+	FString Out;
+	FRegexMatcher Matcher(Tag, Marked);
+	int32 From = 0;
+	while (Matcher.FindNext())
+	{
+		Out += Marked.Mid(From, Matcher.GetMatchBeginning() - From);
+		From = Matcher.GetMatchEnding();
+	}
+	Out += Marked.Mid(From);
+	return Out.Replace(TEXT("&lt;"), TEXT("<")).Replace(TEXT("&gt;"), TEXT(">")).Replace(TEXT("&quot;"), TEXT("\"")).Replace(TEXT("&amp;"), TEXT("&"));
+}
+
+/** The element a visible Slate widget draws, if it draws one the ui reading counts (text, a box, an image). */
+static void UiSlateElement(const TSharedRef<SWidget>& W, TArray<FUiElement>& Out)
+{
+	const FName Type = W->GetType();
+	FUiElement E;
+	if (Type == TEXT("STextBlock"))
+	{
+		E.Kind = TEXT("text");
+		E.Text = StaticCastSharedRef<STextBlock>(W)->GetText().ToString();
+	}
+	else if (Type == TEXT("SRichTextBlock"))
+	{
+		E.Kind = TEXT("text");
+		E.Text = PlainRichText(StaticCastSharedRef<SRichTextBlock>(W)->GetText().ToString());
+	}
+	else if (Type == TEXT("SEditableText") || Type == TEXT("SMultiLineEditableText"))
+	{
+		// an empty field shows its hint
+		E.Kind = TEXT("text");
+		const bool bSingle = Type == TEXT("SEditableText");
+		E.Text = bSingle ? StaticCastSharedRef<SEditableText>(W)->GetText().ToString() : StaticCastSharedRef<SMultiLineEditableText>(W)->GetText().ToString();
+		if (E.Text.IsEmpty())
+		{
+			E.Text = bSingle ? StaticCastSharedRef<SEditableText>(W)->GetHintText().ToString() : StaticCastSharedRef<SMultiLineEditableText>(W)->GetHintText().ToString();
+		}
+	}
+	else if (Type == TEXT("SImage"))
+	{
+		const FSlateBrush* Brush = FTaskProbeImagePeek::Brush(StaticCastSharedRef<SImage>(W).Get());
+		if (!BrushDraws(Brush))
+		{
+			return;
+		}
+		E.Kind = Brush->GetResourceObject() ? TEXT("image") : TEXT("box");
+	}
+	else if (Type == TEXT("SBorder") || Type == TEXT("SButton"))
+	{
+		const TSharedRef<SBorder> B = StaticCastSharedRef<SBorder>(W);
+		const FSlateBrush* Brush = B->GetBorderImage();
+		const FSlateColor Back = B->GetBorderBackgroundColor();
+		if (!BrushDraws(Brush) || (Back.IsColorSpecified() && Back.GetSpecifiedColor().A <= UiAlphaFloor))
+		{
+			return;
+		}
+		E.Kind = Brush->GetResourceObject() ? TEXT("image") : TEXT("box");
+	}
+	else if (Type == TEXT("SProgressBar") || Type == TEXT("SColorBlock"))
+	{
+		E.Kind = TEXT("box");
+	}
+	else
+	{
+		return;
+	}
+	if (E.Kind == TEXT("text") && E.Text.TrimStartAndEnd().IsEmpty())
+	{
+		return;
+	}
+	if (!UiRect(W->GetTickSpaceGeometry(), E))
+	{
+		return;
+	}
+	const TSharedPtr<FReflectionMetaData> Meta = W->GetMetaData<FReflectionMetaData>();
+	const UClass* MetaClass = Meta.IsValid() ? Meta->Class.Get() : nullptr;
+	if (Meta.IsValid())
+	{
+		E.Source = TEXT("umg");
+		E.Name = Meta->Name.ToString();
+		E.Class = MetaClass ? MetaClass->GetName() : W->GetTypeAsString();
+	}
+	else
+	{
+		E.Source = TEXT("slate");
+		E.Name = W->GetTag().IsNone() ? W->GetTypeAsString() : W->GetTag().ToString();
+		E.Class = W->GetTypeAsString();
+	}
+	Out.Add(MoveTemp(E));
+}
+
+/** The Slate tree under the game viewport, visible widgets only: a collapsed or hidden widget, or one at render opacity
+ *  0, and everything under it is not on screen (a widget switcher gives only its active child). */
+static void UiSlate(const TSharedRef<SWidget>& W, TArray<FUiElement>& Out, int32 Depth = 0)
+{
+	if (Depth > 256 || !W->GetVisibility().IsVisible() || W->GetRenderOpacity() <= 0.001f)
+	{
+		return;
+	}
+	UiSlateElement(W, Out);
+	if (FChildren* Children = W->GetChildren())
+	{
+		for (int32 i = 0; i < Children->Num(); ++i)
+		{
+			UiSlate(Children->GetChildAt(i), Out, Depth + 1);
+		}
+	}
+}
+
+// The canvas's batched triangles and the font cache's glyphs are private engine data with no accessor. They are read
+// through member pointers named in an explicit instantiation, where access is not checked ([temp.spec] of the C++
+// standard), by a friend function each tag declares and the instantiation defines. Read only, on the game thread.
+
+/** A triangle the canvas batched: its texture and its vertices' indices into the batch's vertices. */
+struct FUiTri
+{
+	const FTexture* Texture = nullptr;
+	int32 V[3] = {0, 0, 0};
+};
+
+struct FUiBatchTag
+{
+	friend void ReadBatch(FUiBatchTag, const FBatchedElements& B, TArray<FUiTri>& OutTris, const TArray<FSimpleElementVertex>*& OutVerts);
+};
+template<typename Tag, auto Elements, auto Vertices>
+struct TUiBatchReader
+{
+	friend void ReadBatch(Tag, const FBatchedElements& B, TArray<FUiTri>& OutTris, const TArray<FSimpleElementVertex>*& OutVerts)
+	{
+		OutVerts = &(B.*Vertices);
+		for (const auto& Mesh : B.*Elements)
+		{
+			for (int32 i = 0; i + 2 < Mesh.Indices.Num(); i += 3)
+			{
+				FUiTri T;
+				T.Texture = Mesh.Texture;
+				for (int32 k = 0; k < 3; ++k)
+				{
+					T.V[k] = (int32)Mesh.MinVertex + (int32)Mesh.Indices[i + k];
+				}
+				OutTris.Add(T);
+			}
+		}
+	}
+};
+template struct TUiBatchReader<FUiBatchTag, &FBatchedElements::MeshElements, &FBatchedElements::MeshVertices>;
+
+struct FUiFontListsTag
+{
+	friend void ReadFontLists(FUiFontListsTag, const FSlateFontCache& Cache, TArray<const FCharacterList*>& Out);
+};
+template<typename Tag, auto Lists>
+struct TUiFontListsReader
+{
+	friend void ReadFontLists(Tag, const FSlateFontCache& Cache, TArray<const FCharacterList*>& Out)
+	{
+		for (const auto& Pair : Cache.*Lists)
+		{
+			if (Pair.Value)
+			{
+				Out.Add(Pair.Value.Get());
+			}
+		}
+	}
+};
+template struct TUiFontListsReader<FUiFontListsTag, &FSlateFontCache::FontToCharacterListCache>;
+
+struct FUiCharsTag
+{
+	friend void ReadCharacters(FUiCharsTag, const FCharacterList& List, TArray<const FCharacterEntry*>& Out);
+};
+template<typename Tag, auto Entries>
+struct TUiCharsReader
+{
+	friend void ReadCharacters(Tag, const FCharacterList& List, TArray<const FCharacterEntry*>& Out)
+	{
+		for (const auto& Pair : List.*Entries)
+		{
+			Out.Add(&Pair.Value);
+		}
+	}
+};
+template struct TUiCharsReader<FUiCharsTag, &FCharacterList::MappedEntries>;
+
+/** A glyph placed in a font texture: the character and how a string lays it out (in the font's own pixels; a canvas
+ *  draw scales them by the quad's size over USize). */
+/** AHUD's canvas is protected: read through a member pointer taken in a derived scope (never constructed). */
+struct FTaskProbeHudPeek : public AHUD
+{
+	static UCanvas* CanvasOf(const AHUD& Hud) { return (Hud.*(&FTaskProbeHudPeek::Canvas)).Get(); }
+};
+
+static bool SharesVertex(const FUiTri& A, const FUiTri& B)
+{
+	for (int32 a : A.V)
+	{
+		for (int32 b : B.V)
+		{
+			if (a == b)
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+struct FUiGlyph
+{
+	TCHAR Char = 0;
+	const void* Font = nullptr;  // the character list or offline font it belongs to: one string is one font
+	float HorizontalOffset = 0.f;
+	float Advance = 0.f;
+	float Space = 0.f;  // the font's space advance (0: unknown)
+	float USize = 1.f;
+	float RenderScale = 1.f;
+};
+
+using FUiGlyphKey = TPair<const FTexture*, uint32>;  // a font texture and a glyph's top-left texel (u << 16 | v)
+
+/** Every glyph the fonts in memory have placed in their textures: the game thread's runtime font cache (every character
+ *  list it holds) and the offline fonts (UFont characters on their own texture pages). OutFontTextures: every texture
+ *  a glyph is on. */
+static void UiGlyphs(TMap<FUiGlyphKey, FUiGlyph>& Out, TSet<const FTexture*>& OutFontTextures)
+{
+	const TSharedPtr<FSlateFontCache> Cache = FEngineFontServices::IsInitialized() ? FEngineFontServices::Get().GetFontCache() : nullptr;
+	if (Cache.IsValid())
+	{
+		const int32 Pages = Cache->GetNumAtlasPages();
+		TArray<const FCharacterList*> Lists;
+		ReadFontLists(FUiFontListsTag(), *Cache, Lists);
+		for (const FCharacterList* List : Lists)
+		{
+			TArray<const FCharacterEntry*> Entries;
+			ReadCharacters(FUiCharsTag(), *List, Entries);
+			float Space = 0.f;
+			for (const FCharacterEntry* E : Entries)
+			{
+				if (E->Character == TEXT(' ') && E->Valid)
+				{
+					Space = E->XAdvance;
+				}
+			}
+			for (const FCharacterEntry* E : Entries)
+			{
+				if (!E->Valid || E->USize == 0 || E->VSize == 0 || (int32)E->TextureIndex >= Pages)
+				{
+					continue;
+				}
+				ISlateFontTexture* SlateTexture = Cache->GetFontTexture(E->TextureIndex);
+				const FTexture* Texture = SlateTexture ? SlateTexture->GetEngineTexture() : nullptr;
+				if (!Texture)
+				{
+					continue;
+				}
+				FUiGlyph G;
+				G.Char = E->Character;
+				G.Font = List;
+				G.HorizontalOffset = E->HorizontalOffset;
+				G.Advance = E->XAdvance;
+				G.Space = Space;
+				G.USize = E->USize;
+				G.RenderScale = E->BitmapRenderScale > 0.f ? E->BitmapRenderScale : 1.f;
+				Out.Add(FUiGlyphKey(Texture, ((uint32)E->StartU << 16) | E->StartV), G);
+				OutFontTextures.Add(Texture);
+			}
+		}
+	}
+	for (TObjectIterator<UFont> It; It; ++It)
+	{
+		const UFont* Font = *It;
+		if (!IsValid(Font) || Font->FontCacheType != EFontCacheType::Offline || Font->Characters.Num() == 0)
+		{
+			continue;
+		}
+		TMap<int32, TCHAR> CharOf;  // a Characters index -> the character it draws
+		if (Font->IsRemapped)
+		{
+			for (const TPair<uint16, uint16>& Pair : Font->CharRemap)
+			{
+				CharOf.Add(Pair.Value, (TCHAR)Pair.Key);
+			}
+		}
+		const int32 SpaceIndex = Font->IsRemapped ? (Font->CharRemap.Contains(TEXT(' ')) ? Font->CharRemap[TEXT(' ')] : -1) : TEXT(' ');
+		const float Space = Font->Characters.IsValidIndex(SpaceIndex) ? (float)Font->Characters[SpaceIndex].USize : 0.f;
+		for (int32 i = 0; i < Font->Characters.Num(); ++i)
+		{
+			const FFontCharacter& C = Font->Characters[i];
+			const UTexture2D* Page = Font->Textures.IsValidIndex(C.TextureIndex) ? Font->Textures[C.TextureIndex].Get() : nullptr;
+			const FTexture* Texture = Page ? Page->GetResource() : nullptr;
+			if (!Texture || C.USize <= 0 || C.VSize <= 0)
+			{
+				continue;
+			}
+			FUiGlyph G;
+			G.Char = Font->IsRemapped ? CharOf.FindRef(i) : (TCHAR)i;
+			G.Font = Font;
+			G.Advance = (float)(C.USize + Font->Kerning);
+			G.Space = Space;
+			G.USize = (float)C.USize;
+			Out.Add(FUiGlyphKey(Texture, ((uint32)C.StartU << 16) | (uint32)C.StartV), G);
+			OutFontTextures.Add(Texture);
+		}
+	}
+}
+
+/** A quad of glyph texels drawn on the canvas, in canvas pixels. */
+struct FUiGlyphQuad
+{
+	FUiGlyphKey Key;
+	const FUiGlyph* Glyph = nullptr;  // null: a texel no font in memory has a glyph at
+	FBox2D Box = FBox2D(ForceInit);
+};
+
+/** Strings back from the glyph quads a frame's canvas holds, in the order drawn: a text effect (a shadow, an outline)
+ *  is the same glyph drawn just before it a few pixels off, so it gives way to the glyph after it (a letter repeated
+ *  in a word sits on the same line a whole advance on); a glyph joins the string
+ *  before it when it is of the same font, on the same line (their heights overlap by a third) and where that string's
+ *  pen left off, the gap read as spaces of the font's space advance; anything else starts a new string. */
+static void UiStrings(const TArray<FUiGlyphQuad>& Quads, TArray<FUiElement>& Out, const FVector2D& Pixels)
+{
+	TArray<FUiGlyphQuad> Glyphs;
+	for (const FUiGlyphQuad& Q : Quads)
+	{
+		if (Glyphs.Num() > 0 && Glyphs.Last().Key == Q.Key)
+		{
+			const FVector2D D = Q.Box.Min - Glyphs.Last().Box.Min;
+			if (FMath::Abs(D.Y) > 0.25 || FMath::Abs(D.X) <= 2.5)
+			{
+				Glyphs.Last() = Q;  // the glyph drawn over its effect
+				continue;
+			}
+		}
+		Glyphs.Add(Q);
+	}
+	FString Text;
+	FBox2D Box(ForceInit);
+	const FUiGlyph* Font = nullptr;
+	double PenEnd = 0.0;  // where the string's pen stands after its last glyph
+	double Scale = 1.0;  // the string's scale: canvas pixels per font pixel
+	auto Flush = [&]()
+	{
+		if (!Text.TrimStartAndEnd().IsEmpty() && Box.bIsValid && Pixels.X > 0.0 && Pixels.Y > 0.0)
+		{
+			FUiElement E;
+			E.Source = TEXT("canvas");
+			E.Kind = TEXT("text");
+			E.Name = TEXT("CanvasText");
+			E.Class = TEXT("CanvasText");
+			E.Text = Text.TrimStartAndEnd();
+			E.bHasRect = true;
+			E.X = Box.Min.X / Pixels.X;
+			E.Y = Box.Min.Y / Pixels.Y;
+			E.W = (Box.Max.X - Box.Min.X) / Pixels.X;
+			E.H = (Box.Max.Y - Box.Min.Y) / Pixels.Y;
+			Out.Add(MoveTemp(E));
+		}
+		Text.Reset();
+		Box = FBox2D(ForceInit);
+		Font = nullptr;
+	};
+	for (const FUiGlyphQuad& Q : Glyphs)
+	{
+		const FUiGlyph* G = Q.Glyph;
+		const double Width = Q.Box.Max.X - Q.Box.Min.X;
+		const double Height = Q.Box.Max.Y - Q.Box.Min.Y;
+		const double S = G ? Width / FMath::Max(1.0, (double)G->USize * G->RenderScale) : 1.0;
+		const double Pen = G ? Q.Box.Min.X - G->HorizontalOffset * S : Q.Box.Min.X;
+		bool bJoins = Font != nullptr && G != nullptr && G->Font == Font->Font;
+		if (bJoins)
+		{
+			const double Overlap = FMath::Min(Box.Max.Y, Q.Box.Max.Y) - FMath::Max(Box.Min.Y, Q.Box.Min.Y);
+			const double Em = FMath::Max(Box.Max.Y - Box.Min.Y, Height);
+			const double SpaceWidth = G->Space > 0.f ? G->Space * Scale : 0.3 * Em;
+			const double Gap = Pen - PenEnd;
+			bJoins = Overlap >= FMath::Min(Box.Max.Y - Box.Min.Y, Height) / 3.0 && Gap > -0.5 * Em && Gap < 4.0 * FMath::Max(SpaceWidth, 0.25 * Em);
+			if (bJoins)
+			{
+				const int32 Spaces = SpaceWidth > 0.0 ? FMath::RoundToInt(Gap / SpaceWidth) : 0;
+				for (int32 i = 0; i < Spaces; ++i)
+				{
+					Text.AppendChar(TEXT(' '));
+				}
+			}
+		}
+		if (!bJoins)
+		{
+			Flush();
+			Font = G;
+			Scale = S;
+		}
+		Text.AppendChar(G ? G->Char : TEXT('?'));
+		Box += Q.Box;
+		PenEnd = G ? Pen + G->Advance * S : Q.Box.Max.X;
+	}
+	Flush();
+}
+
+/** What a canvas holds when the HUD has drawn: its batched triangles, read back as strings (quads on a font texture),
+ *  boxes (on the white texture) and images (on any other texture), each run of triangles that share vertices one
+ *  element; nearly transparent ones and ones off the canvas left out. Positions in canvas pixels, the DPI scale
+ *  applied to what was not drawn already scaled (glyphs are). */
+static void UiCanvas(FCanvas& Canvas, TArray<FUiElement>& Out)
+{
+	const FRenderTarget* Target = Canvas.GetRenderTarget();
+	const FIntPoint Size = Target ? Target->GetSizeXY() : FIntPoint::ZeroValue;
+	if (Size.X <= 0 || Size.Y <= 0)
+	{
+		return;
+	}
+	const FVector2D Pixels(Size.X, Size.Y);
+	const double Dpi = Canvas.GetDPIScale() > 0.f ? Canvas.GetDPIScale() : 1.0;
+	TMap<FUiGlyphKey, FUiGlyph> Glyphs;
+	TSet<const FTexture*> FontTextures;
+	bool bGlyphsRead = false;
+	TArray<FUiGlyphQuad> Quads;  // the frame's glyph quads in the order drawn
+	TArray<FUiElement> Shapes;
+	for (FCanvas::FCanvasSortElement& Sorted : Canvas.SortedElements)
+	{
+		for (FCanvasBaseRenderItem* Item : Sorted.RenderBatchArray)
+		{
+			FCanvasBatchedElementRenderItem* Batch = Item ? Item->GetCanvasBatchedElementRenderItem() : nullptr;
+			const FBatchedElements* Elements = Batch ? Batch->GetBatchedElements() : nullptr;
+			if (!Elements)
+			{
+				continue;
+			}
+			TArray<FUiTri> Tris;
+			const TArray<FSimpleElementVertex>* Verts = nullptr;
+			ReadBatch(FUiBatchTag(), *Elements, Tris, Verts);
+			if (!Verts || Tris.Num() == 0)
+			{
+				continue;
+			}
+			if (!bGlyphsRead)
+			{
+				UiGlyphs(Glyphs, FontTextures);
+				bGlyphsRead = true;
+			}
+			for (int32 i = 0; i < Tris.Num();)
+			{
+				// a run: the triangles after the first that share a vertex with the one before them (a quad's two)
+				int32 End = i + 1;
+				while (End < Tris.Num() && Tris[End].Texture == Tris[i].Texture && SharesVertex(Tris[End], Tris[End - 1]))
+				{
+					++End;
+				}
+				const bool bGlyph = FontTextures.Contains(Tris[i].Texture);
+				const double Scale = bGlyph ? 1.0 : Dpi;
+				FBox2D Box(ForceInit);
+				float Alpha = 0.f;
+				int32 TopLeft = -1;  // a glyph's texel: the vertex with the smallest texture coordinates
+				for (int32 t = i; t < End; ++t)
+				{
+					for (int32 k : Tris[t].V)
+					{
+						if (!Verts->IsValidIndex(k))
+						{
+							continue;
+						}
+						const FSimpleElementVertex& V = (*Verts)[k];
+						const FVector4d P = V.Position.GetVector4d();
+						const double W = FMath::Abs(P.W) > 1e-6 ? P.W : 1.0;
+						Box += FVector2D(P.X / W * Scale, P.Y / W * Scale);
+						Alpha = FMath::Max(Alpha, V.Color.A);
+						if (TopLeft < 0 || V.TextureCoordinate.X + V.TextureCoordinate.Y < (*Verts)[TopLeft].TextureCoordinate.X + (*Verts)[TopLeft].TextureCoordinate.Y)
+						{
+							TopLeft = k;
+						}
+					}
+				}
+				const bool bOnCanvas = Box.bIsValid && Box.Max.X > 0.0 && Box.Min.X < Pixels.X && Box.Max.Y > 0.0 && Box.Min.Y < Pixels.Y &&
+					Box.Max.X - Box.Min.X >= 0.5 && Box.Max.Y - Box.Min.Y >= 0.5;
+				if (Alpha > UiAlphaFloor && bOnCanvas && bGlyph && TopLeft >= 0)
+				{
+					const FVector2f UV = (*Verts)[TopLeft].TextureCoordinate;
+					const FIntPoint TexSize(FMath::Max(1u, Tris[i].Texture->GetSizeX()), FMath::Max(1u, Tris[i].Texture->GetSizeY()));
+					FUiGlyphQuad Q;
+					Q.Key = FUiGlyphKey(Tris[i].Texture, ((uint32)FMath::RoundToInt(UV.X * TexSize.X) << 16) | (uint32)FMath::RoundToInt(UV.Y * TexSize.Y));
+					Q.Glyph = Glyphs.Find(Q.Key);
+					Q.Box = Box;
+					Quads.Add(Q);
+				}
+				else if (Alpha > UiAlphaFloor && bOnCanvas && !bGlyph)
+				{
+					FUiElement E;
+					E.Source = TEXT("canvas");
+					const bool bBox = Tris[i].Texture == GWhiteTexture;
+					E.Kind = bBox ? TEXT("box") : TEXT("image");
+					E.Name = bBox ? TEXT("CanvasRect") : TEXT("CanvasTexture");
+					E.Class = E.Name;
+					E.bHasRect = true;
+					E.X = Box.Min.X / Pixels.X;
+					E.Y = Box.Min.Y / Pixels.Y;
+					E.W = (Box.Max.X - Box.Min.X) / Pixels.X;
+					E.H = (Box.Max.Y - Box.Min.Y) / Pixels.Y;
+					Shapes.Add(MoveTemp(E));
+				}
+				i = End;
+			}
+		}
+	}
+	UiStrings(Quads, Out, Pixels);
+	Out.Append(MoveTemp(Shapes));
+}
+
+static TSharedPtr<FJsonValue> UiField(const FUiElement& E, const FString& F)
+{
+	if (F == TEXT("count"))
+	{
+		return Num(1.0);
+	}
+	if (F == TEXT("text"))
+	{
+		return E.Kind == TEXT("text") ? Str(E.Text) : Null();
+	}
+	if (IsRectField(F) && E.bHasRect)
+	{
+		return Num(F == TEXT("x") ? E.X : F == TEXT("y") ? E.Y : F == TEXT("w") ? E.W : E.H);
+	}
+	return Null();
+}
 }  // namespace TaskProbe
 
 using namespace TaskProbe;
@@ -2575,6 +3148,10 @@ FTaskProbeQueries::~FTaskProbeQueries()
 	{
 		UGameViewportClient::OnViewportRendered().Remove(ViewportHandle);
 	}
+	if (HudHandle.IsValid())
+	{
+		AHUD::OnHUDPostRender.Remove(HudHandle);
+	}
 	Unhook();
 	ViewExtension.Reset();
 }
@@ -2608,7 +3185,7 @@ void FTaskProbeQueries::Load(const FString& Path)
 		return;
 	}
 	static const TSet<FString> Kinds = {TEXT("actors"), TEXT("widgets"), TEXT("light"), TEXT("grading"), TEXT("spawns"), TEXT("camera"), TEXT("components"),
-		TEXT("pieces"), TEXT("screen"), TEXT("audio"), TEXT("ground")};
+		TEXT("pieces"), TEXT("screen"), TEXT("audio"), TEXT("ground"), TEXT("ui")};
 	TSet<FString> Ids;
 	for (const TSharedPtr<FJsonValue>& Item : *List)
 	{
@@ -2647,7 +3224,7 @@ void FTaskProbeQueries::Load(const FString& Path)
 				}
 			}
 		}
-		if (Q.Fields.Num() == 0 && (Q.Kind == TEXT("actors") || Q.Kind == TEXT("widgets") || Q.Kind == TEXT("components")))
+		if (Q.Fields.Num() == 0 && (Q.Kind == TEXT("actors") || Q.Kind == TEXT("widgets") || Q.Kind == TEXT("components") || Q.Kind == TEXT("ui")))
 		{
 			Q.Fields.Add(TEXT("count"));
 		}
@@ -2674,6 +3251,18 @@ void FTaskProbeQueries::Load(const FString& Path)
 			if (!ViewportHandle.IsValid())
 			{
 				ViewportHandle = UGameViewportClient::OnViewportRendered().AddRaw(this, &FTaskProbeQueries::OnViewportRendered);
+			}
+		}
+		if (Q.Kind == TEXT("ui"))
+		{
+			// filled in from the next frame the viewport draws: what the HUD canvas held, the Slate tree then
+			if (!ViewportHandle.IsValid())
+			{
+				ViewportHandle = UGameViewportClient::OnViewportRendered().AddRaw(this, &FTaskProbeQueries::OnViewportRendered);
+			}
+			if (!HudHandle.IsValid())
+			{
+				HudHandle = AHUD::OnHUDPostRender.AddRaw(this, &FTaskProbeQueries::OnHudPostRender);
 			}
 		}
 		if (Q.Kind == TEXT("ground"))
@@ -2839,6 +3428,12 @@ void FTaskProbeQueries::Sample(UWorld* World, APlayerController* PC, double T)
 			S->SetField(TEXT("value"), Null());
 			Q.Pending.Add(S);
 			bWantFrame = true;
+		}
+		else if (Q.Kind == TEXT("ui"))
+		{
+			// filled in from the next frame the viewport draws (FillUi); no rows if none comes
+			Q.Pending.Add(S);
+			bWantUi = true;
 		}
 		else if (Q.Kind == TEXT("spawns"))
 		{
@@ -3384,7 +3979,15 @@ void FTaskProbeQueries::OnViewportRendered(FViewport* Viewport)
 	// right after the game viewport drew a frame, where the engine takes its own screenshots: the frame after
 	// post-processing and tone mapping, with the HUD canvas, before the UMG and Slate UI is drawn over it
 	const UGameViewportClient* GVC = GEngine ? GEngine->GameViewport.Get() : nullptr;
-	if (!bWantFrame || !Viewport || !GVC || GVC->Viewport != Viewport)
+	if (!Viewport || !GVC || GVC->Viewport != Viewport)
+	{
+		return;
+	}
+	if (bWantUi)
+	{
+		FillUi();
+	}
+	if (!bWantFrame)
 	{
 		return;
 	}
@@ -3431,6 +4034,125 @@ void FTaskProbeQueries::OnViewportRendered(FViewport* Viewport)
 		for (const TSharedPtr<FJsonObject>& S : Q.Pending)
 		{
 			S->SetObjectField(TEXT("value"), V);
+		}
+		Q.Pending.Reset();
+	}
+}
+
+void FTaskProbeQueries::OnHudPostRender(AHUD* Hud, UCanvas* DebugCanvas)
+{
+	// when a HUD has drawn, its canvas holds every draw of the frame's HUDs (split screen: each HUD after the one before)
+	UWorld* World = Hud ? Hud->GetWorld() : nullptr;
+	UCanvas* HudCanvas = Hud ? FTaskProbeHudPeek::CanvasOf(*Hud) : nullptr;
+	if (!bWantUi || !HudCanvas || !HudCanvas->Canvas || !World || !World->IsGameWorld())
+	{
+		return;
+	}
+	CanvasNow.Reset();
+	UiCanvas(*HudCanvas->Canvas, CanvasNow);
+	CanvasFrame = GFrameCounter;
+}
+
+void FTaskProbeQueries::FillUi()
+{
+	// everything on screen this frame: the visible Slate tree under the game viewport (UMG included) and what the HUD
+	// canvas held when the HUD had drawn this frame
+	bWantUi = false;
+	TArray<FUiElement> Found;
+	const UGameViewportClient* GVC = GEngine ? GEngine->GameViewport.Get() : nullptr;
+	const TSharedPtr<SViewport> Root = GVC ? GVC->GetGameViewportWidget() : nullptr;
+	if (Root.IsValid())
+	{
+		UiSlate(Root.ToSharedRef(), Found);
+	}
+	if (CanvasFrame == GFrameCounter)
+	{
+		Found.Append(CanvasNow);
+	}
+	CanvasNow.Reset();
+	for (FQuery& Q : Queries)
+	{
+		if (Q.Kind != TEXT("ui") || Q.Pending.Num() == 0)
+		{
+			continue;
+		}
+		FString Kind, TextRegex;
+		double Rect[4] = {0.0, 0.0, 1.0, 1.0};
+		bool bRect = false;
+		const TSharedPtr<FJsonObject>* SelObj = nullptr;
+		if (Q.Def->TryGetObjectField(TEXT("select"), SelObj) && SelObj->IsValid())
+		{
+			(*SelObj)->TryGetStringField(TEXT("kind"), Kind);
+			(*SelObj)->TryGetStringField(TEXT("text"), TextRegex);
+			const TArray<TSharedPtr<FJsonValue>>* R = nullptr;
+			if ((*SelObj)->TryGetArrayField(TEXT("rect"), R) && R->Num() == 4)
+			{
+				bRect = true;
+				for (int32 i = 0; i < 4; ++i)
+				{
+					double V = 0.0;
+					if ((*R)[i].IsValid() && (*R)[i]->TryGetNumber(V))
+					{
+						Rect[i] = V;
+					}
+				}
+			}
+		}
+		const TOptional<FRegexPattern> Pattern = TextRegex.IsEmpty() ? TOptional<FRegexPattern>() : TOptional<FRegexPattern>(FRegexPattern(TextRegex));
+		TArray<const FUiElement*> Picked;
+		for (const FUiElement& E : Found)
+		{
+			if ((!Kind.IsEmpty() && E.Kind != Kind) || (Pattern.IsSet() && E.Kind != TEXT("text")))
+			{
+				continue;
+			}
+			if (Pattern.IsSet())
+			{
+				FRegexMatcher Matcher(Pattern.GetValue(), E.Text);
+				if (!Matcher.FindNext())
+				{
+					continue;
+				}
+			}
+			if (bRect)
+			{
+				const double Cx = E.X + E.W / 2.0, Cy = E.Y + E.H / 2.0;
+				if (!E.bHasRect || Cx < FMath::Min(Rect[0], Rect[2]) || Cx > FMath::Max(Rect[0], Rect[2]) || Cy < FMath::Min(Rect[1], Rect[3]) ||
+					Cy > FMath::Max(Rect[1], Rect[3]))
+				{
+					continue;
+				}
+			}
+			Picked.Add(&E);
+		}
+		TArray<TSharedPtr<FJsonValue>> Rows;
+		TMap<FString, FFull> Full;  // every match's values, when more matched than the rows hold
+		for (int32 i = 0; i < Picked.Num(); ++i)
+		{
+			const FUiElement& E = *Picked[i];
+			const TSharedRef<FJsonObject> Row = MakeShared<FJsonObject>();
+			for (const FString& F : Q.Fields)
+			{
+				const TSharedPtr<FJsonValue> V = UiField(E, F);
+				if (Picked.Num() > MaxRows)
+				{
+					Full.FindOrAdd(F).Add(V);
+				}
+				Row->SetField(F, V);
+			}
+			if (i < MaxRows)
+			{
+				Row->SetStringField(TEXT("name"), E.Name);
+				Row->SetStringField(TEXT("class"), E.Class);
+				Row->SetStringField(TEXT("source"), E.Source);
+				Row->SetStringField(TEXT("kind"), E.Kind);
+				Rows.Add(MakeShared<FJsonValueObject>(Row));
+			}
+		}
+		for (const TSharedPtr<FJsonObject>& S : Q.Pending)
+		{
+			S->SetArrayField(TEXT("rows"), Rows);
+			SetTotal(*S, Picked.Num(), Rows.Num(), Q.Fields, Full);
 		}
 		Q.Pending.Reset();
 	}

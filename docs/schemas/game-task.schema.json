@@ -2465,6 +2465,7 @@
               "screen": "#/$defs/ScreenMeasure",
               "spawns": "#/$defs/SpawnsMeasure",
               "trace": "#/$defs/TraceMeasure",
+              "ui": "#/$defs/UiMeasure",
               "widgets": "#/$defs/WidgetsMeasure"
             },
             "propertyName": "probe"
@@ -2514,6 +2515,9 @@
             },
             {
               "$ref": "#/$defs/GroundMeasure"
+            },
+            {
+              "$ref": "#/$defs/UiMeasure"
             }
           ],
           "title": "Measure"
@@ -3249,6 +3253,220 @@
         "fact"
       ],
       "title": "TraceMeasure",
+      "type": "object"
+    },
+    "UiMeasure": {
+      "additionalProperties": false,
+      "description": "What the UI shows on screen, whatever draws it (docs/task-probes.md, section 2.18): the elements on screen in the frame drawn right\nafter each sample, from UMG widgets, Slate widgets and the HUD canvas (AHUD DrawText, DrawRect, DrawTexture and the\ncanvas's other draws) alike, only what is drawn (a collapsed or hidden widget is not). `count` (one per element),\n`text` (with `match`), `x`, `y`, `w`, `h` (its rectangle in viewport fractions); `of` combines the elements\n`select` picks. The way to check what a HUD shows, however a build drew it.",
+      "properties": {
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "delta",
+                "any",
+                "all",
+                "count",
+                "sum",
+                "range",
+                "std",
+                "changes"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 120,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "const": "end",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "field": {
+          "enum": [
+            "count",
+            "text",
+            "x",
+            "y",
+            "w",
+            "h"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "match": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Match"
+        },
+        "of": {
+          "default": "count",
+          "enum": [
+            "count",
+            "any",
+            "all",
+            "min",
+            "max",
+            "mean",
+            "sum",
+            "first"
+          ],
+          "title": "Of",
+          "type": "string"
+        },
+        "probe": {
+          "const": "ui",
+          "title": "Probe",
+          "type": "string"
+        },
+        "select": {
+          "$ref": "#/$defs/UiSelect"
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        }
+      },
+      "required": [
+        "probe",
+        "field"
+      ],
+      "title": "UiMeasure",
+      "type": "object"
+    },
+    "UiSelect": {
+      "additionalProperties": false,
+      "description": "Which of the UI elements on screen (docs/task-probes.md, section 2.18): `kind` (text, box, image), `text` (a regular expression the\nelement's text must match; text elements only) and `rect` [x0, y0, x1, y1] in viewport fractions (the element's\ncentre inside); none: every element on screen.",
+      "properties": {
+        "kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "text",
+                "box",
+                "image"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        },
+        "rect": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rect"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        }
+      },
+      "title": "UiSelect",
       "type": "object"
     },
     "Value": {

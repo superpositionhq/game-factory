@@ -534,8 +534,9 @@ def probe_errors(c, seed, ref, plays):
     grader flag, and same-named task plays are identical; == and != take a literal value; a screen measure's threshold
     is calibrated or relative to the start (the frame's luminance moves between machines), and so is a pieces measure's
     triangles (they depend on the meshes a build chose) and every NEVER_LITERAL field; a ground measure takes a point
-    `xy` or a `box` and the fields of that one; a calibrated threshold needs seed.reference and a start-relative one a
-    seed."""
+    `xy` or a `box` and the fields of that one; a ui measure takes `match` exactly when it reads text, regular
+    expressions that compile and a select rect [x0, y0, x1, y1] with x0 < x1 and y0 < y1; a calibrated threshold needs
+    seed.reference and a start-relative one a seed."""
     errs, n = [], c.get('name')
     play = c.get('play')
     measure = c.get('measure') if isinstance(c.get('measure'), dict) else {}
@@ -585,6 +586,20 @@ def probe_errors(c, seed, ref, plays):
             errs.append(f"check {n}: a ground measure over a box reads {', '.join(GROUND_BOX)}")
         elif box is not None and isinstance(box, list) and len(box) == 4 and not (box[0] < box[2] and box[1] < box[3]):
             errs.append(f'check {n}: a ground box is [x0, y0, x1, y1] with x0 < x1 and y0 < y1')
+    if probe == 'ui':
+        sel = measure.get('select') if isinstance(measure.get('select'), dict) else {}
+        if (measure.get('field') == 'text') != (measure.get('match') is not None):
+            errs.append(f'check {n}: a ui measure takes `match` exactly when its field is text')
+        for pattern in (measure.get('match'), sel.get('text')):
+            try:
+                re.compile(pattern) if isinstance(pattern, str) else None
+            except re.error as e:
+                errs.append(f"check {n}: {pattern!r} isn't a regular expression ({e})")
+        rect = sel.get('rect')
+        if isinstance(rect, list) and len(rect) == 4 and not (rect[0] < rect[2] and rect[1] < rect[3]):
+            errs.append(f'check {n}: a ui select rect is [x0, y0, x1, y1] with x0 < x1 and y0 < y1')
+        if sel.get('text') is not None and sel.get('kind') not in (None, 'text'):
+            errs.append(f"check {n}: a ui select's `text` picks text elements: its kind is text or unset")
     if rel and expect.get('op') in ('==', '!='):
         errs.append(f'check {n}: == and != take a literal value, never a calibrated threshold')
     if rel == 'calibrate' and not ref:

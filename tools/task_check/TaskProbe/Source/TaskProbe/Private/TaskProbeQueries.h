@@ -2,7 +2,7 @@
 // the track (every -TaskProbeEvery seconds, default 0.5) and written to probe.json "measures" as {"<id>": [{"t": t, "rows": [...]} | {"t": t,
 // "value": ...}, ...]}. The contract is game-factory's docs/task-probes.md
 // (the measures) and docs/task-check.md (how the checker plays and reduces them).
-// Query kinds: actors, widgets, light, grading, spawns, camera, components, pieces, screen, audio, ground. Anything unknown (a class, a property, a
+// Query kinds: actors, widgets, light, grading, spawns, camera, components, pieces, screen, audio, ground, ui. Anything unknown (a class, a property, a
 // widget, a kind) gives empty rows or null values and never stops the play.
 //
 // Rows are capped at 200 per sample, never the counts: "total" is how many matched, and when more matched than the
@@ -96,6 +96,17 @@
 //   the z (cm) where a trace straight down from 2 km up meets the ground first (the visibility channel, complex
 //   collision, every pawn ignored; with query.select, only an actor that actor selection matches counts, the rest are
 //   traced through); null heights (and min/max/mean/range) where nothing was hit.
+// - ui: "rows": [{"name", "class", "source", "kind", <field>: value}] for the UI elements on screen in the frame drawn
+//   right after the sample, whatever drew them: the Slate tree under the game viewport (UMG widgets are Slate widgets
+//   underneath; "source" "umg" when the widget carries UMG's reflection metadata, else "slate"), walked through
+//   visible widgets only (a collapsed or hidden widget, or one at render opacity 0, and everything under it is not on
+//   screen), and the HUD canvas (AHUD's canvas as it stands when the HUD has drawn, "source" "canvas": every quad the
+//   frame's DrawText, DrawRect, DrawTexture, DrawTile and canvas items batched, text read back from the glyphs the
+//   font cache placed). kind: "text" (a TextBlock, rich text or editable text with text, a canvas string), "box" (a
+//   drawn border, button, progress bar, colour block, a brush without a resource, a canvas rect), "image" (a brush or
+//   canvas quad with a texture or material). Fields: count (1), text (null but for text), x, y, w, h (viewport
+//   fractions). select.kind, select.text (a regex on the text) and select.rect ([x0, y0, x1, y1]: the element's centre
+//   inside) choose; "source" and "kind" ride along for the logs. No rows when no frame was drawn.
 
 #pragma once
 
@@ -108,8 +119,10 @@
 class AActor;
 class APawn;
 class APlayerController;
+class AHUD;
 class FTaskProbeViewExtension;
 class FViewport;
+class UCanvas;
 class UButton;
 
 namespace TaskProbe
@@ -122,6 +135,19 @@ UButton* FindButton(UWorld* World, const FString& Want);
  *  pawn's side of it (level, plus Offset), and the yaw that faces Face (a point, as a query's) or else that actor. */
 bool TeleportSpot(UWorld* World, APlayerController* PC, const TSharedPtr<FJsonObject>& Select, double Distance, const FVector& Offset,
 	const TSharedPtr<FJsonObject>& Face, FVector& OutLocation, double& OutYaw, FString& OutName);
+
+/** One element of the UI on screen (ui): its source (umg, slate, canvas), kind (text, box, image), name and class (for
+ *  the logs), text, and its rectangle in viewport fractions. */
+struct FUiElement
+{
+	FString Source;
+	FString Kind;
+	FString Name;
+	FString Class;
+	FString Text;
+	bool bHasRect = false;
+	double X = 0.0, Y = 0.0, W = 0.0, H = 0.0;
+};
 
 /** A drawn part (a primitive component) as changed compares it: drawn or not, its world bounds and, of a skinned
  *  mesh, its local bounds and its bones' places in its own space. */
@@ -148,8 +174,8 @@ public:
 	/** {"<id>": [samples...]} for probe.json. */
 	TSharedRef<FJsonObject> MeasuresJson() const;
 	const TArray<FString>& Errors() const { return ErrorList; }
-	/** A screen sample waits for the next frame the game viewport draws. */
-	bool WaitsForFrame() const { return bWantFrame; }
+	/** A screen or ui sample waits for the next frame the game viewport draws. */
+	bool WaitsForFrame() const { return bWantFrame || bWantUi; }
 
 private:
 	struct FQuery
@@ -169,7 +195,7 @@ private:
 		TMap<FObjectKey, TaskProbe::FPartState> Firsts;  // changed: each part as the first sample it was seen in had it
 		TMap<FObjectKey, TArray<FObjectKey>> FirstParts;  // changed (actors): each actor's parts at its first sample
 		double LastT = 0.0;
-		TArray<TSharedPtr<FJsonObject>> Pending;  // screen: samples waiting for the next drawn frame
+		TArray<TSharedPtr<FJsonObject>> Pending;  // screen, ui: samples waiting for the next drawn frame
 		TArray<TSharedPtr<FJsonValue>> Samples;
 	};
 
@@ -179,6 +205,8 @@ private:
 	void OnSpawned(AActor* Actor);
 	void OnDestroyed(AActor* Actor);
 	void OnViewportRendered(FViewport* Viewport);
+	void OnHudPostRender(AHUD* Hud, UCanvas* DebugCanvas);
+	void FillUi();
 
 	void SampleActors(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out);
 	void SampleWidgets(FQuery& Q, UWorld* World, FJsonObject& Out);
@@ -199,5 +227,9 @@ private:
 	FDelegateHandle WorldInitHandle;
 	FDelegateHandle ViewportHandle;  // only with a screen query
 	bool bWantFrame = false;  // a screen sample waits for the next drawn frame
+	FDelegateHandle HudHandle;  // only with a ui query
+	bool bWantUi = false;  // a ui sample waits for the next drawn frame
+	TArray<TaskProbe::FUiElement> CanvasNow;  // ui: what the HUD canvas held when the HUD had drawn
+	uint64 CanvasFrame = 0;  // ui: the frame (GFrameCounter) CanvasNow is of
 	TSharedPtr<FTaskProbeViewExtension, ESPMode::ThreadSafe> ViewExtension;
 };

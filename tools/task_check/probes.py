@@ -60,6 +60,8 @@ def needs(measure):
         return [{"kind": "screen", "rect": measure["rect"]}]
     if probe == "audio":
         return [{"kind": "audio", "select": measure["select"]}]
+    if probe == "ui":
+        return [{"kind": "ui", "select": measure["select"], "fields": [] if field == "count" else [field]}]
     if probe == "ground":
         place = {"xy": measure["xy"]} if measure["xy"] is not None else {"box": measure["box"], "grid": measure["grid"]}
         return [{"kind": "ground", **place, **({"select": measure["select"]} if measure["select"] is not None else {})}]
@@ -365,9 +367,12 @@ def series(measure, probe):
         return out
     (query,) = needs(measure)
     samples = _samples(probe, query_id(query))
-    if probe_kind in ("actors", "widgets", "components"):
+    if probe_kind in ("actors", "widgets", "components", "ui"):
         out, turned = [], measure.get("to_angle") is not None or measure.get("to_axis") is not None
         for s in samples:
+            if probe_kind == "ui" and not isinstance(s.get("rows"), list):  # no frame was drawn after the sample
+                out.append((s["t"], None))
+                continue
             rows = [r for r in s.get("rows") or [] if isinstance(r, dict)]
             whole = every_match(s, len(rows), field, measure["of"]) if measure.get("match") is None and not turned else ROWS
             if field == "count":
