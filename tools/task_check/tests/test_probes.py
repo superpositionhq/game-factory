@@ -754,6 +754,74 @@ class UiWhateverDrawsIt(unittest.TestCase):
         regex = m(probe="ui", select={"text": r"\d+\s*M", "rect": rect}, field="count")
         self.assertEqual(probes.reduce(regex, actors_play(regex, [[read]])), 1)
 
+
+READOUT = [0.02, 0.02, 0.3, 0.12]
+
+
+def text_readout(value):
+    return [{"text": f"SCORE {value}", "x": 0.05, "y": 0.04, "w": 0.01 * len(str(value)) + 0.06, "h": 0.03,
+             "source": "umg", "kind": "text"}]
+
+
+def line_readout(digits):
+    """A readout drawn with canvas lines: one stroke per lit segment, no text read."""
+    segments = {"0": "abcdef", "1": "bc", "2": "abdeg", "3": "abcdg", "7": "abc"}
+    place = {"a": (0, 0, 0.01, 0), "b": (0.01, 0, 0, 0.01), "c": (0.01, 0.01, 0, 0.01), "d": (0, 0.02, 0.01, 0),
+             "e": (0, 0.01, 0, 0.01), "f": (0, 0, 0, 0.01), "g": (0, 0.01, 0.01, 0)}
+    return [{"text": None, "x": 0.05 + 0.015 * i + place[s][0], "y": 0.04 + place[s][1], "w": place[s][2],
+             "h": place[s][3], "source": "canvas", "kind": "line"} for i, d in enumerate(digits) for s in segments[d]]
+
+
+class UiSignature(unittest.TestCase):
+    """docs/task-probes.md, section 2.18: whether what a ui select shows updates, however it is drawn."""
+
+    def changes(self, rows, agg="changes", **extra):
+        measure = m(probe="ui", select={"rect": READOUT}, field="signature", agg=agg, **extra)
+        return probes.reduce(measure, actors_play(measure, rows))
+
+    def test_takes_agg_changes_any_all_or_count(self):
+        measure = {"probe": "ui", "select": {"rect": READOUT}, "field": "signature", "window": [2, 10],
+                   "agg": "changes"}
+        task_with(probe(measure=measure, expect={"op": ">=", "value": 1}))
+        for agg in ("any", "all", "count"):
+            task_with(probe(measure={**measure, "agg": agg}, expect={"op": ">=", "value": 1}))
+        for agg in (None, "last", "max", "delta", "range"):
+            with self.assertRaisesRegex(ValueError, "signature", msg=str(agg)):
+                task_with(probe(measure={**measure, "agg": agg}))
+        with self.assertRaisesRegex(ValueError, "exactly when its field is text"):
+            task_with(probe(measure={**measure, "match": "x"}))
+        (query,) = probes.needs(m(**measure))
+        self.assertEqual(query, {"kind": "ui", "select": {"rect": READOUT}, "fields": ["h", "text", "w", "x", "y"]})
+        count = m(probe="ui", select={"rect": READOUT}, field="count")
+        self.assertEqual(probes.query_id(probes.needs(count)[0]), probes.query_id(query), "one select, one reading")
+
+    def test_a_text_readout_changing_counts(self):
+        rows = [text_readout(v) for v in (0, 0, 12, 12, 25, 140, 140)]
+        self.assertEqual(self.changes(rows), 3)
+        self.assertEqual(self.changes(rows, window=[0, 1.5]), 1)
+
+    def test_a_line_drawn_readout_changing_counts(self):
+        self.assertEqual(self.changes([line_readout(d) for d in ("10", "10", "12", "13", "13", "70")]), 3)
+        self.assertEqual(self.changes([line_readout("10")] * 6), 0)
+
+    def test_a_static_readout_never_changes(self):
+        still = text_readout(120)
+        self.assertEqual(self.changes([still] * 8), 0)
+        jitter = [[{**still[0], "x": 0.05 + d}] for d in (0, 0.0001, -0.0001, 0.0002)]
+        self.assertEqual(self.changes(jitter), 0, "geometry is read to 0.002 of the viewport")
+        restyled = [still, [{**still[0], "source": "canvas"}], [{**still[0], "name": "Other"}]]
+        self.assertEqual(self.changes(restyled), 0, "how a build drew it is not what it shows")
+        reordered = [text_readout(1) + line_readout("1"), line_readout("1") + text_readout(1)]
+        self.assertEqual(self.changes(reordered), 0, "the elements are a set")
+
+    def test_nothing_shown_reads_zero(self):
+        rows = [[], text_readout(5), [], None]
+        self.assertEqual(self.changes(rows, agg="count"), 1, "samples showing something")
+        self.assertEqual(self.changes(rows, agg="all"), 0)
+        self.assertEqual(self.changes(rows, agg="any"), 1)
+        self.assertEqual(self.changes(rows), 2, "appearing and going are changes; no frame drawn is no value")
+
+
 class Angles(unittest.TestCase):
     def test_angles_aggregates_and_the_new_query_kinds_reduce(self):
         self.assertEqual([probes.normal(a) for a in (270, -270, 180, -180, 540, 0)], [-90, 90, 180, 180, 180, 0])
