@@ -150,7 +150,7 @@ class Whole(unittest.TestCase):
                 folder = Path(folder)
                 return projects[folder.name if folder.name in projects else folder.parent.name]
 
-            def agent(argv, cwd, prompt, transcript, minutes):
+            def agent(argv, cwd, prompt, transcript, minutes, env_extra=None):
                 Path(transcript).write_text(json.dumps({"type": "result", "num_turns": 12, "total_cost_usd": 1.5}))
                 return {"exit_code": 0, "seconds": 60.0, "timed_out": False}
 
