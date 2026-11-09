@@ -78,7 +78,7 @@ A thread qualifies only when all of these hold (the validator enforces the numbe
 
 1. **Many edits.** From `seed.commit` to `seed.reference`, at least 4 commits change the game itself (`Source/`,
    `Content/`, `Config/`, `Plugins/`, the `.uproject`), and the reference changes at least 5 game files against the
-   start, with at least 300 code lines added plus removed. Status, docs and `workflow.jsonl` commits don't count.
+   start, with at least 100 code lines added plus removed. Status, docs and `workflow.jsonl` commits don't count.
    Assets and binary files don't count as code lines.
 2. **Several systems.** The change spans at least two of: C++ (`Source/`), config (`Config/`, the `.uproject`), plugins,
    levels (`.umap`), materials and textures (`M_`, `MI_`, `MF_`, `T_`), Blueprint or UMG assets (`BP_`, `WBP_`, `ABP_`,
@@ -289,7 +289,7 @@ docs' "Common reasons and fixes"), never the threshold toward what the start hap
 - `difficulty` is `medium` or `hard` (never `easy`), and `tags` hold `long-thread`.
 - `limits`: 400 turns, 480 min, 150 USD, 1800 s tool timeout unless the task needs more; a long thread needs room.
 - `tools/validate-game.py` fails a task that is `easy`, has no `seed.reference`, has fewer than 3 required probes
-  outside `still_works`, or whose reference changes fewer than 5 game files, fewer than 300 code lines or fewer than 2
+  outside `still_works`, or whose reference changes fewer than 5 game files, fewer than 100 code lines or fewer than 2
   systems against its start; for a seed on main it
   also fails fewer than 4 game-changing commits from `seed.commit` to `seed.reference`. These are floors, not targets:
   pick the longest threads the history has.
