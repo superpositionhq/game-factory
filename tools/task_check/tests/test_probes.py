@@ -501,9 +501,9 @@ class MoreFairReadings(unittest.TestCase):
             project.play(5, 0, 60)
         loud, quiet = seen
         self.assertEqual(quiet[quiet.index("-unattended"):quiet.index("-fps=30") + 1],
-                         ["-unattended", "-nosound", "-nosplash", "-benchmark", "-fps=30"])
+                         ["-unattended", "-LiveCoding=false", "-nosound", "-nosplash", "-benchmark", "-fps=30"])
         self.assertEqual(loud[loud.index("-unattended"):loud.index("-fps=30") + 1],
-                         ["-unattended", "-muteaudio", "-nosplash", "-UseFixedTimeStep", "-FixedSeed", "-NOINI",
+                         ["-unattended", "-LiveCoding=false", "-muteaudio", "-nosplash", "-UseFixedTimeStep", "-FixedSeed", "-NOINI",
                           "-noinnerexception", "-TaskProbeSound", "-fps=30"])
         with self.assertRaisesRegex(ValueError, "can't set -TaskProbeSound"):
             task_with(probe(play={"name": "x", "seconds": 5, "args": ["-TaskProbeSound"]},
