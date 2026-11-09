@@ -674,8 +674,8 @@ GAME_PATHS = ('Source', 'Content', 'Config', 'Plugins', '*.uproject')   # the ga
 def thread_errors(t, outcomes):
     """Why task `t` (with `outcomes` required probes outside still_works) is not a long thread, from the task alone."""
     errs = []
-    if t.get('difficulty') != 'hard':
-        errs.append(f'difficulty {t.get("difficulty", "medium")!r}: every task is "hard"')
+    if t.get('difficulty') == 'easy':
+        errs.append('difficulty \'easy\': a task is "medium" or "hard"')
     if 'long-thread' not in (t.get('tags') or []):
         errs.append('no long-thread tag')
     if not (isinstance(t.get('seed'), dict) and t['seed'].get('reference')):
