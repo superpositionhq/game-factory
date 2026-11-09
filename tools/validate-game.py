@@ -663,7 +663,7 @@ def task_semantic_errors(t):
 MIN_OUTCOME_PROBES = 3     # required probes outside still_works: one per issue the thread settled
 MIN_THREAD_FILES = 5       # game files the reference changes against the start
 MIN_THREAD_COMMITS = 4     # commits from seed.commit to seed.reference that change the game (a seed on main)
-MIN_THREAD_CODE_LINES = 300   # code lines added plus removed from start to reference (owner, 2026-11-04)
+MIN_THREAD_CODE_LINES = 100   # code lines added plus removed from start to reference (owner, 2026-11-09; was 300)
 MIN_THREAD_SYSTEMS = 2        # systems the change crosses, as thread_size counts them (owner, 2026-11-04)
 CODE_FILE = re.compile(r'\.(cpp|h|hpp|c|cc|inl|cs|py|ps1|bat|cmd|sh|js|hlsl|usf|ush)$', re.I)
 NOT_CODE_DIR = re.compile(r'^(Dataset|Docs|RawAssets|Content)/')
