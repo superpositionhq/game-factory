@@ -149,7 +149,10 @@ def run_agent(argv, cwd, prompt, transcript, minutes, clock=time.monotonic, env_
 
 def kill_left_behind(folder):
     """Stop whatever the agent left running in its workspace (an editor it opened holds the game's DLL, and the build
-    and the cleanup then fail). Finds processes by the workspace path in their command line. Their pids."""
+    and the cleanup then fail). Finds processes by the workspace path in their command line. Their pids. Windows only:
+    elsewhere nothing is stopped."""
+    if os.name != "nt":
+        return []
     needle = os.path.realpath(folder).lower()
     script = ("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine } | ForEach-Object "
               "{ \"$($_.ProcessId)`t$($_.CommandLine)\" }")
