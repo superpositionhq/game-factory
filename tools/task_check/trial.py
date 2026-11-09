@@ -50,7 +50,8 @@ def agent_argv(agent, exe, limits, settings, model=None, extra=()):
         argv = [exe, "-p", "--output-format", "stream-json", "--verbose", "--max-turns", str(limits["max_turns"]),
                 "--permission-mode", "bypassPermissions", "--settings", str(settings)]
     elif agent == "codex":
-        argv = [exe, "exec", "--json", "-s", "danger-full-access", "--skip-git-repo-check"]
+        argv = [exe, "exec", "--json", "-s", "danger-full-access", "--skip-git-repo-check",
+                "--disable", "apps", "--disable", "plugins"]
     else:
         raise ValueError(f"no agent {agent!r} (claude or codex)")
     if model:
@@ -86,10 +87,49 @@ def workspace(repo, sha, dest):
     return {"files": made["files"], "copied": made["copied"]}
 
 
-def run_agent(argv, cwd, prompt, transcript, minutes, clock=time.monotonic):
+def clean_codex_home(folder, user_home=None):
+    """A Codex home holding only the login and a config that turns off every skill installed for this user, so a try
+    runs without the machine's skills, memories, history and settings. The login is a copy: put_login_back returns it
+    (Codex may rotate it) and removes the copy. The folder must lie outside the evidence. Its path."""
+    home = Path(user_home or os.path.expanduser("~"))
+    real = Path(os.environ.get("CODEX_HOME") or home / ".codex")
+    folder = Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(real / "auth.json", folder / "auth.json")
+    rows = []
+    for skills in (home / ".agents" / "skills", real / "skills"):
+        for found in sorted(skills.glob("*/SKILL.md")) if skills.is_dir() else []:
+            rows.append(f"[[skills.config]]\npath = '{os.path.realpath(found)}'\nenabled = false\n")
+    (folder / "config.toml").write_text("\n".join(rows), encoding="utf-8")
+    return folder
+
+
+def put_login_back(folder, user_home=None):
+    """After a try: a login Codex refreshed goes back to the real home, and the copy goes."""
+    home = Path(user_home or os.path.expanduser("~"))
+    real = Path(os.environ.get("CODEX_HOME") or home / ".codex") / "auth.json"
+    copy = Path(folder) / "auth.json"
+    if copy.exists():
+        if copy.read_bytes() != real.read_bytes():
+            shutil.copy2(copy, real)
+        copy.unlink()
+
+
+def keep_codex_sessions(folder, dest):
+    """Copy the temporary home's session files to the evidence: they hold the account's usage windows, which the
+    transcript doesn't. Never the login, which isn't in that folder."""
+    sessions = Path(folder) / "sessions"
+    if sessions.is_dir():
+        shutil.copytree(sessions, dest, dirs_exist_ok=True)
+
+
+def run_agent(argv, cwd, prompt, transcript, minutes, clock=time.monotonic, env_extra=None):
     """Run the harness in `cwd` with `prompt` on stdin, its output to `transcript`; killed with its children after
     `minutes`. {"exit_code", "seconds", "timed_out"}."""
     env = dict(os.environ, **{NO_RECORDING: "1"})
+    for name in ("GF_ROOT", "UE_RUN_REASON"):   # nothing that points the agent at the machine root
+        env.pop(name, None)
+    env.update(env_extra or {})
     started = clock()
     with open(transcript, "wb") as out:
         proc = subprocess.Popen(argv, cwd=str(cwd), stdin=subprocess.PIPE, stdout=out, stderr=subprocess.STDOUT,
@@ -105,6 +145,25 @@ def run_agent(argv, cwd, prompt, transcript, minutes, clock=time.monotonic):
             timed_out = True
     return {"exit_code": None if timed_out else proc.returncode, "seconds": round(clock() - started, 1),
             "timed_out": timed_out}
+
+
+def kill_left_behind(folder):
+    """Stop whatever the agent left running in its workspace (an editor it opened holds the game's DLL, and the build
+    and the cleanup then fail). Finds processes by the workspace path in their command line. Their pids."""
+    needle = os.path.realpath(folder).lower()
+    script = ("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine } | ForEach-Object "
+              "{ \"$($_.ProcessId)`t$($_.CommandLine)\" }")
+    out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True,
+                         text=True, encoding="utf-8", errors="replace", check=False).stdout
+    pids = []
+    for line in out.splitlines():
+        pid, _, command = line.partition("	")
+        command = command.lower().replace("/", "\\")
+        if pid.isdigit() and needle in command and int(pid) != os.getpid() and "get-ciminstance" not in command:
+            pids.append(int(pid))
+    for pid in pids:
+        unreal._kill_tree(pid)
+    return pids
 
 
 def usage(agent, transcript):
@@ -230,9 +289,19 @@ def try_task(repo, task, raw, scratch, out_dir, agent, exe, runs=1, model=None, 
             settings.write_text(json.dumps({"disableAllHooks": True}), encoding="utf-8")
             argv = agent_argv(agent, exe, limits, settings, model, extra)
             log(f"  {label}: {agent} working (up to {limits['max_minutes']} min)")
-            ran = run_agent(argv, folder, prompt, transcript, limits["max_minutes"])
+            codex_home = folder.parent / (folder.name + ".codex-home") if agent == "codex" else None
+            try:
+                extra_env = {"CODEX_HOME": str(clean_codex_home(codex_home))} if codex_home else None
+                ran = run_agent(argv, folder, prompt, transcript, limits["max_minutes"], env_extra=extra_env)
+            finally:
+                if codex_home:
+                    put_login_back(codex_home)
+                    keep_codex_sessions(codex_home, transcript.parent / "codex-sessions")
             row = {"run": i, **ran, **usage(agent, transcript), "peeked": peeked(transcript, places),
                    "workspace": str(folder) if keep else None}
+            left = kill_left_behind(folder)
+            if left:
+                log(f"  {label}: stopped {len(left)} process(es) the agent left running")
             log(f"  {label}: {agent} stopped after {ran['seconds'] / 60:.0f} min"
                 + (" (timed out)" if ran["timed_out"] else f" (exit {ran['exit_code']})"))
             for d in BUILT:
@@ -346,7 +415,8 @@ def main(argv=None):
     out = Path(args.out).resolve() if args.out else repo / ".task-tries"
     cli.ignore_results(repo, out)
     unreal.gfroot.check_free(str(scratch_root), "task try")
-    places = [repo, root / "tasks" / repo.name] + ([tasks_dir] if tasks_dir else [])
+    home = Path(os.path.expanduser("~"))
+    places = [repo, root, home / ".agents", home / ".claude", home / ".codex"] + ([tasks_dir] if tasks_dir else [])
 
     def log(text):
         print(text, file=sys.stderr, flush=True)
