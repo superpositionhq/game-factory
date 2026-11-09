@@ -3,7 +3,8 @@
 // N screenshots evenly over S seconds of game time, scripted key presses at their times, the player pawn's position
 // and the player's camera (its location, rotation and field of view) every half second, then probe.json in <dir> and
 // a clean exit. Without -TaskProbe it does nothing. -TaskProbeEvery=<0.1-1.0> sets the sample interval (default 0.5 s);
-// the inputs file may also hold axis events, button clicks, cursor moves and pawn teleports (LoadInputs).
+// the inputs file may also hold axis events, button clicks, cursor moves, pawn teleports (held there for a while when
+// asked) and real-time waits (LoadInputs).
 // -TaskProbeSound: the checker's play that measures audio, launched with sound (muted) and a fixed time step instead of
 // -nosound and -benchmark; the application counts as focused throughout, as under -benchmark.
 // With -TaskProbeQueries=<json file> (format game-probe-queries/1) it also evaluates the checker's queries on every half
@@ -14,6 +15,7 @@
 
 #include "CoreMinimal.h"
 #include "Containers/Ticker.h"
+#include "Engine/EngineBaseTypes.h"
 #include "InputCoreTypes.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "TaskProbe.generated.h"
@@ -36,7 +38,8 @@ private:
 		Click,
 		Cursor,
 		Teleport,
-		TeleportTo
+		TeleportTo,
+		Wait
 	};
 
 	struct FScriptedKey
@@ -55,12 +58,15 @@ private:
 		TSharedPtr<class FJsonObject> Face;  // teleport_to: the point it faces (default the target)
 		double Distance = 200.0;  // teleport_to: cm from the target, on the pawn's side
 		FVector Offset = FVector::ZeroVector;  // teleport_to: added to that place (cm)
+		double Hold = 0.0;  // teleport, teleport_to: seconds of play the pawn is held at the spot (put back after every world tick)
+		double Wait = 0.0;  // wait: seconds of real time the play's clock holds while the game runs on, paced to real time
 	};
 
 	bool Tick(float DeltaTime);
 	void Finish(const FString& Reason);
 	void LoadInputs(const FString& Path);
 	void SendInput(const FScriptedKey& K, UWorld* World, class APlayerController* PC);
+	void HoldPawn(UWorld* World, ELevelTick TickType, float DeltaSeconds);
 
 	FTSTicker::FDelegateHandle TickHandle;
 	FString OutDir;
@@ -82,4 +88,11 @@ private:
 	bool bCursorSet = false;
 	int32 FramesWaited = 0;  // at the end, frames waited for a screen sample's frame
 	FVector2D CursorAbsolute = FVector2D::ZeroVector;
+	FDelegateHandle HoldHandle;  // only with an input that holds the pawn
+	FVector HoldAt = FVector::ZeroVector;  // where the pawn is held
+	double HoldUntil = -1.0;  // play time the hold ends at (none before any hold)
+	bool bWaiting = false;  // a wait input holds the play's clock
+	double WaitFor = 0.0;  // its seconds
+	double WaitGame = 0.0;  // game time passed in it
+	double WaitStart = 0.0;  // the real time (FPlatformTime::Seconds) it began
 };

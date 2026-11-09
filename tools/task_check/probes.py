@@ -61,11 +61,14 @@ def needs(measure):
     if probe == "audio":
         return [{"kind": "audio", "select": measure["select"]}]
     if probe == "ui":
-        fields = UI_SIGNED if field == "signature" else [] if field == "count" else [field]
+        fields = UI_SIGNED if field in UI_WHOLE else [] if field == "count" else [field]
         return [{"kind": "ui", "select": measure["select"], "fields": list(fields)}]
     if probe == "ground":
         place = {"xy": measure["xy"]} if measure["xy"] is not None else {"box": measure["box"], "grid": measure["grid"]}
         return [{"kind": "ground", **place, **({"select": measure["select"]} if measure["select"] is not None else {})}]
+    if probe == "drawn":  # the plugin renders only what the fields ask for
+        place = {"near": measure["near"]} if measure["near"] is not None else {"line": measure["line"]}
+        return [{"kind": "drawn", **place, "fields": [field]}]
     if probe == "grading":  # a post: field is asked for by name; the colour pipeline's settings always come
         return [{"kind": "grading", "fields": [field] if field.startswith("post:") else []}]
     if probe == "spawns":
@@ -170,6 +173,45 @@ def combine(values, of):
 ROWS = object()  # every_match: the rows alone read the measure
 UI_SIGNED = ("h", "text", "w", "x", "y")  # what a ui signature is made of, besides each row's kind
 UI_GRID = 0.002  # a ui signature's geometry, rounded to this fraction of the viewport
+UI_WHOLE = ("signature", "number", "clock")  # ui fields read over everything a select picks in a sample (`of` ignored)
+UI_LINE = 0.01  # ui text rows whose centres are this close in height read as one line (reading order)
+NUMBER = re.compile(r"(?<![\d.])(-?)(\d{1,3}(?:,\d{3})+(?!\d)|\d+)(?:\.(\d+))?")
+CLOCK = re.compile(r"(?<!\d)(\d{1,3}):([0-5]\d)(?::([0-5]\d))?(?:[.,](\d{1,3}))?(?!\d)")
+
+
+def ui_text(rows):
+    """What a ui select's text elements show in one sample, in reading order (top to bottom by their centres, a line
+    within UI_LINE of the viewport's height; left to right), joined with spaces; "" when none shows text."""
+    def at(r, key):
+        v = r.get(key)
+        return float(v) if _count(v) else 0.0
+
+    texts = [r for r in rows if r.get("kind") == "text" and isinstance(r.get("text"), str)]
+    texts.sort(key=lambda r: (round((at(r, "y") + at(r, "h") / 2) / UI_LINE), at(r, "x")))
+    return " ".join(r["text"] for r in texts)
+
+
+def ui_number(text):
+    """The first number in `text`: digits with a decimal point and comma thousands (1,234 is 1234), negative when a
+    minus sign stands before it after no letter or digit (a dash between two numbers is not a sign); None if none."""
+    found = NUMBER.search(text)
+    if found is None:
+        return None
+    sign, whole, frac = found.groups()
+    before = text[found.start() - 1] if found.start() > 0 else " "
+    value = float(whole.replace(",", "") + (f".{frac}" if frac else ""))
+    return -value if sign and not before.isalnum() else value
+
+
+def ui_clock(text):
+    """The first time `text` shows, in seconds: h:mm:ss or m:ss (a fraction after . or , added), else its first number
+    as seconds; None if neither."""
+    found = CLOCK.search(text)
+    if found is None:
+        return ui_number(text)
+    a, b, c, frac = found.groups()
+    seconds = int(a) * 3600 + int(b) * 60 + int(c) if c is not None else int(a) * 60 + int(b)
+    return seconds + (float(f"0.{frac}") if frac else 0.0)
 
 
 def _count(value):
@@ -260,6 +302,10 @@ def aggregate(values, agg):
         return math.sqrt(sum((v - mean) ** 2 for v in found) / len(found))
     if agg == "changes":
         return float(sum(1 for a, b in zip(found, found[1:]) if not math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-9)))
+    if agg == "rises":
+        return float(sum(1 for a, b in zip(found, found[1:]) if b > a + 1e-9))
+    if agg == "falls":
+        return float(sum(1 for a, b in zip(found, found[1:]) if b < a - 1e-9))
     raise ValueError(f"no agg {agg}")
 
 
@@ -398,6 +444,9 @@ def series(measure, probe):
             if field == "signature":
                 out.append((s["t"], ui_signature(s, rows)))
                 continue
+            if field in ("number", "clock"):
+                out.append((s["t"], (ui_number if field == "number" else ui_clock)(ui_text(rows))))
+                continue
             whole = every_match(s, len(rows), field, measure["of"]) if measure.get("match") is None and not turned else ROWS
             if field == "count":
                 out.append((s["t"], selected_count(s, len(rows))))
@@ -408,7 +457,7 @@ def series(measure, probe):
                                              for r in rows], measure["of"])))
         return out
     values = [(s["t"], s.get("value") if isinstance(s.get("value"), dict) else {}) for s in samples]
-    if probe_kind in ("camera", "light", "pieces", "screen", "audio", "ground"):
+    if probe_kind in ("camera", "light", "pieces", "screen", "audio", "ground", "drawn"):
         return [(t, number(v.get(field))) for t, v in values]
     if probe_kind == "grading":
         if field.startswith("post:"):

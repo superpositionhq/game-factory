@@ -11,7 +11,10 @@
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/PawnMovementComponent.h"
 #include "HAL/PlatformMisc.h"
+#include "HAL/PlatformProcess.h"
+#include "HAL/PlatformTime.h"
 #include "InputKeyEventArgs.h"
 #include "Misc/App.h"
 #include "Misc/CommandLine.h"
@@ -102,6 +105,10 @@ void UTaskProbe::Deinitialize()
 		Finish(TEXT("shutdown"));
 	}
 	FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
+	if (HoldHandle.IsValid())
+	{
+		FWorldDelegates::OnWorldPostActorTick.Remove(HoldHandle);
+	}
 	Queries.Reset();
 	Super::Deinitialize();
 }
@@ -113,7 +120,9 @@ void UTaskProbe::LoadInputs(const FString& Path)
 	// button), {"t", "cursor": [fx, fy]} (move the mouse cursor to a viewport point, fractions 0-1),
 	// {"t", "teleport": [x, y, z], "yaw": deg} (place the player pawn) and {"t", "teleport_to": <actor select>,
 	// "distance": cm, "offset": [x, y, z], "face": <point>} (place it next to the nearest actor the select matches,
-	// facing that actor or the point)
+	// facing that actor or the point); either teleport with "hold": seconds keeps the pawn at the spot that long, put back
+	// after every world tick; and {"t", "wait": seconds} (the play's clock holds that long in real time while the game
+	// runs on)
 	FString Text;
 	if (!FFileHelper::LoadFileToString(Text, *Path))
 	{
@@ -169,6 +178,7 @@ void UTaskProbe::LoadInputs(const FString& Path)
 		{
 			K.Kind = EScriptedKind::TeleportTo;
 			K.Target = *Target;
+			(*Obj)->TryGetNumberField(TEXT("hold"), K.Hold);
 			(*Obj)->TryGetNumberField(TEXT("distance"), K.Distance);
 			K.Distance = FMath::Clamp(K.Distance, 0.0, 100000.0);
 			if (ReadNumbers(*Obj, TEXT("offset"), 3, Numbers))
@@ -186,6 +196,12 @@ void UTaskProbe::LoadInputs(const FString& Path)
 			K.Kind = EScriptedKind::Teleport;
 			K.Teleport = FVector(Numbers[0], Numbers[1], Numbers[2]);
 			K.bHasYaw = (*Obj)->TryGetNumberField(TEXT("yaw"), K.Yaw);
+			(*Obj)->TryGetNumberField(TEXT("hold"), K.Hold);
+		}
+		else if ((*Obj)->TryGetNumberField(TEXT("wait"), K.Wait))
+		{
+			K.Kind = EScriptedKind::Wait;
+			K.Wait = FMath::Clamp(K.Wait, 0.0, 600.0);
 		}
 		else if ((*Obj)->TryGetStringField(TEXT("key"), Name))
 		{
@@ -209,9 +225,43 @@ void UTaskProbe::LoadInputs(const FString& Path)
 		{
 			continue;
 		}
+		K.Hold = FMath::Clamp(K.Hold, 0.0, 600.0);
 		Inputs.Add(K);
 	}
 	Inputs.StableSort([](const FScriptedKey& A, const FScriptedKey& B) { return A.Time < B.Time; });
+	if (Inputs.ContainsByPredicate([](const FScriptedKey& K) { return K.Hold > 0.0; }))
+	{
+		HoldHandle = FWorldDelegates::OnWorldPostActorTick.AddUObject(this, &UTaskProbe::HoldPawn);
+	}
+}
+
+void UTaskProbe::HoldPawn(UWorld* World, ELevelTick TickType, float DeltaSeconds)
+{
+	// after every world tick of a hold, the pawn goes back to the spot (still), whatever the game's own tick did with
+	// it, and the camera is brought up to date with it
+	UGameInstance* GI = GetGameInstance();
+	if (bDone || Elapsed >= HoldUntil || !GI || World != GI->GetWorld() || !World->HasBegunPlay())
+	{
+		return;
+	}
+	APlayerController* PC = World->GetFirstPlayerController();
+	APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+	if (!Pawn)
+	{
+		return;
+	}
+	if (FVector::DistSquared(Pawn->GetActorLocation(), HoldAt) > 0.01)
+	{
+		Pawn->SetActorLocation(HoldAt, false, nullptr, ETeleportType::TeleportPhysics);
+	}
+	if (UPawnMovementComponent* Move = Pawn->GetMovementComponent())
+	{
+		Move->Velocity = FVector::ZeroVector;
+	}
+	if (PC->PlayerCameraManager)
+	{
+		PC->PlayerCameraManager->UpdateCamera(0.f);
+	}
 }
 
 void UTaskProbe::SendInput(const FScriptedKey& K, UWorld* World, APlayerController* PC)
@@ -281,6 +331,12 @@ void UTaskProbe::SendInput(const FScriptedKey& K, UWorld* World, APlayerControll
 	}
 	case EScriptedKind::Teleport:
 		PlacePawn(PC, K.Teleport, K.bHasYaw, K.Yaw);
+		if (K.Hold > 0.0 && PC->GetPawn())
+		{
+			HoldAt = PC->GetPawn()->GetActorLocation();
+			HoldUntil = Elapsed + K.Hold;
+			UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: holding the pawn at (%.0f, %.0f, %.0f) for %.1f s"), HoldAt.X, HoldAt.Y, HoldAt.Z, K.Hold);
+		}
 		break;
 	case EScriptedKind::TeleportTo:
 	{
@@ -296,8 +352,21 @@ void UTaskProbe::SendInput(const FScriptedKey& K, UWorld* World, APlayerControll
 		const FVector At = PC->GetPawn()->GetActorLocation();
 		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: teleported next to %s: asked (%.0f, %.0f, %.0f) yaw %.1f, now at (%.0f, %.0f, %.0f)"), *Name,
 			Location.X, Location.Y, Location.Z, Yaw, At.X, At.Y, At.Z);
+		if (K.Hold > 0.0)
+		{
+			HoldAt = At;
+			HoldUntil = Elapsed + K.Hold;
+			UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: holding the pawn there for %.1f s"), K.Hold);
+		}
 		break;
 	}
+	case EScriptedKind::Wait:
+		bWaiting = true;
+		WaitFor = K.Wait;
+		WaitGame = 0.0;
+		WaitStart = FPlatformTime::Seconds();
+		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: the play's clock holds at %.2f s for %.1f s of real time"), Elapsed, K.Wait);
+		break;
 	}
 	++InputsSent;
 }
@@ -320,11 +389,37 @@ bool UTaskProbe::Tick(float DeltaTime)
 		}
 		bStarted = true;
 	}
+	if (bWaiting)
+	{
+		// a wait: the game runs on, paced to real time (a frame ahead of the wall clock sleeps till it catches up), and
+		// the play's clock holds until both its seconds of real time and of game time have passed
+		WaitGame += DeltaTime;
+		const double Real = FPlatformTime::Seconds() - WaitStart;
+		if (WaitGame > Real)
+		{
+			FPlatformProcess::Sleep((float)FMath::Min(WaitGame - Real, 0.25));
+		}
+		if (Queries)
+		{
+			Queries->Frame(DeltaTime);
+		}
+		if (WaitGame >= WaitFor && FPlatformTime::Seconds() - WaitStart >= WaitFor)
+		{
+			bWaiting = false;
+			UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: the wait is over (%.1f s of game time); the play's clock goes on from %.2f s"), WaitGame, Elapsed);
+		}
+		return true;
+	}
 	Elapsed += DeltaTime;
+	if (Queries)
+	{
+		Queries->Frame(DeltaTime);
+	}
 	APlayerController* PC = World && World->HasBegunPlay() ? World->GetFirstPlayerController() : nullptr;
 
 	// inputs wait for a player controller (e.g. during a map travel)
-	while (PC && NextInput < Inputs.Num() && Inputs[NextInput].Time <= Elapsed)
+	// (a wait holds the inputs after it until it is over)
+	while (PC && !bWaiting && NextInput < Inputs.Num() && Inputs[NextInput].Time <= Elapsed)
 	{
 		SendInput(Inputs[NextInput++], World, PC);
 	}

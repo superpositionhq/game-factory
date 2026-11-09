@@ -2,8 +2,11 @@
 // the track (every -TaskProbeEvery seconds, default 0.5) and written to probe.json "measures" as {"<id>": [{"t": t, "rows": [...]} | {"t": t,
 // "value": ...}, ...]}. The contract is game-factory's docs/task-probes.md
 // (the measures) and docs/task-check.md (how the checker plays and reduces them).
-// Query kinds: actors, widgets, light, grading, spawns, camera, components, pieces, screen, audio, ground, ui. Anything unknown (a class, a property, a
-// widget, a kind) gives empty rows or null values and never stops the play.
+// Query kinds: actors, widgets, light, grading, spawns, camera, components, pieces, screen, audio, ground, ui, drawn. Anything unknown (a class, a
+// property, a widget, a kind) gives empty rows or null values and never stops the play.
+//
+// A select's near ({"point", "radius"}) may also give a height band, "z_min" and/or "z_max" (cm; world heights, or offsets
+// from the point's own z with "z_relative": true): a thing matches only when its place is within the radius and the band.
 //
 // Rows are capped at 200 per sample, never the counts: "total" is how many matched, and when more matched than the
 // rows hold, "full": {"<field>": {"n", "nonzero", "sum", "min", "max"}} sums up every match's numeric value of each field
@@ -36,7 +39,10 @@
 //   lit by its brightest pixel, its luminance over its local bounds box the mean of the four views' summed luminance x
 //   pixel area over the box's seen area; the graph's bound when nothing renders (-nullrhi). With either field, the
 //   row's "glow_sources" names the kinds lit ("light", "emissive", "unlit") and "glow_read" how its meshes were read
-//   ("graph", "render", "bound").
+//   ("graph", "render", "bound"). A particle system component (Niagara, Cascade) is a source too: dark unless active and
+//   drawn, then rendered alone as such a mesh is (lit by its brightest pixel, glow by the same formula over its local
+//   bounds; "effect" in glow_sources), or without a renderer its materials' emissive bound. spin (deg/s): the fastest
+//   of its mesh parts' (or, with none, its root's) angular speed in the world (components' spin).
 // - widgets: "rows": [{"name", "class", <field>: value}] over the UMG trees in the viewport. select.class alone matches
 //   the widget's own class; with select.name it also matches an enclosing user widget's class. visible = visible,
 //   render opacity > 0, and every parent (through enclosing user widgets) the same. x, y, w, h: the cached geometry in
@@ -72,8 +78,11 @@
 //   previous sample; null the first time it is seen), extent_x|y|z (a primitive's world bounds half-size), simulating
 //   (a primitive's physics, as actors'), intensity (a light's), on (a light lights the scene, as light counts it),
 //   changed, bounds_change, pose_change (a primitive against the first sample it was seen in, as actors' for one part;
-//   pose_change null unless skinned), lit and glow (a light component's or a mesh component's, as actors' for one
-//   source; null for any other component; "glow_sources" with them).
+//   pose_change null unless skinned), lit and glow (a light component's, a mesh component's or a particle system's, as
+//   actors' for one source; null for any other component; "glow_sources" with them), spin (deg/s: how far the component
+//   turned in the world, accumulated every frame since the previous sample, over that time; null the first sample it is
+//   seen in unless it simulates physics: then its body's angular velocity). select.effect: true keeps only live effects
+//   (an active particle system component, Niagara or Cascade; a drawn decal component), select.class then optional.
 // - pieces: "value": {"count", "visible", "components", "actors", "triangles", "visible_triangles"}: the placed mesh
 //   pieces of the registered mesh components select.class matches (default every mesh component; also select.name,
 //   select.mesh = a wildcard on the mesh asset's name, select.owner, select.near), counted over all of them whatever
@@ -118,7 +127,25 @@
 //   a rect (select.rect with select.kind "text", or with select.text) also reads the frame as drawn, UI included,
 //   inside the rect (UiOcr): each line of digits, capitals and a few signs it can read for sure, where no element
 //   above already reads text, is a text element of "source" "ocr" (name and class "ScreenText"). Other queries take
-//   no capture and never see these rows.
+//   no capture and never see these rows. What a widget paints itself (its own OnPaint, a UMG NativePaint, an engine
+//   widget the walk doesn't read) comes from the game window's Slate draw elements (FSlateDebugging's paint events, in
+//   any build but Shipping and Test): each element painted under the game viewport while such a widget was the one
+//   painting, "source" "paint" (name and class its widget type): a string as text, a box or border as box (image when
+//   its brush has a picture texture), a gradient as box, a line or spline as line; elements of the last paint before
+//   the frame.
+// - drawn: "value": {"drawn", "motion", "base_r", "base_g", "base_b", "base_change", "pixels", "primitives"} for
+//   query.near (a point, radius and band), or {"drawn", "reach", "length", "pixels", "primitives"} for query.line
+//   ({"from": <Point>, "to": <Point>, "radius": cm}) | null (no renderer, a point that doesn't resolve): every primitive
+//   drawn in game whose world bounds reach the place (but one enclosing the whole place and 20 times its size: a sky
+//   dome, a room seen from inside) rendered alone (a scene capture showing only them, orthographic: four views from the
+//   corners of a tetrahedron, 64 x 64, around a point; two views square to a line, 128 x 128), lit by direct lights and
+//   the sky light, without shadows, global illumination, reflections, fog or anything that accumulates over frames, at
+//   exposure 1; a pixel is in the place when its depth puts it there, or it is translucent with nothing opaque behind it
+//   and its ray crosses the place. drawn: 1 when any pixel is; motion: of the pixels in the place now or at the previous
+//   sample, the share that changed (in or out, or its colour c / (1 + c) by more than 1/255 in a channel), null the first
+//   sample; base_r/g/b: the rendered base colour (GBuffer, linear) of the opaque pixels in the place, averaged, null with
+//   none; base_change: its distance from the first sample's; reach: cm from "from" to the furthest pixel in the place
+//   along the line (null with none); length: cm of the line with something drawn by it, in up to 128 steps none finer than a pixel.
 
 #pragma once
 
@@ -136,10 +163,18 @@ class FTaskProbeViewExtension;
 class FViewport;
 class UCanvas;
 class UButton;
+class USceneComponent;
+class SWidget;
+class FSlateWindowElementList;
+class FPaintArgs;
+class FSlateRect;
+struct FGeometry;
+struct FSlateDebuggingElementTypeAddedEventArgs;
 
 namespace TaskProbe
 {
 class FGlowRender;
+class FDrawnRender;
 
 /** A point of the game viewport, in viewport fractions 0-1, in Slate's absolute (desktop) space. */
 bool ViewportPoint(double Fx, double Fy, FVector2D& OutAbsolute);
@@ -161,6 +196,25 @@ struct FUiElement
 	FString Text;
 	bool bHasRect = false;
 	double X = 0.0, Y = 0.0, W = 0.0, H = 0.0;
+};
+
+/** An element a widget painted itself (ui, source "paint"): its draw element's type and index in the game window's
+ *  element list, and the type of the widget that was painting it. */
+struct FPaintRecord
+{
+	uint8 Type = 0;
+	int32 Index = 0;
+	FName Widget;
+};
+
+/** A component whose rotation spin follows: where it was turned at the last frame, and how far it turned (radians)
+ *  over how long (s) since the last sample. */
+struct FSpinTrack
+{
+	TWeakObjectPtr<const USceneComponent> Component;
+	FQuat Last = FQuat::Identity;
+	double Angle = 0.0;
+	double Time = 0.0;
 };
 
 /** A drawn part (a primitive component) as changed compares it: drawn or not, its world bounds and, of a skinned
@@ -190,6 +244,8 @@ public:
 	const TArray<FString>& Errors() const { return ErrorList; }
 	/** A screen or ui sample waits for the next frame the game viewport draws. */
 	bool WaitsForFrame() const { return bWantFrame || bWantUi; }
+	/** Every frame of the play (the clock running or held): spin's components turn by so much since the last frame. */
+	void Frame(float DeltaTime);
 
 private:
 	struct FQuery
@@ -211,6 +267,11 @@ private:
 		double LastT = 0.0;
 		TArray<TSharedPtr<FJsonObject>> Pending;  // screen, ui: samples waiting for the next drawn frame
 		bool bOcr = false;  // ui: a select of text in a rect, read from the frame as drawn too (UiOcr)
+		TArray<FLinearColor> DrawnColour;  // drawn: the previous sample's views, pixel by pixel (motion)
+		TArray<uint8> DrawnKept;  // drawn: which of those pixels were in the place
+		bool bDrawnBefore = false;  // drawn: a previous sample was rendered
+		bool bDrawnFirstBase = false;  // drawn: the first sample's mean base colour is known (base_change)
+		FVector DrawnFirstBase = FVector::ZeroVector;
 		TArray<TSharedPtr<FJsonValue>> Samples;
 	};
 
@@ -233,6 +294,14 @@ private:
 	void SampleAudio(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out);
 	void SampleGround(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out);
 	void SampleCamera(UWorld* World, APlayerController* PC, FJsonObject& Out);
+	void SampleDrawn(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out);
+	TSharedPtr<FJsonValue> SpinOf(const USceneComponent* C);
+	TSharedPtr<FJsonValue> ActorSpin(const AActor* A);
+	void OnPaintBeginWindow(const FSlateWindowElementList& List);
+	void OnPaintEndWindow(const FSlateWindowElementList& List);
+	void OnPaintBeginWidget(const SWidget* Widget, const FPaintArgs& Args, const FGeometry& Geometry, const FSlateRect& Culling, const FSlateWindowElementList& List, int32 Layer);
+	void OnPaintEndWidget(const SWidget* Widget, const FSlateWindowElementList& List, int32 Layer);
+	void OnPaintElement(const FSlateDebuggingElementTypeAddedEventArgs& Args);
 
 	TArray<FQuery> Queries;
 	TArray<FString> ErrorList;
@@ -249,4 +318,16 @@ private:
 	uint64 CanvasFrame = 0;  // ui: the frame (GFrameCounter) CanvasNow is of
 	TSharedPtr<FTaskProbeViewExtension, ESPMode::ThreadSafe> ViewExtension;
 	TUniquePtr<TaskProbe::FGlowRender> GlowRender;  // lit, glow: meshes whose emissive is read as rendered
+	TUniquePtr<TaskProbe::FDrawnRender> DrawnRender;  // drawn: what is drawn in a place, rendered
+	TMap<FObjectKey, TaskProbe::FSpinTrack> Spins;  // spin: the components read last sample, their turning since
+	TSet<FObjectKey> SpinRead;  // spin: the components read this sample
+	// ui: the elements widgets paint themselves, from the game window's Slate draw elements (only with a ui query)
+	FDelegateHandle PaintHandles[5];
+	const FSlateWindowElementList* PaintList = nullptr;  // the game window's element list while it is painted
+	TArray<const SWidget*> PaintStack;  // the widgets painting, outermost first
+	int32 PaintViewportAt = INDEX_NONE;  // where the game viewport widget is in PaintStack
+	FVector2D PaintViewPos = FVector2D::ZeroVector, PaintViewSize = FVector2D::ZeroVector;  // its paint rect (window space)
+	TArray<TaskProbe::FPaintRecord> PaintRecords;  // what was painted under it this paint
+	TArray<TaskProbe::FUiElement> PaintNow;  // the last paint's elements, as ui elements
+	uint64 PaintFrame = 0;  // the frame (GFrameCounter) PaintNow is of
 };
