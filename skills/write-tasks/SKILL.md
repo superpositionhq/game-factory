@@ -66,7 +66,8 @@ before the game is packaged.
 ## 1. The bar: long threads of multiple edits, nothing else (owner, 2026-11-02)
 
 **The only tasks that meet our requirements are long threads of multiple edits.** A long task keeps one clean run of a
-strong agent working about 30 minutes (owner, 2026-11-05); under 25 minutes it isn't long enough, solved or not. You
+strong agent working about 25 minutes or more. That length is a guide, not a requirement (owner, 2026-11-09): what
+counts is that a strong agent can't solve it easily. You
 judge this in the session from the thread itself (section 6); we measure it on every submitted task. A task is a stretch of the game's
 real history where its own sessions needed many commits, several attempts or several rounds of directions, touching
 many files across several systems, before the outcome held. Strong agents finish a single fix, one cause in one
@@ -295,7 +296,7 @@ docs' "Common reasons and fixes"), never the threshold toward what the start hap
 - **Judge difficulty in the session; never run the task with another agent** (owner, 2026-11-05: the try took up to
   25 minutes a task and slowed contractors down). Don't run `tools/task-try.py` or start a fresh Claude Code or Codex
   session on a task. Before committing, review each task against section 1 here, with the person: would a strong
-  agent given only the brief and the start finish it in well under 25 minutes? It would when the brief points at one
+  agent given only the brief and the start solve it easily (25 minutes is a guide, not a cut-off)? It would when the brief points at one
   place, the issues share one obvious cause, or the reference diff is mostly one file or one system. If so, extend the
   thread back to an earlier attempt, merge it with its neighbouring issues, or drop it. Tell the person which tasks you
   judged long enough and why, in a line each. We try every submitted task with a strong agent and measure its time;
