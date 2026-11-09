@@ -2303,7 +2303,7 @@
               }
             ]
           },
-          "maxItems": 12,
+          "maxItems": 32,
           "minItems": 1,
           "title": "Checks",
           "type": "array"
