@@ -27,6 +27,7 @@
 #include "CollisionQueryParams.h"
 #include "Components/ActorComponent.h"
 #include "Components/Button.h"
+#include "Components/DecalComponent.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/Image.h"
@@ -57,9 +58,11 @@
 #include "Engine/Texture.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "EngineFontServices.h"
+#include "Debugging/SlateDebugging.h"
 #include "EngineUtils.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Fonts/FontCache.h"
+#include "Fonts/FontMeasure.h"
 #include "GameFramework/HUD.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
@@ -106,9 +109,12 @@
 #include "MaterialShared.h"
 #include "Misc/App.h"
 #include "Misc/FileHelper.h"
+#include "Particles/ParticleSystemComponent.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "Rendering/SkeletalMeshLODRenderData.h"
 #include "Rendering/SkeletalMeshRenderData.h"
+#include "Rendering/DrawElements.h"
+#include "Rendering/SlateRenderer.h"
 #include "SceneInterface.h"
 #include "SceneView.h"
 #include "SceneViewExtension.h"
@@ -117,6 +123,7 @@
 #include "Sound/SoundBase.h"
 #include "Sound/SoundClass.h"
 #include "TextureResource.h"
+#include "Textures/SlateShaderResource.h"
 #include "Types/ReflectionMetadata.h"
 #include "UObject/ObjectKey.h"
 #include "UObject/StrongObjectPtr.h"
@@ -269,22 +276,48 @@ static bool ReadVec(const TSharedPtr<FJsonObject>& O, const TCHAR* Key, FVector&
 	return true;
 }
 
+/** A select's `near`: within `radius` cm of a point, and optionally inside a height band: z_min and z_max (cm), world
+ *  heights, or offsets from the point's own z with z_relative. */
+struct FNearSel
+{
+	TSharedPtr<FJsonObject> Point;  // none: no near; an empty one matches nothing
+	double Radius = 0.0;
+	bool bZMin = false, bZMax = false, bZRelative = false;
+	double ZMin = 0.0, ZMax = 0.0;
+
+	bool IsSet() const { return Point.IsValid(); }
+	/** Loc is near Centre (the point resolved): within the radius, and inside the height band when one is given. */
+	bool Holds(const FVector& Centre, const FVector& Loc) const
+	{
+		if (FVector::Dist(Loc, Centre) > Radius)
+		{
+			return false;
+		}
+		return InBand(Centre, Loc.Z);
+	}
+	bool InBand(const FVector& Centre, double Z) const
+	{
+		const double Base = bZRelative ? Centre.Z : 0.0;
+		return !(bZMin && Z < Base + ZMin) && !(bZMax && Z > Base + ZMax);
+	}
+};
+
 /** An actor select's `has`: a component the actor carries that matches every key given (CarriesComponent). */
 struct FHasSel
 {
 	FString Class;
 	bool bLit = false;
 	bool bVisible = false;
-	TSharedPtr<FJsonObject> NearPoint;
-	double Radius = 0.0;
+	bool bSimulating = false;
+	bool bMovable = false;
+	FNearSel Near;
 };
 
 struct FSel
 {
 	FString Class, Tag, Name;
 	bool bPlayer = false;
-	TSharedPtr<FJsonObject> NearPoint;
-	double Radius = 0.0;
+	FNearSel Near;
 	TSharedPtr<FHasSel> Has;  // only with `has`
 };
 
@@ -292,23 +325,40 @@ struct FSel
  *  it samples, teleport_to's own while it picks; none elsewhere (the graph's bound, as without a renderer). */
 static FGlowRender* SelectRender = nullptr;
 
-/** O's `near`, {"point": <Point>, "radius": cm}: its point (an empty one, which matches nothing, when it has none). */
-static void ParseNear(const TSharedPtr<FJsonObject>& O, TSharedPtr<FJsonObject>& OutPoint, double& OutRadius)
+/** A near object, {"point": <Point>, "radius": cm, "z_min", "z_max", "z_relative"}: its point (an empty one, which
+ *  matches nothing, when it has none), radius and height band. */
+static FNearSel ParseNearObject(const TSharedPtr<FJsonObject>& Near)
+{
+	FNearSel Out;
+	if (!Near.IsValid())
+	{
+		return Out;
+	}
+	const TSharedPtr<FJsonObject>* Point = nullptr;
+	if (Near->TryGetObjectField(TEXT("point"), Point))
+	{
+		Out.Point = *Point;
+	}
+	else
+	{
+		Out.Point = MakeShared<FJsonObject>();  // a near without a point matches nothing
+	}
+	Near->TryGetNumberField(TEXT("radius"), Out.Radius);
+	Out.bZMin = Near->TryGetNumberField(TEXT("z_min"), Out.ZMin);
+	Out.bZMax = Near->TryGetNumberField(TEXT("z_max"), Out.ZMax);
+	Near->TryGetBoolField(TEXT("z_relative"), Out.bZRelative);
+	return Out;
+}
+
+/** O's `near` (ParseNearObject); none when O has no near. */
+static FNearSel ParseNear(const TSharedPtr<FJsonObject>& O)
 {
 	const TSharedPtr<FJsonObject>* Near = nullptr;
-	if (O->TryGetObjectField(TEXT("near"), Near) && Near->IsValid())
+	if (O.IsValid() && O->TryGetObjectField(TEXT("near"), Near) && Near->IsValid())
 	{
-		const TSharedPtr<FJsonObject>* Point = nullptr;
-		if ((*Near)->TryGetObjectField(TEXT("point"), Point))
-		{
-			OutPoint = *Point;
-		}
-		else
-		{
-			OutPoint = MakeShared<FJsonObject>();  // a near without a point matches nothing
-		}
-		(*Near)->TryGetNumberField(TEXT("radius"), OutRadius);
+		return ParseNearObject(*Near);
 	}
+	return FNearSel();
 }
 
 static FSel ParseSel(const TSharedPtr<FJsonObject>& O)
@@ -322,7 +372,7 @@ static FSel ParseSel(const TSharedPtr<FJsonObject>& O)
 	O->TryGetStringField(TEXT("tag"), S.Tag);
 	O->TryGetStringField(TEXT("name"), S.Name);
 	O->TryGetBoolField(TEXT("player"), S.bPlayer);
-	ParseNear(O, S.NearPoint, S.Radius);
+	S.Near = ParseNear(O);
 	const TSharedPtr<FJsonObject>* Has = nullptr;
 	if (O->TryGetObjectField(TEXT("has"), Has) && Has->IsValid())
 	{
@@ -330,7 +380,9 @@ static FSel ParseSel(const TSharedPtr<FJsonObject>& O)
 		(*Has)->TryGetStringField(TEXT("class"), S.Has->Class);
 		(*Has)->TryGetBoolField(TEXT("lit"), S.Has->bLit);
 		(*Has)->TryGetBoolField(TEXT("visible"), S.Has->bVisible);
-		ParseNear(*Has, S.Has->NearPoint, S.Has->Radius);
+		(*Has)->TryGetBoolField(TEXT("simulating"), S.Has->bSimulating);
+		(*Has)->TryGetBoolField(TEXT("movable"), S.Has->bMovable);
+		S.Has->Near = ParseNear(*Has);
 	}
 	return S;
 }
@@ -349,13 +401,13 @@ static void FindActors(UWorld* World, APlayerController* PC, const FSel& S, int3
 		return;
 	}
 	FVector NearP = FVector::ZeroVector;
-	const bool bNear = S.NearPoint.IsValid();
-	if (bNear && !ResolvePoint(S.NearPoint, World, PC, Depth + 1, NearP))
+	const bool bNear = S.Near.IsSet();
+	if (bNear && !ResolvePoint(S.Near.Point, World, PC, Depth + 1, NearP))
 	{
 		return;
 	}
 	FVector HasNearP = FVector::ZeroVector;  // has: the point its component must be near
-	if (S.Has.IsValid() && S.Has->NearPoint.IsValid() && !ResolvePoint(S.Has->NearPoint, World, PC, Depth + 1, HasNearP))
+	if (S.Has.IsValid() && S.Has->Near.IsSet() && !ResolvePoint(S.Has->Near.Point, World, PC, Depth + 1, HasNearP))
 	{
 		return;
 	}
@@ -378,7 +430,7 @@ static void FindActors(UWorld* World, APlayerController* PC, const FSel& S, int3
 		{
 			return false;
 		}
-		if (bNear && FVector::Dist(A->GetActorLocation(), NearP) > S.Radius)
+		if (bNear && !S.Near.Holds(NearP, A->GetActorLocation()))
 		{
 			return false;
 		}
@@ -879,6 +931,23 @@ static bool Simulating(const UPrimitiveComponent* P)
 				return true;
 			}
 		}
+	}
+	return false;
+}
+
+/** A live effect (a components select's `effect`): a particle system component (Niagara, Cascade: any FX system
+ *  component) that is active, or a decal component that is drawn (visible, not hidden in game, its owner not hidden).
+ *  An effect actor (a Niagara actor, an emitter, a decal actor) counts by its component. */
+static bool LiveEffect(const UActorComponent* C)
+{
+	if (const UFXSystemComponent* FX = Cast<UFXSystemComponent>(C))
+	{
+		return FX->IsActive();
+	}
+	if (const UDecalComponent* D = Cast<UDecalComponent>(C))
+	{
+		const AActor* Owner = D->GetOwner();
+		return D->IsVisible() && !D->bHiddenInGame && !(Owner && Owner->IsHidden());
 	}
 	return false;
 }
@@ -1736,7 +1805,7 @@ static int64 PieceTriangles(const UMeshComponent* C)
 
 static constexpr double EmissiveFloor = 0.01;  // lit: an emissive surface brighter than this (luminance; emissive 1 = 1 cd/m2)
 static constexpr int32 GraphBudget = 4096;  // expressions one material reading visits at most
-static constexpr uint8 GlowLight = 1, GlowEmissive = 2, GlowUnlit = 4;  // glow_sources
+static constexpr uint8 GlowLight = 1, GlowEmissive = 2, GlowUnlit = 4, GlowEffect = 8;  // glow_sources
 
 static bool IsGlowField(const FString& F) { return F == TEXT("lit") || F == TEXT("glow"); }
 
@@ -2444,8 +2513,9 @@ public:
 		Budget = GlowRenderBudget;
 	}
 
-	/** False when nothing can be rendered (no renderer: -nullrhi; no scene; the budget spent; a material still compiling). */
-	FGlowRendered Read(const UMeshComponent* M, UWorld* World)
+	/** False when nothing can be rendered (no renderer: -nullrhi; no scene; the budget spent; a material still compiling).
+	 *  M is a mesh or a particle system component. */
+	FGlowRendered Read(const UPrimitiveComponent* M, UWorld* World)
 	{
 		if (const FGlowRendered* Seen = Cache.Find(FObjectKey(M)))
 		{
@@ -2464,7 +2534,7 @@ public:
 private:
 	/** Its materials' shaders are there to draw with: one still compiling is finished first (an uncooked play compiles
 	 *  them as they are first drawn; till then the renderer draws a default material in their place). */
-	static bool Ready(const UMeshComponent* M, const UWorld* World)
+	static bool Ready(const UPrimitiveComponent* M, const UWorld* World)
 	{
 		TArray<UMaterialInterface*> Used;
 		M->GetUsedMaterials(Used);
@@ -2543,7 +2613,7 @@ private:
 		}
 	}
 
-	FGlowRendered Render(const UMeshComponent* M, UWorld* World)
+	FGlowRendered Render(const UPrimitiveComponent* M, UWorld* World)
 	{
 		FGlowRendered R;
 		Setup();
@@ -2558,7 +2628,7 @@ private:
 		C->RegisterComponentWithWorld(World);
 		DarkFlags(C->ShowFlags);
 		C->ShowOnlyComponents.Reset();
-		C->ShowOnlyComponents.Add(const_cast<UMeshComponent*>(M));
+		C->ShowOnlyComponents.Add(const_cast<UPrimitiveComponent*>(M));
 		C->OrthoWidth = (float)Width;
 		double Seen = 0.0;  // the box's area the views see (m2)
 		for (int32 v = 0; v < 4; ++v)
@@ -2731,7 +2801,68 @@ static bool AddMesh(FGlowReading& R, const UMeshComponent* M, UWorld* World, FGl
 	return true;
 }
 
-/** An actor's sources: its own registered light components and the mesh components changed compares (ChangeParts). */
+/** A particle system component (Niagara, Cascade: any FX system component) as a source: dark unless it is active and
+ *  drawn (visible, not hidden in game, its owner not hidden); then rendered alone as a mesh is (FGlowRender: its
+ *  sprites, ribbons, beams and meshes as they are drawn at that sample), lit by its brightest pixel and glow by the
+ *  same formula over its local bounds. Without a renderer, the bound its materials' emissive graphs give, as a mesh's
+ *  bound reads. False when nothing could be read. */
+static bool AddEffect(FGlowReading& R, const UFXSystemComponent* FX, UWorld* World, FGlowRender* Render)
+{
+	const AActor* Owner = FX->GetOwner();
+	const bool bDrawn = FX->IsRegistered() && FX->IsVisible() && !FX->bHiddenInGame && !(Owner && Owner->IsHidden());
+	if (!bDrawn || !FX->IsActive())
+	{
+		R.bRead = true;
+		return true;
+	}
+	const FVector Size = FX->CalcBounds(FTransform::Identity).BoxExtent * 2.0 * FX->GetComponentTransform().GetScale3D().GetAbs();
+	const double Area = 2.0 * (Size.X * Size.Y + Size.Y * Size.Z + Size.Z * Size.X) / 10000.0;
+	if (Render)
+	{
+		const FGlowRendered Seen = Render->Read(FX, World);
+		if (Seen.bRead)
+		{
+			R.bRead = true;
+			R.Reads |= ReadRender;
+			if (Seen.Peak > EmissiveFloor)
+			{
+				R.bLit = true;
+				R.Glow += Seen.Mean * Area / 4.0;
+				R.Kinds |= GlowEffect;
+			}
+			return true;
+		}
+	}
+	TArray<UMaterialInterface*> Used;
+	FX->GetUsedMaterials(Used);
+	double Best = 0.0;
+	bool bRead = false;
+	for (const UMaterialInterface* MI : Used)
+	{
+		double L = 0.0;
+		if (MI && MaterialEmissive(MI, FX, World, L))
+		{
+			bRead = true;
+			Best = FMath::Max(Best, L);
+		}
+	}
+	if (!bRead)
+	{
+		return false;
+	}
+	R.bRead = true;
+	R.Reads |= ReadBound;
+	if (Best > EmissiveFloor)
+	{
+		R.bLit = true;
+		R.Glow += Best * Area / 4.0;
+		R.Kinds |= GlowEffect;
+	}
+	return true;
+}
+
+/** An actor's sources: its own registered light components, the mesh components changed compares (ChangeParts) and
+ *  its particle system components. */
 static FGlowReading ActorGlow(const AActor* A, UWorld* World, FGlowRender* Render)
 {
 	FGlowReading R;
@@ -2751,6 +2882,14 @@ static FGlowReading ActorGlow(const AActor* A, UWorld* World, FGlowRender* Rende
 	{
 		bUnread |= !AddMesh(R, M, World, Render);
 	}
+	TInlineComponentArray<UFXSystemComponent*> Effects(A);
+	for (const UFXSystemComponent* FX : Effects)
+	{
+		if (FX && FX->IsRegistered() && !FX->IsEditorOnly())
+		{
+			bUnread |= !AddEffect(R, FX, World, Render);
+		}
+	}
 	R.bRead = R.bLit || !bUnread;
 	return R;
 }
@@ -2758,8 +2897,10 @@ static FGlowReading ActorGlow(const AActor* A, UWorld* World, FGlowRender* Rende
 /** has: A carries a component that matches every key the select's `has` gives: `class` (the component's class or a
  *  parent, as a components select names it), `visible` (drawn, as the components `visible` field reads it), `lit` (it
  *  gives off light, as the components `lit` field reads it: a light that lights the scene, or a drawn mesh whose
- *  material is emissive or unlit and bright, from its graph or else as rendered) and `near` (the component's own place
- *  within `radius` cm of the point). Its own registered components, editor-only ones left out. */
+ *  material is emissive or unlit and bright, from its graph or else as rendered; a particle system that is active and
+ *  draws light), `near` (the component's own place within `radius` cm of the point, and its height band), `simulating`
+ *  (a primitive simulating physics) and `movable` (Movable mobility). Its own registered components, editor-only ones
+ *  left out. */
 static bool CarriesComponent(const AActor* A, const FHasSel& Has, UWorld* World, const FVector& NearP)
 {
 	TInlineComponentArray<UActorComponent*> Components(A);
@@ -2770,11 +2911,21 @@ static bool CarriesComponent(const AActor* A, const FHasSel& Has, UWorld* World,
 			continue;
 		}
 		const USceneComponent* SC = Cast<USceneComponent>(C);
-		if (Has.NearPoint.IsValid() && (!SC || FVector::Dist(SC->GetComponentLocation(), NearP) > Has.Radius))
+		if (Has.Near.IsSet() && (!SC || !Has.Near.Holds(NearP, SC->GetComponentLocation())))
 		{
 			continue;
 		}
 		if (Has.bVisible && (!SC || !SC->IsVisible() || SC->bHiddenInGame || A->IsHidden()))
+		{
+			continue;
+		}
+		// simulating: a primitive whose physics body simulates (as the simulating field reads it), so it can be pushed
+		if (Has.bSimulating && !Simulating(Cast<UPrimitiveComponent>(C)))
+		{
+			continue;
+		}
+		// movable: a scene component of Movable mobility
+		if (Has.bMovable && (!SC || SC->Mobility != EComponentMobility::Movable))
 		{
 			continue;
 		}
@@ -2788,6 +2939,10 @@ static bool CarriesComponent(const AActor* A, const FHasSel& Has, UWorld* World,
 			else if (const UMeshComponent* Mesh = Cast<UMeshComponent>(C))
 			{
 				AddMesh(Glow, Mesh, World, SelectRender);
+			}
+			else if (const UFXSystemComponent* FX = Cast<UFXSystemComponent>(C))
+			{
+				AddEffect(Glow, FX, World, SelectRender);
 			}
 			if (!Glow.bLit)
 			{
@@ -2822,6 +2977,7 @@ static FString GlowSources(const FGlowReading& R)
 	if (R.Kinds & GlowLight) Kinds.Add(TEXT("light"));
 	if (R.Kinds & GlowEmissive) Kinds.Add(TEXT("emissive"));
 	if (R.Kinds & GlowUnlit) Kinds.Add(TEXT("unlit"));
+	if (R.Kinds & GlowEffect) Kinds.Add(TEXT("effect"));
 	return FString::Join(Kinds, TEXT(","));
 }
 
@@ -5168,6 +5324,368 @@ static void UiOcr(const TArray<FColor>& Frame, int32 W, int32 H, const double Re
 		}
 	}
 }
+// ---------------------------------------------------------------- ui: what a widget paints itself
+
+/** The widget types the Slate walk reads as elements (UiSlateElement): what they paint is theirs, so the paint reading
+ *  leaves it to them. */
+static bool WalkReads(const FName& Type)
+{
+	static const TSet<FName> Read = {TEXT("STextBlock"), TEXT("SRichTextBlock"), TEXT("SEditableText"), TEXT("SMultiLineEditableText"),
+		TEXT("SImage"), TEXT("SBorder"), TEXT("SButton"), TEXT("SProgressBar"), TEXT("SColorBlock")};
+	return Read.Contains(Type);
+}
+
+/** A draw element's rectangle in viewport fractions: the local box [Min, Max] through the element's render transform
+ *  (window space), against the game viewport's paint rect; a line's box widened to a pixel. False when it lies off
+ *  the viewport. */
+static bool PaintRect(const FSlateDrawElement& El, const FVector2f& Min, const FVector2f& Max, const FVector2D& ViewPos, const FVector2D& ViewSize, FUiElement& E)
+{
+	if (ViewSize.X <= 0.0 || ViewSize.Y <= 0.0)
+	{
+		return false;
+	}
+	const FSlateRenderTransform& X = El.GetRenderTransform();
+	FBox2D Box(ForceInit);
+	for (const FVector2f& Corner : {Min, FVector2f(Max.X, Min.Y), FVector2f(Min.X, Max.Y), Max})
+	{
+		const FVector2f P = X.TransformPoint(Corner);
+		Box += FVector2D(P.X, P.Y);
+	}
+	const FVector2D Size(FMath::Max(Box.Max.X - Box.Min.X, 1.0), FMath::Max(Box.Max.Y - Box.Min.Y, 1.0));
+	E.X = (Box.Min.X - ViewPos.X) / ViewSize.X;
+	E.Y = (Box.Min.Y - ViewPos.Y) / ViewSize.Y;
+	E.W = Size.X / ViewSize.X;
+	E.H = Size.Y / ViewSize.Y;
+	E.bHasRect = true;
+	return E.X + E.W > 0.0 && E.X < 1.0 && E.Y + E.H > 0.0 && E.Y < 1.0;
+}
+
+/** A texture a brush paints with that is a picture, not a solid fill (Slate fills with a small white square). */
+static bool PaintsPicture(const FSlateBoxElement& Box)
+{
+	const FSlateShaderResourceProxy* Proxy = Box.GetResourceProxy();
+	return Proxy && (Proxy->ActualSize.X > 16 || Proxy->ActualSize.Y > 16);
+}
+
+/** One painted draw element as a ui element (source "paint", named by the widget type that painted it): a string
+ *  (text), a box or border (box, or image with a picture texture), a gradient (box), a line or spline (line). False for
+ *  anything else (a viewport, custom drawing, shaped text, an element at alpha 0 or off the viewport). */
+static bool PaintElement(const FSlateWindowElementList& List, const FPaintRecord& R, const FVector2D& ViewPos, const FVector2D& ViewSize, FUiElement& E)
+{
+	const FSlateDrawElementMap& Map = List.GetUncachedDrawElements();
+	E.Source = TEXT("paint");
+	E.Name = R.Widget.ToString();
+	E.Class = E.Name;
+	auto Boxed = [&](const FSlateBoxElement& Box)
+	{
+		if (Box.GetBrushDrawType() == ESlateBrushDrawType::NoDrawType || Box.GetTint().A <= UiAlphaFloor)
+		{
+			return false;
+		}
+		E.Kind = PaintsPicture(Box) ? TEXT("image") : TEXT("box");
+		return PaintRect(Box, FVector2f::ZeroVector, Box.GetLocalSize(), ViewPos, ViewSize, E);
+	};
+	switch ((EElementType)R.Type)
+	{
+	case EElementType::ET_Text:
+	{
+		const auto& All = Map.Get<(uint8)EElementType::ET_Text>();
+		if (!All.IsValidIndex(R.Index))
+		{
+			return false;
+		}
+		const FSlateTextElement& T = All[R.Index];
+		E.Kind = TEXT("text");
+		E.Text = T.GetText();
+		if (E.Text.TrimStartAndEnd().IsEmpty() || T.GetTint().A <= UiAlphaFloor)
+		{
+			return false;
+		}
+		// the string's own extent from the font (the element holds the area it was given), within that area
+		FVector2f Max = T.GetLocalSize();
+		if (FSlateApplication::IsInitialized() && FSlateApplication::Get().GetRenderer())
+		{
+			const FVector2f Measured = FSlateApplication::Get().GetRenderer()->GetFontMeasureService()->Measure(FStringView(E.Text), T.GetFontInfo(), 1.0f);
+			Max = FVector2f(Max.X > 0.f ? FMath::Min(Max.X, Measured.X) : Measured.X, Max.Y > 0.f ? FMath::Min(Max.Y, Measured.Y) : Measured.Y);
+		}
+		return PaintRect(T, FVector2f::ZeroVector, Max, ViewPos, ViewSize, E);
+	}
+	case EElementType::ET_Box:
+	{
+		const auto& All = Map.Get<(uint8)EElementType::ET_Box>();
+		return All.IsValidIndex(R.Index) && Boxed(All[R.Index]);
+	}
+	case EElementType::ET_Border:
+	{
+		const auto& All = Map.Get<(uint8)EElementType::ET_Border>();
+		return All.IsValidIndex(R.Index) && Boxed(All[R.Index]);
+	}
+	case EElementType::ET_RoundedBox:
+	{
+		const auto& All = Map.Get<(uint8)EElementType::ET_RoundedBox>();
+		return All.IsValidIndex(R.Index) && Boxed(All[R.Index]);
+	}
+	case EElementType::ET_Gradient:
+	{
+		const auto& All = Map.Get<(uint8)EElementType::ET_Gradient>();
+		if (!All.IsValidIndex(R.Index))
+		{
+			return false;
+		}
+		E.Kind = TEXT("box");
+		return PaintRect(All[R.Index], FVector2f::ZeroVector, All[R.Index].GetLocalSize(), ViewPos, ViewSize, E);
+	}
+	case EElementType::ET_Line:
+	{
+		const auto& All = Map.Get<(uint8)EElementType::ET_Line>();
+		if (!All.IsValidIndex(R.Index) || All[R.Index].GetPoints().Num() < 2 || All[R.Index].GetTint().A <= UiAlphaFloor)
+		{
+			return false;
+		}
+		const FSlateLineElement& L = All[R.Index];
+		FVector2f Min(TNumericLimits<float>::Max()), Max(TNumericLimits<float>::Lowest());
+		for (const FVector2f& P : L.GetPoints())
+		{
+			Min = FVector2f(FMath::Min(Min.X, P.X), FMath::Min(Min.Y, P.Y));
+			Max = FVector2f(FMath::Max(Max.X, P.X), FMath::Max(Max.Y, P.Y));
+		}
+		E.Kind = TEXT("line");
+		return PaintRect(L, Min, Max, ViewPos, ViewSize, E);
+	}
+	case EElementType::ET_Spline:
+	{
+		const auto& All = Map.Get<(uint8)EElementType::ET_Spline>();
+		if (!All.IsValidIndex(R.Index))
+		{
+			return false;
+		}
+		E.Kind = TEXT("line");
+		return PaintRect(All[R.Index], FVector2f::ZeroVector, All[R.Index].GetLocalSize(), ViewPos, ViewSize, E);
+	}
+	default:
+		return false;
+	}
+}
+
+// ---------------------------------------------------------------- drawn: what is drawn in a place, rendered
+
+static constexpr int32 DrawnNearSize = 64;  // pixels square, each of the four views of a place near a point
+static constexpr int32 DrawnLineSize = 128;  // pixels square, each of the two views of a line
+static constexpr int32 DrawnLineBins = 128;  // the line's length read in at most this many steps (length), none finer than a pixel
+static constexpr double DrawnBackground = 1.0e6;  // cm: a pixel this deep or deeper has nothing opaque drawn
+static constexpr double DrawnEnclosing = 20.0;  // a primitive around the whole place and this many times its size is left out
+static constexpr double DrawnStep = 1.0 / 255.0;  // motion: a pixel changed when its colour (c / (1 + c)) moved more
+static constexpr double DrawnFaint = 1.0e-4;  // a translucent pixel with nothing opaque behind it counts above this luminance
+static constexpr int32 DrawnPrimitiveCap = 1024;  // primitives one place renders at most
+
+/** Show flags off in a drawn render: what is not the place's own drawing lit directly: global illumination,
+ *  reflections, ambient occlusion, shadows, fog, the atmosphere and clouds, and what blurs, rescales or accumulates a
+ *  frame over time. Direct lights, the sky light, emissive, unlit and translucent shading stay. */
+static const TCHAR* const DrawnOffFlags[] = {
+	TEXT("GlobalIllumination"), TEXT("LumenGlobalIllumination"), TEXT("LumenReflections"), TEXT("ReflectionEnvironment"),
+	TEXT("ScreenSpaceReflections"), TEXT("AmbientOcclusion"), TEXT("ScreenSpaceAO"), TEXT("DistanceFieldAO"), TEXT("DynamicShadows"),
+	TEXT("ContactShadows"), TEXT("CapsuleShadows"), TEXT("LightShafts"), TEXT("Atmosphere"), TEXT("Fog"), TEXT("VolumetricFog"),
+	TEXT("Cloud"), TEXT("TemporalAA"), TEXT("AntiAliasing"), TEXT("MotionBlur"), TEXT("Bloom"), TEXT("EyeAdaptation"),
+	TEXT("LocalExposure"), TEXT("DepthOfField")};
+
+/** One orthographic view of a place: where the camera is, which way it looks, how wide it sees (cm, square). */
+struct FDrawnView
+{
+	FVector Location = FVector::ZeroVector;
+	FRotator Rotation = FRotator::ZeroRotator;
+	double Width = 0.0;
+};
+
+/** Its materials' shaders are there to draw with: one still compiling is finished first (as FGlowRender's). */
+static bool DrawnReady(const UPrimitiveComponent* P, const UWorld* World)
+{
+	TArray<UMaterialInterface*> Used;
+	P->GetUsedMaterials(Used);
+	for (UMaterialInterface* MI : Used)
+	{
+		if (!MI || !MI->IsCompiling())
+		{
+			continue;
+		}
+		if (FMaterialResource* Res = World->Scene ? MI->GetMaterialResource(World->Scene->GetShaderPlatform()) : nullptr)
+		{
+			Res->FinishCompilation();
+		}
+		if (MI->IsCompiling())
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+/** Renders a set of primitives alone (a scene capture showing only them) from up to four orthographic views and reads
+ *  the pixels back as linear colour: lit by direct lights and the sky light, without shadows, global illumination,
+ *  reflections, fog or anything that accumulates over frames, at exposure 1. One per query set; its capture and render
+ *  targets are transient objects registered with the world only while it renders. */
+class FDrawnRender
+{
+public:
+	bool Render(UWorld* World, const TArray<UPrimitiveComponent*>& Show, const TArray<FDrawnView>& Views, int32 Size, ESceneCaptureSource Source,
+		TArray<TArray<FLinearColor>>& Out)
+	{
+		Out.Reset();
+		if (!World || !World->Scene || !FApp::CanEverRender() || Views.Num() == 0 || Views.Num() > 4)
+		{
+			return false;
+		}
+		for (const UPrimitiveComponent* P : Show)
+		{
+			DrawnReady(P, World);
+		}
+		Setup();
+		USceneCaptureComponent2D* C = Capture.Get();
+		C->CaptureSource = Source;
+		C->RegisterComponentWithWorld(World);
+		for (const TCHAR* Name : DrawnOffFlags)
+		{
+			const int32 Index = FEngineShowFlags::FindIndexByName(Name);
+			if (Index != INDEX_NONE)
+			{
+				C->ShowFlags.SetSingleFlag(Index, false);
+			}
+		}
+		C->ShowOnlyComponents.Reset();
+		for (UPrimitiveComponent* P : Show)
+		{
+			C->ShowOnlyComponents.Add(P);
+		}
+		for (int32 v = 0; v < Views.Num(); ++v)
+		{
+			C->OrthoWidth = (float)Views[v].Width;
+			C->SetWorldLocationAndRotation(Views[v].Location, Views[v].Rotation);
+			C->TextureTarget = Target(Size, v);
+			C->CaptureScene();
+		}
+		bool bRead = true;
+		for (int32 v = 0; v < Views.Num() && bRead; ++v)
+		{
+			FTextureRenderTargetResource* Res = Target(Size, v)->GameThread_GetRenderTargetResource();
+			TArray<FLinearColor>& Pixels = Out.AddDefaulted_GetRef();
+			bRead = Res && Res->ReadLinearColorPixels(Pixels) && Pixels.Num() >= Size * Size;
+		}
+		C->ShowOnlyComponents.Reset();
+		C->TextureTarget = nullptr;
+		C->UnregisterComponent();
+		return bRead;
+	}
+
+private:
+	void Setup()
+	{
+		if (Capture.IsValid())
+		{
+			return;
+		}
+		USceneCaptureComponent2D* C = NewObject<USceneCaptureComponent2D>(GetTransientPackage(), NAME_None, RF_Transient);
+		C->bCaptureEveryFrame = false;
+		C->bCaptureOnMovement = false;
+		C->bAlwaysPersistRenderingState = false;
+		C->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
+		C->ProjectionType = ECameraProjectionMode::Orthographic;
+		C->bAutoCalculateOrthoPlanes = false;  // the view starts at the camera, so a pixel's depth is its distance from it
+		C->PostProcessBlendWeight = 1.f;
+		C->PostProcessSettings.bOverride_AutoExposureMethod = true;
+		C->PostProcessSettings.AutoExposureMethod = AEM_Manual;
+		C->PostProcessSettings.bOverride_AutoExposureBias = true;
+		C->PostProcessSettings.AutoExposureBias = 0.f;
+		C->PostProcessSettings.bOverride_AutoExposureApplyPhysicalCameraExposure = true;
+		C->PostProcessSettings.AutoExposureApplyPhysicalCameraExposure = false;
+		TArray<FEngineShowFlagsSetting> Settings;
+		for (const TCHAR* Name : DrawnOffFlags)
+		{
+			FEngineShowFlagsSetting Setting;
+			Setting.ShowFlagName = Name;
+			Setting.Enabled = false;
+			Settings.Add(Setting);
+		}
+		C->SetShowFlagSettings(Settings);
+		Capture.Reset(C);
+	}
+
+	UTextureRenderTarget2D* Target(int32 Size, int32 Index)
+	{
+		TStrongObjectPtr<UTextureRenderTarget2D>& T = Targets.FindOrAdd(Size * 8 + Index);
+		if (!T.IsValid())
+		{
+			UTextureRenderTarget2D* RT = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), NAME_None, RF_Transient);
+			RT->RenderTargetFormat = RTF_RGBA32f;
+			RT->ClearColor = FLinearColor::Black;
+			RT->bAutoGenerateMips = false;
+			RT->InitAutoFormat(Size, Size);
+			RT->UpdateResourceImmediate(true);
+			T.Reset(RT);
+		}
+		return T.Get();
+	}
+
+	TStrongObjectPtr<USceneCaptureComponent2D> Capture;
+	TMap<int32, TStrongObjectPtr<UTextureRenderTarget2D>> Targets;
+};
+
+/** The primitives drawn in game (visible, not hidden in game, the owner not hidden, with something to render) whose
+ *  world bounds Touches says reach the place, but for one whose bounds enclose the whole place and are many times its
+ *  size (a sky dome, a room seen from inside: only its far side would show). */
+static void DrawnPrimitives(UWorld* World, const FBox& Place, TFunctionRef<bool(const FBox&)> Touches, TArray<UPrimitiveComponent*>& Out)
+{
+	const double PlaceSize = FMath::Max(Place.GetSize().GetMax(), 1.0);
+	for (TObjectIterator<UPrimitiveComponent> It; It; ++It)
+	{
+		UPrimitiveComponent* P = *It;
+		if (!IsValid(P) || P->HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject) || !P->IsRegistered() || P->GetWorld() != World ||
+			P->IsEditorOnly() || !P->SceneProxy)
+		{
+			continue;
+		}
+		const AActor* Owner = P->GetOwner();
+		if (!P->IsVisible() || P->bHiddenInGame || (Owner && Owner->IsHidden()))
+		{
+			continue;
+		}
+		const FBox B = P->Bounds.GetBox();
+		if (!Touches(B) || (B.IsInside(Place) && B.GetSize().GetMin() >= DrawnEnclosing * PlaceSize))
+		{
+			continue;
+		}
+		Out.Add(P);
+		if (Out.Num() >= DrawnPrimitiveCap)
+		{
+			break;
+		}
+	}
+}
+
+/** A view's camera axes (forward, right, up) and the world point of pixel (x, y) at depth D (cm) from it. */
+struct FDrawnFrame
+{
+	FVector Origin, Forward, Right, Up;
+	double Width = 0.0;
+	int32 Size = 1;
+
+	FDrawnFrame(const FDrawnView& V, int32 InSize)
+		: Origin(V.Location), Width(V.Width), Size(InSize)
+	{
+		const FRotationMatrix M(V.Rotation);
+		Forward = M.GetUnitAxis(EAxis::X);
+		Right = M.GetUnitAxis(EAxis::Y);
+		Up = M.GetUnitAxis(EAxis::Z);
+	}
+	/** The pixel's point on the camera plane. */
+	FVector Plane(int32 X, int32 Y) const
+	{
+		const double U = ((X + 0.5) / Size - 0.5) * Width;
+		const double V = (0.5 - (Y + 0.5) / Size) * Width;
+		return Origin + Right * U + Up * V;
+	}
+};
+
+static double Compressed(double C) { return C > 0.0 ? C / (1.0 + C) : 0.0; }
+
 }  // namespace TaskProbe
 
 using namespace TaskProbe;
@@ -5295,6 +5813,16 @@ FTaskProbeQueries::~FTaskProbeQueries()
 	{
 		AHUD::OnHUDPostRender.Remove(HudHandle);
 	}
+#if WITH_SLATE_DEBUGGING
+	if (PaintHandles[0].IsValid())
+	{
+		FSlateDebugging::BeginWindow.Remove(PaintHandles[0]);
+		FSlateDebugging::EndWindow.Remove(PaintHandles[1]);
+		FSlateDebugging::BeginWidgetPaint.Remove(PaintHandles[2]);
+		FSlateDebugging::EndWidgetPaint.Remove(PaintHandles[3]);
+		FSlateDebugging::ElementTypeAdded.Remove(PaintHandles[4]);
+	}
+#endif
 	Unhook();
 	ViewExtension.Reset();
 }
@@ -5328,7 +5856,7 @@ void FTaskProbeQueries::Load(const FString& Path)
 		return;
 	}
 	static const TSet<FString> Kinds = {TEXT("actors"), TEXT("widgets"), TEXT("light"), TEXT("grading"), TEXT("spawns"), TEXT("camera"), TEXT("components"),
-		TEXT("pieces"), TEXT("screen"), TEXT("audio"), TEXT("ground"), TEXT("ui")};
+		TEXT("pieces"), TEXT("screen"), TEXT("audio"), TEXT("ground"), TEXT("ui"), TEXT("drawn")};
 	TSet<FString> Ids;
 	for (const TSharedPtr<FJsonValue>& Item : *List)
 	{
@@ -5418,6 +5946,17 @@ void FTaskProbeQueries::Load(const FString& Path)
 			{
 				HudHandle = AHUD::OnHUDPostRender.AddRaw(this, &FTaskProbeQueries::OnHudPostRender);
 			}
+#if WITH_SLATE_DEBUGGING
+			// what widgets paint themselves: the game window's draw elements as each paint makes them
+			if (!PaintHandles[0].IsValid())
+			{
+				PaintHandles[0] = FSlateDebugging::BeginWindow.AddRaw(this, &FTaskProbeQueries::OnPaintBeginWindow);
+				PaintHandles[1] = FSlateDebugging::EndWindow.AddRaw(this, &FTaskProbeQueries::OnPaintEndWindow);
+				PaintHandles[2] = FSlateDebugging::BeginWidgetPaint.AddRaw(this, &FTaskProbeQueries::OnPaintBeginWidget);
+				PaintHandles[3] = FSlateDebugging::EndWidgetPaint.AddRaw(this, &FTaskProbeQueries::OnPaintEndWidget);
+				PaintHandles[4] = FSlateDebugging::ElementTypeAdded.AddRaw(this, &FTaskProbeQueries::OnPaintElement);
+			}
+#endif
 		}
 		if (Q.Kind == TEXT("ground"))
 		{
@@ -5591,6 +6130,10 @@ void FTaskProbeQueries::Sample(UWorld* World, APlayerController* PC, double T)
 			Q.Pending.Add(S);
 			bWantUi = true;
 		}
+		else if (Q.Kind == TEXT("drawn"))
+		{
+			SampleDrawn(Q, World, PC, *S);
+		}
 		else if (Q.Kind == TEXT("spawns"))
 		{
 			const TSharedRef<FJsonObject> V = MakeShared<FJsonObject>();
@@ -5604,6 +6147,30 @@ void FTaskProbeQueries::Sample(UWorld* World, APlayerController* PC, double T)
 		}
 		Q.Samples.Add(MakeShared<FJsonValueObject>(S));
 	}
+	// spin: the components read this sample are followed frame by frame until the next one, and only those
+	for (auto It = Spins.CreateIterator(); It; ++It)
+	{
+		if (!SpinRead.Contains(It.Key()))
+		{
+			It.RemoveCurrent();
+			continue;
+		}
+		It.Value().Angle = 0.0;
+		It.Value().Time = 0.0;
+	}
+	for (const FObjectKey& Key : SpinRead)
+	{
+		if (!Spins.Contains(Key))
+		{
+			if (const USceneComponent* C = Cast<USceneComponent>(Key.ResolveObjectPtr()))
+			{
+				FSpinTrack& Track = Spins.Add(Key);
+				Track.Component = C;
+				Track.Last = C->GetComponentQuat();
+			}
+		}
+	}
+	SpinRead.Reset();
 }
 
 TSharedRef<FJsonObject> FTaskProbeQueries::MeasuresJson() const
@@ -5638,7 +6205,7 @@ void FTaskProbeQueries::SampleActors(FQuery& Q, UWorld* World, APlayerController
 		const FGlowReading Glow = bGlow ? ActorGlow(A, World, GlowRender.Get()) : FGlowReading();
 		for (const FString& F : Q.Fields)
 		{
-			const TSharedPtr<FJsonValue> V = IsChangeField(F) ? ChangeField(Change, F) : IsGlowField(F) ? GlowField(Glow, F) : ActorField(A, F);
+			const TSharedPtr<FJsonValue> V = IsChangeField(F) ? ChangeField(Change, F) : IsGlowField(F) ? GlowField(Glow, F) : F == TEXT("spin") ? ActorSpin(A) : ActorField(A, F);
 			if (bFull)
 			{
 				Full.FindOrAdd(F).Add(V);
@@ -5795,13 +6362,16 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 	const TSharedPtr<FJsonObject>* SelObj = nullptr;
 	Q.Def->TryGetObjectField(TEXT("select"), SelObj);
 	const FSel Sel = ParseSel(SelObj ? *SelObj : TSharedPtr<FJsonObject>());
-	// mesh: a wildcard on a mesh component's mesh asset; visible: only components drawn (as the visible field reads them)
+	// mesh: a wildcard on a mesh component's mesh asset; visible: only components drawn (as the visible field reads them);
+	// effect: only live effects (LiveEffect: an active particle system, a drawn decal)
 	FString MeshSel;
 	bool bDrawnOnly = false;
+	bool bEffect = false;
 	if (SelObj && SelObj->IsValid())
 	{
 		(*SelObj)->TryGetStringField(TEXT("mesh"), MeshSel);
 		(*SelObj)->TryGetBoolField(TEXT("visible"), bDrawnOnly);
+		(*SelObj)->TryGetBoolField(TEXT("effect"), bEffect);
 	}
 	bool bOk = World != nullptr;
 	// owner: an actor selection the component's owner must be in
@@ -5816,7 +6386,7 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 		Owners.Append(Found);
 	}
 	FVector NearP = FVector::ZeroVector;
-	if (bOk && Sel.NearPoint.IsValid() && !ResolvePoint(Sel.NearPoint, World, PC, 1, NearP))
+	if (bOk && Sel.Near.IsSet() && !ResolvePoint(Sel.Near.Point, World, PC, 1, NearP))
 	{
 		bOk = false;
 	}
@@ -5838,7 +6408,7 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 				continue;
 			}
 			const USceneComponent* SC = Cast<USceneComponent>(C);
-			if (Sel.NearPoint.IsValid() && (!SC || FVector::Dist(SC->GetComponentLocation(), NearP) > Sel.Radius))
+			if (Sel.Near.IsSet() && (!SC || !Sel.Near.Holds(NearP, SC->GetComponentLocation())))
 			{
 				continue;
 			}
@@ -5857,6 +6427,10 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 				{
 					continue;
 				}
+			}
+			if (bEffect && !LiveEffect(C))
+			{
+				continue;
 			}
 			++Total;
 			Matched.Add(C);
@@ -5905,6 +6479,10 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 		{
 			AddMesh(Glow, Mesh, World, GlowRender.Get());
 		}
+		else if (const UFXSystemComponent* FX = bGlow ? Cast<UFXSystemComponent>(C) : nullptr)
+		{
+			AddEffect(Glow, FX, World, GlowRender.Get());
+		}
 		const TSharedRef<FJsonObject> Row = MakeShared<FJsonObject>();
 		for (const FString& F : Q.Fields)
 		{
@@ -5952,6 +6530,10 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 			else if (Prim && F == TEXT("simulating"))
 			{
 				V = Num(Simulating(Prim) ? 1.0 : 0.0);
+			}
+			else if (SC && F == TEXT("spin"))
+			{
+				V = SpinOf(SC);
 			}
 			else if (Prim && IsChangeField(F))
 			{
@@ -6031,8 +6613,8 @@ void FTaskProbeQueries::SamplePieces(FQuery& Q, UWorld* World, APlayerController
 		Owners.Append(Found);
 	}
 	FVector NearP = FVector::ZeroVector;
-	const bool bNear = Sel.NearPoint.IsValid();
-	if (bNear && !ResolvePoint(Sel.NearPoint, World, PC, 1, NearP))
+	const bool bNear = Sel.Near.IsSet();
+	if (bNear && !ResolvePoint(Sel.Near.Point, World, PC, 1, NearP))
 	{
 		Out.SetField(TEXT("value"), Null());
 		return;
@@ -6067,7 +6649,7 @@ void FTaskProbeQueries::SamplePieces(FQuery& Q, UWorld* World, APlayerController
 		int64 N = 0, NV = 0, T = 0, TV = 0;
 		auto Take = [&](const FVector& Where, bool bDrawn, int64 Tris)
 		{
-			if (bNear && FVector::Dist(Where, NearP) > Sel.Radius)
+			if (bNear && !Sel.Near.Holds(NearP, Where))
 			{
 				return;
 			}
@@ -6239,6 +6821,12 @@ void FTaskProbeQueries::FillUi()
 		Found.Append(CanvasNow);
 	}
 	CanvasNow.Reset();
+	// what widgets painted themselves in the game window's last paint (Slate paints after the viewport draws, so the
+	// paint before this frame's, laid out as the walk above reads it)
+	if (PaintFrame > 0 && PaintFrame + 2 >= GFrameCounter)
+	{
+		Found.Append(PaintNow);
+	}
 	// the frame as drawn, captured once and only when a query asks for text in a rect (UiOcr)
 	TArray<FColor> Frame;
 	int32 FrameW = 0, FrameH = 0;
@@ -6925,5 +7513,416 @@ void FTaskProbeQueries::SampleCamera(UWorld* World, APlayerController* PC, FJson
 	const bool bProjected = PC->ProjectWorldLocationToScreen(Centre, Screen, false);
 	const bool bOnScreen = bProjected && SizeX > 0 && SizeY > 0 && Screen.X >= 0 && Screen.Y >= 0 && Screen.X <= SizeX && Screen.Y <= SizeY;
 	V->SetNumberField(TEXT("pawn_on_screen"), bOnScreen ? 1 : 0);
+	Out.SetObjectField(TEXT("value"), V);
+}
+
+// ---------------------------------------------------------------- spin: how fast a component turns
+
+void FTaskProbeQueries::Frame(float DeltaTime)
+{
+	for (auto It = Spins.CreateIterator(); It; ++It)
+	{
+		FSpinTrack& T = It.Value();
+		const USceneComponent* C = T.Component.Get();
+		if (!C)
+		{
+			It.RemoveCurrent();
+			continue;
+		}
+		const FQuat Now = C->GetComponentQuat();
+		T.Angle += T.Last.AngularDistance(Now);
+		T.Last = Now;
+		T.Time += DeltaTime;
+	}
+}
+
+TSharedPtr<FJsonValue> FTaskProbeQueries::SpinOf(const USceneComponent* C)
+{
+	// deg/s: how far it turned in the world, frame by frame, since the previous sample; the first sample it is seen in
+	// has no value, unless it simulates physics: then its body's angular velocity
+	const FObjectKey Key(C);
+	SpinRead.Add(Key);
+	if (const FSpinTrack* T = Spins.Find(Key); T && T->Time > 0.0)
+	{
+		return Num(FMath::RadiansToDegrees(T->Angle) / T->Time);
+	}
+	const UPrimitiveComponent* P = Cast<UPrimitiveComponent>(C);
+	if (P && P->IsSimulatingPhysics())
+	{
+		return Num(P->GetPhysicsAngularVelocityInDegrees().Size());
+	}
+	return Null();
+}
+
+TSharedPtr<FJsonValue> FTaskProbeQueries::ActorSpin(const AActor* A)
+{
+	// the fastest of its mesh parts (as changed and extent_ take them); with none, its root component
+	TArray<UMeshComponent*> Parts;
+	ChangeParts(A, Parts);
+	if (Parts.IsEmpty())
+	{
+		const USceneComponent* Root = A->GetRootComponent();
+		return Root ? SpinOf(Root) : Null();
+	}
+	TSharedPtr<FJsonValue> Best = Null();
+	for (const UMeshComponent* M : Parts)
+	{
+		const TSharedPtr<FJsonValue> V = SpinOf(M);
+		if (V.IsValid() && V->Type == EJson::Number && (Best->Type != EJson::Number || V->AsNumber() > Best->AsNumber()))
+		{
+			Best = V;
+		}
+	}
+	return Best;
+}
+
+// ---------------------------------------------------------------- ui: what widgets paint themselves
+
+void FTaskProbeQueries::OnPaintBeginWindow(const FSlateWindowElementList& List)
+{
+	const UGameViewportClient* GVC = GEngine ? GEngine->GameViewport.Get() : nullptr;
+	const TSharedPtr<SWindow> Window = GVC ? const_cast<UGameViewportClient*>(GVC)->GetWindow() : nullptr;
+	if (!Window.IsValid() || List.GetPaintWindow() != Window.Get())
+	{
+		return;
+	}
+	PaintList = &List;
+	PaintStack.Reset();
+	PaintRecords.Reset();
+	PaintViewportAt = INDEX_NONE;
+}
+
+void FTaskProbeQueries::OnPaintBeginWidget(const SWidget* Widget, const FPaintArgs& Args, const FGeometry& Geometry, const FSlateRect& Culling,
+	const FSlateWindowElementList& List, int32 Layer)
+{
+	if (&List != PaintList)
+	{
+		return;
+	}
+	const UGameViewportClient* GVC = GEngine ? GEngine->GameViewport.Get() : nullptr;
+	const TSharedPtr<SViewport> Viewport = GVC ? GVC->GetGameViewportWidget() : nullptr;
+	if (PaintViewportAt == INDEX_NONE && Viewport.IsValid() && Widget == Viewport.Get())
+	{
+		// the game viewport's rect as painted (window space, as the draw elements are)
+		PaintViewportAt = PaintStack.Num();
+		PaintViewPos = FVector2D(Geometry.GetAbsolutePosition());
+		PaintViewSize = FVector2D(Geometry.GetAbsoluteSize());
+	}
+	PaintStack.Add(Widget);
+}
+
+void FTaskProbeQueries::OnPaintEndWidget(const SWidget* Widget, const FSlateWindowElementList& List, int32 Layer)
+{
+	if (&List != PaintList || PaintStack.IsEmpty())
+	{
+		return;
+	}
+	PaintStack.Pop();
+	if (PaintViewportAt != INDEX_NONE && PaintStack.Num() <= PaintViewportAt)
+	{
+		PaintViewportAt = INDEX_NONE;
+	}
+}
+
+void FTaskProbeQueries::OnPaintElement(const FSlateDebuggingElementTypeAddedEventArgs& Args)
+{
+	// an element painted under the game viewport (not by the viewport itself) by a widget the Slate walk doesn't read
+	if (&Args.ElementList != PaintList || PaintViewportAt == INDEX_NONE || PaintStack.Num() <= PaintViewportAt + 1 || PaintRecords.Num() >= 4096)
+	{
+		return;
+	}
+	const FName Type = PaintStack.Last()->GetType();
+	if (WalkReads(Type))
+	{
+		return;
+	}
+	FPaintRecord R;
+	R.Type = (uint8)Args.ElementType;
+	R.Index = Args.ElementIndex;
+	R.Widget = Type;
+	PaintRecords.Add(R);
+}
+
+void FTaskProbeQueries::OnPaintEndWindow(const FSlateWindowElementList& List)
+{
+	if (&List != PaintList)
+	{
+		return;
+	}
+	PaintNow.Reset();
+	for (const FPaintRecord& R : PaintRecords)
+	{
+		FUiElement E;
+		if (PaintElement(List, R, PaintViewPos, PaintViewSize, E))
+		{
+			PaintNow.Add(MoveTemp(E));
+		}
+	}
+	PaintFrame = GFrameCounter;
+	PaintRecords.Reset();
+	PaintStack.Reset();
+	PaintList = nullptr;
+}
+
+// ---------------------------------------------------------------- drawn: what is drawn in a place
+
+void FTaskProbeQueries::SampleDrawn(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out)
+{
+	Out.SetField(TEXT("value"), Null());
+	const TSharedPtr<FJsonObject>* NearObj = nullptr;
+	const TSharedPtr<FJsonObject>* LineObj = nullptr;
+	const bool bNear = Q.Def->TryGetObjectField(TEXT("near"), NearObj) && NearObj->IsValid();
+	const bool bLine = !bNear && Q.Def->TryGetObjectField(TEXT("line"), LineObj) && LineObj->IsValid();
+	if (!World || (!bNear && !bLine))
+	{
+		return;
+	}
+	if (!DrawnRender.IsValid())
+	{
+		DrawnRender = MakeUnique<FDrawnRender>();
+	}
+	const TSharedRef<FJsonObject> V = MakeShared<FJsonObject>();
+	TArray<UPrimitiveComponent*> Show;
+	if (bNear)
+	{
+		// a sphere around the point, cut to its height band; four views from the corners of a tetrahedron
+		const FNearSel Near = ParseNearObject(*NearObj);
+		FVector P;
+		if (!ResolvePoint(Near.Point, World, PC, 1, P) || Near.Radius <= 0.0)
+		{
+			return;
+		}
+		const double R = Near.Radius;
+		const double Base = Near.bZRelative ? P.Z : 0.0;
+		FBox Place(P - FVector(R), P + FVector(R));
+		if (Near.bZMin)
+		{
+			Place.Min.Z = FMath::Max(Place.Min.Z, Base + Near.ZMin);
+		}
+		if (Near.bZMax)
+		{
+			Place.Max.Z = FMath::Min(Place.Max.Z, Base + Near.ZMax);
+		}
+		if (Place.Min.Z <= Place.Max.Z)
+		{
+			DrawnPrimitives(World, Place, [&](const FBox& B)
+			{
+				return B.ComputeSquaredDistanceToPoint(P) <= R * R && B.Max.Z >= Place.Min.Z && B.Min.Z <= Place.Max.Z;
+			}, Show);
+		}
+		TArray<FDrawnView> Views;
+		for (const FVector& Corner : GlowViews)
+		{
+			const FVector Dir = Corner.GetSafeNormal();
+			FDrawnView View;
+			View.Location = P + Dir * (R + 50.0);
+			View.Rotation = FRotationMatrix::MakeFromX(-Dir).Rotator();
+			View.Width = R * 2.0 * 1.02;
+			Views.Add(View);
+		}
+		const int32 N = DrawnNearSize;
+		TArray<TArray<FLinearColor>> Lit, BaseColour;
+		const bool bBase = Q.Fields.ContainsByPredicate([](const FString& F) { return F.StartsWith(TEXT("base_")); });
+		if (!Show.IsEmpty() && !DrawnRender->Render(World, Show, Views, N, SCS_SceneColorSceneDepth, Lit))
+		{
+			return;  // nothing renders (-nullrhi)
+		}
+		if (bBase && !Show.IsEmpty() && !DrawnRender->Render(World, Show, Views, N, SCS_BaseColor, BaseColour))
+		{
+			return;
+		}
+		// each pixel: kept when what it shows is in the place (its depth puts it inside the sphere and the band), or a
+		// translucent pixel with nothing opaque behind it whose ray crosses the sphere
+		const int32 Count = Views.Num() * N * N;
+		TArray<uint8> Kept;
+		TArray<FLinearColor> Colour;
+		Kept.SetNumZeroed(Count);
+		Colour.SetNumZeroed(Count);
+		int64 KeptN = 0, OpaqueN = 0;
+		FVector BaseSum = FVector::ZeroVector;
+		for (int32 v = 0; v < Views.Num() && !Show.IsEmpty(); ++v)
+		{
+			const FDrawnFrame Cam(Views[v], N);
+			for (int32 y = 0; y < N; ++y)
+			{
+				for (int32 x = 0; x < N; ++x)
+				{
+					const int32 i = v * N * N + y * N + x;
+					const FLinearColor& C = Lit[v][y * N + x];
+					const double Depth = C.A;
+					const FVector OnPlane = Cam.Plane(x, y);
+					bool bKeep = false, bOpaque = false;
+					if (FMath::IsFinite(Depth) && Depth < DrawnBackground)
+					{
+						const FVector At = OnPlane + Cam.Forward * Depth;
+						bKeep = bOpaque = FVector::DistSquared(At, P) <= R * R && Near.InBand(P, At.Z);
+					}
+					else if (Luminance(C.R, C.G, C.B) > DrawnFaint)
+					{
+						const FVector Off = OnPlane - P;
+						bKeep = (Off - Cam.Forward * FVector::DotProduct(Off, Cam.Forward)).SizeSquared() <= R * R;
+					}
+					if (!bKeep)
+					{
+						continue;
+					}
+					Kept[i] = 1;
+					Colour[i] = FLinearColor(Compressed(C.R), Compressed(C.G), Compressed(C.B), 0.f);
+					++KeptN;
+					if (bOpaque && bBase)
+					{
+						const FLinearColor& B = BaseColour[v][y * N + x];
+						BaseSum += FVector(B.R, B.G, B.B);
+						++OpaqueN;
+					}
+				}
+			}
+		}
+		V->SetNumberField(TEXT("drawn"), KeptN > 0 ? 1.0 : 0.0);
+		V->SetNumberField(TEXT("pixels"), (double)KeptN);
+		V->SetNumberField(TEXT("primitives"), Show.Num());
+		// motion: of the pixels in the place now or at the previous sample, the share that changed
+		if (Q.bDrawnBefore && Q.DrawnKept.Num() == Count)
+		{
+			int64 Union = 0, Changed = 0;
+			for (int32 i = 0; i < Count; ++i)
+			{
+				if (!Kept[i] && !Q.DrawnKept[i])
+				{
+					continue;
+				}
+				++Union;
+				const FLinearColor& A = Colour[i];
+				const FLinearColor& B = Q.DrawnColour[i];
+				if (Kept[i] != Q.DrawnKept[i] || FMath::Abs(A.R - B.R) > DrawnStep || FMath::Abs(A.G - B.G) > DrawnStep || FMath::Abs(A.B - B.B) > DrawnStep)
+				{
+					++Changed;
+				}
+			}
+			V->SetNumberField(TEXT("motion"), Union ? (double)Changed / Union : 0.0);
+		}
+		else
+		{
+			V->SetField(TEXT("motion"), Null());
+		}
+		Q.DrawnKept = MoveTemp(Kept);
+		Q.DrawnColour = MoveTemp(Colour);
+		Q.bDrawnBefore = true;
+		// base colour: the mean of the opaque pixels in the place; base_change its distance from the first sample's
+		if (bBase && OpaqueN > 0)
+		{
+			const FVector Mean = BaseSum / (double)OpaqueN;
+			V->SetNumberField(TEXT("base_r"), Mean.X);
+			V->SetNumberField(TEXT("base_g"), Mean.Y);
+			V->SetNumberField(TEXT("base_b"), Mean.Z);
+			if (!Q.bDrawnFirstBase)
+			{
+				Q.bDrawnFirstBase = true;
+				Q.DrawnFirstBase = Mean;
+			}
+			V->SetNumberField(TEXT("base_change"), FVector::Dist(Mean, Q.DrawnFirstBase));
+		}
+		else
+		{
+			for (const TCHAR* F : {TEXT("base_r"), TEXT("base_g"), TEXT("base_b"), TEXT("base_change")})
+			{
+				V->SetField(F, Null());
+			}
+		}
+	}
+	else
+	{
+		// a line from `from` to `to`: what is drawn within `radius` of it, seen from two sides square to it
+		FVector A, B;
+		double R = 0.0;
+		const TSharedPtr<FJsonObject>* FromObj = nullptr;
+		const TSharedPtr<FJsonObject>* ToObj = nullptr;
+		(*LineObj)->TryGetNumberField(TEXT("radius"), R);
+		if (!(*LineObj)->TryGetObjectField(TEXT("from"), FromObj) || !(*LineObj)->TryGetObjectField(TEXT("to"), ToObj) || R <= 0.0 ||
+			!ResolvePoint(*FromObj, World, PC, 1, A) || !ResolvePoint(*ToObj, World, PC, 1, B))
+		{
+			return;
+		}
+		const double L = FVector::Dist(A, B);
+		if (L < 1.0)
+		{
+			return;
+		}
+		const FVector D = (B - A) / L;
+		const FBox Place = FBox(A.ComponentMin(B) - FVector(R), A.ComponentMax(B) + FVector(R));
+		DrawnPrimitives(World, Place, [&](const FBox& Box)
+		{
+			const FBox Grown = Box.ExpandBy(R);
+			return Grown.IsInside(A) || Grown.IsInside(B) || FMath::LineBoxIntersection(Grown, A, B, B - A);
+		}, Show);
+		const FVector Side = FMath::Abs(D.Z) < 0.9 ? FVector::CrossProduct(D, FVector::UpVector).GetSafeNormal() : FVector::CrossProduct(D, FVector::ForwardVector).GetSafeNormal();
+		const FVector Other = FVector::CrossProduct(D, Side).GetSafeNormal();
+		const FVector Mid = (A + B) / 2.0;
+		TArray<FDrawnView> Views;
+		for (const FVector& Look : {Side, Other})
+		{
+			FDrawnView View;
+			View.Location = Mid - Look * (R + 50.0);
+			View.Rotation = FRotationMatrix::MakeFromXZ(Look, Look == Side ? Other : Side).Rotator();
+			View.Width = L + 2.0 * R + 20.0;
+			Views.Add(View);
+		}
+		const int32 N = DrawnLineSize;
+		TArray<TArray<FLinearColor>> Lit;
+		if (!Show.IsEmpty() && !DrawnRender->Render(World, Show, Views, N, SCS_SceneColorSceneDepth, Lit))
+		{
+			return;
+		}
+		// steps along the line no finer than a pixel of the views, so a thin beam leaves no step between its pixels empty
+		const int32 Steps = FMath::Clamp(FMath::FloorToInt(L / FMath::Max(L / DrawnLineBins, Views[0].Width / N)), 1, DrawnLineBins);
+		TArray<uint8> Bins;
+		Bins.SetNumZeroed(Steps);
+		double Reach = -1.0;
+		int64 KeptN = 0;
+		for (int32 v = 0; v < Views.Num() && !Show.IsEmpty(); ++v)
+		{
+			const FDrawnFrame Cam(Views[v], N);
+			for (int32 y = 0; y < N; ++y)
+			{
+				for (int32 x = 0; x < N; ++x)
+				{
+					const FLinearColor& C = Lit[v][y * N + x];
+					const double Depth = C.A;
+					const FVector OnPlane = Cam.Plane(x, y);
+					double T = 0.0;
+					bool bKeep = false;
+					if (FMath::IsFinite(Depth) && Depth < DrawnBackground)
+					{
+						const FVector At = OnPlane + Cam.Forward * Depth;
+						T = FVector::DotProduct(At - A, D);
+						bKeep = FVector::DistSquared(At, A + D * FMath::Clamp(T, 0.0, L)) <= R * R;
+					}
+					else if (Luminance(C.R, C.G, C.B) > DrawnFaint)
+					{
+						T = FVector::DotProduct(OnPlane - A, D);
+						const FVector Off = OnPlane - (A + D * T);
+						bKeep = (Off - Cam.Forward * FVector::DotProduct(Off, Cam.Forward)).SizeSquared() <= R * R;
+					}
+					if (!bKeep || T < 0.0 || T > L)
+					{
+						continue;
+					}
+					++KeptN;
+					Reach = FMath::Max(Reach, T);
+					Bins[FMath::Clamp(FMath::FloorToInt(T / L * Steps), 0, Steps - 1)] = 1;
+				}
+			}
+		}
+		int32 Covered = 0;
+		for (const uint8 Bin : Bins)
+		{
+			Covered += Bin;
+		}
+		V->SetNumberField(TEXT("drawn"), KeptN > 0 ? 1.0 : 0.0);
+		V->SetField(TEXT("reach"), KeptN > 0 ? Num(Reach) : Null());
+		V->SetNumberField(TEXT("length"), Covered * L / Steps);
+		V->SetNumberField(TEXT("pixels"), (double)KeptN);
+		V->SetNumberField(TEXT("primitives"), Show.Num());
+	}
 	Out.SetObjectField(TEXT("value"), V);
 }

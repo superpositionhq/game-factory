@@ -16,9 +16,9 @@ TOOLS = os.path.dirname(HERE)
 REFS = ("tasks", "origin/tasks")  # where a game's tasks live (validate-game.py TASKS_REFS)
 STILL_WORKS = "still_works"  # the milestone of what a task must leave working (write-tasks section 5)
 RUNTIME = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns", "log",
-           "audio", "ground", "ui")
+           "audio", "ground", "ui", "drawn")
 SAMPLED = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns",
-           "audio", "ground", "ui")
+           "audio", "ground", "ui", "drawn")
 WHOLE_SCREEN = [0.0, 0.0, 1.0, 1.0]
 ANGLE_PREFIXES = ("rel_yaw:", "world_yaw:", "world_pitch:", "world_roll:")
 ZERO = [0.0, 0.0, 0.0]
@@ -101,6 +101,23 @@ def point(p):
     return {"actor": select(p["actor"]), "offset": _floats(p.get("offset", ZERO))}
 
 
+def near(n):
+    """A `near` with its point filled in, its radius and its height band (`z_min`, `z_max` as numbers, `z_relative`)
+    only where set, as written."""
+    out = {"point": point(n["point"]), "radius": float(n["radius"])}
+    for k in ("z_min", "z_max"):
+        if n.get(k) is not None:
+            out[k] = float(n[k])
+    if n.get("z_relative") is not None:
+        out["z_relative"] = n["z_relative"]
+    return out
+
+
+def line(n):
+    """A drawn measure's `line`: its two points filled in and its radius."""
+    return {"from": point(n["from"]), "to": point(n["to"]), "radius": float(n["radius"])}
+
+
 def select(s):
     """An actor, widget or component selection as written, without unset keys, its `near`, `owner` and `has` filled
     in."""
@@ -109,7 +126,7 @@ def select(s):
         if v is None:
             continue
         if k == "near":
-            out[k] = {"point": point(v["point"]), "radius": float(v["radius"])}
+            out[k] = near(v)
         elif k in ("owner", "has"):
             out[k] = select(v)
         else:
@@ -122,7 +139,7 @@ def measure(m):
     ("count") for selections, `field` ("count") for the log, `to` and `point` with their defaults, a pieces measure's
     `select` ({} when unset), a screen measure's `rect` (the whole frame when unset), an audio measure's `select` ({}
     when unset), a ground measure's `xy`, `box`, `select` (None when unset) and `grid` (8), and a ui measure's `select`
-    ({} when unset), `of` ("count") and `match` (None)."""
+    ({} when unset), `of` ("count") and `match` (None), and a drawn measure's `near` and `line` (None when unset)."""
     out = dict(m)
     kind = out["probe"]
     if kind in SAMPLED:
@@ -151,6 +168,9 @@ def measure(m):
             out["box"] = _floats(out["box"]) if out.get("box") is not None else None
             out["grid"] = int(out.get("grid", 8))
             out["select"] = select(out["select"]) if out.get("select") is not None else None
+        if kind == "drawn":
+            out["near"] = near(out["near"]) if out.get("near") is not None else None
+            out["line"] = line(out["line"]) if out.get("line") is not None else None
     elif kind == "asset":
         for k in ("asset", "map", "select", "match", "to_angle", "to_axis"):
             out.setdefault(k, None)
@@ -164,8 +184,8 @@ def measure(m):
 
 def inputs(rows):
     """A task play's inputs as the plugin reads them: keys, axes, clicks, cursor moves, teleports (`yaw` 0 when
-    unset: a teleport always turns the pawn) and teleports next to an actor (`distance` 200 and `offset` 0 when unset,
-    `face` only when set)."""
+    unset: a teleport always turns the pawn), teleports next to an actor (`distance` 200 and `offset` 0 when unset,
+    `face` only when set), either with `hold` only when set, and waits in real time."""
     out = []
     for r in rows or []:
         row = {"t": float(r["t"])}
@@ -176,6 +196,8 @@ def inputs(rows):
                 row["face"] = point(r["face"])
         elif "teleport" in r:
             row.update(teleport=_floats(r["teleport"]), yaw=float(r.get("yaw", 0.0)))
+        elif "wait" in r:
+            row.update(wait=float(r["wait"]))
         elif "cursor" in r:
             row.update(cursor=_floats(r["cursor"]))
         elif "widget" in r:
@@ -184,8 +206,15 @@ def inputs(rows):
             row.update(key=r["key"], axis=float(r["axis"]))
         else:
             row.update(key=r["key"], press=bool(r["press"]))
+        if r.get("hold") is not None and ("teleport" in r or "teleport_to" in r):
+            row["hold"] = float(r["hold"])
         out.append(row)
     return out
+
+
+def waited(p):
+    """The real seconds a play's waits add to it (0 for the checker's own plays)."""
+    return sum(i["wait"] for i in p["inputs"] if "wait" in i) if isinstance(p, dict) else 0.0
 
 
 def play(p):

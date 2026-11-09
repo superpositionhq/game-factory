@@ -246,7 +246,9 @@ A probe names one measurement and its threshold:
   pawn_on_screen), `actors` (select by class, tag, name, near; count, transform, extent, hidden, collision, speed,
   `prop:<Component>.<Property>` by reflection), `widgets` (visible, text, percent, has_brush), `ui` (what the HUD
   shows, whatever draws it: text, count, place of UMG, Slate and canvas elements alike;
-  signature with agg changes for a readout that updates), `light` (illuminance,
+  signature with agg changes for a readout that updates; number and clock for which way a readout or a timer
+  moved, with agg rises/falls), `drawn` (what is drawn near a point or along a line, rendered: drawn, motion, base
+  colour, a beam's reach), `light` (illuminance,
   exposure, brightness at a point), `grading` (the colour pipeline: cast, warmth, tint, saturation, contrast, grey),
   `spawns`, `log`, `asset` (editor: material_default, material:<prop>, mesh_collision, asset properties).
 - `expect`: a literal (`{"op": ">=", "value": 1}`) for facts (counts, booleans, "not the default material"), or
@@ -346,6 +348,18 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 | a readout drawn with canvas lines read as absent to `ui` | `ui` `line` elements (count or place in a `rect`, relative to the start), or `text` where the digits are drawn seven-segment style |
 | a readout drawn with slanted lines or stroked letters read no text | `ui` `text` with `match` on a `select` of `"kind": "text"` with a `rect` around the readout (read from the frame as drawn); else its `line` elements in the `rect` |
 | a task needs a readout to keep updating, and it may be drawn as text or as lines | `ui` `signature` with `"agg": "changes"` on a `select` with a `rect` around the readout (calibrated or relative to the start) |
+| a HUD widget that paints its own text or shapes read as absent to `ui` | `ui` as it is: what a widget paints itself is read from the window's draw elements |
+| an effect (particles, a panned material, a spinning mesh) had no reading that it shows and moves | `drawn` `near` a point: `drawn`, and `motion` calibrated or relative to the start |
+| a spinning part had no speed, or needed its component's name | `spin` of `components` near a point or by `owner`, or an actor's `spin`; calibrated or relative to the start |
+| duplicate effects after a restart went unseen | `components` with `"effect": true` and `near`: `count` of live effects, read after the restart |
+| a score or a timer had to be read as a number, not a string | `ui` `number` or `clock` on a `select` of `"kind": "text"` with a `rect`; `rises`, `falls`, `range` over the window |
+| a lamp lit only by particles read dark | `lit` and `glow` as they are: particle systems are sources |
+| a beam's length had no reading | `drawn` along a `line` from its source: `reach` or `length`, calibrated or relative to the start |
+| a surface's tint change (not emissive) had no reading | `drawn` `near` it: `base_r`/`base_g`/`base_b` or `base_change`, calibrated or relative to the start |
+| the nearest object a player can push had to be named by class | `has` with `"simulating": true` (and `"movable": true`), in a select or `teleport_to` |
+| the game reset the player's ground position every tick, undoing a teleport | `teleport` or `teleport_to` with `hold` (seconds) |
+| a lamp above matched together with one below it | `near` with `z_min`/`z_max` (world, or `z_relative` to the point) |
+| a menu that pages on real time never reached its later pages in a play | a task-play input `{"t": ..., "wait": seconds}`: the play's clock holds while the game runs on in real time |
 | a probe that tests the reference's implementation ("SpawnZ = 92") | measure the outcome; another valid fix must pass |
 | the brief said "scenario 1" but not `?Scenario=1` | `play_map` always set and checked at the seed |
 | a HUD widget or class name guessed | read the names from the code and assets at `seed.commit` and `seed.reference` |

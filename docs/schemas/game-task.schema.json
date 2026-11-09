@@ -78,7 +78,9 @@
                 "sum",
                 "range",
                 "std",
-                "changes"
+                "changes",
+                "rises",
+                "falls"
               ],
               "type": "string"
             },
@@ -113,7 +115,7 @@
           "title": "At"
         },
         "field": {
-          "pattern": "^(count|x|y|z|yaw|pitch|roll|scale|extent_x|extent_y|extent_z|hidden|collision|speed|simulating|spread|changed|bounds_change|pose_change|lit|glow|prop:[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?(\\.[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?){0,5}|facing_vs_velocity|bone:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz]|rel_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|bb:[A-Za-z_][A-Za-z0-9_]{0,63}|world_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|world_pitch:[A-Za-z_][A-Za-z0-9_]{0,63}|world_roll:[A-Za-z_][A-Za-z0-9_]{0,63}|forward:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz])$",
+          "pattern": "^(count|x|y|z|yaw|pitch|roll|scale|extent_x|extent_y|extent_z|hidden|collision|speed|spin|simulating|spread|changed|bounds_change|pose_change|lit|glow|prop:[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?(\\.[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?){0,5}|facing_vs_velocity|bone:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz]|rel_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|bb:[A-Za-z_][A-Za-z0-9_]{0,63}|world_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|world_pitch:[A-Za-z_][A-Za-z0-9_]{0,63}|world_roll:[A-Za-z_][A-Za-z0-9_]{0,63}|forward:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz])$",
           "title": "Field",
           "type": "string"
         },
@@ -435,7 +437,9 @@
                 "sum",
                 "range",
                 "std",
-                "changes"
+                "changes",
+                "rises",
+                "falls"
               ],
               "type": "string"
             },
@@ -758,7 +762,9 @@
                 "sum",
                 "range",
                 "std",
-                "changes"
+                "changes",
+                "rises",
+                "falls"
               ],
               "type": "string"
             },
@@ -952,12 +958,33 @@
     },
     "ComponentSelect": {
       "additionalProperties": false,
-      "description": "Registered components of a class (NiagaraComponent, DecalComponent, AudioComponent), optionally of an owner\nactor the `owner` select matches, near a point, of a mesh component's mesh asset (`mesh`, a wildcard), and\n`visible`: only the components drawn (as the `visible` field reads them).",
+      "description": "Registered components of a class (NiagaraComponent, DecalComponent, AudioComponent), optionally of an owner\nactor the `owner` select matches, near a point, of a mesh component's mesh asset (`mesh`, a wildcard), and\n`visible`: only the components drawn (as the `visible` field reads them); `effect`: only live effects, whatever\nmade them (a particle system, Niagara or Cascade, that is active; a decal that is drawn; an effect actor by its\ncomponent), with or without `class` (docs/task-probes.md, section 2.5).",
       "properties": {
         "class": {
-          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,120}$",
-          "title": "Class",
-          "type": "string"
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,120}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Class"
+        },
+        "effect": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effect"
         },
         "mesh": {
           "anyOf": [
@@ -1021,15 +1048,12 @@
           "title": "Visible"
         }
       },
-      "required": [
-        "class"
-      ],
       "title": "ComponentSelect",
       "type": "object"
     },
     "ComponentsMeasure": {
       "additionalProperties": false,
-      "description": "Registered components (docs/task-probes.md, section 2.5): `x`, `y`, `z` and `speed` (cm/s: its physics\nbody's while it simulates, else its own velocity, else how far it moved since the previous sample) of a scene\ncomponent; `extent_x|y|z` (its world bounds' half-size) and `simulating` (its physics, a skeletal mesh's any body)\nof a primitive; `intensity` and `on` (it lights the scene: visible, not hidden in game, its owner not hidden, an\nintensity above 0) of a light; `changed` (1 when the primitive differs from the first sample it was seen in: hidden\nor shown, its world bounds moved, a skinned mesh's pose moved), `bounds_change` and `pose_change` (cm, the amounts\nbehind it); `lit` (1 when it gives off light: a light that lights the scene, or a drawn mesh whose material is\nemissive or unlit and bright, read from its material graph where that evaluates whole and else as rendered) and `glow` (how much, one amount over every kind of source; docs/task-probes.md, sections 2.4 and 2.5), the way\nto check for light whatever a build made it with. `intensity`, `extent_*`, `bounds_change`, `pose_change` and\n`glow` depend on what a build chose, so their threshold is calibrated or relative to the start, never a literal\n(tools/validate-game.py).",
+      "description": "Registered components (docs/task-probes.md, section 2.5): `x`, `y`, `z` and `speed` (cm/s: its physics\nbody's while it simulates, else its own velocity, else how far it moved since the previous sample) of a scene\ncomponent; `extent_x|y|z` (its world bounds' half-size) and `simulating` (its physics, a skeletal mesh's any body)\nof a primitive; `intensity` and `on` (it lights the scene: visible, not hidden in game, its owner not hidden, an\nintensity above 0) of a light; `changed` (1 when the primitive differs from the first sample it was seen in: hidden\nor shown, its world bounds moved, a skinned mesh's pose moved), `bounds_change` and `pose_change` (cm, the amounts\nbehind it); `lit` (1 when it gives off light: a light that lights the scene, or a drawn mesh whose material is\nemissive or unlit and bright, read from its material graph where that evaluates whole and else as rendered) and\n`glow` (how much, one amount over every kind of source, particle systems among them; docs/task-probes.md, sections 2.4 and 2.5), the\nway to check for light whatever a build made it with; `spin` (deg/s: how fast it turns in the world, from its\nrotation every frame; docs/task-probes.md, section 2.5). `intensity`, `extent_*`, `bounds_change`, `pose_change`, `glow` and `spin`\ndepend on what a build chose, so their threshold is calibrated or relative to the start, never a literal\n(tools/validate-game.py).",
       "properties": {
         "agg": {
           "anyOf": [
@@ -1047,7 +1071,9 @@
                 "sum",
                 "range",
                 "std",
-                "changes"
+                "changes",
+                "rises",
+                "falls"
               ],
               "type": "string"
             },
@@ -1100,7 +1126,8 @@
             "bounds_change",
             "pose_change",
             "lit",
-            "glow"
+            "glow",
+            "spin"
           ],
           "title": "Field",
           "type": "string"
@@ -1211,6 +1238,156 @@
       "title": "Cursor",
       "type": "object"
     },
+    "DrawnMeasure": {
+      "additionalProperties": false,
+      "description": "What is drawn in a place, whatever draws it (docs/task-probes.md, section 2.19): every primitive drawn in game within the place\n(`near` a point, its height band applied; or within `radius` of a `line`), rendered alone, each pixel kept where\nits depth puts it inside the place. Near a point: `drawn` (1 when anything is), `motion` (the share of what is drawn\nthere that changed since the previous sample: a moving mesh, particles, a panned material), `base_r|g|b` (the mean\nrendered base colour, linear 0-1) and `base_change` (that colour's distance from the first sample's). Along a line:\n`drawn`, `reach` (cm from `from` to the furthest point drawn on it) and `length` (cm of it drawn). Every field but\n`drawn` depends on what a build drew, so its threshold is calibrated or relative to the start, never a literal\n(tools/validate-game.py).",
+      "properties": {
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "delta",
+                "any",
+                "all",
+                "count",
+                "sum",
+                "range",
+                "std",
+                "changes",
+                "rises",
+                "falls"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 120,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "const": "end",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "field": {
+          "enum": [
+            "drawn",
+            "motion",
+            "base_r",
+            "base_g",
+            "base_b",
+            "base_change",
+            "reach",
+            "length"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Line"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "near": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Near"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "probe": {
+          "const": "drawn",
+          "title": "Probe",
+          "type": "string"
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        }
+      },
+      "required": [
+        "probe",
+        "field"
+      ],
+      "title": "DrawnMeasure",
+      "type": "object"
+    },
     "FileExists": {
       "additionalProperties": false,
       "description": "At least `min_count` project files match `glob` (relative to the project; e.g. Content/Maps/*.umap).",
@@ -1284,7 +1461,9 @@
                 "sum",
                 "range",
                 "std",
-                "changes"
+                "changes",
+                "rises",
+                "falls"
               ],
               "type": "string"
             },
@@ -1416,7 +1595,9 @@
                 "sum",
                 "range",
                 "std",
-                "changes"
+                "changes",
+                "rises",
+                "falls"
               ],
               "type": "string"
             },
@@ -1575,7 +1756,7 @@
     },
     "Has": {
       "additionalProperties": false,
-      "description": "A component the actor carries (docs/task-probes.md, section 2.4): it matches when one of its own components matches every key given:\n`class` (the component's class or a parent, as a components select names it), `lit` (it gives off light, as the\ncomponents `lit` field reads it), `visible` (drawn, as the components `visible` field reads it), `near` (the\ncomponent's own place within `radius` cm of a point).",
+      "description": "A component the actor carries (docs/task-probes.md, section 2.4): it matches when one of its own components matches every key given:\n`class` (the component's class or a parent, as a components select names it), `lit` (it gives off light, as the\ncomponents `lit` field reads it), `visible` (drawn, as the components `visible` field reads it), `near` (the\ncomponent's own place within `radius` cm of a point), `simulating` (a primitive simulating physics), `movable`\n(a scene component of Movable mobility): an object a player can shove (docs/task-probes.md, section 2.4).",
       "minProperties": 1,
       "properties": {
         "class": {
@@ -1604,6 +1785,19 @@
           "default": null,
           "title": "Lit"
         },
+        "movable": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Movable"
+        },
         "near": {
           "anyOf": [
             {
@@ -1614,6 +1808,19 @@
             }
           ],
           "default": null
+        },
+        "simulating": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Simulating"
         },
         "visible": {
           "anyOf": [
@@ -1761,7 +1968,9 @@
                 "sum",
                 "range",
                 "std",
-                "changes"
+                "changes",
+                "rises",
+                "falls"
               ],
               "type": "string"
             },
@@ -1915,6 +2124,59 @@
       "title": "Limits",
       "type": "object"
     },
+    "Line": {
+      "additionalProperties": false,
+      "description": "A segment from `from` to `to` (points), and how far from it (`radius`, cm) counts as on it.",
+      "properties": {
+        "from": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AtXYZ"
+            },
+            {
+              "$ref": "#/$defs/AtPawn"
+            },
+            {
+              "$ref": "#/$defs/AtCamera"
+            },
+            {
+              "$ref": "#/$defs/AtActor"
+            }
+          ],
+          "title": "From"
+        },
+        "radius": {
+          "exclusiveMinimum": 0,
+          "maximum": 10000,
+          "title": "Radius",
+          "type": "number"
+        },
+        "to": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AtXYZ"
+            },
+            {
+              "$ref": "#/$defs/AtPawn"
+            },
+            {
+              "$ref": "#/$defs/AtCamera"
+            },
+            {
+              "$ref": "#/$defs/AtActor"
+            }
+          ],
+          "title": "To"
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "radius"
+      ],
+      "title": "Line",
+      "type": "object"
+    },
     "LogAbsent": {
       "additionalProperties": false,
       "description": "No line of the game's log during a boot matches `pattern` (a regular expression).",
@@ -2061,6 +2323,7 @@
     },
     "Near": {
       "additionalProperties": false,
+      "description": "Within `radius` cm of `point`; `z_min`/`z_max` (cm) also keep it within a height band: world z, or offsets from\nthe point's z with `z_relative` (docs/task-probes.md, section 2.13).",
       "properties": {
         "point": {
           "anyOf": [
@@ -2084,6 +2347,47 @@
           "maximum": 10000000,
           "title": "Radius",
           "type": "number"
+        },
+        "z_max": {
+          "anyOf": [
+            {
+              "maximum": 10000000,
+              "minimum": -10000000,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Z Max"
+        },
+        "z_min": {
+          "anyOf": [
+            {
+              "maximum": 10000000,
+              "minimum": -10000000,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Z Min"
+        },
+        "z_relative": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Z Relative"
         }
       },
       "required": [
@@ -2153,7 +2457,9 @@
                 "sum",
                 "range",
                 "std",
-                "changes"
+                "changes",
+                "rises",
+                "falls"
               ],
               "type": "string"
             },
@@ -2367,7 +2673,9 @@
                 "sum",
                 "range",
                 "std",
-                "changes"
+                "changes",
+                "rises",
+                "falls"
               ],
               "type": "string"
             },
@@ -2515,6 +2823,7 @@
               "audio": "#/$defs/AudioMeasure",
               "camera": "#/$defs/CameraMeasure",
               "components": "#/$defs/ComponentsMeasure",
+              "drawn": "#/$defs/DrawnMeasure",
               "grading": "#/$defs/GradingMeasure",
               "ground": "#/$defs/GroundMeasure",
               "light": "#/$defs/LightMeasure",
@@ -2577,6 +2886,9 @@
             },
             {
               "$ref": "#/$defs/UiMeasure"
+            },
+            {
+              "$ref": "#/$defs/DrawnMeasure"
             }
           ],
           "title": "Measure"
@@ -2687,7 +2999,9 @@
                 "sum",
                 "range",
                 "std",
-                "changes"
+                "changes",
+                "rises",
+                "falls"
               ],
               "type": "string"
             },
@@ -2954,7 +3268,9 @@
                 "sum",
                 "range",
                 "std",
-                "changes"
+                "changes",
+                "rises",
+                "falls"
               ],
               "type": "string"
             },
@@ -3165,6 +3481,9 @@
               },
               {
                 "$ref": "#/$defs/TeleportTo"
+              },
+              {
+                "$ref": "#/$defs/Wait"
               }
             ]
           },
@@ -3207,8 +3526,22 @@
     },
     "Teleport": {
       "additionalProperties": false,
-      "description": "The player pawn placed at `teleport` (cm) facing `yaw`: the grader's own way to reach a test spot.",
+      "description": "The player pawn placed at `teleport` (cm) facing `yaw`: the grader's own way to reach a test spot; `hold`: for\nthat many seconds of play the pawn is put back there after every tick of the world, for a game that sets its\nplayer's place every tick (docs/task-probes.md, section 1.1).",
       "properties": {
+        "hold": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 120,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hold"
+        },
         "t": {
           "maximum": 120,
           "minimum": 0,
@@ -3241,7 +3574,7 @@
     },
     "TeleportTo": {
       "additionalProperties": false,
-      "description": "The player pawn placed next to the actor `teleport_to` selects nearest to it (docs/task-probes.md, section 1.1): `distance` cm from\nit on the pawn's side, level with it, plus `offset` (cm), facing `face` (a point) or else that actor; for a spot a\nbuild chose itself (an ore it placed). Nothing happens when no actor matches.",
+      "description": "The player pawn placed next to the actor `teleport_to` selects nearest to it (docs/task-probes.md, section 1.1): `distance` cm from\nit on the pawn's side, level with it, plus `offset` (cm), facing `face` (a point) or else that actor; for a spot a\nbuild chose itself (an ore it placed). Nothing happens when no actor matches. `hold`: as a teleport's, the pawn\nkept at that spot for that many seconds of play (docs/task-probes.md, section 1.1).",
       "properties": {
         "distance": {
           "default": 200.0,
@@ -3270,6 +3603,20 @@
           ],
           "default": null,
           "title": "Face"
+        },
+        "hold": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 120,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hold"
         },
         "offset": {
           "items": {
@@ -3327,7 +3674,7 @@
     },
     "UiMeasure": {
       "additionalProperties": false,
-      "description": "What the UI shows on screen, whatever draws it (docs/task-probes.md, section 2.18): the elements on screen in the frame drawn right\nafter each sample, from UMG widgets, Slate widgets and the HUD canvas (AHUD DrawText, DrawRect, DrawTexture,\nDrawLine, K2_DrawBox and the canvas's other draws) alike, only what is drawn (a collapsed or hidden widget is not).\n`count` (one per element), `text` (with `match`; digits drawn as seven-segment strokes read as text too, and a\nselect of text with a `rect` also reads the frame as drawn there, however the text was drawn), `x`, `y`, `w`, `h` (its rectangle in viewport fractions); `of` combines the elements\n`select` picks. `signature`: one value a sample for everything the select picks (kinds, texts, rectangles),\nread with `agg` `changes` (how many samples show something other than the one before: a readout that updates,\nhowever it is drawn), `any`, `all` or `count` (samples showing anything); `of` is ignored (docs/task-probes.md,\nsection 2.18). The way to check what a HUD shows, however a build drew it.",
+      "description": "What the UI shows on screen, whatever draws it (docs/task-probes.md, section 2.18): the elements on screen in the frame drawn right\nafter each sample, from UMG widgets, Slate widgets and the HUD canvas (AHUD DrawText, DrawRect, DrawTexture,\nDrawLine, K2_DrawBox and the canvas's other draws) alike, only what is drawn (a collapsed or hidden widget is not).\n`count` (one per element), `text` (with `match`; digits drawn as seven-segment strokes read as text too, and a\nselect of text with a `rect` also reads the frame as drawn there, however the text was drawn), `x`,\n`y`, `w`, `h` (its rectangle in viewport fractions); `of` combines the elements `select` picks. `signature`: one\nvalue a sample for everything the select picks (kinds, texts, rectangles), read with `agg` `changes` (how many\nsamples show something other than the one before: a readout that updates, however it is drawn), `any`, `all` or\n`count` (samples showing anything); `of` is ignored (docs/task-probes.md, section 2.18). `number`: the first number its text elements\nshow, in reading order; `clock`: the first time they show (h:mm:ss, m:ss, or else a number, as seconds); read with\n`rises`, `falls`, `changes` or `range` for which way it moved, `of` ignored (docs/task-probes.md, section 2.18). The way to check what a\nHUD shows, however a build drew it.",
       "properties": {
         "agg": {
           "anyOf": [
@@ -3345,7 +3692,9 @@
                 "sum",
                 "range",
                 "std",
-                "changes"
+                "changes",
+                "rises",
+                "falls"
               ],
               "type": "string"
             },
@@ -3387,7 +3736,9 @@
             "y",
             "w",
             "h",
-            "signature"
+            "signature",
+            "number",
+            "clock"
           ],
           "title": "Field",
           "type": "string"
@@ -3569,6 +3920,30 @@
       "title": "Value",
       "type": "object"
     },
+    "Wait": {
+      "additionalProperties": false,
+      "description": "At `t` the play's clock holds for `wait` seconds of real time while the game runs on, paced to real time (each\nframe waits for the wall clock to catch up with the game's own time), for what runs on the wall clock (a menu that\npages on real time). No samples, inputs or screenshots meanwhile; then the play goes on from `t` (docs/task-probes.md, section 1.1).",
+      "properties": {
+        "t": {
+          "maximum": 120,
+          "minimum": 0,
+          "title": "T",
+          "type": "number"
+        },
+        "wait": {
+          "exclusiveMinimum": 0,
+          "maximum": 300,
+          "title": "Wait",
+          "type": "number"
+        }
+      },
+      "required": [
+        "t",
+        "wait"
+      ],
+      "title": "Wait",
+      "type": "object"
+    },
     "WidgetSelect": {
       "additionalProperties": false,
       "description": "Widgets on screen: UMG widgets in the viewport by their class (WBP_HUD_C, TextBlock) and/or name, or Slate\nwidgets under the game viewport by their type (`slate`: STextBlock, SImage, a game's own S... type); `text`: a\nregular expression the widget's text must match; `visible`: only the widgets drawn (as the `visible` field reads\nthem: never a collapsed or hidden one, nor one under such a parent), so a select counts what is on screen.",
@@ -3662,7 +4037,9 @@
                 "sum",
                 "range",
                 "std",
-                "changes"
+                "changes",
+                "rises",
+                "falls"
               ],
               "type": "string"
             },

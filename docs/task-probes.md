@@ -81,7 +81,18 @@ Words used here:
       "face": <Point>}` places the pawn `distance` cm (default 200) from the actor the select matches nearest to it, on
       the pawn's side and level with it, plus `offset` (default none), facing `face` (a point, section 2.13) or else
       that actor; the engine's teleport then finds a free spot near there. The way to reach a spot each build chooses
-      itself (the ore a fix placed, a door it moved). No match: nothing happens (the play's log says so).
+      itself (the ore a fix placed, a door it moved). No match: nothing happens (the play's log says so);
+    - holding the pawn there: `"hold": 5` on a `teleport` or `teleport_to` (seconds, up to 120) puts the pawn back at
+      the spot (its location; its view stays free) after every tick of the world for that many seconds of play, after
+      the game's own tick. For a game that sets its player's ground position every tick, which would otherwise undo
+      a teleport at once. Without `hold`, a teleport places the pawn once, as before;
+    - a wait in real time: `{"t": 8.0, "wait": 30}` (seconds, more than 0). Plays run on a fixed 30 fps clock as fast
+      as the machine renders, so what runs on the wall clock (a menu that pages on real time, a timer on the
+      platform's clock) sees less real time than the play's seconds. At `t` the play's clock holds while the game
+      keeps running, paced to real time (each frame waits for the wall clock to catch up with the game's own time),
+      until `wait` real seconds and `wait` seconds of game time have both passed; nothing is sampled, sent or
+      screenshot meanwhile; then the play goes on from `t`. A play's waits add at most 300 s in all, and its timeout
+      grows by them; `seconds`, windows and `at` stay in play time, within 120 s.
   - A play that measures audio (an `audio` measure, section 2.16) runs with sound, muted; every other play runs
     without (section 2.16).
 - `"editor"`: a headless editor pass over the project as saved; takes only `asset` measures, and `asset` measures
@@ -116,7 +127,8 @@ When the start can't be measured (its play ended before the window), a calibrate
 - `agg`: how the samples reduce to one number: `min`, `max`, `mean`, `first`, `last`, `delta` (last minus first),
   `any` (1 if any sample is non-zero), `all` (1 if every sample is non-zero), `count` (number of non-zero samples),
   `sum`, `range` (max minus min), `std` (standard deviation), `changes` (how many times the value changes between
-  consecutive samples). Default `last` (`sum` for `spawns`).
+  consecutive samples), `rises` and `falls` (how many samples read more, or less, than the sample before: which way a
+  value moved, a score that only rises reads `falls` 0, a reset reads as a fall). Default `last` (`sum` for `spawns`).
 - `of` (`actors`, `components`, `widgets`, `ui`, and `asset` with a `select`): how the selected actors, components,
   widgets or UI elements combine within one sample: `count` (how many match and have a non-zero value), `any`, `all`, `min`, `max`,
   `mean`, `sum`, `first`. **Default `count`.** A measure that reads a value (a position, an extent, a `prop:`, a text
@@ -170,7 +182,10 @@ else first; `pawn_on_screen` = 1 when the pawn's centre projects inside the view
     one key, and only `true` for `lit` and `visible`. The way to select by what an actor does ("an actor that gives
     light", "an actor with a drawn mesh near here") rather than by the class or name a build gave it. It works in
     every actor select: these, other measures' (`owner`, `ground`), points (section 2.13) and `teleport_to`
-    (section 1.1). A map as saved (`asset`) takes no `has`.
+    (section 1.1). A map as saved (`asset`) takes no `has`. `"simulating": true` (a primitive simulating physics) and
+    `"movable": true` (a scene component of Movable mobility) find an object by what it can do:
+    `{"teleport_to": {"has": {"simulating": true, "near": ...}}}` reaches the nearest object a player can shove,
+    whichever class a build used.
 - `field`:
   - `count`: the selection's size (`of` ignored);
   - `x`, `y`, `z` (cm), `yaw`, `pitch`, `roll` (degrees), `scale`;
@@ -182,6 +197,9 @@ else first; `pawn_on_screen` = 1 when the pawn's centre projects inside the view
     don't count; no value when the actor draws nothing. World-aligned, so a rotated actor's extent mixes its own axes
     (an actor turned 90 degrees reports its width as `extent_x`);
   - `hidden` (hidden in game), `collision` (any primitive component collides), `speed` (velocity length);
+  - `spin` (deg/s): how fast the actor turns, the fastest of its mesh parts (as `extent_*` counts them; none: its
+    root), each read as a component's `spin` (section 2.5). **Its threshold is calibrated or relative to the start,
+    never a literal value**;
   - `simulating`: 1 when any of the actor's primitive components simulates physics (its own body, or any body of a
     skeletal mesh: pieces that broke loose, a ragdoll);
   - `spread` (cm): how far apart the actor's parts are, the diagonal of the world-aligned box around their centres:
@@ -238,7 +256,11 @@ else first; `pawn_on_screen` = 1 when the pawn's centre projects inside the view
 moving parts of an actor), optionally of an owner actor and near a point, so effects that are not actors count too.
 `"mesh": "<wildcard>"` keeps mesh components whose mesh asset's name matches (as `pieces` has it), and
 `"visible": true` only the components drawn (as the `visible` field reads them), so one part, a lamp's bulb, can be
-picked out.
+picked out. `"effect": true` keeps only live effects, with or without `class`: a particle system (Niagara or Cascade)
+that is active, a decal that is drawn; an effect actor (a Niagara actor, an emitter, a decal actor) counts by its
+component, a pooled or finished system not at all. With `near` and `count`, how many effects play at a spot: read
+before and after a restart (an input of a task play), it catches effects that pile up. A select names its `class`, or
+`effect`, or both.
 An instanced mesh component is one component however many instances it draws: count placed meshes with `pieces`
 (section 2.14).
 
@@ -246,19 +268,27 @@ An instanced mesh component is one component however many instances it draws: co
 - `x`, `y`, `z` (cm) and `speed` (cm/s) of a scene component, as actors have them: `speed` is its physics body's while
   it simulates, else its own velocity (as a movement component sets it), else how far it moved since the previous
   sample (no value the first time it is seen). Cars that are components of one road actor read here;
+- `spin` (deg/s): how fast a scene component turns in the world, from its rotation read every frame and summed since
+  the previous sample (so a part turning many times a second still reads), its physics body's angular velocity the
+  first time it is seen while it simulates, else no value then. Any part near a point: select `PrimitiveComponent`
+  with `near`; each part of one actor: select by `owner`. No component name is needed. A turn drawn by bones (a
+  skinned rotor) or by a material reads 0 here: `drawn`'s `motion` (section 2.19) sees it;
 - `extent_x`, `extent_y`, `extent_z` (a primitive's world bounds half-size, cm) and `simulating` (it simulates
   physics; a skeletal mesh when any of its bodies does);
 - `changed`, `bounds_change`, `pose_change`: a primitive against the first sample it was seen in, as an actor's
   (section 2.4) for one part: hidden or shown, its world bounds moved, a skinned mesh's pose moved (`pose_change` has
   no value unless it is skinned);
-- `lit` and `glow`: as an actor's (section 2.4), for one source: a light component, or a mesh component with its
-  materials; no value for any other component. **Check for light with these**, whatever the build made it with;
+- `lit` and `glow`: as an actor's (section 2.4), for one source: a light component, a mesh component with its
+  materials, or a particle system (Niagara or Cascade: sprite, ribbon, beam and mesh emitters); no value for any other
+  component. A particle system is read as rendered, as a mesh is below (its bounds for the box), lit when it is
+  active and drawn and its brightest pixel is above 0.01; without a renderer, its materials' emissive bound while it is
+  active. A row it lights names `effect` in `glow_sources`. **Check for light with these**, whatever the build made it with;
 - `intensity` (a light's own intensity, in its units) and `on` (1 when the light lights the scene: registered,
   affecting the world, visible, not hidden in game, its actor not hidden, of an intensity above 0; the `light`
   probe counts the same lights). A lamp switched off by intensity 0, by hiding it or by hiding its actor reads 0.
   They see light components only: use them when a task really needs a light component, else `lit` and `glow`.
-- **`intensity`, `extent_*`, `bounds_change`, `pose_change` and `glow` thresholds are calibrated or relative to the
-  start, never a literal value**; `on`, `lit`, `simulating`, `changed`, positions and speeds take a literal.
+- **`intensity`, `extent_*`, `bounds_change`, `pose_change`, `glow` and `spin` thresholds are calibrated or relative
+  to the start, never a literal value**; `on`, `lit`, `simulating`, `changed`, positions and speeds take a literal.
 
 How `lit` and `glow` read a mesh, one of two ways; which one depends on its materials' graphs alone, never on
 parameter values:
@@ -291,7 +321,7 @@ Limits:
   so it reads dark that way; a mesh hidden from scene captures, or drawn only for its owner, reads dark that way too;
 - rendering is done on the game thread at the sample, each mesh once per sample, at most 64 meshes a sample (past
   that, the graph's bound);
-- a light's light function is read from its graph; particle effects, decals and text are not sources; select the lamp
+- a light's light function is read from its graph; decals and text are not sources; select the lamp
   (by owner, tag, `mesh` or `near`), not every mesh in the level.
 
 ### 2.6 `widgets`: the UI on screen
@@ -377,6 +407,11 @@ refused for a path outside the project. Only as `"required": false` quality note
 
 `{"xyz": [x, y, z]}`, `{"pawn": true, "offset": [x, y, z]}`, `{"camera": true, "forward": cm}`, or
 `{"actor": <select>, "offset": [x, y, z]}` (the first match).
+
+A `near` is `{"point": <Point>, "radius": cm}`, and may also hold a height band: `"z_min"` and/or `"z_max"` (cm,
+world z; with `"z_relative": true`, offsets from the point's z). Wherever `near` works (actor selects, `has`,
+`components`, `pieces`, `drawn`), a thing then matches only when its place's z is within the band too: the lamp on
+the ceiling, not the one on the floor below it. `z_min < z_max`; `z_relative` goes with one of them.
 
 ### 2.14 `pieces`: placed mesh pieces, whatever their form
 
@@ -512,7 +547,8 @@ a widget's own state (a progress bar's percent, a brush).
   match; text elements only); `rect` `[x0, y0, x1, y1]` in viewport fractions, x0 < x1 and y0 < y1 (the element's centre
   inside).
 - `field`: `count` (one per element); `text` (the string shown, with `match`); `x`, `y`, `w`, `h` (the element's
-  rectangle in viewport fractions 0-1); `signature` (whether what the select shows updates, below). `of` combines the elements, as for widgets: `"field": "text", "match": ...,
+  rectangle in viewport fractions 0-1); `signature` (whether what the select shows updates, below); `number` and
+  `clock` (the number or time it shows, below). `of` combines the elements, as for widgets: `"field": "text", "match": ...,
   "of": "any"` is 1 when some element shows matching text, `"of": "count"` how many do.
 - Whether a readout updates, however it is drawn: `"field": "signature"` is one value a sample for everything the
   `select` picks: each element's `kind`, `text` and rectangle (`x`, `y`, `w`, `h` rounded to 0.002 of the viewport),
@@ -530,7 +566,20 @@ a widget's own state (a progress bar's percent, a brush).
   - Limits: geometry right at a 0.002 step can flip between samples on sub-pixel motion; a change that changes back
     before the next sample is not seen; a readout no `ui` element reads (below) has no signature but 0, unless its
     text reads from the frame.
-- Each row also carries `source` (`umg`, `slate`, `canvas` or `ocr`) and `kind`, for the logs; they are not fields a check
+- Which way a number on screen moved, however it is drawn: `"field": "number"` is the first number the select's text
+  elements show in one sample, in reading order (top to bottom, a line within 0.01 of the viewport's height; left to
+  right): digits with a decimal point and comma thousands (`3,450` is 3450), negative when a minus stands before it
+  after no letter or digit (`LAP 2-3` reads 2). Its text comes from every text element the select picks (UMG, Slate,
+  canvas, painted, stroke digits, and the frame when the select is of text in a rect), so the select is best
+  `{"kind": "text", "rect": [...]}` around the readout alone. No number shown: no value. Read it with `rises`,
+  `falls` (section 2.1), `changes`, `range` or `max`: a score that only rises reads `falls` 0 over its window; a
+  reset reads as a fall.
+- A clock on screen as a clock: `"field": "clock"` is the first time shown, in seconds: `h:mm:ss` or `m:ss` (a
+  fraction after `.` or `,` added), else the first number, as seconds. A timer that holds through a pause reads
+  `range` 0 over the pause's window; one that resets on a retry reads a fall there (a count-down: a rise).
+- `number` and `clock` share the signature's query (one select, one reading), take any `agg` and a literal (what is
+  shown is a fact), ignore `of` and take no `match`.
+- Each row also carries `source` (`umg`, `slate`, `canvas`, `paint` or `ocr`) and `kind`, for the logs; they are not fields a check
   reads, so a threshold never depends on how a build drew its HUD.
 - Canvas text is read back from the glyphs the canvas drew (the font cache's characters), so it is the string as
   drawn. Spaces are read from the gaps between glyphs: write `\s*` (or `\s+`) where a string has a space.
@@ -557,11 +606,56 @@ a widget's own state (a progress bar's percent, a brush).
   - Give the rect a margin around the text so its edge is background, and write `\s*` where the text has a space.
     Where the text still doesn't read, grade the readout by its `line` elements in the rect, as above.
   - It needs a renderer: a play without one reads no text from the frame.
-- Limits: a widget that paints its own text or shapes in OnPaint (no text block or brush), material tiles (`DrawMaterial`), the debug canvas (on-screen debug messages, stats)
+- What a widget paints itself: a widget that draws its own text or shapes (a custom `OnPaint`, a UMG `NativePaint`)
+  is read from the game window's draw elements: each element painted under the game viewport while a widget the
+  above doesn't read is the one painting is a row, `source` `paint`: `text` (a text draw, its rectangle the text as
+  measured in its font), `box` (a box, rounded box, border or gradient without a texture), `image` (with one), `line`
+  (lines and splines). Elements a text block, image, border or the like painted are left to it, so nothing reads
+  twice. Engine widgets with no element of their own above (a slider, a spin box) read this way too.
+- Limits: text a custom widget lays out and shapes itself (not a plain text draw), and widgets under an invalidation
+  panel or retainer that weren't repainted that frame, are not read as painted elements (their text can still read
+  from the frame); material tiles (`DrawMaterial`), the debug canvas (on-screen debug messages, stats)
   and anything a build draws in the 3D scene (a widget component, a text render component) are not UI elements here
   (their text can still read from the frame, above);
   a canvas glyph whose font isn't in memory reads as `?`. The UMG/Slate geometry is the layout's, so a widget scaled
   or moved by a render transform reads at its laid-out place.
+
+### 2.19 `drawn`: what is drawn in a place, whatever draws it
+
+```json
+{"probe": "drawn", "near": {"point": {"xyz": [1200, -300, 150]}, "radius": 250}, "field": "motion", "window": [4, 12], "agg": "mean"}
+{"probe": "drawn", "near": {"point": {"actor": {"tag": "Wall"}}, "radius": 200}, "field": "base_r", "at": "end"}
+{"probe": "drawn", "line": {"from": {"pawn": true, "offset": [0, 0, 60]}, "to": {"camera": true, "forward": 3000}, "radius": 40}, "field": "reach", "window": [6, 8], "agg": "max"}
+```
+
+One reading for what is drawn at a spot, whatever draws it: a mesh, a particle system, a surface whose material pans
+or animates, no name needed. Every primitive drawn in game (visible, not hidden in game, its actor not hidden) whose
+world bounds come within the place is rendered alone, by a scene capture that shows only those primitives:
+orthographic, from fixed views (four around a point, two across a line), lit by the scene's direct lights and sky
+light with no shadows, global illumination, reflections, fog, atmosphere, anti-aliasing or exposure change, so a
+still scene renders the same every sample. A primitive whose bounds enclose the whole place (a sky dome, a room seen
+from inside) is left out. A pixel is in the place when its depth puts it there, or when it shows colour with nothing
+opaque behind it (translucent particles).
+
+- The place: `near` (section 2.13: a point, a radius and, optionally, a height band), or `line`: `{"from": <Point>,
+  "to": <Point>, "radius": cm}` (0 < radius <= 10000), the segment and how far from it counts as on it. One of them.
+- Near a point, `field`:
+  - `drawn`: 1 when anything is drawn there, else 0;
+  - `motion`: the share of the place's pixels (in either sample) that changed since the previous sample, covered or
+    not, or a colour channel by more than one 8-bit step: 0 for a still scene, more when a mesh moves or turns,
+    particles play, or a material pans or animates. No value the first sample;
+  - `base_r`, `base_g`, `base_b`: the mean rendered base colour (linear 0-1) of the place's opaque pixels, the
+    surface's colour or tint with no light in it, from a texture, a parameter or a dynamic instance alike;
+    `base_change`: that colour's distance (RGB) from the play's first sample's.
+- Along a line, `field`: `drawn`; `reach` (cm): from `from` along the line to the furthest point drawn within
+  `radius` of it; `length` (cm): how much of the line is drawn. A beam drawn as a mesh, a particle beam, a ribbon or a
+  trail read alike.
+- **Every field but `drawn` depends on what a build drew: its threshold is calibrated or relative to the start, never
+  a literal value**; `drawn` takes a literal. No renderer, or a point that doesn't resolve: no value.
+- Limits: the player's own pawn counts like anything else in the place (keep it out, or teleport away); a lit
+  translucent particle shows as lit by direct and sky light only; a surface that writes no base colour (unlit,
+  translucent) has none; a primitive hidden from scene captures reads nothing. Keep the place tight around what the
+  task is about: a floor or a wall inside it counts too.
 
 ## 3. What gates, and how a probe fails
 

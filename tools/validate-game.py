@@ -521,13 +521,37 @@ TASK_PLAY_DEFAULTS = {'inputs': [], 'map': None, 'args': [], 'every': None}
 PIECE_TRIANGLES = ('triangles', 'visible_triangles')  # pieces fields whose threshold is never a literal
 # fields whose threshold is never a literal: how bright a light, how big a component's bounds, how far apart an actor's
 # parts, how far an object's bounds or pose moved, how much light it gives off, how loud a sound, how much the ground
-# rises and falls depend on what a build chose (docs/task-probes.md)
-NEVER_LITERAL = {'components': ('intensity', 'extent_x', 'extent_y', 'extent_z', 'bounds_change', 'pose_change', 'glow'),
-                 'actors': ('spread', 'bounds_change', 'pose_change', 'glow'), 'audio': ('volume', 'max_volume'),
-                 'ground': ('range',)}
+# rises and falls, how fast a part spins, and what is drawn in a place (how much of it changes, its colour, how far
+# along a line) depend on what a build chose (docs/task-probes.md)
+NEVER_LITERAL = {'components': ('intensity', 'extent_x', 'extent_y', 'extent_z', 'bounds_change', 'pose_change', 'glow',
+                                'spin'),
+                 'actors': ('spread', 'bounds_change', 'pose_change', 'glow', 'spin'),
+                 'audio': ('volume', 'max_volume'), 'ground': ('range',),
+                 'drawn': ('motion', 'base_r', 'base_g', 'base_b', 'base_change', 'reach', 'length')}
 GROUND_POINT = ('height', 'hit')        # a ground measure at a point `xy`
 GROUND_BOX = ('min', 'max', 'mean', 'range', 'hits')   # a ground measure over a `box`
 UI_SIGNATURE_AGGS = ('changes', 'any', 'all', 'count')  # a ui signature's value means nothing; whether it changes does
+DRAWN_NEAR = ('drawn', 'motion', 'base_r', 'base_g', 'base_b', 'base_change')  # a drawn measure near a point
+DRAWN_LINE = ('drawn', 'reach', 'length')    # a drawn measure along a line
+WAITS = 300   # seconds of real time a task play's waits add at most
+
+
+def nears(o):
+    """Every `near` inside `o` (a measure, a play's inputs), wherever it is nested."""
+    if isinstance(o, dict):
+        for k, v in o.items():
+            if k == 'near' and isinstance(v, dict):
+                yield v
+            yield from nears(v)
+    elif isinstance(o, list):
+        for v in o:
+            yield from nears(v)
+
+
+def component_selects(measure):
+    """The components selects of a measure (its own when it reads components)."""
+    if measure.get('probe') == 'components' and isinstance(measure.get('select'), dict):
+        yield measure['select']
 
 
 def probe_errors(c, seed, ref, plays):
@@ -538,8 +562,10 @@ def probe_errors(c, seed, ref, plays):
     grader flag, and same-named task plays are identical; == and != take a literal value; a screen measure's threshold
     is calibrated or relative to the start (the frame's luminance moves between machines), and so is a pieces measure's
     triangles (they depend on the meshes a build chose) and every NEVER_LITERAL field; a ground measure takes a point
-    `xy` or a `box` and the fields of that one; a ui measure takes `match` exactly when it reads text, `agg` changes,
-    any, all or count when it reads its signature, regular
+    `xy` or a `box` and the fields of that one; a drawn measure takes `near` or a `line` and the fields of that one;
+    a components select names its class or `effect`; a near's height band has z_min < z_max and `z_relative` only
+    with one of them; a task play's waits add at most 300 s; a ui measure takes `match` exactly when it reads text,
+    `agg` changes, any, all or count when it reads its signature, regular
     expressions that compile and a select rect [x0, y0, x1, y1] with x0 < x1 and y0 < y1; a calibrated threshold needs
     seed.reference and a start-relative one a seed."""
     errs, n = [], c.get('name')
@@ -571,6 +597,10 @@ def probe_errors(c, seed, ref, plays):
                      if mm else [])
             for name in (x for x in names if x.lower() in DENIED_PLAY_ARGS or x.lower().startswith('taskprobe')):
                 errs.append(f"check {n}: a task play can't set -{name}")
+        waits = sum(i['wait'] for i in play.get('inputs') or []
+                    if isinstance(i, dict) and isinstance(i.get('wait'), (int, float)))
+        if waits > WAITS:
+            errs.append(f'check {n}: play {pname} waits {waits:g} s in all, more than {WAITS} s')
         whole = dict(TASK_PLAY_DEFAULTS, **play)
         if plays.setdefault(pname, whole) != whole:
             errs.append(f'check {n}: task play {pname} differs from another play of that name')
@@ -593,6 +623,23 @@ def probe_errors(c, seed, ref, plays):
             errs.append(f"check {n}: a ground measure over a box reads {', '.join(GROUND_BOX)}")
         elif box is not None and isinstance(box, list) and len(box) == 4 and not (box[0] < box[2] and box[1] < box[3]):
             errs.append(f'check {n}: a ground box is [x0, y0, x1, y1] with x0 < x1 and y0 < y1')
+    if probe == 'drawn':
+        near, line, field = measure.get('near'), measure.get('line'), measure.get('field')
+        if (near is None) == (line is None):
+            errs.append(f'check {n}: a drawn measure takes `near` (a point) or a `line`, one of them')
+        elif near is not None and field not in DRAWN_NEAR:
+            errs.append(f"check {n}: a drawn measure near a point reads {', '.join(DRAWN_NEAR)}")
+        elif line is not None and field not in DRAWN_LINE:
+            errs.append(f"check {n}: a drawn measure along a line reads {', '.join(DRAWN_LINE)}")
+    for sel in component_selects(measure):
+        if sel.get('class') is None and sel.get('effect') is None:
+            errs.append(f'check {n}: a components select names its class, or `effect`')
+    for near in nears([measure, play.get('inputs') if isinstance(play, dict) else None]):
+        lo, hi = near.get('z_min'), near.get('z_max')
+        if isinstance(lo, (int, float)) and isinstance(hi, (int, float)) and not lo < hi:
+            errs.append(f'check {n}: a near band has z_min < z_max')
+        if near.get('z_relative') and lo is None and hi is None:
+            errs.append(f'check {n}: `z_relative` goes with z_min or z_max')
     if probe == 'ui':
         sel = measure.get('select') if isinstance(measure.get('select'), dict) else {}
         if (measure.get('field') == 'text') != (measure.get('match') is not None):

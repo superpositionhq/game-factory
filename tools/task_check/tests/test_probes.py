@@ -227,7 +227,7 @@ class Reducers(unittest.TestCase):
     def test_every_agg_and_of(self):
         values = [0.0, 2.0, None, 5.0, 0.0]
         want = {"min": 0, "max": 5, "mean": 1.75, "first": 0, "last": 0, "delta": 0, "any": 1, "all": 0, "count": 2,
-                "sum": 7, "range": 5, "changes": 3}
+                "sum": 7, "range": 5, "changes": 3, "rises": 2, "falls": 1}
         for agg, value in want.items():
             self.assertEqual(probes.aggregate(values, agg), value, agg)
         self.assertAlmostEqual(probes.aggregate(values, "std"), 2.0463, places=4)
@@ -820,6 +820,152 @@ class UiSignature(unittest.TestCase):
         self.assertEqual(self.changes(rows, agg="all"), 0)
         self.assertEqual(self.changes(rows, agg="any"), 1)
         self.assertEqual(self.changes(rows), 2, "appearing and going are changes; no frame drawn is no value")
+
+
+SPOT = {"point": {"xyz": [100, 0, 50]}, "radius": 300}
+SPOT_SENT = {"point": {"xyz": [100.0, 0.0, 50.0]}, "radius": 300.0}
+BEAM = {"from": {"pawn": True, "offset": [0, 0, 60]}, "to": {"camera": True, "forward": 3000}, "radius": 40}
+
+
+def number_rows(*texts):
+    """Text elements of one sample, given right to left so reading order must be restored."""
+    return [{"text": t, "x": 0.05 + 0.1 * i, "y": 0.04, "w": 0.08, "h": 0.03, "source": "ocr", "kind": "text"}
+            for i, t in enumerate(texts)][::-1]
+
+
+class OutcomeReadings(unittest.TestCase):
+    """docs/task-probes.md, sections 1.1, 2.1, 2.4, 2.5, 2.13, 2.18 and 2.19: what is drawn in a place, how fast a
+    part spins, live effects, which way a number or a clock on screen moved, an object a player can shove, a height
+    band, a held teleport and a wait in real time."""
+
+    def test_drawn_reads_a_place_near_a_point_or_along_a_line(self):
+        near = [{"probe": "drawn", "near": SPOT, "field": f, "window": [2, 10], "agg": "mean"}
+                for f in ("motion", "base_r", "base_g", "base_b", "base_change")]
+        line = [{"probe": "drawn", "line": BEAM, "field": f, "at": "end"} for f in ("reach", "length")]
+        for measure in near + line:
+            with self.assertRaisesRegex(ValueError, "never a literal value"):
+                task_with(probe(measure=measure, expect={"op": ">=", "value": 1}))
+            task_with(probe(measure=measure, expect={"op": ">=", "start_times": 2}), seed=NO_FIX)
+        task = task_with(*[probe(f"d{i}", measure=x, expect={"op": ">=", "calibrate": 0.5})
+                           for i, x in enumerate(near + line)],
+                         probe("shown", measure={"probe": "drawn", "near": SPOT, "field": "drawn"},
+                               expect={"op": "==", "value": 1}))
+        plan = probes.plan(task)["look"]
+        self.assertEqual(sorted(len(q["fields"]) for q in plan), [2, 6], "one query per place, its fields merged")
+        self.assertEqual(next(q for q in plan if "near" in q)["near"], SPOT_SENT)
+        along = next(q for q in plan if "line" in q)["line"]
+        self.assertEqual(along, {"from": {"pawn": True, "offset": [0, 0, 60]}, "to": {"camera": True,
+                                                                                      "forward": 3000.0},
+                                 "radius": 40.0})
+        motion = m(probe="drawn", near=SPOT, field="motion", agg="mean")
+        qid = probes.query_id(probes.needs(motion)[0])
+        values = [{"drawn": 1, "motion": None}, {"drawn": 1, "motion": 0.2}, {"drawn": 1, "motion": 0.4}, None]
+        self.assertAlmostEqual(probes.reduce(motion, {"measures": {qid: sampled(values)}}), 0.3)
+        for bad in ({"probe": "drawn", "field": "drawn"}, {"probe": "drawn", "near": SPOT, "line": BEAM, "field": "drawn"},
+                    {"probe": "drawn", "near": SPOT, "field": "reach"}, {"probe": "drawn", "line": BEAM, "field": "motion"},
+                    {"probe": "drawn", "line": {**BEAM, "radius": 0}, "field": "reach"},
+                    {"probe": "drawn", "near": SPOT, "field": "colour"}):
+            with self.assertRaises(ValueError, msg=str(bad)):
+                task_with(probe(measure=bad))
+
+    def test_spin_is_a_field_of_components_and_actors_and_never_a_literal(self):
+        fan = {"probe": "components", "select": {"class": "PrimitiveComponent", "near": SPOT}, "field": "spin",
+               "of": "max", "agg": "mean"}
+        for measure in (fan, {"probe": "actors", "select": {"tag": "Fan"}, "field": "spin", "at": "end"}):
+            with self.assertRaisesRegex(ValueError, "never a literal value"):
+                task_with(probe(measure=measure, expect={"op": ">=", "value": 90}))
+            task_with(probe(measure=measure, expect={"op": ">=", "calibrate": 0.5}))
+        turning = m(**fan)
+        rows = [[{"name": "Blade", "spin": None}], [{"name": "Blade", "spin": 360.0}, {"name": "Hub", "spin": 0.0}],
+                [{"name": "Blade", "spin": 720.0}]]
+        self.assertEqual(probes.reduce(turning, actors_play(turning, rows)), 540)
+
+    def test_a_components_select_takes_live_effects_with_or_without_a_class(self):
+        live = {"probe": "components", "select": {"effect": True, "near": SPOT}, "field": "count", "at": "end"}
+        task_with(probe(measure=live, expect={"op": "<=", "value": 3}),
+                  probe("b", measure={**live, "select": {"class": "NiagaraComponent", "effect": True}}))
+        (query,) = probes.needs(m(**live))
+        self.assertEqual(query["select"], {"effect": True, "near": SPOT_SENT})
+        for bad in ({"near": SPOT}, {"effect": False}):
+            with self.assertRaises(ValueError, msg=str(bad)):
+                task_with(probe(measure={**live, "select": bad}))
+
+    def shown(self, field, samples, agg="last", **extra):
+        measure = m(probe="ui", select={"kind": "text", "rect": READOUT}, field=field, agg=agg, **extra)
+        return probes.reduce(measure, actors_play(measure, samples))
+
+    def test_ui_number_reads_the_first_number_shown_in_reading_order(self):
+        self.assertEqual(self.shown("number", [number_rows("SCORE", "3,450")]), 3450)
+        self.assertEqual(self.shown("number", [number_rows("x3", "120")]), 3, "the first in reading order")
+        self.assertEqual(self.shown("number", [number_rows("TEMP -12.5")]), -12.5)
+        self.assertEqual(self.shown("number", [number_rows("LAP 2-3")]), 2, "a dash between numbers is no sign")
+        self.assertIsNone(self.shown("number", [number_rows("READY")]))
+        (query,) = probes.needs(m(probe="ui", select={"kind": "text", "rect": READOUT}, field="number"))
+        signature = m(probe="ui", select={"kind": "text", "rect": READOUT}, field="signature", agg="changes")
+        self.assertEqual(query, probes.needs(signature)[0], "one select, one query")
+        with self.assertRaisesRegex(ValueError, "exactly when its field is text"):
+            task_with(probe(measure={"probe": "ui", "select": {"rect": READOUT}, "field": "number", "match": "x"}))
+
+    def test_ui_number_tells_which_way_it_moved(self):
+        scores = [number_rows(f"SCORE {v}") for v in (0, 0, 10, 25, 25, 0, 5)] + [None]
+        self.assertEqual(self.shown("number", scores, agg="rises"), 3)
+        self.assertEqual(self.shown("number", scores, agg="falls"), 1, "a reset is a fall")
+        self.assertEqual(self.shown("number", scores, agg="changes"), 4)
+        task_with(probe(measure={"probe": "ui", "select": {"kind": "text", "rect": READOUT}, "field": "number",
+                                 "window": [2, 10], "agg": "falls"}, expect={"op": "==", "value": 0}))
+
+    def test_ui_clock_reads_a_timer_as_seconds_through_a_pause_and_a_retry(self):
+        self.assertEqual(self.shown("clock", [number_rows("TIME 1:05.5")]), 65.5)
+        self.assertEqual(self.shown("clock", [number_rows("1:02:03")]), 3723)
+        self.assertEqual(self.shown("clock", [number_rows("12.5s")]), 12.5, "a plain number is seconds")
+        run = [number_rows(f"0:{s:02d}") for s in (1, 2, 3)] + [number_rows("0:03")] * 4 + \
+            [number_rows(f"0:{s:02d}") for s in (0, 1)]
+        self.assertEqual(self.shown("clock", run, agg="range", window=[1.0, 3.0]), 0, "held through the pause")
+        self.assertEqual(self.shown("clock", run, agg="falls"), 1, "reset on the retry")
+
+    def test_has_finds_an_object_by_what_it_can_do(self):
+        shovable = {"has": {"simulating": True, "movable": True, "near": {"point": {"pawn": True}, "radius": 2000}}}
+        play = {"name": "shove", "seconds": 10, "inputs": [{"t": 1, "teleport_to": shovable, "distance": 150}]}
+        task = task_with(probe(play=play, measure={"probe": "actors", "select": shovable, "field": "x", "at": "end"}))
+        self.assertTrue(probes.plan(task)["shove"][0]["select"]["has"]["simulating"])
+        with self.assertRaises(ValueError):
+            task_with(probe(measure={"probe": "actors", "select": {"has": {"movable": False}}, "field": "count"}))
+
+    def test_near_takes_a_height_band_wherever_it_works(self):
+        band = {"point": {"xyz": [0, 0, 0]}, "radius": 500, "z_min": 100, "z_max": 300}
+        rel = {"point": {"pawn": True}, "radius": 500, "z_min": -50, "z_relative": True}
+        task = task_with(
+            probe("a", measure={"probe": "actors", "select": {"near": band}, "field": "count"}),
+            probe("b", measure={"probe": "components", "select": {"class": "LightComponent", "near": rel},
+                                "field": "count"}),
+            probe("c", measure={"probe": "pieces", "select": {"near": band}, "field": "count"}),
+            probe("d", measure={"probe": "actors", "select": {"has": {"visible": True, "near": rel}},
+                                "field": "count"}),
+            probe("e", measure={"probe": "drawn", "near": band, "field": "drawn"}))
+        sent = [json.dumps(q, sort_keys=True) for q in probes.plan(task)["look"]]
+        self.assertEqual(sum('"z_max": 300.0, "z_min": 100.0' in q for q in sent), 3)
+        self.assertEqual(sum('"z_relative": true' in q for q in sent), 2)
+        plain = m(probe="actors", select={"near": SPOT}, field="count")
+        self.assertEqual(probes.needs(plain)[0]["select"], {"near": SPOT_SENT}, "a near without a band as before")
+        for bad in ({**band, "z_min": 300}, {"point": {"pawn": True}, "radius": 1, "z_relative": True}):
+            with self.assertRaises(ValueError, msg=str(bad)):
+                task_with(probe(measure={"probe": "actors", "select": {"near": bad}, "field": "count"}))
+
+    def test_a_teleport_holds_and_a_play_waits_in_real_time(self):
+        play = {"name": "tour", "seconds": 60, "inputs": [
+            {"t": 1, "teleport": [0, 0, 100], "hold": 5}, {"t": 2, "teleport_to": {"tag": "Pad"}, "hold": 3},
+            {"t": 4, "key": "Enter", "press": True}, {"t": 8, "wait": 90}, {"t": 20, "wait": 30}]}
+        task = task_with(probe(play=play, measure={"probe": "pawn", "field": "z"}))
+        sent = first_check(task)["play"]
+        self.assertEqual(tasks.waited(sent), 120)
+        self.assertEqual(sent["inputs"][0], {"t": 1.0, "teleport": [0.0, 0.0, 100.0], "yaw": 0.0, "hold": 5.0})
+        self.assertEqual(sent["inputs"][3], {"t": 8.0, "wait": 90.0})
+        self.assertEqual(tasks.play({"name": "tp", "seconds": 9, "inputs": [{"t": 1, "teleport": [0, 0, 0]}]})["inputs"],
+                         [{"t": 1.0, "teleport": [0.0, 0.0, 0.0], "yaw": 0.0}], "sent as before")
+        for bad in ([{"t": 1, "wait": 200}, {"t": 2, "wait": 150}], [{"t": 1, "wait": 0}], [{"t": 1, "wait": 301}],
+                    [{"t": 1, "teleport": [0, 0, 0], "hold": 0}], [{"t": 1, "teleport": [0, 0, 0], "hold": 121}]):
+            with self.assertRaises(ValueError, msg=str(bad)):
+                task_with(probe(play={**play, "inputs": bad}, measure={"probe": "pawn", "field": "z"}))
 
 
 class Angles(unittest.TestCase):

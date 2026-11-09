@@ -24,6 +24,7 @@ with look's queries for both (Side.idle): the boot check reads it whole, and loo
 (first_seconds), one game launch instead of two. Judges, trace probes and packaging are never part of a task check."""
 
 import json
+import math
 import re
 import secrets
 import time
@@ -186,10 +187,13 @@ class Side:
         for f, data in files.items():
             (folder / f).write_bytes(data)
 
-    def _play(self, name, seconds, shots, inputs=None, map=None, queries=None, args=(), every=None):
+    def _play(self, name, seconds, shots, inputs=None, map=None, queries=None, args=(), every=None, waits=0.0):
+        """A play, once per name; `waits`: the real seconds its waits add (a task play's), which its timeout gets on
+        top."""
         if name not in self.played:
-            self.log(f"  {self.name}: playing {name} ({seconds} s)")
-            found = self.project.play(seconds, shots, self.timeout, map=map or self.task.get("play_map"),
+            self.log(f"  {self.name}: playing {name} ({seconds} s" + (f", {waits:g} s waiting" if waits else "") + ")")
+            found = self.project.play(seconds, shots, self.timeout + math.ceil(waits),
+                                      map=map or self.task.get("play_map"),
                                       inputs=inputs, queries=queries, args=args, every=every)
             self.played[name] = found
             waited = getattr(found, "waited", 0.0)
@@ -234,7 +238,7 @@ class Side:
                                      p.log, p.files)
             return self._play(name, seconds, shots, inputs, queries=queries)
         return self._play(f"play_{name}", play["seconds"], 2, play["inputs"] or None, map=play["map"],
-                          queries=queries, args=play["args"], every=every)
+                          queries=queries, args=play["args"], every=every, waits=tasks.waited(play))
 
     def boots(self):
         """The boot plays this task's checks run (seconds): its boot checks, and 60 s for a log_absent check."""
