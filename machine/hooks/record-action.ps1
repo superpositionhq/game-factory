@@ -220,6 +220,8 @@ function Get-ClaudeMessages([string]$Sid, $Lines, [datetime]$Created) {
     if ($line -notmatch '"sessionId"' -or $line -match '"toolUseResult"') { continue }
     $queued = $line -match '"type":"attachment"' -and $line -match '"queued_command"'
     if (-not $queued -and $line -notmatch '"type":"(?:user|assistant)"') { continue }
+    # a pasted picture is megabytes of base64 in its row: counted below by its block, never parsed
+    if ($line.Length -gt 100000) { $line = [regex]::Replace($line, '"data":"[A-Za-z0-9+/=]{2000,}"', '"data":""') }
     try { $o = $line | ConvertFrom-Json } catch { continue }
     if ([string]$o.type -eq 'attachment') {
       $a = $o.attachment
