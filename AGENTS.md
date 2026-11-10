@@ -52,7 +52,7 @@ Both agents run the same skills, the same recording hooks and the same workflow;
 |---|---|---|
 | start | `claude` in `<root>` (reads `<root>\CLAUDE.md`) | `codex -s danger-full-access` in `<root>` (reads `<root>\AGENTS.md`) |
 | skills | `~\.claude\skills\` (also offered by name) | `~\.agents\skills\` (`$<name>` or `/skills`; also offered by description) |
-| recording hooks | `~\.claude\settings.json`: PostToolUse, PostToolUseFailure, Stop | `~\.codex\hooks.json`: PostToolUse, Stop (trusted in `config.toml`; `/hooks` shows them) |
+| recording hooks | `~\.claude\settings.json`: PostToolUse, PostToolUseFailure, Stop, UserPromptSubmit, SessionEnd | `~\.codex\hooks.json`: PostToolUse, Stop, UserPromptSubmit, SessionEnd (trusted in `config.toml`; `/hooks` shows them) |
 | file edits in `actions.jsonl` | `Write` / `Edit` rows | `apply_patch` rows (the patch text) |
 | permissions | as set in Claude Code (asks before commands by default) | `codex -s danger-full-access`: the default workspace sandbox blocks what game sessions need (writes to `C:\UEB` and `%LOCALAPPDATA%`, the machine-wide job-slot mutexes, `git push` / `gh`) |
 | transcript (backfill) | `~\.claude\projects\…\<session>.jsonl` | `~\.codex\sessions\YYYY\MM\DD\rollout-…-<session>.jsonl` |

@@ -1,5 +1,7 @@
-# Agent hook (Claude Code: PostToolUse / PostToolUseFailure / Stop; Codex: PostToolUse / Stop, with -Agent codex):
-# append every tool call of a game-building or replay session to <root>\.recording\<project>\actions.jsonl.
+# Agent hook (Claude Code: PostToolUse / PostToolUseFailure / Stop, and UserPromptSubmit / SessionEnd with -Messages;
+# Codex: PostToolUse / Stop, and UserPromptSubmit / SessionEnd with -Messages; all with -Agent codex):
+# append every tool call of a game-building or replay session to <root>\.recording\<project>\actions.jsonl, and every
+# prompt the person typed and every reply the model wrote to <root>\.recording\<project>\messages.jsonl.
 # Both agents send the same hook JSON on stdin (session_id, transcript_path, cwd, hook_event_name, tool_name,
 # tool_input, tool_response, tool_use_id). Codex names its shell tool "Bash" (tool_input.command, a string) and its
 # file edits "apply_patch" (tool_input.command = the patch text); it has no PostToolUseFailure (a failed call is a
@@ -15,12 +17,25 @@
 # existed: the rows go in just before that session's first row. Each session is backfilled at most once
 # (recording-backfill.json next to this file), and a call already in actions.jsonl is never written twice.
 # On Stop, leftover changes in a game repo are committed ("WIP") so no work stays uncommitted.
+# Messages (schema superposition.agent-message/v0: time, project, session_id, agent, role "user" | "assistant",
+# message_id, text; "model"; "images" = pictures attached to a prompt; "mid_turn" for a prompt typed while the model
+# was working; Codex "phase"; "subagent" for a Claude Code subagent's transcript, where "user" is the prompt the
+# session gave it) are read from the session's transcript, never
+# from the hook input, so each is written once, with the transcript's own id and time. Every Stop, and every -Messages
+# call (UserPromptSubmit, SessionEnd: they write no actions.jsonl row), reads what the transcript gained since the last
+# read (recording-messages.json next to this file: transcript file -> bytes read), so a session mapped late gets its
+# earlier messages too. A call waits up to 2 s for its own message (Stop: the turn's last reply; UserPromptSubmit: the
+# prompt) to reach the transcript. Not recorded: tool
+# calls and results (actions.jsonl), the model's reasoning, text the agent tool puts into a turn itself (Claude Code
+# isMeta rows, compaction summaries, background-task notices, API error notices) and a fork's copied context.
+# `record-action.ps1 -Backfill <session id>` also imports that session's messages; `-Backfill all` imports the messages
+# of every mapped session whose transcript is still on this machine (either agent), and nothing else.
 # Nothing is recorded when GF_NO_RECORDING is set: tools/task-try.py sets it for the agent it runs on a task.
 # <root> = the machine root (gf-root.ps1 next to this file; machine/lib/gf-root.ps1 in the repo).
 # machine/bootstrap.ps1 installs this into the hooks dir (config "hooks_dir") and wires it into Claude Code
 # (machine/hooks/settings-hooks.json -> ~\.claude\settings.json) and Codex (machine/hooks/codex-hooks.json ->
 # ~\.codex\hooks.json, pre-trusted in ~\.codex\config.toml).
-param([switch]$Stop, [string]$Backfill, [string]$TranscriptPath, [ValidateSet('claude', 'codex')][string]$Agent = 'claude')
+param([switch]$Stop, [switch]$Messages, [string]$Backfill, [string]$TranscriptPath, [ValidateSet('claude', 'codex')][string]$Agent = 'claude')
 $ErrorActionPreference = 'Stop'
 if ($env:GF_NO_RECORDING) { exit 0 }   # a task try's agent (tools/task-try.py): not a game session, never recorded
 [Console]::InputEncoding = [Text.Encoding]::UTF8
@@ -37,6 +52,7 @@ $projectRx = (Get-GFRootPattern $gf.root) + '[\\/]+(?:games[\\/]+([A-Za-z0-9_-]+
   $(if ($extra.Count) { '|(' + ($extra -join '|') + ')(?![A-Za-z0-9_-])' } else { '' }) + ')'
 $mapFile = Join-Path $hooks 'recording-sessions.json'
 $backfillFile = Join-Path $hooks 'recording-backfill.json'
+$messagesFile = Join-Path $hooks 'recording-messages.json'
 $excludeFile = Join-Path $hooks 'recording-exclude.txt'
 $maxText = 200000   # chars kept per string field of tool_input
 $maxResp = 8000     # chars kept of the tool response
@@ -50,9 +66,9 @@ function Read-JsonMap([string]$Path) {
   if (Test-Path $Path) { ([IO.File]::ReadAllText($Path) | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $h[$_.Name] = $_.Value } }
   return $h
 }
-function Get-RecordedIds([string]$File) {   # tool_use_ids already in actions.jsonl
+function Get-RecordedIds([string]$File, [string]$Key = 'tool_use_id') {   # tool_use_ids already in actions.jsonl (message_ids in messages.jsonl)
   $ids = New-Object 'System.Collections.Generic.HashSet[string]'
-  if (Test-Path $File) { foreach ($l in [IO.File]::ReadLines($File)) { $m = [regex]::Match($l, '"tool_use_id":"([^"]+)"'); if ($m.Success) { [void]$ids.Add($m.Groups[1].Value) } } }
+  if (Test-Path $File) { foreach ($l in [IO.File]::ReadLines($File)) { $m = [regex]::Match($l, '"' + $Key + '":"([^"]+)"'); if ($m.Success) { [void]$ids.Add($m.Groups[1].Value) } } }
   return , $ids
 }
 function Get-CodexHome { if ($env:CODEX_HOME) { return $env:CODEX_HOME } return (Join-Path $env:USERPROFILE '.codex') }
@@ -173,13 +189,174 @@ function Save-BackfillState([string]$Sid, [string]$Project, [string]$Path, $Rows
   [IO.File]::WriteAllText($backfillFile, ($state | ConvertTo-Json -Depth 4 -Compress), $utf8)
 }
 
+# ---- prompts and replies: messages.jsonl ------------------------------------------------------------------------------
+function ConvertTo-Time($v) {   # a transcript timestamp (PowerShell 7's ConvertFrom-Json has already made it a date)
+  if ($v -is [DateTimeOffset]) { return $v }
+  if ($v -is [datetime]) { return [DateTimeOffset]$v }
+  return [DateTimeOffset]::Parse([string]$v, [Globalization.CultureInfo]::InvariantCulture)
+}
+# The complete lines a file gained after byte $From (at most 256 MB a call; the rest at the next), and where they end.
+function Read-TranscriptTail([string]$Path, [long]$From) {
+  $fs = New-Object IO.FileStream($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+  try {
+    if ($From -gt $fs.Length) { $From = 0 }   # a shorter file took its place
+    $n = [int][Math]::Min($fs.Length - $From, 268435456)
+    $buf = New-Object byte[] $n
+    $fs.Position = $From; $got = 0
+    while ($got -lt $n) { $r = $fs.Read($buf, $got, $n - $got); if ($r -le 0) { break }; $got += $r }
+  } finally { $fs.Dispose() }
+  $end = if ($got) { [Array]::LastIndexOf($buf, [byte]10, $got - 1) } else { -1 }
+  if ($end -lt 0) {   # no complete line yet; a line longer than one read is skipped, not waited for
+    return [pscustomobject]@{ lines = @(); next = $(if ($got -eq 268435456) { $From + $got } else { $From }) }
+  }
+  return [pscustomobject]@{ lines = $utf8.GetString($buf, 0, $end).Split("`n"); next = $From + $end + 1 }
+}
+# Claude Code: a "user" row whose content holds text or a picture is a prompt (a tool result holds neither), an
+# "assistant" row's text blocks are a reply (thinking and tool_use blocks are not text). A prompt typed while the model
+# was working is an "attachment" row of type queued_command from a person ("mid_turn" in its row).
+function Get-ClaudeMessages([string]$Sid, $Lines, [datetime]$Created) {
+  $out = New-Object System.Collections.Generic.List[object]
+  foreach ($line in $Lines) {
+    if ($line -notmatch '"sessionId"' -or $line -match '"toolUseResult"') { continue }
+    $queued = $line -match '"type":"attachment"' -and $line -match '"queued_command"'
+    if (-not $queued -and $line -notmatch '"type":"(?:user|assistant)"') { continue }
+    try { $o = $line | ConvertFrom-Json } catch { continue }
+    if ([string]$o.type -eq 'attachment') {
+      $a = $o.attachment
+      if ([string]$a.type -ne 'queued_command' -or [string]$o.sessionId -ne $Sid -or -not $o.timestamp -or -not $o.uuid) { continue }
+      if (($a.PSObject.Properties['origin'] -and $a.origin -and [string]$a.origin.kind -ne 'human') -or ($a.PSObject.Properties['commandMode'] -and [string]$a.commandMode -ne 'prompt')) { continue }
+      $ts = ConvertTo-Time $o.timestamp
+      if ($ts.UtcDateTime -lt $Created) { continue }
+      $text = if ($a.prompt -is [string]) { $a.prompt } else { (@(foreach ($b in @($a.prompt)) { if ($b.type -eq 'text') { [string]$b.text } }) -join "`n") }
+      if ("$text".Trim()) { $out.Add([pscustomobject]@{ id = [string]$o.uuid; role = 'user'; ts = $ts; text = "$text"; images = 0; model = ''; phase = ''; mid = $true }) }
+      continue
+    }
+    $role = [string]$o.type
+    if (($role -ne 'user' -and $role -ne 'assistant') -or [string]$o.sessionId -ne $Sid -or -not $o.timestamp -or -not $o.uuid) { continue }
+    if ($o.isMeta -or $o.isCompactSummary -or $o.isApiErrorMessage) { continue }
+    if ($o.PSObject.Properties['origin'] -and $o.origin -and [string]$o.origin.kind -ne 'human') { continue }   # e.g. a background task's notice
+    $ts = ConvertTo-Time $o.timestamp
+    if ($ts.UtcDateTime -lt $Created) { continue }
+    $c = $o.message.content; $images = 0
+    $text = if ($c -is [string]) { $c } else {
+      (@(foreach ($b in @($c)) { if ($b.type -eq 'text') { [string]$b.text } elseif ($b.type -eq 'image') { $images++ } }) -join "`n")
+    }
+    if (-not "$text".Trim() -and -not $images) { continue }
+    $model = if ($role -eq 'assistant') { [string]$o.message.model } else { '' }
+    $out.Add([pscustomobject]@{ id = [string]$o.uuid; role = $role; ts = $ts; text = "$text"; images = $images; model = $model; phase = ''; mid = $false })
+  }
+  return , $out
+}
+# Codex: the rollout's finished UserMessage and AgentMessage items (item.id is the message's id).
+function Get-CodexMessages([string]$Sid, $Lines, [datetime]$Created) {
+  $out = New-Object System.Collections.Generic.List[object]
+  foreach ($line in $Lines) {
+    if ($line -notmatch '"item_completed"' -or $line -notmatch '"(?:UserMessage|AgentMessage)"') { continue }
+    try { $o = $line | ConvertFrom-Json } catch { continue }
+    $p = $o.payload
+    if ($o.type -ne 'event_msg' -or $p.type -ne 'item_completed' -or -not $p.item -or -not $o.timestamp) { continue }
+    if ($p.thread_id -and [string]$p.thread_id -ne $Sid) { continue }
+    $it = $p.item
+    $role = if ([string]$it.type -eq 'UserMessage') { 'user' } elseif ([string]$it.type -eq 'AgentMessage') { 'assistant' } else { '' }
+    if (-not $role -or -not $it.id) { continue }
+    $ts = ConvertTo-Time $o.timestamp
+    if ($ts.UtcDateTime -lt $Created) { continue }
+    $images = 0
+    $text = (@(foreach ($b in @($it.content)) { if ($b.PSObject.Properties['text'] -and $b.text) { [string]$b.text } elseif ([string]$b.type -match '(?i)image') { $images++ } }) -join "`n")
+    if (-not "$text".Trim() -and -not $images) { continue }
+    $out.Add([pscustomobject]@{ id = [string]$it.id; role = $role; ts = $ts; text = "$text"; images = $images; model = ''; phase = [string]$it.phase; mid = $false })
+  }
+  return , $out
+}
+# Append to <project>\messages.jsonl what the session's transcript (and, Claude Code, its subagents' transcripts) gained
+# since the last read. Returns the number of rows written; $script:Read collects the session's own messages read
+# ("<role> <text>").
+$script:Read = New-Object System.Collections.Generic.List[string]
+function Sync-Messages([string]$Sid, [string]$Project, [string]$Path) {
+  if (-not $Path) { $Path = Find-Transcript $Sid }
+  if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return 0 }   # a session's first prompt comes before its transcript
+  $files = @($Path)
+  if ($Agent -ne 'codex') {
+    $sub = Join-Path (Join-Path (Split-Path $Path) $Sid) 'subagents'
+    if (Test-Path -LiteralPath $sub) { $files += @(Get-ChildItem -LiteralPath $sub -Filter '*.jsonl' | ForEach-Object FullName) }
+  }
+  $created = (Get-Item -LiteralPath $Path).CreationTimeUtc.AddSeconds(-5)   # older rows are a fork's copied context
+  $state = Read-JsonMap $messagesFile
+  $dir = Join-Path $recRoot $Project
+  $file = Join-Path $dir 'messages.jsonl'
+  $seen = $null; $moved = $false
+  $rows = New-Object System.Collections.Generic.List[string]
+  foreach ($f in $files) {
+    $from = if ($state.ContainsKey($f)) { [long]$state[$f] } else { [long]0 }
+    $tail = Read-TranscriptTail $f $from
+    if ($tail.next -eq $from) { continue }
+    $state[$f] = $tail.next; $moved = $true
+    # a transcript read from its start (first read, or the state file was lost): never write a message twice
+    if ($tail.next -lt $from -or $from -eq 0) { if ($null -eq $seen) { $seen = Get-RecordedIds $file 'message_id' } }
+    $subagent = if ($f -eq $Path) { '' } else { [IO.Path]::GetFileNameWithoutExtension($f) }
+    $msgs = if ($Agent -eq 'codex') { Get-CodexMessages $Sid $tail.lines $created } else { Get-ClaudeMessages $Sid $tail.lines $created }
+    foreach ($m in $msgs) {
+      if (-not $subagent) { $script:Read.Add("$($m.role) $($m.text)") }
+      if ($null -ne $seen -and -not $seen.Add($m.id)) { continue }
+      $row = [ordered]@{
+        schema     = 'superposition.agent-message/v0'
+        time       = $m.ts.ToLocalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffzzz', [Globalization.CultureInfo]::InvariantCulture)
+        project    = $Project
+        session_id = $Sid
+        agent      = $Agent
+        role       = $m.role
+        message_id = $m.id
+      }
+      if ($subagent) { $row.subagent = $subagent }
+      if ($m.model) { $row.model = $m.model }
+      if ($m.phase) { $row.phase = $m.phase }
+      if ($m.images) { $row.images = $m.images }
+      if ($m.mid) { $row.mid_turn = $true }
+      $row.text = Clip $m.text $maxText
+      $rows.Add(($row | ConvertTo-Json -Depth 4 -Compress))
+    }
+  }
+  if ($rows.Count) {
+    New-Item -ItemType Directory -Force $dir | Out-Null
+    [IO.File]::AppendAllText($file, (($rows -join "`n") + "`n"), $utf8)
+  }
+  if ($moved) { [IO.File]::WriteAllText($messagesFile, ($state | ConvertTo-Json -Compress), $utf8) }
+  return $rows.Count
+}
+# Is the message the hook was called for (UserPromptSubmit's prompt, Stop's last_assistant_message) among those read
+# from the transcript? The transcript may hold it with other text around it, or a part of it.
+function Test-MessageRead([string]$Role, [string]$Text) {
+  $want = ($Text -replace '\s+', ' ').Trim()
+  if (-not $want) { return $true }
+  foreach ($r in $script:Read) {
+    if (-not $r.StartsWith("$Role ")) { continue }
+    $have = ($r.Substring($Role.Length + 1) -replace '\s+', ' ').Trim()
+    if ($have -and ($have -eq $want -or $want.Contains($have) -or $have.Contains($want))) { return $true }
+  }
+  return $false
+}
+
 # ---- manual backfill of a session that was mapped before the backfill existed ---------------------------------------
 if ($Backfill) {
   $mutex = New-Object Threading.Mutex($false, 'Global\claude-recording-hooks')
   [void]$mutex.WaitOne(30000)
   try {
     $map = Read-JsonMap $mapFile
+    if ($Backfill -eq 'all') {   # messages only: every mapped session whose transcript is still here, whichever agent ran it
+      $total = 0; $found = 0
+      foreach ($s in @($map.Keys | Sort-Object)) {
+        $t = $null
+        foreach ($a in 'claude', 'codex') { $Agent = $a; $t = Find-Transcript $s; if ($t) { break } }
+        if (-not $t) { continue }
+        $found++; $n = Sync-Messages $s ([string]$map[$s]) $t; $total += $n
+        if ($n) { Write-Host "$n message(s) of session $s ($Agent) -> $([string]$map[$s])\messages.jsonl" }
+      }
+      Write-Host "imported $total message(s) from $found of $($map.Count) mapped session(s)$(if ($found -lt $map.Count) { '; the others have no transcript on this machine' })"
+      exit 0
+    }
     if (-not $map.ContainsKey($Backfill)) { throw "session $Backfill is not mapped to a project (recording-sessions.json)" }
+    $n = Sync-Messages $Backfill ([string]$map[$Backfill]) $TranscriptPath
+    Write-Host "imported $n message(s) of session $Backfill into $(Join-Path (Join-Path $recRoot ([string]$map[$Backfill])) 'messages.jsonl')"
     if ((Read-JsonMap $backfillFile).ContainsKey($Backfill)) { Write-Host "session $Backfill was already backfilled; nothing to do"; exit 0 }
     $project = $map[$Backfill]
     if (-not $TranscriptPath) { $TranscriptPath = Find-Transcript $Backfill }
@@ -246,6 +423,21 @@ try {
       if ($rows.Count) { [IO.File]::AppendAllText($actions, (($rows -join "`n") + "`n"), $utf8) }
       Save-BackfillState $sid $project ([string]$e.transcript_path) $rows $got
     } catch { }   # never lose the live row over a transcript problem
+  }
+  # the session's prompts and replies: what its transcript gained since the last read (never at the cost of the row)
+  if ($Stop -or $Messages) {
+    try {
+      [void](Sync-Messages $sid $project ([string]$e.transcript_path))
+      # the message this call is about may reach the transcript a moment after the hook starts: the turn's last reply
+      # (Stop), the prompt just typed (UserPromptSubmit)
+      $role = if ($Stop) { 'assistant' } else { 'user' }
+      $text = if ($Stop) { [string]$e.last_assistant_message } else { [string]$e.prompt }
+      for ($i = 0; $i -lt 7 -and -not (Test-MessageRead $role $text); $i++) {
+        Start-Sleep -Milliseconds 300
+        [void](Sync-Messages $sid $project ([string]$e.transcript_path))
+      }
+    } catch { }
+    if ($Messages) { exit 0 }   # UserPromptSubmit, SessionEnd: no row in actions.jsonl
   }
   # a call already imported from the transcript is not written twice
   $bf = Read-JsonMap $backfillFile

@@ -20,9 +20,10 @@ none). A release: `-Commit release/1.0 -Version 1.0` (README "Version 1.0 (tag r
 adds a launch note to the README's Play section. `-OnlyCommitRuns` keeps only gameplay runs played on a build of the
 packaged commit itself (e.g. after a fix that changed what the game looks or sounds like). `-Screenshots
 auto|repo|stills` chooses the README images (auto: the project's `docs/screenshots/`, else stills of the packaged
-runs). `-ExcludeSessions id,id` leaves those sessions' rows out of `History/actions.jsonl`; sessions that ran this
-packager are always left out (the hooks log their tool calls under the game when their working directory is inside it,
-but packaging is not creation work; `history.actions.jsonl.sessions_left_out` in `manifest.json`). Other options: `-Build <dir>` (+ `-BuildCommit <rev>` when the dir has no `build_info.json`),
+runs). `-ExcludeSessions id,id` leaves those sessions' rows out of `History/actions.jsonl` and `History/messages.jsonl`;
+sessions that ran this packager are always left out (the hooks log their tool calls under the game when their working
+directory is inside it, but packaging is not creation work; `history.actions.jsonl.sessions_left_out` in
+`manifest.json`). Other options: `-Build <dir>` (+ `-BuildCommit <rev>` when the dir has no `build_info.json`),
 `-AllowDevelopmentBuild`, `-IncludePdb`, `-StoreFolders a,b` (extra store paths), `-RepoPath` (package another clone),
 `-OutRoot`, `-ZipLevel Fastest|Optimal|NoCompression`, `-NoZip`, `-Force` (replace an existing package), `-KeepRefused`,
 `-NoScrub` (diagnostics only; the scan then refuses).
@@ -40,7 +41,7 @@ sizes per section, warnings, notes), `<name>.leaks.tsv` (report-only findings, s
 | `StoreContent.tsv` | every store-content file: `status` (included/dropped), path, bytes, sha256, source (git, git-lfs, working-tree), why it counts | see Store content |
 | `workflow.jsonl` | the creation log at the commit (also in `UEProject/`) | `git cat-file <sha>:workflow.jsonl` |
 | `git.log` | every commit up to the commit, oldest first (topological): `commit`, `Parents`, `Author`, `AuthorDate`, `Committer`, `CommitDate`, message indented 4, full text diff (first parent, renames detected) | `git log -p --no-textconv --full-index` |
-| `History/` | `commits.jsonl`, `actions.jsonl`, `builds.jsonl`, `runs.jsonl` | `.recording\<game>\`, rows limited to the lineage (below) |
+| `History/` | `commits.jsonl`, `actions.jsonl` (every tool call), `messages.jsonl` (every prompt the person typed and every reply the model wrote), `builds.jsonl`, `runs.jsonl` | `.recording\<game>\`, rows limited to the lineage (below); in `actions.jsonl` and `messages.jsonl` each session's id is `session_NN`, the same in both |
 | `Gameplay/<run>/` | every validated gameplay bundle of the lineage, as recorded (video, audio, inputs, telemetry, outcome, metadata, validation, manifest, `raw/`) | `recordings\<game>\` |
 | `Gameplay/summary.md`, `summary.json` | one row per run: scenario, seed, skill, result, score, durations, game fps, inputs, build, validation; runs left out and why | derived |
 | `Build/` | the packaged Windows build (`.pdb` left out unless `-IncludePdb`) and our own `build_info.json` | see Build |
@@ -58,7 +59,8 @@ lines are never dropped.
 
 **Lineage.** Everything is tied to the commit's ancestry (`git rev-list <sha>`): `commits.jsonl` rows by `sha`,
 `builds.jsonl` by `commit`, `runs.jsonl` by `build_commit`, gameplay bundles by `metadata.build.commit`;
-`actions.jsonl` rows by `time` up to the commit's committer time (work after the commit is not part of it).
+`actions.jsonl` and `messages.jsonl` rows by `time` up to the commit's committer time (work after the commit is not
+part of it).
 
 **Gameplay.** A bundle is included when it has no `FAILED` marker, `validation.json` status is `ok` or `warn`, and its
 build commit is in the lineage. Failed runs are never shipped (they are counted in `summary.md`).
@@ -213,7 +215,8 @@ never contains the original values.
   ignore state alone is not enough).
 - Binary assets keep their embedded import paths (account name); fixing them needs a re-import in the editor.
 - The scrub is pattern-based: other personal names typed into logs (e.g. names seen on web pages) are not detected
-  beyond the e-mail and git-identity rules; review `<name>.leaks.tsv` and spot-check `History/actions.jsonl`.
+  beyond the e-mail and git-identity rules; review `<name>.leaks.tsv` and spot-check `History/actions.jsonl` and
+  `History/messages.jsonl`.
 
 ## Dataset layout v1.1 (the delivery)
 

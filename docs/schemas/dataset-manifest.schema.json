@@ -303,6 +303,46 @@
         },
         "authors_anonymised": {
           "const": true
+        },
+        "sessions": {
+          "type": "object",
+          "description": "History/sessions/: the creation sessions as recorded; each file is listed when it is in the dataset",
+          "properties": {
+            "messages": {
+              "type": "object",
+              "required": [
+                "file",
+                "rows"
+              ],
+              "properties": {
+                "file": {
+                  "type": "string",
+                  "pattern": "^History/sessions/[a-z]+\\.jsonl$"
+                },
+                "rows": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "actions": {
+              "type": "object",
+              "required": [
+                "file",
+                "rows"
+              ],
+              "properties": {
+                "file": {
+                  "type": "string",
+                  "pattern": "^History/sessions/[a-z]+\\.jsonl$"
+                },
+                "rows": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
         }
       }
     },

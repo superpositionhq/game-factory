@@ -102,8 +102,9 @@ GPT** model ids) out of game content and commit messages too (deliverables refus
   `tools/scrub-workflow-rows.py --apply`, which appends the `log.correct` row). Banned names include the machine's
   account name (in paths): enforced in every non-script file; scripts that already ran keep it (packaging scrubs them).
 - The machine hooks (the same scripts under Claude Code and Codex) record every tool call to
-  `<GF_ROOT>\.recording\<slug>\actions.jsonl` and every commit to `commits.jsonl`; leftover changes are
-  auto-committed as `WIP` at the end of a turn (commit properly instead).
+  `<GF_ROOT>\.recording\<slug>\actions.jsonl`, every prompt you are given and every reply you write to
+  `messages.jsonl`, and every commit to `commits.jsonl`; all three are delivered with the game's dataset. Leftover
+  changes are auto-committed as `WIP` at the end of a turn (commit properly instead).
 
 ## Replay-friendly work
 

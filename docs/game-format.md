@@ -92,9 +92,9 @@ lists what needs a person).
 |---|---|---|
 | `README.md` | yes | the game, how to play, open, replay and restore it; sections in the order of the layout file |
 | `git.log` | yes | every commit up to the release, oldest first: message, `dev_NN` authors, dates, full text diff; binaries as path + sha256 |
-| `workflow.jsonl` | yes | the creation record; **the person's directions are `user.direction` rows** (they replace conversation transcripts) |
+| `workflow.jsonl` | yes | the creation record; **the person's directions are `user.direction` rows** (the prompts and replies themselves are in `History/sessions/`) |
 | `Brief/` | yes | `brief.md`, the original brief; `design.md`, the design doc with story bible and status |
-| `History/` | no | `<game>.bundle` (every commit of every ref except the tasks branch) and `lfs/objects/<aa>/<bb>/<sha256>` (every Git LFS object of every commit) |
+| `History/` | no | `<game>.bundle` (every commit of every ref except the tasks branch) and `lfs/objects/<aa>/<bb>/<sha256>` (every Git LFS object of every commit); `sessions/messages.jsonl` (every prompt the person typed and every reply the model wrote) and `sessions/actions.jsonl` (every tool call), when the game's sessions were recorded |
 | `Tasks/` | no | the game's tasks, each split: `Tasks/<name>/task.json` (the agent's part) and `Tasks/<name>/grader.json` (milestones, `seed.reference`), plus a generated `README.md` |
 | `UEProject/` | no | the project at the release commit, store content included |
 | `ReplayScripts/` | yes | the creation replayed headless, with `Verification/report.json` (required for complete; its verdict PASS or FAIL is metadata) |
@@ -102,6 +102,15 @@ lists what needs a person).
 | `Screenshots/` | yes | the README's images |
 | `Build/` | no | the packaged Windows Shipping build, no `.pdb` |
 | `manifest.json` | yes | metadata, `history`, `brief`, and path / bytes / sha256 of every file except the content-addressed `History/lfs/objects/` |
+
+**The sessions' record (`History/sessions/`, owner 2026-11-10).** What the recording hooks wrote while the game was
+made (machine/README.md, Recording), one JSON row per line: `messages.jsonl`, every prompt the person typed (`role`
+`user`) and every reply the model wrote (`role` `assistant`), and `actions.jsonl`, every tool call with its input and
+the start of its result. Rows up to the release commit's time, without the sessions that packaged; scrubbed like every
+other text file; full commit ids are the delivered history's. `session_id` is `session_NN`, the same session in both
+files, and `time` orders the rows. `manifest.json` `history.sessions` names the files and counts their rows. Both files
+are optional: a game whose sessions were recorded before prompts and replies were has no `messages.jsonl` (the
+validators note it, never an error).
 
 **The history is rewritten for delivery** (user decision 2026-10-15; the game repos are not changed): authors and
 committers become `dev_NN`, agent trailer lines go, the scrub rules apply to every message and text blob, and LFS

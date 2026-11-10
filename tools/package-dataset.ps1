@@ -470,6 +470,21 @@ function New-Delivery([string]$Src, [string]$Dest, [string]$Variant) {
         $null = Copy-TreeChecked (Join-Path $Src 'UEProject') (Join-Path $Dest 'UEProject') $false '' 'UEProject/'
         $null = Copy-TreeChecked (Join-Path $Src 'Build') (Join-Path $Dest 'Build') $false '.pdb' 'Build/'
         if ($gh) { $null = Copy-TreeChecked (Join-Path $Src 'GitHistory') (Join-Path $Dest 'History') $false '' 'History/' }
+        # History/sessions/: the creation sessions as recorded, from the package's History\ (lineage-limited, sessions
+        # numbered and scrubbed there): messages.jsonl, every prompt the person typed and every reply the model wrote, and
+        # actions.jsonl, every tool call. Copies, not links: their full commit shas become the delivered history's.
+        $sessionRows = [ordered]@{}
+        if ($gh) {
+            $sesDir = Join-Path $Dest 'History\sessions'
+            foreach ($f in 'messages.jsonl', 'actions.jsonl') {
+                $sf = Join-Path $Src "History\$f"
+                if (-not (Test-Path -LiteralPath $sf) -or (Get-Item -LiteralPath $sf).Length -eq 0) { continue }
+                [DatasetV1.T]::LinkFile($sf, (Join-Path $sesDir $f), $true)
+                $sessionRows[$f] = @([IO.File]::ReadLines($sf) | Where-Object { $_.Trim() }).Count
+            }
+            if ($sessionRows.Count) { $null = Invoke-ShaRemap $sesDir }
+            foreach ($f in 'messages.jsonl', 'actions.jsonl') { if (-not $sessionRows.Contains($f)) { Write-Host "  note: no History/sessions/$f (the package has no History\$f rows)" -ForegroundColor Yellow } }
+        }
         if ($taskNames.Count) { $null = Copy-TreeChecked $tasksDir (Join-Path $Dest 'Tasks') $true '' 'Tasks/' }
     }
     if ($haveReplay) {
@@ -505,6 +520,11 @@ function New-Delivery([string]$Src, [string]$Dest, [string]$Variant) {
     if ($gh) {
         $mj['history'] = if ($repo) { $null } else { [ordered]@{ bundle = "History/$Game.bundle"; head = $sha; commits = [int]$gh.commits; refs = @($gh.refs)
                 lfs_objects = [int]$gh.lfs_objects; lfs_bytes = [long]$gh.lfs_bytes; authors_anonymised = $true } }
+        if (-not $repo -and $sessionRows.Count) {
+            $ses = [ordered]@{}
+            foreach ($f in $sessionRows.Keys) { $ses[[IO.Path]::GetFileNameWithoutExtension($f)] = [ordered]@{ file = "History/sessions/$f"; rows = [int]$sessionRows[$f] } }
+            $mj['history']['sessions'] = $ses
+        }
         $mj['brief'] = [ordered]@{ brief = 'Brief/brief.md'; design = 'Brief/design.md' }
     }
     if ($layout -eq 'dataset-layout/v1.3') {
@@ -557,6 +577,11 @@ function Write-Readme([string]$Dest, [string]$Variant) {
     A '- `git.log` — every commit with its message and full diff (binary files as path and sha256).'
     if ($gh) {
         if (-not $repo) { A "- ``History/`` — the full git history: ``History/$Game.bundle`` (every commit of every branch) and ``History/lfs/objects/`` (every Git LFS file of every commit). Authors are anonymised as dev_NN." }
+        if (-not $repo -and (Test-Path -LiteralPath (Join-Path $Dest 'History\sessions'))) {
+            A ('  `History/sessions/` — the creation sessions as recorded, one JSON row per line, oldest first within a session: ' +
+               '`messages.jsonl` holds every prompt the person typed (`role` "user") and every reply the model wrote (`role` "assistant"); ' +
+               '`actions.jsonl` holds every tool call with its input and the start of its result. `session_id` (session_NN) and `time` tie the two together.')
+        }
         A '- `Brief/` — the original brief the game was built from (`Brief/brief.md`) and its design doc with story bible and status (`Brief/design.md`).'
         if ($layout -eq 'dataset-layout/v1.3' -and -not $repo) { A "- ``Tasks/`` — $($taskNames.Count) tasks on this game for a game-creation environment (``Tasks/README.md``)." }
     }

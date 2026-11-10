@@ -58,7 +58,7 @@ source (config set by hand, config from bootstrap, or computed at run time). The
 | `lib/gf-root.ps1` | `<root>\tools\`, the hooks dir | root/config resolver (also `Get-GFHooksDir`, `Get-GFAgents`), dot-sourced by every script |
 | `lib/codex-hooks.ps1` | | Codex hook trust: the `[hooks.state]` entries Codex needs in `config.toml` before it runs a hook (bootstrap writes, check compares) |
 | `tools/ue-heavy.ps1` | `<root>\tools\ue-heavy.ps1` | machine-wide job limiter: `heavy_slots` general slots + `gpu_slots` GPU slots, one named mutex per slot (`Global\ue-heavy-slot-<n>`, `Global\ue-gpu-slot-<n>`: a killed job leaks none; VRAM guard; a recording takes all GPU slots), counts from the config or the hardware formula above, `-Low` for background work, yields to `builds\_queue\_recording-wants-gpu`, log `.recording\_heavy-jobs.jsonl`. Installed next to a copy of `lib\gf-root.ps1` |
-| `hooks/record-action.ps1` | the hooks dir | the agent hook (Claude Code: PostToolUse / PostToolUseFailure / Stop; Codex: PostToolUse / Stop with `-Agent codex`): every tool call of a game session to `.recording\<project>\actions.jsonl` (earlier calls backfilled from the transcript, see Recording); Stop auto-commits leftovers as `WIP` |
+| `hooks/record-action.ps1` | the hooks dir | the agent hook (Claude Code: PostToolUse / PostToolUseFailure / Stop, and UserPromptSubmit / SessionEnd with `-Messages`; Codex: PostToolUse / Stop / UserPromptSubmit / SessionEnd with `-Agent codex`): every prompt and reply of a game session to `.recording\<project>\messages.jsonl` (read from the transcript, see Recording), every tool call to `.recording\<project>\actions.jsonl` (earlier calls backfilled from the transcript, see Recording); Stop auto-commits leftovers as `WIP` |
 | `hooks/record-commit.ps1` | the hooks dir | called by each game repo's post-commit hook: `.recording\<repo>\commits.jsonl` |
 | `hooks/settings-hooks.json` | merged into `~\.claude\settings.json` | Claude Code: the three hook entries (`{{HOOKS_DIR}}` filled in) |
 | `hooks/codex-hooks.json` | merged into `~\.codex\hooks.json` | Codex: the two hook entries (`{{HOOKS_DIR}}` filled in), trusted in `~\.codex\config.toml` |
@@ -90,6 +90,21 @@ hooks and never overwrites it.
   `actions.jsonl` (finds the transcript under `~\.claude\projects\`, or `~\.codex\sessions\` with `-Agent codex`,
   when not given); a second run does nothing.
 - Live rows carry no `status`; every row of a backfill carries `from_transcript`, so the two are never confused.
+- **Prompts and replies.** `messages.jsonl` next to `actions.jsonl` holds every prompt the person typed and every
+  reply the model wrote in a session mapped to the project, one row each (`"schema": "superposition.agent-message/v0"`:
+  `time`, `project`, `session_id`, `agent`, `role` `user` or `assistant`, `message_id`, `text`; `model`; `images` for
+  pictures attached to a prompt; `mid_turn` for a prompt typed while the model was working; Codex `phase`; `subagent`
+  for a Claude Code subagent's transcript, where `user` is the prompt the session gave it). The hook reads them from
+  the session's transcript, never from its own input, so each is written once with the transcript's id and time: every
+  Stop, UserPromptSubmit and SessionEnd reads what the transcript gained since the last read
+  (`recording-messages.json` next to the hooks: transcript file, bytes read), so a session mapped late gets its
+  earlier messages too. Not recorded: tool calls and results (`actions.jsonl`), the model's reasoning, text the agent
+  tool puts into a turn itself (meta rows, compaction summaries, background-task notices, API error notices) and a
+  fork's copied context.
+- **Sessions recorded before prompts and replies were:** `record-action.ps1 -Backfill <session id>` imports that
+  session's messages too; `record-action.ps1 -Backfill all` imports the messages of every mapped session whose
+  transcript is still on the machine (either agent) and nothing else. Claude Code deletes transcripts after its
+  clean-up period (30 days by default), so run it before they go.
 - Every row carries `agent` (`claude` or `codex`). Codex rows differ in two ways: file edits are `apply_patch` rows
   (`input.command` = the patch; the replay ledger applies them like Write/Edit, `tools/ue-replay/patchfx.py`), and
   there is no `PostToolUseFailure` (a failed call is a `PostToolUse` whose response shows the exit code).

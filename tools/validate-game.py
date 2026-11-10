@@ -387,6 +387,7 @@ def check_dataset(rep, path, area='dataset'):
             rep.warn(f'{area}: workflow.jsonl', "no user.direction rows: the person's directions are recorded nowhere else")
         if m['variant'] == 'full':
             check_history(rep, area, v, m)
+            check_sessions(rep, area, v, m)
             if m['layout'] == 'dataset-layout/v1.3':
                 check_tasks(rep, area, v, m)
         else:
@@ -414,6 +415,53 @@ def git_out(*args, input=None):
     if r.returncode != 0:
         raise RuntimeError(f'git {" ".join(args[:3])}: {r.stderr.decode("utf-8", "replace").strip()[:200]}')
     return r.stdout
+
+
+def check_sessions(rep, area, v, m):
+    """Full variant: History/sessions/, the creation sessions as recorded: messages.jsonl (every prompt the person
+    typed and every reply the model wrote) and actions.jsonl (every tool call), one JSON row per line. Games recorded
+    before prompts and replies were have no messages.jsonl; nothing here is an error."""
+    a = f'{area}: History/sessions'
+    files = {'messages.jsonl': ('role', 'text'), 'actions.jsonl': ('event',)}
+    stray = sorted(r for r in v.names if r.startswith('History/sessions/') and r[len('History/sessions/'):] not in files)
+    if stray:
+        rep.warn(a, f'{len(stray)} file(s) that are not messages.jsonl or actions.jsonl, e.g. {stray[0]}')
+    listed = (m.get('history') or {}).get('sessions') or {}
+    for name, keys in files.items():
+        rel = f'History/sessions/{name}'
+        if not v.has(rel):
+            rep.note(a, f'no {name}' + (': the prompts and replies of the creation sessions are not in this dataset'
+                                        if name == 'messages.jsonl' else ''))
+            continue
+        rows, bad, raw_ids, sessions, roles = 0, 0, 0, set(), {}
+        with v.open_text(rel) as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                rows += 1
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    r = None
+                if not isinstance(r, dict) or not all(isinstance(r.get(k), str) for k in ('time', 'session_id') + keys):
+                    bad += 1
+                    continue
+                sessions.add(r['session_id'])
+                if re.fullmatch(r'[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}', r['session_id']):
+                    raw_ids += 1
+                if name == 'messages.jsonl':
+                    roles[r['role']] = roles.get(r['role'], 0) + 1
+        if bad:
+            rep.warn(a, f'{name}: {bad} of {rows} row(s) are not a JSON object with {", ".join(("time", "session_id") + keys)}')
+        if raw_ids:
+            rep.warn(a, f"{name}: {raw_ids} row(s) carry the build machine's session id, not session_NN")
+        if name == 'messages.jsonl' and set(roles) - {'user', 'assistant'}:
+            rep.warn(a, f'{name}: roles other than user and assistant: {", ".join(sorted(set(roles) - {"user", "assistant"}))}')
+        want = (listed.get(name[:-len('.jsonl')]) or {}).get('rows') if isinstance(listed, dict) else None
+        if want is not None and want != rows:
+            rep.warn(a, f'{name}: {rows} row(s), manifest.json history.sessions says {want}')
+        detail = f'{roles.get("user", 0)} prompt(s), {roles.get("assistant", 0)} repl(ies)' if name == 'messages.jsonl' else f'{rows} row(s)'
+        rep.note(a, f'{name}: {detail} in {len(sessions)} session(s)')
 
 
 def check_history(rep, area, v, m):

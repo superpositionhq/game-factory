@@ -16,7 +16,9 @@
     workflow.jsonl    workflow.jsonl at the commit
     git.log           every commit up to the commit, oldest first: message, anonymised author/date, full text diff;
                       binary and LFS files as path + sha256 + bytes
-    History\          commits/actions/builds/runs.jsonl from .recording\<game>\, limited to the commit's lineage
+    History\          commits/actions/messages/builds/runs.jsonl from .recording\<game>\, limited to the commit's
+                      lineage (messages.jsonl: every prompt the person typed and every reply the model wrote;
+                      actions.jsonl: every tool call; both name their session session_NN)
     Gameplay\         every validated (ok|warn, no FAILED) gameplay bundle whose build commit is in the lineage + summary
     Build\            the packaged Shipping build: newest pipeline build in the lineage, else the game session's own
                       Packaged\Windows Shipping package tied to a commit by its build.package workflow row (stated, not
@@ -52,7 +54,7 @@ param(
     [string[]]$ExcludeRuns = @(),   # gameplay run ids to leave out although they validated (e.g. superseded recordings)
     [switch]$OnlyCommitRuns,
     [ValidateSet('auto', 'repo', 'stills')][string]$Screenshots = 'auto',   # auto: the project's docs/screenshots/, else stills of the packaged runs        # only runs played on a build of the packaged commit itself (not of earlier commits)
-    [string[]]$ExcludeSessions = @(), # session ids whose actions.jsonl rows are not creation work (packager sessions are left out anyway)
+    [string[]]$ExcludeSessions = @(), # session ids whose actions.jsonl and messages.jsonl rows are not creation work (packager sessions are left out anyway)
     [string]$RepoPath,              # package this clone (e.g. a scrubbed copy) instead of games\<game>
     [string]$OutRoot,               # default GF_OUT, else <root>\deliverables (machine/lib/gf-root.ps1 Get-GFOut)
     [ValidateSet('Fastest', 'Optimal', 'NoCompression')][string]$ZipLevel = 'Fastest',
@@ -1134,9 +1136,9 @@ $RulesHead = @(
 )
 # the session ids of this game's recording wherever they stand alone (other uuids, e.g. Fab listing ids, stay)
 $SessionIdRule = @()
-$sessAct = Join-Path $WorkRoot ".recording\$Game\actions.jsonl"
-if (Test-Path -LiteralPath $sessAct) {
-    $sessIds = @(Select-String -LiteralPath $sessAct -Pattern '"session_id":\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"' -AllMatches |
+$sessLogs = @('actions.jsonl', 'messages.jsonl') | ForEach-Object { Join-Path $WorkRoot ".recording\$Game\$_" } | Where-Object { Test-Path -LiteralPath $_ }
+if ($sessLogs) {
+    $sessIds = @(Select-String -LiteralPath $sessLogs -Pattern '"session_id":\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"' -AllMatches |
         ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value.ToLower() } | Sort-Object -Unique)
     if ($sessIds.Count) {
         $SessionIdRule = @(@{ id = 'session-path'; scope = 'all'; replace = 'session'
@@ -1691,6 +1693,10 @@ $histStats = [ordered]@{}
 # actions.jsonl rows of sessions that are not creation work: packaging sessions (their tool calls get logged under the
 # game when their working directory is inside it), i.e. sessions whose rows here are mostly about this packager (over a
 # quarter of them name it; a builder that only reads about it or mentions it keeps its history), plus -ExcludeSessions.
+# Their rows in messages.jsonl (the sessions' prompts and replies) are left out with them.
+# In both files each session's id becomes session_NN, numbered by its first row in actions.jsonl, then in
+# messages.jsonl: the scrub below turns every session id into the one word "session", which would leave no way to tell
+# which reply belongs to which tool calls.
 $skipSessions = @{}; foreach ($x in @($ExcludeSessions | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })) { $skipSessions[$x] = 'given' }
 $actSrc = Join-Path $info.LogDir 'actions.jsonl'
 if (Test-Path $actSrc) {
@@ -1702,24 +1708,41 @@ if (Test-Path $actSrc) {
     }
     foreach ($sid in $sesPkg.Keys) { if (-not $skipSessions.ContainsKey($sid) -and $sesPkg[$sid] / $sesRows[$sid] -gt 0.25) { $skipSessions[$sid] = 'packaging session' } }
 }
+$sessionRx = [regex]'"session_id"\s*:\s*"([^"]+)"'
+$sessionNo = @{}
 foreach ($h in @(
         @{ file = 'commits.jsonl'; rx = '"sha"\s*:\s*"([0-9a-f]{40})"'; kind = 'commit' },
         @{ file = 'actions.jsonl'; rx = '"time"\s*:\s*"([^"]+)"'; kind = 'time' },
+        @{ file = 'messages.jsonl'; rx = '"time"\s*:\s*"([^"]+)"'; kind = 'time' },
         @{ file = 'builds.jsonl'; rx = '"commit"\s*:\s*"([0-9a-f]{40})"'; kind = 'commit' },
         @{ file = 'runs.jsonl'; rx = '"build_commit"\s*:\s*"([0-9a-f]{40})"'; kind = 'commit' })) {
     $src = Join-Path $info.LogDir $h.file
-    if (-not (Test-Path $src)) { [void]$warnings.Add("History/$($h.file): not found in .recording"); continue }
+    $sessionLog = $h.file -in 'actions.jsonl', 'messages.jsonl'
+    if (-not (Test-Path $src)) {
+        [void]$warnings.Add("History/$($h.file): not found in .recording$(if ($h.file -eq 'messages.jsonl') { ' (sessions recorded before prompts and replies were: record-action.ps1 -Backfill all imports them while their transcripts are still on this machine)' })")
+        continue
+    }
     $kept = New-Object System.Collections.Generic.List[string]; $total = 0
     foreach ($line in [System.IO.File]::ReadAllLines($src, $Utf8NoBom)) {
         if (-not $line.Trim()) { continue }
         $total++; $m = [regex]::Match($line, $h.rx); if (-not $m.Success) { continue }
-        if ($h.file -eq 'actions.jsonl' -and $skipSessions.Count -and $line -match '"session_id"\s*:\s*"([^"]+)"' -and $skipSessions.ContainsKey($Matches[1])) { continue }
+        $sm = if ($sessionLog) { $sessionRx.Match($line) } else { $null }
+        if ($sm -and $sm.Success -and $skipSessions.ContainsKey($sm.Groups[1].Value)) { continue }
         if ($h.kind -eq 'commit') { if ($lineage.ContainsKey($m.Groups[1].Value)) { $kept.Add($line) } }
-        else { $dt = [DateTimeOffset]::MinValue; if ([DateTimeOffset]::TryParse($m.Groups[1].Value, [ref]$dt) -and $dt -le $commitDto) { $kept.Add($line) } }
+        else {
+            $dt = [DateTimeOffset]::MinValue
+            if (-not ([DateTimeOffset]::TryParse($m.Groups[1].Value, [ref]$dt) -and $dt -le $commitDto)) { continue }
+            if ($sm -and $sm.Success) {   # the row's own session_id (its first), not one inside a tool's input
+                $sidv = $sm.Groups[1].Value
+                if (-not $sessionNo.ContainsKey($sidv)) { $sessionNo[$sidv] = 'session_{0:d2}' -f ($sessionNo.Count + 1) }
+                $line = $line.Substring(0, $sm.Groups[1].Index) + $sessionNo[$sidv] + $line.Substring($sm.Groups[1].Index + $sm.Groups[1].Length)
+            }
+            $kept.Add($line)
+        }
     }
     Write-Utf8 (Join-Path $histDir $h.file) ((($kept -join "`n") + $(if ($kept.Count) { "`n" } else { '' })))
     $histStats[$h.file] = [ordered]@{ rows = $kept.Count; source_rows = $total }
-    if ($h.file -eq 'actions.jsonl') { $histStats[$h.file].sessions_left_out = $skipSessions.Count }
+    if ($sessionLog) { $histStats[$h.file].sessions_left_out = $skipSessions.Count }
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -1937,7 +1960,7 @@ A '|---|---|'
 A "| ``UEProject/`` | the project at commit ``$short``, as committed (no Binaries, Intermediate, Saved, DerivedDataCache)$(if ($WithoutStoreContent) { '; store content removed' }) |"
 A "| ``workflow.jsonl`` | the creation log: $wfRows operations, one row each, written when the operation happened |"
 A "| ``git.log`` | $commitCount commits, oldest first, with message, anonymised author, dates and full diff |"
-A '| `History/` | machine logs of the creation sessions: `actions.jsonl` (every tool call of the builder), `commits.jsonl`, `builds.jsonl`, `runs.jsonl` |'
+A '| `History/` | machine logs of the creation sessions: `messages.jsonl` (every prompt the person typed and every reply the model wrote), `actions.jsonl` (every tool call of the builder), `commits.jsonl`, `builds.jsonl`, `runs.jsonl` |'
 A "| ``Gameplay/`` | $($runs.Count) validated gameplay recording(s); table in ``Gameplay/summary.md`` |"
 A "| ``Build/`` | the packaged Windows $($buildSel.config) build$(if ($exe) { " (``Build/$($exe.Name)``)" }), built from commit ``$(if ($buildSel.commit) { $buildSel.commit.Substring(0,8) } else { 'unknown' })``$(if (-not $buildInfo.commit_verified) { ' (as stated by the build log)' }); ``Build/build_info.json`` |"
 if ($shots.Count) { A "| ``Screenshots/`` | $($shots.Count) image(s) shown in this README, from $shotSource |" }
