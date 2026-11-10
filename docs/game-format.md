@@ -94,7 +94,7 @@ lists what needs a person).
 | `git.log` | yes | every commit up to the release, oldest first: message, `dev_NN` authors, dates, full text diff; binaries as path + sha256 |
 | `workflow.jsonl` | yes | the creation record; **the person's directions are `user.direction` rows** (the prompts and replies themselves are in `History/sessions/`) |
 | `Brief/` | yes | `brief.md`, the original brief; `design.md`, the design doc with story bible and status |
-| `History/` | no | `<game>.bundle` (every commit of every ref except the tasks branch) and `lfs/objects/<aa>/<bb>/<sha256>` (every Git LFS object of every commit); `sessions/messages.jsonl` (every prompt the person typed and every reply the model wrote) and `sessions/actions.jsonl` (every tool call), when the game's sessions were recorded |
+| `History/` | no | `<game>.bundle` (the release commit's history as `refs/heads/main` and each task's start branch as `refs/heads/starts/<task>`, nothing else: no side branch, tag off main or stash, and never the tasks branch) and `lfs/objects/<aa>/<bb>/<sha256>` (every Git LFS object of every commit of the bundle); `sessions/messages.jsonl` (every prompt the person typed and every reply the model wrote) and `sessions/actions.jsonl` (every tool call), when the game's sessions were recorded |
 | `Tasks/` | no | the game's tasks, each split: `Tasks/<name>/task.json` (the agent's part) and `Tasks/<name>/grader.json` (milestones, `seed.reference`), plus a generated `README.md` |
 | `UEProject/` | no | the project at the release commit, store content included |
 | `ReplayScripts/` | yes | the creation replayed headless, with `Verification/report.json` (required for complete; its verdict PASS or FAIL is metadata) |

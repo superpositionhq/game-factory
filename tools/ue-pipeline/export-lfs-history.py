@@ -1,9 +1,9 @@
-"""Export every Git LFS object of a game's whole history for a delivery (dataset layout v1.2 History/lfs/objects).
+"""Export every Git LFS object of a game's delivered history (dataset layout v1.2 History/lfs/objects).
 
-  python export-lfs-history.py <repo> <out lfs dir> [--unpatchable-use-head]
+  python export-lfs-history.py <repo> <out lfs dir> [--unpatchable-use-head] [--revs <rev> ...]
 
-Every LFS object any commit references (all refs except the game's tasks branch, which never enters the delivered
-history; the same refs as package-game.ps1's history export) is scanned with the same terms and safe-context rules as
+Every LFS object a commit reachable from --revs references (package-game.ps1 gives the release commit and the tasks'
+start branches: the delivered history; without --revs, all refs except the game's tasks branch) is scanned with the same terms and safe-context rules as
 scrub-lfs-history.py / scrub-import-paths.py (the user name in path segments and author FStrings, ASCII and UTF-16LE).
 Clean objects are hard-linked (copied when linking fails) into <out>/<aa>/<bb>/<oid>; objects with matches are patched
 byte for byte (same length) into a new object under its new oid. The repo and its LFS store are never changed.
@@ -45,10 +45,11 @@ def main():
     ap.add_argument("repo")
     ap.add_argument("out")
     ap.add_argument("--unpatchable-use-head", action="store_true")
+    ap.add_argument("--revs", nargs="+", help="only the objects of commits reachable from these (default: every ref but tasks)")
     a = ap.parse_args()
     repo, out = os.path.abspath(a.repo), os.path.abspath(a.out)
     pats = slh.sip.byte_patterns()
-    pointers = slh.referenced_pointers(repo, exclude_tasks=True)   # {pointer blob sha: (oid, size, {paths})}
+    pointers = slh.referenced_pointers(repo, exclude_tasks=True, revs=a.revs)   # {pointer blob sha: (oid, size, {paths})}
     by_oid = {}
     for _sha, (oid, size, paths) in pointers.items():
         e = by_oid.setdefault(oid, [size, set()])

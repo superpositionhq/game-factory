@@ -138,8 +138,9 @@ made before the game's 5.7 port can't be used as it was; give it a start on 5.7 
   must really be back, and S must still compile. Every other path of S (`workflow.jsonl`, `Scripts/`, `Docs/`,
   `README.md`, manifests, tools) is exactly as at the old pre-fix commit, so nothing in the start records or
   regenerates the fix. **R** (`seed.reference`) = a child of S whose tree is B's (`git commit-tree <B^{tree}> -p S`).
-- Both live on the branch `starts/<task name>` (pointing at R), pushed with the game; the dataset ships every branch
-  but `tasks`, so the delivered history holds them.
+- Both live on the branch `starts/<task name>` (pointing at R), pushed with the game; the dataset ships main's
+  history and every `starts/` branch, and no other branch, so the delivered history holds them. A seed on any other
+  branch is not delivered.
 - A binary asset (.uasset/.umap) goes back to its pre-fix version only if no later commit changed it; otherwise
   re-create the issue in code or config, or pick another task.
 - For a thread, "the change" is the whole thread: S takes every commit of it back out, not only the last one, and the

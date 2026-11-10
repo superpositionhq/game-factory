@@ -61,10 +61,10 @@ def live_refs(repo, exclude_tasks=False):
             if not r.startswith("refs/original/") and not (exclude_tasks and is_tasks(r))]
 
 
-def referenced_pointers(repo, exclude_tasks=False):
+def referenced_pointers(repo, exclude_tasks=False, revs=None):
     """{pointer blob sha: (oid, size, {paths})} for every LFS pointer blob reachable from any ref (refs/original excluded;
-    the tasks branch too with exclude_tasks)."""
-    objs = git(repo, "rev-list", "--objects", *live_refs(repo, exclude_tasks)).decode("utf-8", "replace")
+    the tasks branch too with exclude_tasks), or from revs alone when given."""
+    objs = git(repo, "rev-list", "--objects", *(revs or live_refs(repo, exclude_tasks))).decode("utf-8", "replace")
     chk = git(repo, "cat-file", "--batch-check=%(objecttype) %(objectname) %(objectsize) %(rest)", inp=objs.encode()).decode("utf-8", "replace")
     cand = []
     for line in chk.splitlines():

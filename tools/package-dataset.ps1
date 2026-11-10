@@ -576,7 +576,7 @@ function Write-Readme([string]$Dest, [string]$Variant) {
     }
     A '- `git.log` — every commit with its message and full diff (binary files as path and sha256).'
     if ($gh) {
-        if (-not $repo) { A "- ``History/`` — the full git history: ``History/$Game.bundle`` (every commit of every branch) and ``History/lfs/objects/`` (every Git LFS file of every commit). Authors are anonymised as dev_NN." }
+        if (-not $repo) { A "- ``History/`` — the full git history: ``History/$Game.bundle`` (every commit up to the release, and each task's start branch) and ``History/lfs/objects/`` (every Git LFS file of those commits). Authors are anonymised as dev_NN." }
         if (-not $repo -and (Test-Path -LiteralPath (Join-Path $Dest 'History\sessions'))) {
             A ('  `History/sessions/` — the creation sessions as recorded, one JSON row per line, oldest first within a session: ' +
                '`messages.jsonl` holds every prompt the person typed (`role` "user") and every reply the model wrote (`role` "assistant"); ' +

@@ -2117,19 +2117,23 @@ if (-not $NoScrub) {
 }
 # ---------------------------------------------------------------------------------------------------------------------
 # GitHistory: the full git history rewritten for delivery (dataset layout v1.2 History/; package-dataset.ps1 renames it).
-# Every commit of every ref except the tasks branch (task work never enters it; a guard refuses a tasks ref in the
-# rewritten repo), with authors dev_NN (git.log's numbering), agent trailers dropped, the scrub rules on
-# messages and text blobs, and every Git LFS object (patched same-length where it names the account; pointers follow).
+# The release commit's history as refs/heads/main and each task's start branch (refs/heads/starts/<task>), nothing
+# else (owner, 2026-11-10): a side branch, a tag off main or a stash can hold work the tasks ask for, and the Lab
+# refuses a bundle with a commit on neither. Never the tasks branch (a guard refuses a tasks ref in the rewritten
+# repo). Authors dev_NN (git.log's numbering), agent trailers dropped, the scrub rules on messages and text blobs, and
+# every Git LFS object of those commits (patched same-length where it names the account; pointers follow).
 # Commit shas change, so git.log is rewritten from the new history and every full sha in the package's text (except the
 # recording logs in History\ and the gameplay bundles) is mapped to its new value; the map stays next to the package.
 # ---------------------------------------------------------------------------------------------------------------------
 $gitHistory = $null
 if (-not $NoGitHistory) {
     $ghDir = Join-Path $stage 'GitHistory'; New-Item -ItemType Directory -Force $ghDir | Out-Null
-    Write-Step 'exporting every Git LFS object of the whole history (patched where it names the account)'
+    # the delivered commits in this repo's terms: the release commit and the start branches, local or only origin's
+    $startRefs = @(Invoke-Git $repo @('for-each-ref', '--format=%(refname)', 'refs/heads/starts/', 'refs/remotes/origin/starts/') | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    Write-Step "exporting every Git LFS object of the delivered history (the release commit and $($startRefs.Count) start branch ref(s); patched where it names the account)"
     $py = (Get-Command python -ErrorAction SilentlyContinue | Where-Object { $_.Source -notmatch 'WindowsApps' } | Select-Object -First 1).Source
     if (-not $py) { $py = 'py' }
-    $ea = @((Join-Path $PSScriptRoot 'ue-pipeline\export-lfs-history.py'), $repo, (Join-Path $ghDir 'lfs\objects'))
+    $ea = @((Join-Path $PSScriptRoot 'ue-pipeline\export-lfs-history.py'), $repo, (Join-Path $ghDir 'lfs\objects'), '--revs', $sha) + $startRefs
     if ($LfsUnpatchableUseHead) { $ea += '--unpatchable-use-head' }
     $lfsOut = & $py @ea 2>&1 | ForEach-Object { "$_" }
     $lfsRes = $null; try { $lfsRes = ($lfsOut | Where-Object { $_ -match '^\{' } | Select-Object -Last 1) | ConvertFrom-Json } catch { }
@@ -2145,6 +2149,21 @@ if (-not $NoGitHistory) {
     $commitMap = [GameDeliverable.Tools]::RewriteHistory($repo, $bare, $authors, $lfsMap, [string[]]@($Rules | ForEach-Object { $_.match }),
         [string[]]@($Rules | ForEach-Object { $_.replace }), [string[]]@($Rules | ForEach-Object { $_.scope }), $hints, $problems)
     $newSha = $null; if (-not $commitMap.TryGetValue($sha, [ref]$newSha)) { throw "the rewritten history has no commit for $sha" }
+    # The rewrite carried every ref but the tasks branch; only these stay. A start branch made on another machine is
+    # here only as origin's: it is delivered under its own name.
+    foreach ($l in @(Invoke-Git $bare @('for-each-ref', '--format=%(refname) %(objectname)', 'refs/remotes/origin/starts/'))) {
+        $p = @("$l".Trim() -split ' '); if ($p.Count -ne 2) { continue }
+        $local = 'refs/heads/starts/' + $p[0].Substring('refs/remotes/origin/starts/'.Length)
+        $have = @(Invoke-Git $bare @('rev-parse', '--verify', '-q', $local) -AllowFail | Where-Object { "$_" -match '^[0-9a-f]{40}$' })
+        if (-not $have.Count) { Invoke-Git $bare @('update-ref', $local, $p[1]) | Out-Null }
+    }
+    Invoke-Git $bare @('update-ref', 'refs/heads/main', $newSha) | Out-Null
+    Invoke-Git $bare @('symbolic-ref', 'HEAD', 'refs/heads/main') | Out-Null
+    $left = 0
+    foreach ($r in @(Invoke-Git $bare @('for-each-ref', '--format=%(refname)') | ForEach-Object { "$_".Trim() } | Where-Object { $_ })) {
+        if ($r -ne 'refs/heads/main' -and $r -notlike 'refs/heads/starts/*') { Invoke-Git $bare @('update-ref', '-d', $r) | Out-Null; $left++ }
+    }
+    if ($left) { Write-Step "history: $left other ref(s) (side branches, tags, origin's copies) are not delivered" }
     $tasksRefs = @(Invoke-Git $bare @('for-each-ref', '--format=%(refname)') | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match '/tasks(-[^/]*)?$' })
     if ($tasksRefs.Count) { throw "the rewritten history carries the tasks branch ($($tasksRefs -join ', ')): task work must never enter the delivered history" }
     Invoke-Git $bare @('bundle', 'create', (Join-Path $ghDir "$Game.bundle"), '--all') | Out-Null
