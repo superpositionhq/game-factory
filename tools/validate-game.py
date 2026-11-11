@@ -606,6 +606,47 @@ def component_selects(measure):
         yield measure['select']
 
 
+def near_errors(n, o):
+    """The height-band rules of every `near` inside `o`, for check `n`: z_min < z_max, and `z_relative` only with one of
+    them."""
+    errs = []
+    for near in nears(o):
+        lo, hi = near.get('z_min'), near.get('z_max')
+        if isinstance(lo, (int, float)) and isinstance(hi, (int, float)) and not lo < hi:
+            errs.append(f'check {n}: a near band has z_min < z_max')
+        if near.get('z_relative') and lo is None and hi is None:
+            errs.append(f'check {n}: `z_relative` goes with z_min or z_max')
+    return errs
+
+
+def task_play_errors(n, play, plays):
+    """A task play's rules beyond the schema, for check `n` (a probe's `play`, a judge's `plays`): not named
+    look/drive/editor/trace, no input at or after its end, no grader flag, waits of at most 300 s in all, and identical
+    to every other task play of its name in the task (`plays`: those seen so far, by name)."""
+    errs, pname = [], play.get('name')
+    if pname in ('look', 'drive', 'editor', 'trace'):
+        errs.append(f"check {n}: a task play can't be named {pname}")
+    secs = play.get('seconds')
+    if isinstance(secs, (int, float)) and any(isinstance(i, dict) and isinstance(i.get('t'), (int, float))
+                                              and i['t'] >= secs for i in play.get('inputs') or []):
+        errs.append(f'check {n}: play {pname} has an input at or after its end ({secs} s)')
+    for arg in play.get('args') or []:
+        mm = PLAY_ARG.match(arg) if isinstance(arg, str) else None
+        # the engine reads `Name=` anywhere on its command line, so a `Name=` inside a value sets a flag too
+        names = ([mm.group(1)] + re.findall(r'([A-Za-z][A-Za-z0-9]*)=', arg.split('=', 1)[1] if '=' in arg else '')
+                 if mm else [])
+        for name in (x for x in names if x.lower() in DENIED_PLAY_ARGS or x.lower().startswith('taskprobe')):
+            errs.append(f"check {n}: a task play can't set -{name}")
+    waits = sum(i['wait'] for i in play.get('inputs') or []
+                if isinstance(i, dict) and isinstance(i.get('wait'), (int, float)))
+    if waits > WAITS:
+        errs.append(f'check {n}: play {pname} waits {waits:g} s in all, more than {WAITS} s')
+    whole = dict(TASK_PLAY_DEFAULTS, **play)
+    if plays.setdefault(pname, whole) != whole:
+        errs.append(f'check {n}: task play {pname} differs from another play of that name')
+    return errs
+
+
 def probe_errors(c, seed, ref, plays):
     """A probe check's rules beyond the schema (docs/task-probes.md):
     asset measures only with play "editor" and trace measures only with play "trace"; an asset measure's select takes
@@ -636,26 +677,7 @@ def probe_errors(c, seed, ref, plays):
     if probe == 'trace' and (c.get('required', True) or rel):
         errs.append(f'check {n}: a trace probe never gates (required: false) and takes a literal value')
     if isinstance(play, dict):
-        if pname in ('look', 'drive', 'editor', 'trace'):
-            errs.append(f"check {n}: a task play can't be named {pname}")
-        secs = play.get('seconds')
-        if isinstance(secs, (int, float)) and any(isinstance(i, dict) and isinstance(i.get('t'), (int, float))
-                                                  and i['t'] >= secs for i in play.get('inputs') or []):
-            errs.append(f'check {n}: play {pname} has an input at or after its end ({secs} s)')
-        for arg in play.get('args') or []:
-            mm = PLAY_ARG.match(arg) if isinstance(arg, str) else None
-            # the engine reads `Name=` anywhere on its command line, so a `Name=` inside a value sets a flag too
-            names = ([mm.group(1)] + re.findall(r'([A-Za-z][A-Za-z0-9]*)=', arg.split('=', 1)[1] if '=' in arg else '')
-                     if mm else [])
-            for name in (x for x in names if x.lower() in DENIED_PLAY_ARGS or x.lower().startswith('taskprobe')):
-                errs.append(f"check {n}: a task play can't set -{name}")
-        waits = sum(i['wait'] for i in play.get('inputs') or []
-                    if isinstance(i, dict) and isinstance(i.get('wait'), (int, float)))
-        if waits > WAITS:
-            errs.append(f'check {n}: play {pname} waits {waits:g} s in all, more than {WAITS} s')
-        whole = dict(TASK_PLAY_DEFAULTS, **play)
-        if plays.setdefault(pname, whole) != whole:
-            errs.append(f'check {n}: task play {pname} differs from another play of that name')
+        errs.extend(task_play_errors(n, play, plays))
     if probe == 'screen' and not rel:
         errs.append(f"check {n}: the frame's luminance moves between machines, so a screen measure's threshold is "
                     'calibrated or relative to the start, never a literal value')
@@ -686,12 +708,7 @@ def probe_errors(c, seed, ref, plays):
     for sel in component_selects(measure):
         if sel.get('class') is None and sel.get('effect') is None:
             errs.append(f'check {n}: a components select names its class, or `effect`')
-    for near in nears([measure, play.get('inputs') if isinstance(play, dict) else None]):
-        lo, hi = near.get('z_min'), near.get('z_max')
-        if isinstance(lo, (int, float)) and isinstance(hi, (int, float)) and not lo < hi:
-            errs.append(f'check {n}: a near band has z_min < z_max')
-        if near.get('z_relative') and lo is None and hi is None:
-            errs.append(f'check {n}: `z_relative` goes with z_min or z_max')
+    errs.extend(near_errors(n, [measure, play.get('inputs') if isinstance(play, dict) else None]))
     if probe == 'ui':
         sel = measure.get('select') if isinstance(measure.get('select'), dict) else {}
         if (measure.get('field') == 'text') != (measure.get('match') is not None):
@@ -719,7 +736,8 @@ def probe_errors(c, seed, ref, plays):
 
 def task_semantic_errors(t):
     """What the schema cannot say (the task format's own rules): check names unique, `needs` naming earlier
-    checks, a code judge or a reference judge only with seed.reference, a before/after judge only with a seed, and the
+    checks, a code judge or a reference judge only with seed.reference, a before/after judge only with a seed, a judge's
+    own `plays` each named once in the check and under a task play's rules (task_play_errors), and the
     probe rules (probe_errors); and a task whose start doesn't build (a build check's `fails_at_start`) has nothing
     that needs the start played: no start-relative threshold, no before/after judge (docs/task-probes.md, 3.1)."""
     errs, seen, plays = [], set(), {}
@@ -743,6 +761,13 @@ def task_semantic_errors(t):
             if k == 'judge' and c.get('before') and broken:
                 errs.append(f"check {n} compares with the start (before: true), but the start doesn't build "
                             f"({broken}: fails_at_start), so it is never played")
+            if k == 'judge':
+                own = [p for p in c.get('plays') or [] if isinstance(p, dict)]
+                if len({p.get('name') for p in own}) != len(own):
+                    errs.append(f'judge check {n} names a play twice')
+                for p in own:
+                    errs.extend(task_play_errors(n, p, plays))
+                    errs.extend(near_errors(n, p.get('inputs')))
             if k == 'code_judge' and not ref:
                 errs.append(f'check {n}: a code judge needs seed.reference')
             if k == 'judge' and c.get('before') and not seed:

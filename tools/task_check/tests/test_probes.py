@@ -72,6 +72,37 @@ class Tasks(unittest.TestCase):
         task_with(probe("a", play={"name": "fire", "seconds": 10}), probe("b", play={"name": "fire", "seconds": 10}))
         task_with(probe(expect={"op": ">=", "start_times": 1.3}), seed=NO_FIX)
 
+    def test_a_judge_check_names_its_own_plays_under_a_task_plays_rules(self):
+        judge = {"kind": "judge", "name": "menu_reads", "question": "Does the upgrade menu read clearly?",
+                 "required": False, "rubric": [{"key": "menu", "criterion": "The menu is on screen."}]}
+        menu = {"name": "open_menu", "seconds": 6, "inputs": [{"t": 1.0, "key": "C", "press": True}]}
+        plain = task_with(probe(), judge)
+        self.assertNotIn("plays", plain["milestones"][0]["checks"][1], "a judge with no plays is as it was")
+        task = task_with(probe(play=menu), {**judge, "plays": [menu, {"name": "second_level", "seconds": 8,
+                                                                      "map": "/Game/Maps/L_Two?Scenario=2"}]})
+        self.assertEqual(sorted(probes.task_plays(task)), ["open_menu"], "the checker plays what its probes name")
+        self.assertEqual(first_check(task_with({**judge, "plays": [menu]}))["plays"], [menu])
+        task_with({**judge, "plays": [{**menu, "name": f"play_{i}"} for i in range(4)]})
+        for checks, said in [
+            ([{**judge, "plays": [{**menu, "name": f"play_{i}"} for i in range(5)]}], "more than 4 item"),
+            ([{**judge, "plays": [menu, menu]}], "names a play twice"),
+            ([probe(play=menu), {**judge, "plays": [{**menu, "seconds": 9}]}], "task play open_menu differs"),
+            ([{**judge, "plays": [{**menu, "seconds": 9}]}, probe(play=menu)], "task play open_menu differs"),
+            ([{**judge, "plays": [menu]}, {**judge, "name": "again", "plays": [{**menu, "inputs": []}]}],
+             "task play open_menu differs"),
+            ([{**judge, "plays": [{**menu, "name": "look"}]}], "can't be named look"),
+            ([{**judge, "plays": [{**menu, "inputs": [{"t": 6, "key": "C", "press": True}]}]}], "at or after its end"),
+            ([{**judge, "plays": [{**menu, "args": ["-TaskProbeSeconds=99"]}]}], "can't set -TaskProbeSeconds"),
+            ([{**judge, "plays": [{**menu, "inputs": [{"t": 1, "wait": 200}, {"t": 2, "wait": 200}]}]}], "waits 400 s"),
+            ([{**judge, "plays": [{**menu, "inputs": [{"t": 1, "teleport_to": {
+                "tag": "Ore", "near": {"point": {"pawn": True}, "radius": 500, "z_min": 5, "z_max": 1}}}]}]}],
+             "z_min < z_max"),
+            ([{**judge, "plays": ["look"]}], "expected object"),
+            ([{**judge, "plays": [{**menu, "shots": 5}]}], "unexpected key"),
+        ]:
+            with self.assertRaisesRegex(ValueError, said):
+                task_with(*checks)
+
     def test_a_screen_measure_takes_a_threshold_from_the_start_never_a_literal(self):
         screen = {"probe": "screen", "rect": [0.25, 0.25, 0.75, 0.75], "field": "luminance", "window": [10, 20]}
         with self.assertRaisesRegex(ValueError, "never a literal value"):

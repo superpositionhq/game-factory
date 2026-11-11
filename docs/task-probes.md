@@ -684,6 +684,33 @@ The start is then never played, so nothing in the task may need it played: **no 
 (`calibrate`, `start_times`, `start_plus`; use literal values) and **no judges comparing with the start**
 (`"before": true`). The task check requires the start not to build; a start that builds makes the task invalid.
 
+### 3.2 A judge check's own plays: `plays`
+
+A `judge` check asks a question, rubric item by rubric item, over screenshots the checker takes itself. Left alone it
+is shown the two plays every task shares, the idle `look` and the `drive` of `play_map`: they never press a task's own
+keys, open another level or leave a title screen. When what the rubric asks about shows only after one of those, the
+check names up to 4 task plays (section 1.1) in `plays`, and its screenshots are taken in those plays instead:
+
+```json
+{"name": "upgrade_menu_reads", "kind": "judge", "required": false, "needs": ["boots_clean"], "before": true,
+ "question": "With the upgrade menu open, does it read the way the request asks?",
+ "rubric": [{"key": "costs_legible", "criterion": "Each upgrade's cost is legible against the panel behind it."}],
+ "plays": [{"name": "open_upgrades", "seconds": 10,
+            "inputs": [{"t": 0.5, "key": "U", "press": true}, {"t": 0.7, "key": "U", "press": false}]}]}
+```
+
+- Each is a task play under the rules of section 1.1. Its name appears once in the check; a play with the name of
+  another check's play (a probe's or another judge's) must be identical to it, and is then played once and serves both.
+- The judge is shown 5 screenshots of each play, taken at 10, 30, 50, 70 and 90% of its `seconds` (a 10 s play: 1, 3,
+  5, 7 and 9 s). Time the inputs so that what is judged is on screen at those moments.
+- Each play is played on every side the check shows: the agent's game, the start with `"before": true`, the fix with
+  `"reference": true`. So it must run on the start as well; an input that does nothing there is fine.
+- Screenshots are stills: what shows only between frames (sliding feet, a shake, an ease instead of a cut) can't be
+  judged from them and is a probe's to measure (`drawn` `motion`, `spin`, a field over a window).
+- A check without `plays` is shown `look` and `drive`, as before.
+
+The task check asks no judge, so it never plays a judge's own plays; `tools/validate-game.py` checks their rules.
+
 ## 4. The task check
 
 Before any agent is given a task, the checker grades the start and the fix with every probe. A task is valid when:

@@ -249,6 +249,28 @@ task a no-op would earn anything on. The usual order:
    readability of text over the scene), a `code_judge` for code quality, and the standard `actions_judge`
    `worked_well` (or `trace` probes, `"required": false`).
 
+**Every look-and-feel ask in the brief gets a `judge` rubric item** (a review of delivered tasks found the checks
+thinner than the briefs, look-and-feel asks most of all). Go through the brief ask by ask: what a probe can measure
+gets a probe; what only an eye can tell (reads clearly, fits the style, looks like the thing it is meant to be) gets
+its own rubric item in a `quality` `judge`, one item per ask. A judge is shown screenshots of the idle `look` and the
+`drive` on `play_map` and nothing else, unless the check names its own plays. When what must be seen appears only
+after a task-specific key, in another scenario or level, or past a title screen, give the check `plays`: up to 4 task
+plays that reach that state (when a probe's play already does, reuse it under its name, written identically):
+
+```json
+{"name": "upgrade_menu_reads", "kind": "judge", "required": false, "needs": ["boots_clean"], "before": true,
+ "question": "With the upgrade menu open, does it read the way the request asks?",
+ "rubric": [{"key": "costs_legible", "criterion": "Each upgrade's cost is legible against the panel behind it."}],
+ "plays": [{"name": "open_upgrades", "seconds": 10,
+            "inputs": [{"t": 0.5, "key": "U", "press": true}, {"t": 0.7, "key": "U", "press": false}]}]}
+```
+
+The judge is shown 5 screenshots of each play, at 10, 30, 50, 70 and 90% of its `seconds`: time the inputs so the
+state is on screen at those moments. A play also runs on the task's start (`"before": true`) and on the reference
+(`"reference": true`), so it must run there too; a key that does nothing at the start is fine. Stills can't show
+motion that happens between frames (sliding feet, a shake, an ease instead of a cut): that stays a probe's job or is
+left out ([docs/task-probes.md](../../docs/task-probes.md), section 3.2).
+
 A probe names one measurement and its threshold:
 
 ```json
@@ -351,6 +373,7 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 |---|---|
 | checks or log patterns shown in the brief | the agent gets the brief only |
 | a model judge misread screenshots and failed a correct fix (or passed a wrong one) | pass/fail by probes only; judges are `"required": false` |
+| a judge was shown only the title screen, or never the state a task's own key opens | the `judge` check names its own `plays` that reach it (section 5) |
 | a fix made only in binary assets failed the code review | the cause is checked by its measured effect (a probe), never by reading the diff |
 | a pixel threshold moved between GPUs | light and colour from the engine (`light`, `grading`); the frame's luminance (`screen`) only calibrated or relative to the start, never a literal |
 | a level dressed with instanced meshes counted as one actor | count placed pieces (`pieces`), not actors or components |

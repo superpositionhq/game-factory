@@ -1841,7 +1841,7 @@
     },
     "Judge": {
       "additionalProperties": false,
-      "description": "The game judge's question over evidence the grader takes itself (screenshots and gameplay frames of a scripted\nplay, and the brief), item by item; never the agent's own words. `before`: the grader also plays the game as it\nwas at the start, and the judge compares (a seeded task that changes how the game looks or plays). `route`: a\nproject file in which the agent leaves inputs that play its game through (the probe's [{t, key, press}], e.g.\nTests/win_route.json); the grader plays it in its own clean copy as one more play, and the judge is told when\nthe file is missing or isn't a route.",
+      "description": "The game judge's question over evidence the grader takes itself (screenshots and gameplay frames of a scripted\nplay, and the brief), item by item; never the agent's own words. `before`: the grader also plays the game as it\nwas at the start, and the judge compares (a seeded task that changes how the game looks or plays). `route`: a\nproject file in which the agent leaves inputs that play its game through (the probe's [{t, key, press}], e.g.\nTests/win_route.json); the grader plays it in its own clean copy as one more play, and the judge is told when\nthe file is missing or isn't a route. `plays`: the task's own scripted plays the screenshots are taken in (a\nprobe's TaskPlay: its map, flags and inputs), instead of the grader's idle look and its drive, which every task\nshares and which never press a task's own keys or leave a game's title screen; each is played on every side the\ncheck shows (the developer's game, the start on a `before` check, the reference on a `reference` check).",
       "properties": {
         "before": {
           "default": false,
@@ -1864,6 +1864,14 @@
             "type": "string"
           },
           "title": "Needs",
+          "type": "array"
+        },
+        "plays": {
+          "items": {
+            "$ref": "#/$defs/TaskPlay"
+          },
+          "maxItems": 4,
+          "title": "Plays",
           "type": "array"
         },
         "question": {
