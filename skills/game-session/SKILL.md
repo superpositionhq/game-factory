@@ -138,6 +138,16 @@ offers one (AGENTS.md, "Only these skills"). Do what they don't cover by hand un
   template: a racing game that is only driving laps is too thin; one with drifting, item pick-ups and car modification
   is the depth meant. Choose what fits your own game's genre and story and never copy this list. _(failure: a racing
   game shipped as plain racing, too simple as a game and too thin to give hard tasks)_
+- **Play loops are designed with the person (user rule, 2026-11-11):** do not settle the game's loops alone. Before
+  writing the design doc's systems, propose the core loop and the further systems to the person in plain words, with
+  two or three real alternatives where the choice is open, ask what they would want to play, and build what you
+  agree. Keep doing it while you build: after each playable round, ask them to play or watch it and say what felt
+  flat, too easy or missing, and take their answer into the next round. The more of the design that comes out of this
+  back-and-forth the better; a session where the person only says "continue" is a weak one. Their choices are
+  `user.direction` rows (commit-always skill). Ask about play, not about engine detail, and never stall on a
+  question: when the person is away, go on with your best proposal, say so, and bring it up when they are back.
+  _(failure: agents chose every loop themselves, so games came out thin and the record held little of the person's
+  judgement)_
 - **Room for hard tasks.** A game's tasks come from its own history (write-tasks skill), and strong agents miss what
   only shows when the game runs. So build these in, and work them over several rounds rather than in one commit:
   feedback for every gameplay event (a HUD readout, marker, sound or effect); visible state changes (materials,
