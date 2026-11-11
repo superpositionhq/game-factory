@@ -120,6 +120,24 @@ process rules, questions, praise, a fix that is only a re-import of assets the s
 resting on a pack imported later, anything whose outcome neither play nor code can show. If a game's history has fewer
 than 10 qualifying threads, ship fewer tasks.
 
+**Where strong agents fail (measured on our tries, 2026-11).** Most tasks a strong agent missed had the code
+written and the outcome never checked in the running game. Prefer threads that settled these, and give each one its
+own probe in a play that reaches the moment:
+
+- **Feedback that must show in play**: a HUD readout, a marker, a sound or an effect when the event happens (a play
+  that triggers the event, then `ui`, `drawn`, `audio`, `lit`);
+- **A look change**: colours, materials, dressing, HUD art (`drawn` base colour, `lit`, `screen`, `pieces`, relative to
+  the start);
+- **Menu, pause and back flows**: Escape or Back closes what it opened and returns where it came from (a task play
+  with the keys, then `ui`);
+- **A tuned outcome judged in play**: seen or not seen at a distance, holds or breaks under load, passable, winnable
+  (a teleport to the spot, then the outcome);
+- **Many small requirements in one span**: one probe each, so a single dropped item shows.
+
+Threads that strong agents solve in minutes: one system's logic, a feature whose outcome the code alone shows, a brief
+that points at the system. Hiding the list of problems (a brief that reports the symptoms a player meets, not a
+checklist) lengthens a run without changing what it misses.
+
 **Finding threads.** Walk the history for clusters: `git log --stat` around a feature, runs of commits on the same
 files (`git log --format=%h -- <path>` piled up in a short window), several `user.direction` rows on one topic
 (the workflow rows' `"direction"` links), fixes followed by "still", "again", "regressed" or a revert, ports that broke
@@ -257,8 +275,11 @@ A probe names one measurement and its threshold:
   `{"op": ">=", "calibrate": 0.5}` for continuous quantities: the grader measures the start and the reference in the
   grading environment and puts the threshold that fraction of the way from start to fix; `op` points to the fix's side.
 
-Write probes from the game's own code at `seed.commit` and `seed.reference`: the real class names, actor tags, map
-paths, widget names and components. **Test the outcome a player sees, never the implementation**: another valid fix
+Write probes from the game's own code at `seed.commit`: the real class names, actor tags, map paths, widget names and
+components. **Never a name only the reference has** (a class, tag, widget, map or asset the thread itself created):
+another fair build names it otherwise and reads as absent. Select what the thread creates by what it does or where it
+is (`has`, `near`, `ui` with a `rect` or text, `drawn`, `lit`, `changed`); `validate-game.py` refuses a required probe
+that names something the start lacks and the reference has. **Test the outcome a player sees, never the implementation**: another valid fix
 must pass ("the hero stands on ground", "the stone breaks the wall piece it hits", "the light reaching the tunnel
 floor times the camera's exposure is brighter", not "SpawnZ is 92" or "the function was changed"). Lighting and
 colour are measured from the engine (`light`, `grading`), never from screenshots. `describe` says the assertion in
@@ -295,7 +316,8 @@ docs' "Common reasons and fixes"), never the threshold toward what the start hap
 - `tools/validate-game.py` fails a task that is `easy`, has no `seed.reference`, has fewer than 3 required probes
   outside `still_works`, or whose reference changes fewer than 5 game files, fewer than 100 code lines or fewer than 2
   systems against its start; for a seed on main it
-  also fails fewer than 4 game-changing commits from `seed.commit` to `seed.reference`. These are floors, not targets:
+  also fails fewer than 4 game-changing commits from `seed.commit` to `seed.reference`, and any required probe that
+  names a class, tag, map or asset the reference has and the start doesn't (section 5). These are floors, not targets:
   pick the longest threads the history has.
 - **Judge difficulty in the session; never run the task with another agent** (owner, 2026-11-05: the try took up to
   25 minutes a task and slowed contractors down). Don't run `tools/task-try.py` or start a fresh Claude Code or Codex
@@ -364,7 +386,9 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 | a menu that pages on real time never reached its later pages in a play | a task-play input `{"t": ..., "wait": seconds}`: the play's clock holds while the game runs on in real time |
 | a probe that tests the reference's implementation ("SpawnZ = 92") | measure the outcome; another valid fix must pass |
 | the brief said "scenario 1" but not `?Scenario=1` | `play_map` always set and checked at the seed |
-| a HUD widget or class name guessed | read the names from the code and assets at `seed.commit` and `seed.reference` |
+| a HUD widget or class name guessed | read the names from the code and assets at `seed.commit` |
+| a probe named a class, tag or map only the reference had, so a fair build that named it otherwise read as absent | select what the thread creates by what it does or where it is; the validator refuses a reference-only name |
+| a run wrote the feature but never ran the game to see it, and the task had no probe of the moment | a play that triggers each piece of feedback, and a probe of what the player sees then |
 | quoting the person | write from context |
 | a reference that crashed | the reference must build and run |
 | tasks solved in minutes: one cause, one place, the brief named the system | only long threads of multiple edits, compound probes, observation-only briefs (section 1) |
