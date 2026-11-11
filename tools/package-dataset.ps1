@@ -393,7 +393,7 @@ $runs = @(Get-ChildItem (Join-Path $pkg 'Gameplay') -Directory | ForEach-Object 
     })
 if ($runs.Count -eq 0) {
     # no recordings of this commit: a pending delivery without Gameplay/ when asked for (-GameplayPending), else an error
-    if (-not $GameplayPending) { throw "no gameplay runs in $pkg: a game is rejected without a gameplay video, so record a scenario of the release commit first (-GameplayPending builds a pending delivery without Gameplay/, which the validator and the Lab refuse)" }
+    if (-not $GameplayPending) { throw "no gameplay runs in ${pkg}: a game is rejected without a gameplay video, so record a scenario of the release commit first (-GameplayPending builds a pending delivery without Gameplay/, which the validator and the Lab refuse)" }
     $status = 'pending'; $pending = @($pending) + @('Gameplay/')
     Write-Step 'no gameplay runs: Gameplay/ pending (-GameplayPending)'
 }
