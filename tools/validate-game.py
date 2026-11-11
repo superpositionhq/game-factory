@@ -919,6 +919,15 @@ def thread_span_errors(repo, seed, on_main):
     return errs
 
 
+def required_quality_judges(t):
+    """The required judge checks that should be optional quality checks: every required judge but the ones covering
+    the brief's looks, a `judge` named `looks_as_asked` and a `judge` in the `still_works` milestone."""
+    return [c.get('name') for m in t.get('milestones') or [] if isinstance(m, dict) for c in m.get('checks') or []
+            if isinstance(c, dict) and c.get('kind') in ('judge', 'code_judge', 'actions_judge')
+            and c.get('required', True) and not (c.get('kind') == 'judge' and (
+                c.get('name') == 'looks_as_asked' or m.get('name') == 'still_works'))]
+
+
 def check_task(rep, a, label, t, game, has_commit):
     """One whole task (GameTask): schema, the format's extra rules, seed on `game` and on known commits."""
     for e in list(check_schema(t, SCHEMAS['game-task']))[:5]:
@@ -927,9 +936,7 @@ def check_task(rep, a, label, t, game, has_commit):
         rep.error(a, f'{label}: {e}')
     gated = [c for m in t.get('milestones') or [] if isinstance(m, dict) for c in m.get('checks') or []
              if isinstance(c, dict) and c.get('kind') == 'probe' and c.get('required', True)]
-    judged = [c.get('name') for m in t.get('milestones') or [] if isinstance(m, dict) for c in m.get('checks') or []
-              if isinstance(c, dict) and c.get('kind') in ('judge', 'code_judge', 'actions_judge')
-              and c.get('required', True)]
+    judged = required_quality_judges(t)
     if not gated:
         rep.error(a, f'{label}: no required probe check: pass/fail must be deterministic (write-tasks section 5)')
     outcomes = [c for m in t.get('milestones') or [] if isinstance(m, dict) and m.get('name') != 'still_works'
@@ -938,7 +945,9 @@ def check_task(rep, a, label, t, game, has_commit):
     for e in thread_errors(t, len(outcomes)):
         rep.error(a, f'{label}: {e} (write-tasks section 1: only long threads of multiple edits)')
     if judged:
-        rep.note(a, f'{label}: required judge check(s) {judged}: judges should be "required": false quality checks')
+        rep.note(a, f'{label}: required judge check(s) {judged}: only a judge of the brief\'s looks is required '
+                    '(`looks_as_asked`, or a judge in `still_works`); other judges should be "required": false '
+                    'quality checks')
     s = t.get('seed')
     if isinstance(s, dict):
         if s.get('game') != game:
