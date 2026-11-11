@@ -3275,6 +3275,29 @@
       "title": "Select",
       "type": "object"
     },
+    "Shot": {
+      "additionalProperties": false,
+      "description": "A screenshot at `t` with the UI, as the player sees it, named `shot` (shot_<name>.png beside the evenly spaced\nones): the grader's own picture of a moment, for a judge and for whoever reviews a run (docs/task-probes.md, section 1.1). Never a pass\nor fail by itself.",
+      "properties": {
+        "shot": {
+          "pattern": "^[a-z_][a-z0-9_]{0,31}$",
+          "title": "Shot",
+          "type": "string"
+        },
+        "t": {
+          "maximum": 120,
+          "minimum": 0,
+          "title": "T",
+          "type": "number"
+        }
+      },
+      "required": [
+        "t",
+        "shot"
+      ],
+      "title": "Shot",
+      "type": "object"
+    },
     "SpawnsMeasure": {
       "additionalProperties": false,
       "properties": {
@@ -3511,6 +3534,15 @@
               },
               {
                 "$ref": "#/$defs/Wait"
+              },
+              {
+                "$ref": "#/$defs/Shot"
+              },
+              {
+                "$ref": "#/$defs/Travel"
+              },
+              {
+                "$ref": "#/$defs/View"
               }
             ]
           },
@@ -3697,6 +3729,30 @@
         "fact"
       ],
       "title": "TraceMeasure",
+      "type": "object"
+    },
+    "Travel": {
+      "additionalProperties": false,
+      "description": "At `t` the play opens another map (with URL options: another scenario), as the game's own travel does; its clock\nruns on through the load, and inputs and samples wait for the new world's player (docs/task-probes.md, section 1.1). With shots and\nteleports, one launch visits several places and pictures each.",
+      "properties": {
+        "map": {
+          "maxLength": 300,
+          "pattern": "^/[A-Za-z0-9_/.-]+(\\?[A-Za-z0-9_=.,-]+)*$",
+          "title": "Map",
+          "type": "string"
+        },
+        "t": {
+          "maximum": 120,
+          "minimum": 0,
+          "title": "T",
+          "type": "number"
+        }
+      },
+      "required": [
+        "t",
+        "map"
+      ],
+      "title": "Travel",
       "type": "object"
     },
     "UiMeasure": {
@@ -3946,6 +4002,33 @@
         "value"
       ],
       "title": "Value",
+      "type": "object"
+    },
+    "View": {
+      "additionalProperties": false,
+      "description": "At `t` the player's view turns to `view` [pitch, yaw] in degrees (the control rotation; pitch -89 to 89), for a\nshot that faces a given way (docs/task-probes.md, section 1.1).",
+      "properties": {
+        "t": {
+          "maximum": 120,
+          "minimum": 0,
+          "title": "T",
+          "type": "number"
+        },
+        "view": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "title": "View",
+          "type": "array"
+        }
+      },
+      "required": [
+        "t",
+        "view"
+      ],
+      "title": "View",
       "type": "object"
     },
     "Wait": {

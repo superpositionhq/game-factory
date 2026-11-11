@@ -185,7 +185,8 @@ def measure(m):
 def inputs(rows):
     """A task play's inputs as the plugin reads them: keys, axes, clicks, cursor moves, teleports (`yaw` 0 when
     unset: a teleport always turns the pawn), teleports next to an actor (`distance` 200 and `offset` 0 when unset,
-    `face` only when set), either with `hold` only when set, and waits in real time."""
+    `face` only when set), either with `hold` only when set, waits in real time, named shots, map travels and view
+    turns."""
     out = []
     for r in rows or []:
         row = {"t": float(r["t"])}
@@ -198,6 +199,12 @@ def inputs(rows):
             row.update(teleport=_floats(r["teleport"]), yaw=float(r.get("yaw", 0.0)))
         elif "wait" in r:
             row.update(wait=float(r["wait"]))
+        elif "shot" in r:
+            row.update(shot=r["shot"])
+        elif "map" in r:
+            row.update(map=r["map"])
+        elif "view" in r:
+            row.update(view=_floats(r["view"]))
         elif "cursor" in r:
             row.update(cursor=_floats(r["cursor"]))
         elif "widget" in r:

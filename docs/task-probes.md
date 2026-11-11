@@ -92,7 +92,20 @@ Words used here:
       keeps running, paced to real time (each frame waits for the wall clock to catch up with the game's own time),
       until `wait` real seconds and `wait` seconds of game time have both passed; nothing is sampled, sent or
       screenshot meanwhile; then the play goes on from `t`. A play's waits add at most 300 s in all, and its timeout
-      grows by them; `seconds`, windows and `at` stay in play time, within 120 s.
+      grows by them; `seconds`, windows and `at` stay in play time, within 120 s;
+    - a named screenshot: `{"t": 6.0, "shot": "pause_menu"}` (a letter or `_` first, then letters, digits, `_`; up to
+      32) takes `shot_pause_menu.png` at that moment, with the UI, beside the evenly spaced ones. Each name once in a
+      play, 20 at most. A picture never passes or fails anything by itself: it is for a judge (section 3.2) and for
+      whoever reviews a run;
+    - a map travel: `{"t": 10.0, "map": "/Game/Maps/L_Yard?Scenario=2"}` opens that map with its options, as the game's
+      own travel does. The play's clock runs on through the load; inputs and samples wait for the new world's player;
+    - a view turn: `{"t": 10.5, "view": [-15, 90]}` turns the player's view (its control rotation) to that pitch and yaw
+      in degrees (pitch -89 to 89).
+
+  With these, one launch tours several places and scenarios and pictures each: travel, teleport (or `teleport_to` what
+  the build placed), turn, shot. **The grader's tour lives in the task**, which the agent never sees, so a build can't
+  dress only the spots that are photographed. Place shots by what the build made (`teleport_to`), not by a list of
+  views kept in the game itself.
   - A play that measures audio (an `audio` measure, section 2.16) runs with sound, muted; every other play runs
     without (section 2.16).
 - `"editor"`: a headless editor pass over the project as saved; takes only `asset` measures, and `asset` measures
@@ -716,6 +729,8 @@ check names up to 4 task plays (section 1.1) in `plays`, and its screenshots are
 - Motion that is a number (how fast, how abruptly, how far) is a probe's to measure, not a judge's: a field over a
   window, `step` on a play sampled every 0.1 s (section 2.1), `drawn` `motion`, `spin`. Motion that can only be seen
   (feet that slide over the ground, a trail behind a blade) is a judge's, with a short play and many `shots`.
+- A play's named shots (`shot` inputs, section 1.1) are shown too, every one, in the order taken, beside its `shots`
+  evenly spaced ones; the check's plays times its `shots`, plus their named shots, are 20 at most.
 - A check without `plays` is shown `look` and `drive`, as before.
 
 The task check asks no judge, so it never plays a judge's own plays or takes its `shots`; `tools/validate-game.py`

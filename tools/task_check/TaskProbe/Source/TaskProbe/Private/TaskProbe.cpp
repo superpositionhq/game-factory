@@ -7,6 +7,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
@@ -121,8 +122,10 @@ void UTaskProbe::LoadInputs(const FString& Path)
 	// {"t", "teleport": [x, y, z], "yaw": deg} (place the player pawn) and {"t", "teleport_to": <actor select>,
 	// "distance": cm, "offset": [x, y, z], "face": <point>} (place it next to the nearest actor the select matches,
 	// facing that actor or the point); either teleport with "hold": seconds keeps the pawn at the spot that long, put back
-	// after every world tick; and {"t", "wait": seconds} (the play's clock holds that long in real time while the game
-	// runs on)
+	// after every world tick; {"t", "wait": seconds} (the play's clock holds that long in real time while the game
+	// runs on); {"t", "shot": "<name>"} (a screenshot with the UI, shot_<name>.png); {"t", "map": "/Game/...?opts"} (the
+	// play travels to that map; its clock runs on through the load) and {"t", "view": [pitch, yaw]} (the player's view
+	// turns there): one launch visits several places and scenarios and pictures each
 	FString Text;
 	if (!FFileHelper::LoadFileToString(Text, *Path))
 	{
@@ -197,6 +200,27 @@ void UTaskProbe::LoadInputs(const FString& Path)
 			K.Teleport = FVector(Numbers[0], Numbers[1], Numbers[2]);
 			K.bHasYaw = (*Obj)->TryGetNumberField(TEXT("yaw"), K.Yaw);
 			(*Obj)->TryGetNumberField(TEXT("hold"), K.Hold);
+		}
+		else if ((*Obj)->TryGetStringField(TEXT("shot"), K.Shot))
+		{
+			if (K.Shot.IsEmpty() || K.Shot.Len() > 32 || K.Shot.Contains(TEXT("/")) || K.Shot.Contains(TEXT("\\")) || K.Shot.Contains(TEXT("..")))
+			{
+				continue;
+			}
+			K.Kind = EScriptedKind::Shot;
+		}
+		else if ((*Obj)->TryGetStringField(TEXT("map"), K.Map))
+		{
+			if (!K.Map.StartsWith(TEXT("/")))
+			{
+				continue;
+			}
+			K.Kind = EScriptedKind::Travel;
+		}
+		else if (ReadNumbers(*Obj, TEXT("view"), 2, Numbers))
+		{
+			K.Kind = EScriptedKind::View;
+			K.View = FRotator(FMath::Clamp(Numbers[0], -89.0, 89.0), Numbers[1], 0.0);
 		}
 		else if ((*Obj)->TryGetNumberField(TEXT("wait"), K.Wait))
 		{
@@ -360,6 +384,28 @@ void UTaskProbe::SendInput(const FScriptedKey& K, UWorld* World, APlayerControll
 		}
 		break;
 	}
+	case EScriptedKind::Shot:
+	{
+		// with the UI, as the evenly spaced screenshots: what the player sees at that moment
+		const FString Name = FString::Printf(TEXT("shot_%s.png"), *K.Shot);
+		FScreenshotRequest::RequestScreenshot(FPaths::Combine(OutDir, Name), true, false);
+		ShotNames.Add(MakeShared<FJsonValueString>(Name));
+		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: screenshot %s at %.2f s"), *Name, Elapsed);
+		break;
+	}
+	case EScriptedKind::Travel:
+		// the clock keeps counting through the load; inputs and samples wait for the new world's player controller
+		GEngine->SetClientTravel(World, *K.Map, TRAVEL_Absolute);
+		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: travel to %s at %.2f s"), *K.Map, Elapsed);
+		break;
+	case EScriptedKind::View:
+		PC->SetControlRotation(K.View);
+		if (PC->PlayerCameraManager)
+		{
+			PC->PlayerCameraManager->UpdateCamera(0.f);
+		}
+		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: view turned to pitch %.1f yaw %.1f"), K.View.Pitch, K.View.Yaw);
+		break;
 	case EScriptedKind::Wait:
 		bWaiting = true;
 		WaitFor = K.Wait;

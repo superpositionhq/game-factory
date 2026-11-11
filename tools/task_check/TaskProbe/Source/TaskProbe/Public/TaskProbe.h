@@ -4,7 +4,8 @@
 // and the player's camera (its location, rotation and field of view) every half second, then probe.json in <dir> and
 // a clean exit. Without -TaskProbe it does nothing. -TaskProbeEvery=<0.1-1.0> sets the sample interval (default 0.5 s);
 // the inputs file may also hold axis events, button clicks, cursor moves, pawn teleports (held there for a while when
-// asked) and real-time waits (LoadInputs).
+// asked), real-time waits, named screenshots, map travels and view turns (LoadInputs): one launch can visit several
+// places and scenarios and picture each.
 // -TaskProbeSound: the checker's play that measures audio, launched with sound (muted) and a fixed time step instead of
 // -nosound and -benchmark; the application counts as focused throughout, as under -benchmark.
 // With -TaskProbeQueries=<json file> (format game-probe-queries/1) it also evaluates the checker's queries on every half
@@ -39,7 +40,10 @@ private:
 		Cursor,
 		Teleport,
 		TeleportTo,
-		Wait
+		Wait,
+		Shot,
+		Travel,
+		View
 	};
 
 	struct FScriptedKey
@@ -60,6 +64,9 @@ private:
 		FVector Offset = FVector::ZeroVector;  // teleport_to: added to that place (cm)
 		double Hold = 0.0;  // teleport, teleport_to: seconds of play the pawn is held at the spot (put back after every world tick)
 		double Wait = 0.0;  // wait: seconds of real time the play's clock holds while the game runs on, paced to real time
+		FString Shot;  // shot: the screenshot's name (shot_<name>.png)
+		FString Map;  // travel: the map and URL options the play opens
+		FRotator View = FRotator::ZeroRotator;  // view: the control rotation (pitch, yaw) the player's view turns to
 	};
 
 	bool Tick(float DeltaTime);
