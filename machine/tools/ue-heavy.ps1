@@ -58,7 +58,7 @@ function Log($event, $extra) {
   if ($extra) { foreach ($k in $extra.Keys) { $row[$k] = $extra[$k] } }
   # Several jobs log at once: serialise appends with a named mutex and retry on a transient sharing violation.
   $line = ($row | ConvertTo-Json -Compress) + "`n"
-  $m = New-Object Threading.Mutex($false, 'Global\ue-heavy-log')
+  $m = New-GFMutex 'Global\ue-heavy-log'
   [void]$m.WaitOne(10000)
   try {
     for ($i = 0; $i -lt 5; $i++) {
@@ -155,7 +155,7 @@ $lowM = $null
 if ($Low) {
   # Low-priority work never makes another job wait: one low job machine-wide (a mutex, so a killed one does not block
   # the next), and it takes a general slot only while nobody else is waiting and another slot would still be free.
-  $lowM = New-Object Threading.Mutex($false, 'Global\ue-heavy-low-slot')
+  $lowM = New-GFMutex 'Global\ue-heavy-low-slot'
   while (-not (Enter-GFMutex $lowM 60000)) { Write-Host "[ue-heavy] low priority: another low-priority job runs; waiting..." }
   $lowHeld = $true
   while ($true) {

@@ -202,7 +202,27 @@ function Get-GFSlotPlan($Cfg = (Get-GFConfig)) {
 # gpu_slots takes effect at once. A mutex belongs to the thread that took it: take and release it in the same script.
 function Get-GFSlotMutexes([ValidateSet('heavy', 'gpu')][string]$Kind, [int]$Count) {
     $prefix = if ($Kind -eq 'gpu') { 'Global\ue-gpu-slot-' } else { 'Global\ue-heavy-slot-' }
-    , @(for ($i = 0; $i -lt $Count; $i++) { New-Object Threading.Mutex($false, "$prefix$i") })
+    $mx = @(for ($i = 0; $i -lt $Count; $i++) { New-GFMutex "$prefix$i" })
+    if ($mx.Count -ne $Count) { throw "opened $($mx.Count) of $Count $Kind slot mutexes" }
+    , $mx
+}
+
+# A machine-wide named mutex that every process of this user can open, from any logon session. With the default
+# security a Global mutex is open only to the logon session that created it, so a slot first taken by a background
+# agent session was "access denied" to the desktop JobQueue and RecordQueue tasks: their jobs failed or waited for
+# hours. The DACL grants the user's own SID full control instead.
+function New-GFMutex([string]$Name) {
+    $sec = New-Object Security.AccessControl.MutexSecurity
+    $sec.AddAccessRule((New-Object Security.AccessControl.MutexAccessRule(
+        [Security.Principal.WindowsIdentity]::GetCurrent().User, 'FullControl', 'Allow')))
+    $created = $false
+    # Any failure to open is fatal: a caller must never wait on a slot it could not open (that waited forever).
+    try { $m = [Threading.Mutex]::new($false, $Name, [ref]$created, $sec) }
+    catch {
+        throw "cannot open mutex ${Name}: $(if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }) (one created with session-only security by an older tool stays until every process holding it exits)"
+    }
+    if (-not $m) { throw "cannot open mutex $Name" }
+    return $m
 }
 
 # Take a mutex within TimeoutMs; an abandoned one (its holder died) is taken over. $true when held.

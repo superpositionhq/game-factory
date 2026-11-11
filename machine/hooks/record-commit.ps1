@@ -3,7 +3,8 @@
 # file; machine/lib/gf-root.ps1 in the repo). machine/install-git-hook.ps1 adds the hook line to a repo.
 # A commit on the orphan `tasks` branch (the game's tasks, docs/game-format.md) is not recorded: task work never
 # enters the game's recorded history.
-param([string]$Repo)
+# -Sha: record that commit instead of HEAD (by hand, for commits made without hooks, e.g. git commit-tree repairs).
+param([string]$Repo, [string]$Sha)
 if ($env:GF_NO_RECORDING) { exit 0 }   # a task try's agent (tools/task-try.py) is never recorded
 $ErrorActionPreference = 'Continue'   # git warnings on stderr must not abort the record
 $utf8 = New-Object Text.UTF8Encoding($false)
@@ -15,7 +16,8 @@ $gfLib = @((Join-Path $PSScriptRoot 'gf-root.ps1'), (Join-Path $PSScriptRoot '..
 . $gfLib
 $dir = Join-Path (Join-Path (Get-GFRoot) '.recording') $project
 New-Item -ItemType Directory -Force $dir | Out-Null
-$sha = git -C $Repo rev-parse HEAD
+$sha = if ($Sha) { git -C $Repo rev-parse --verify "$Sha^{commit}" } else { git -C $Repo rev-parse HEAD }
+if (-not $sha) { Write-Error "no commit $Sha in $Repo"; exit 1 }
 $fmt = git -C $Repo log -1 --format='%P%x00%an%x00%aI%x00%cI%x00%B' $sha
 $parts = ($fmt -join "`n") -split "`0", 5
 $files = @(git -C $Repo -c core.quotepath=off show --name-status --format= $sha | Where-Object { $_ } | ForEach-Object {
