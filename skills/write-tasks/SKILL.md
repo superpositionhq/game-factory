@@ -1,6 +1,6 @@
 ---
 name: write-tasks
-description: How to write the tasks a game ships with (Tasks/ on the repo's orphan tasks branch, never on main, one GameTask JSON per task, at least 5 and up to about 10 per game, all hard but for at most one medium) so an agent can be given them in the game-creation environment: the tasks branch and its worktree, the one bar every task meets (a long thread of multiple edits from the game's real history: many commits, many files, several systems, every task medium or hard, never easy or a single fix), the four kinds as where a thread comes from, picking seed.commit (the parent of the thread's first attempt) and seed.reference (its final accepted fix), observation-only briefs, play_map, milestones and deterministic probe checks (pass/fail never by a model judge or pixels; one required probe per issue), limits, and what keeps a task gradable and unleaked. Use when a game session writes, moves or reviews tasks, and before calling a game complete.
+description: How to write the tasks a game ships with (Tasks/ on the repo's orphan tasks branch, never on main, one GameTask JSON per task, at least 5 and up to about 10 per game, all hard but for at most one medium) so an agent can be given them in the game-creation environment: the tasks branch and its worktree, the one bar every task meets (a long thread of multiple edits from the game's real history: many commits, many files, several systems, every task medium or hard, never easy or a single fix), the four kinds as where a thread comes from, picking seed.commit (the parent of the thread's first attempt) and seed.reference (its final accepted fix), observation-only briefs, play_map, milestones and deterministic probe checks (pass/fail never by pixels; judges only for asked looks; one required probe per issue), limits, and what keeps a task gradable and unleaked. Use when a game session writes, moves or reviews tasks, and before calling a game complete.
 ---
 
 # Writing a game's tasks
@@ -223,13 +223,16 @@ Every grader play opens it (boots, idle and drive, the route, the before and ref
 
 ## 5. Milestones and checks: deterministic probes decide
 
-**Pass/fail is decided only by checks the grader computes itself** (the owner, 2026-10-19): `build`, `boot`,
-`log_absent` and **`probe`** checks. A model judge (`judge`, `code_judge`, `actions_judge`) never decides pass/fail
-and nothing is graded from pixel statistics of the game's frames except the frame's mean luminance (`screen`, the
-owner, 2026-11-06), whose threshold is always calibrated or relative to the start. Judges may stay as
-`"required": false` quality checks (taste, readability, how the agent worked). The probe language, every play, measure and threshold with the
-rules that gate a task, is the task author's contract [docs/task-probes.md](../../docs/task-probes.md), checked by the
-schema [docs/schemas/game-task.schema.json](../../docs/schemas/game-task.schema.json) and `tools/validate-game.py`.
+**Pass/fail is decided by checks the grader computes itself** (the owner, 2026-10-19): `build`, `boot`, `log_absent`
+and **`probe`** checks, and nothing is graded from pixel statistics of the game's frames except the frame's mean
+luminance (`screen`, the owner, 2026-11-06), whose threshold is always calibrated or relative to the start. Two judges
+are required (the owner, 2026-11-11): `looks_as_asked`, whose rubric items are the brief's own look-and-feel asks, and
+one in `still_works` of what must still look as it did (below). Every other judge (`judge`, `code_judge`,
+`actions_judge`: taste, readability, code review, how the agent worked) stays a `"required": false` quality check. A
+task still needs required probes the grader decides without a judge (section 6). The probe language, every play,
+measure and threshold with the rules that gate a task, is the task author's contract
+[docs/task-probes.md](../../docs/task-probes.md), checked by the schema
+[docs/schemas/game-task.schema.json](../../docs/schemas/game-task.schema.json) and `tools/validate-game.py`.
 
 Each milestone is a reward group; a run that gets part of the way earns part of the reward. **A no-op scores zero
 (owner, 2026-11-04; permanent):** the score is the weighted share of checks passed, so every check the start already
@@ -242,25 +245,31 @@ task a no-op would earn anything on. The usual order:
 3. `fixed` (bug_fix, correction) / `done` (feature, change): `probe` checks of the reported outcomes, `required`,
    `needs` `boots_clean`: at least 3, one per issue the thread settled (split them over several milestones, e.g.
    `fixed_hud`, `fixed_camera`, when the issues are separable). Each one fails at the start for the reported reason
-   and passes on the reference.
+   and passes on the reference. The required `looks_as_asked` judge goes here when the brief asks for a look.
 4. `still_works`: probes that what must keep working still does (the player still moves, the HUD still shows, the
-   level still loads its scenario).
+   level still loads its scenario), and a required judge with `"before": true` for what must still look as it did.
 5. `quality` (optional, never required): a `judge` for taste items no probe can capture ("reads as a castle",
    readability of text over the scene), a `code_judge` for code quality, and the standard `actions_judge`
    `worked_well` (or `trace` probes, `"required": false`).
 
-**Every look-and-feel ask in the brief gets a `judge` rubric item** (a review of delivered tasks found the checks
-thinner than the briefs, look-and-feel asks most of all). Go through the brief ask by ask: what a probe can measure
-gets a probe; what only an eye can tell (reads clearly, fits the style, looks like the thing it is meant to be) gets
-its own rubric item in a `quality` `judge`, one item per ask. A judge is shown screenshots of the idle `look` and the
-`drive` on `play_map` and nothing else, unless the check names its own plays. When what must be seen appears only
-after a task-specific key, in another scenario or level, or past a title screen, give the check `plays`: up to 4 task
-plays that reach that state (when a probe's play already does, reuse it under its name, written identically):
+**Every look-and-feel ask in the brief gets a required `looks_as_asked` rubric item** (a review of delivered tasks
+found the checks thinner than the briefs, look-and-feel asks most of all; the owner, 2026-11-11: such an ask gates the
+task). Go through the brief ask by ask: what a probe can measure gets a probe; what only an eye can tell (reads
+clearly, fits the style, looks like the thing it is meant to be) gets its own rubric item, `"required": true`, in one
+required `judge` named `looks_as_asked`, with `"before": true` and `"reference": true` when the seed has a reference.
+A judge can misread screenshots, so word each item concretely, decidable from the screenshots alone, so the unchanged
+game scores 0 on it and any solution that meets the brief scores 1. What must still look as it did goes in a required
+judge in `still_works` the same way. A judge is shown screenshots of the idle `look` and the `drive` on `play_map` and
+nothing else, unless the check names its own plays. When what must be seen appears only after a task-specific key, in
+another scenario or level, or past a title screen, give the check `plays`: up to 4 task plays that reach that state
+(when a probe's play already does, reuse it under its name, written identically):
 
 ```json
-{"name": "upgrade_menu_reads", "kind": "judge", "required": false, "needs": ["boots_clean"], "before": true,
+{"name": "looks_as_asked", "kind": "judge", "required": true, "needs": ["boots_clean"], "before": true,
+ "reference": true,
  "question": "With the upgrade menu open, does it read the way the request asks?",
- "rubric": [{"key": "costs_legible", "criterion": "Each upgrade's cost is legible against the panel behind it."}],
+ "rubric": [{"key": "costs_legible", "criterion": "Each upgrade's cost is legible against the panel behind it.",
+             "required": true}],
  "plays": [{"name": "open_upgrades", "seconds": 10,
             "inputs": [{"t": 0.5, "key": "U", "press": true}, {"t": 0.7, "key": "U", "press": false}]}]}
 ```
@@ -270,11 +279,11 @@ state is on screen at those moments. A play also runs on the task's start (`"bef
 (`"reference": true`), so it must run there too; a key that does nothing at the start is fine
 ([docs/task-probes.md](../../docs/task-probes.md), section 3.2).
 
-**Motion is asked two ways.** Motion that is a number (eases instead of snapping, gentle, no sudden moves) is a
-probe: a task play with `"every": 0.1` and a field over the window of the move, with `"agg": "step"` for the largest
-jump between two samples (section 2.1 of the same doc). Motion that can only be seen (feet that slide, a trail) is a
-`judge` with a short play and many `shots` (2-20 of each play, plays times shots 20 at most): a 5 s play with
-`"shots": 20` is a frame every 0.25 s, screenshot i of N at `seconds` x (i + 0.5) / N.
+**Motion is asked two ways.** Motion that is a number (eases instead of snapping, gentle, no sudden moves) is a probe:
+a task play with `"every": 0.1` and a field over the window of the move, with `"agg": "step"` for the largest jump
+between two samples (section 2.1 of the same doc). Motion that can only be seen (feet that slide, a trail) is a
+`looks_as_asked` item with a short play and many `shots` (2-20 of each play, plays times shots 20 at most): a 5 s play
+with `"shots": 20` is a frame every 0.25 s, screenshot i of N at `seconds` x (i + 0.5) / N.
 
 A probe names one measurement and its threshold:
 
@@ -346,9 +355,9 @@ no check at all, naming the task and the sentence. Fix what you find in the task
   context, and so are a bug report's symptom, cause and steps to reproduce; they ask nothing. What should now be
   different is an ask (in a bug report, the expected behaviour); what must stay as it is is a keep.
 - **Every ask has a check that would fail if that ask alone were not done**: a required probe for each key, direction,
-  scenario or case it lists; a number it states held on both sides; a look-and-feel ask as a `judge` rubric item in
-  the ask's own words, with the judge's own `plays` when the state must be reached first; motion as a probe sampled
-  every 0.1 s with `agg` `step`, or a `judge` with a run of `shots`.
+  scenario or case it lists; a number it states held on both sides; a look-and-feel ask as a required
+  `looks_as_asked` rubric item in the ask's own words, with the judge's own `plays` when the state must be reached
+  first; motion as a probe sampled every 0.1 s with `agg` `step`, or a required judge with a run of `shots`.
 - **A keep that names a thing** ("the boss bar still starts full") has a required `still_works` check reading that
   thing; a bare "everything else keeps working" is covered by any required `still_works` check.
 - **Never cover an ask with an optional probe, a `build` or `boot` check, or the `worked_well` actions judge alone.**
@@ -397,9 +406,9 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 |---|---|
 | checks or log patterns shown in the brief | the agent gets the brief only |
 | an ask in the brief that no check reads, so Lab sends the game back | read each task against its checks before packing (section 5, "Every ask has a check") |
-| a model judge misread screenshots and failed a correct fix (or passed a wrong one) | pass/fail by probes only; judges are `"required": false` |
+| a model judge misread screenshots and failed a correct fix (or passed a wrong one) | required probes for what can be measured; only the brief's own looks in a required judge (`looks_as_asked`, still-looks in `still_works`), each item concrete and decidable from the screenshots; every other judge `"required": false` |
 | a judge was shown only the title screen, or never the state a task's own key opens | the `judge` check names its own `plays` that reach it (section 5) |
-| five stills couldn't show whether a move eased or feet slid | a number: a probe sampled every 0.1 s with `agg` `step`; only seen: a `judge` with a short play and `shots` (section 5) |
+| five stills couldn't show whether a move eased or feet slid | a number: a probe sampled every 0.1 s with `agg` `step`; only seen: a `looks_as_asked` item with a short play and `shots` (section 5) |
 | a fix made only in binary assets failed the code review | the cause is checked by its measured effect (a probe), never by reading the diff |
 | a pixel threshold moved between GPUs | light and colour from the engine (`light`, `grading`); the frame's luminance (`screen`) only calibrated or relative to the start, never a literal |
 | a level dressed with instanced meshes counted as one actor | count placed pieces (`pieces`), not actors or components |
