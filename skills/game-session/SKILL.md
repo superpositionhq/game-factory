@@ -30,7 +30,7 @@ offers one (AGENTS.md, "Only these skills"). Do what they don't cover by hand un
    It writes the skeleton (UE 5.7 Target.cs settings, Live Coding off, Shipping/HiDPI config, AutoPlay drop-in, LFS for every
    binary type, root-anchored `.gitignore`), the first `workflow.jsonl` row, the commit recorder hook, the first
    commit, and the private repo `<org>/game-<slug>` (`github_org` in the machine config; not pushed).
-3. Write the design doc + story bible in game-factory `docs/games/<slug>.md` before building: systems, classes, data
+3. Write the design doc + story bible in game-factory `docs/games/<slug>.md` before building: systems (the core loop and the further ones "Gameplay depth" below asks for), classes, data
    tables, maps, scenarios 1..n (start state + win/lose), art and audio direction, acceptance checklist. Keep its
    status section current. It is the only game-factory file you edit.
 4. Choose the game's art style ("Art style" below) before writing the art direction: the design doc names the style
@@ -115,6 +115,14 @@ offers one (AGENTS.md, "Only these skills"). Do what they don't cover by hand un
   `assets.manifest.json`. Never leave a cue silent or ship an engine placeholder.
 - **UI (user rule):** matches the game's art style (its guide's UI and typography line): kit frames, icons, display fonts, styled numbers. No plain or
   default-font text on screen.
+- **UI colours, when you are Codex (user rule, 2026-11-11):** Codex's habit, whatever the game, is a dense blue
+  interface: navy or dark-blue panels, cyan or blue glowing text and outlines, the screen packed edge to edge with
+  boxes, bars and small readouts. Do not build that. Take the UI's colours, materials and type from the game's art
+  style guide and its world, show only what the player needs at that moment and leave the play view open. Blue is used
+  only where the style guide itself asks for it. Before calling a screen or the HUD done, look at a screenshot of it:
+  if it reads as a blue sci-fi dashboard laid over a game that is not one, or as a wall of panels, redo it.
+  _(failure: games built by Codex came out one after another with the same dense blue UI, unrelated to their art
+  style)_
 - **Story (user rule):** a strong background story told in play, never a wall of text: environmental storytelling, at
   most one short line (under ~15 words) per area, optional discoverable details, a late payoff that recolours earlier
   play.
@@ -122,6 +130,14 @@ offers one (AGENTS.md, "Only these skills"). Do what they don't cover by hand un
   the screen, never at hip height or jammed into the body (spring arm collisions in narrow spaces, crouching).
 - **Quality bar:** main menu, settings (volume, resolution, mouse sensitivity), pause, save/load where it fits, HUD,
   sound, clear win/lose, packaged Win64 Shipping build. Recorded and TTS voices are allowed.
+- **Gameplay depth (user rule, 2026-11-11):** a game is never only its genre's bare loop. On top of the core loop
+  the design doc names several further systems the player uses, each changing how a session goes, of the kind a
+  player of that genre expects from a full game: a technique to master, things to pick up or use during play,
+  progression or customising between runs, opponents or hazards that behave in different ways, choices with a
+  trade-off. Each one works, shows in play with its own feedback, and is reachable by a scenario. One example, not a
+  template: a racing game that is only driving laps is too thin; one with drifting, item pick-ups and car modification
+  is the depth meant. Choose what fits your own game's genre and story and never copy this list. _(failure: a racing
+  game shipped as plain racing, too simple as a game and too thin to give hard tasks)_
 - **Room for hard tasks.** A game's tasks come from its own history (write-tasks skill), and strong agents miss what
   only shows when the game runs. So build these in, and work them over several rounds rather than in one commit:
   feedback for every gameplay event (a HUD readout, marker, sound or effect); visible state changes (materials,
