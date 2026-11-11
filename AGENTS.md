@@ -19,7 +19,7 @@ Skills (one source, [skills/](skills/); `machine/bootstrap.ps1` copies them to `
   design doc's audio direction, every UI, player, combat, world or ambience sound): finding, choosing and importing
   sound effects through `tools/sfx.py`.
 - **write-tasks** ([skills/write-tasks/SKILL.md](skills/write-tasks/SKILL.md)): sessions that write, move or review a
-  game's tasks (the orphan `tasks` branch, never on main; up to about 10 per game, every one a long thread of multiple
+  game's tasks (the orphan `tasks` branch, never on main; at least 5 and up to about 10 per game, every one hard and a long thread of multiple
   edits from the real history, never a single fix; seed and reference commits, observation-only briefs, milestones with
   deterministic probe checks).
 

@@ -102,7 +102,7 @@ Steps:
    store assets, stats: workflow rows, commits, hours). Before calling the game content-complete: Docs/screenshots/
    holds 5-7 real gameplay stills (JPG, Git LFS), the README shows them as a hero image plus a captioned gallery, and
    after the push every image renders on the github.com repo page (game-session skill, "README screenshots"); and
-   Tasks/ on the repo's orphan tasks branch (its own worktree, never on main) holds the game's tasks, up to about 10,
+   Tasks/ on the repo's orphan tasks branch (its own worktree, never on main) holds the game's tasks, at least 5 and up to about 10, all hard (one may be medium),
    every one a long thread of multiple edits (write-tasks skill); and
    tools/validate-game.py on your repo says VALID (docs/game-format.md). Report back with a short summary and the commit sha when done
    or blocked.

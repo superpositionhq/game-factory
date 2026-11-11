@@ -47,7 +47,7 @@ Everything needed to rebuild the game from the repo alone, tracked in git (binar
 
 **Tasks live on the orphan `tasks` branch, never on main.** The same repo has a branch `tasks` that shares no history
 with main: `Tasks/<game>-<kind>-<slug>.json` (one task each in the task format `GameTask`,
-[schemas/game-task.schema.json](schemas/game-task.schema.json); at least one, up to about 10, every one a long thread of
+[schemas/game-task.schema.json](schemas/game-task.schema.json); at least 5, up to about 10, all hard but for at most one medium, every one a long thread of
 multiple edits; written with the `write-tasks` skill), a short `README.md`, optionally `tasks-workflow.jsonl`. It is checked out as a git worktree
 outside the game folder (e.g. `<root>/tasks/<slug>`), committed and pushed there. Task work never enters the game's
 history: main never tracks `Tasks/` and never references the tasks branch, the recording and live-replay hooks ignore
@@ -127,8 +127,8 @@ then copy `History/lfs` into `<game>/.git/lfs`, `git lfs install --local`, `git 
 **Tasks.** A game is complete when its repo's orphan `tasks` branch has `Tasks/`: tasks an agent can be given on
 this game (a bug fix from its history, a correction from a person's direction, a feature, a look or content change),
 in the task format (`GameTask`, game-task/1), one file per task named
-`<game>-<kind>-<slug>.json` with `name` equal to the file name. About 10 are recommended; the count is reported,
-and only a game with none fails. The tasks branch is the single source: tasks are loaded as `Tasks/*.json` from
+`<game>-<kind>-<slug>.json` with `name` equal to the file name. About 10 are recommended. A game with fewer than 5 fails, and so does one whose
+tasks are not all `hard`: at most one may be `medium` (what a task that names no difficulty is), none `easy`. The tasks branch is the single source: tasks are loaded as `Tasks/*.json` from
 the repos' tasks branches. How to write them: the `write-tasks` skill. The validator reads the tasks from `tasks`
 (else `origin/tasks`) and checks each against [schemas/game-task.schema.json](schemas/game-task.schema.json)
 (the task format; probe checks: [task-probes.md](task-probes.md)), that its seed is on this game and its seed commits are ancestors of main's head,
@@ -145,7 +145,8 @@ history); it sees only the brief and that snapshot. The grader's half never reac
 
 **Complete vs pending.** `status` is `complete` when every entry is there, `ReplayScripts/` with its
 `Verification/report.json` included; `pending` while `ReplayScripts/` or `Gameplay/` is missing (the zip is then
-`Dataset.pending.zip`). The replay is required but need not pass (user rule): a FAIL verdict is metadata, like a
+`Dataset.pending.zip`). A delivery whose `Gameplay/` is pending fails the validator and is rejected at upload: a game
+needs at least one gameplay video. The replay is required but need not pass (user rule): a FAIL verdict is metadata, like a
 gameplay run's result: manifest `replay_verification.pass` false (equal to the report's `verdict.pass`) and the README
 says FAIL.
 
@@ -157,7 +158,7 @@ Deliver the repo (private, with Git LFS) and run the packager, or deliver the sa
 2. `workflow.jsonl` from the first operation, with every direction you were given as a `user.direction` row
    (neutral wording, what and why) before the work it caused, and `"direction": "<id>"` on the rows that act on it.
 3. `Brief/brief.md` (the brief you were given) and `Brief/design.md` (your design doc).
-4. Your game's tasks in `Tasks/` on an orphan `tasks` branch of the repo, never on main (about 10; the
+4. Your game's tasks in `Tasks/` on an orphan `tasks` branch of the repo, never on main (at least 5, about 10, all hard but for at most one medium; the
    `write-tasks` skill, or the format and examples it points to), each seeded on commits of main's history.
 5. `python tools/validate-game.py <repo>` VALID, and the same for the `Dataset.zip`.
 

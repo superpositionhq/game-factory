@@ -232,7 +232,7 @@
     "absent": "a game whose sessions were recorded before prompts and replies were has no messages.jsonl: reported, never an error"
   },
   "tasks": {
-    "count": "at least 1; about 10 recommended (fewer or more is fine)",
+    "count": "at least 5; about 10 recommended; all hard but for at most one medium",
     "format": "GameTask (game-task/1, docs/schemas/game-task.schema.json); merging task.json and grader.json (grader.json's seed into task.json's) gives the task",
     "split": {
       "task.json": "name, title, instruction, engine, template, seed {game, commit, kind}, play_map, asset_packs, difficulty, tags, limits",

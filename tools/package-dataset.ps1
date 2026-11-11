@@ -28,7 +28,7 @@ param(
     [switch]$NoZip,
     [switch]$RebuildVideos,
     [switch]$NoTasks,               # build layout v1.2 (no Tasks/) from a package with a git history
-    [switch]$GameplayPending        # no gameplay runs: a pending delivery with Gameplay/ listed as pending (a complete one needs the videos)
+    [switch]$GameplayPending        # no gameplay runs: a pending delivery with Gameplay/ listed as pending; the validator and the Lab reject it (a game needs a gameplay video)
 )
 
 . (Join-Path $PSScriptRoot 'ue-pipeline\common.ps1')
@@ -309,7 +309,7 @@ $taskNames = @(); $taskRows = @(); $tasksDir = Join-Path $outDir '_tasks'
 if ($layout -eq 'dataset-layout/v1.3') {
     $pkgTasks = Join-Path $pkg 'Tasks'
     $srcTasks = @(Get-ChildItem -LiteralPath $pkgTasks -Filter *.json -File -ErrorAction SilentlyContinue)
-    if (-not $srcTasks.Count) { throw "the package has no tasks (the game repo has no tasks branch, or no Tasks/*.json on it): layout v1.3 needs at least one (about 10 recommended); -NoTasks builds v1.2" }
+    if (-not $srcTasks.Count) { throw "the package has no tasks (the game repo has no tasks branch, or no Tasks/*.json on it): layout v1.3 needs at least 5 (about 10 recommended); -NoTasks builds v1.2" }
     $delivered = @{}; foreach ($v in $commitMap.Values) { $delivered[$v] = 1 }
     foreach ($f in $srcTasks) {
         $j = [IO.File]::ReadAllText($f.FullName) | ConvertFrom-Json
@@ -393,7 +393,7 @@ $runs = @(Get-ChildItem (Join-Path $pkg 'Gameplay') -Directory | ForEach-Object 
     })
 if ($runs.Count -eq 0) {
     # no recordings of this commit: a pending delivery without Gameplay/ when asked for (-GameplayPending), else an error
-    if (-not $GameplayPending) { throw "no gameplay runs in $pkg (-GameplayPending builds a pending delivery without Gameplay/)" }
+    if (-not $GameplayPending) { throw "no gameplay runs in $pkg: a game is rejected without a gameplay video, so record a scenario of the release commit first (-GameplayPending builds a pending delivery without Gameplay/, which the validator and the Lab refuse)" }
     $status = 'pending'; $pending = @($pending) + @('Gameplay/')
     Write-Step 'no gameplay runs: Gameplay/ pending (-GameplayPending)'
 }

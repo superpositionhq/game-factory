@@ -373,6 +373,10 @@ def check_dataset(rep, path, area='dataset'):
     # videos: at least one (user rule 2026-10-19: one recorded scenario is enough), unless Gameplay/ is listed as pending
     if not m['scenarios'] and not any(str(p).rstrip('/') == 'Gameplay' for p in m['pending']):
         rep.error(a, 'no scenario videos: a delivery has at least one, or lists Gameplay/ as pending')
+    # a game without a gameplay video is rejected at upload (user rule 2026-11-10): pending Gameplay/ is never delivered
+    if any(str(p).rstrip('/') == 'Gameplay' for p in m['pending']):
+        rep.error(a, 'Gameplay/ is pending: a game is rejected without a gameplay video; record a scenario of the release '
+                     'commit and package again')
     # v1.2: Brief/, the person's directions, History/
     if m['layout'] in ('dataset-layout/v1.2', 'dataset-layout/v1.3'):
         b = m.get('brief')
@@ -770,7 +774,7 @@ def thread_errors(t, outcomes):
     """Why task `t` (with `outcomes` required probes outside still_works) is not a long thread, from the task alone."""
     errs = []
     if t.get('difficulty') == 'easy':
-        errs.append('difficulty \'easy\': a task is "medium" or "hard"')
+        errs.append('difficulty \'easy\': a task is "hard" (one of a game\'s may be "medium")')
     if 'long-thread' not in (t.get('tags') or []):
         errs.append('no long-thread tag')
     if not (isinstance(t.get('seed'), dict) and t['seed'].get('reference')):
@@ -835,6 +839,26 @@ def thread_size(numstat):
         if added.isdigit() and removed.isdigit() and CODE_FILE.search(path) and not NOT_CODE_DIR.search(path):
             lines += int(added) + int(removed)
     return lines, len(systems)
+
+
+MIN_TASKS = 5          # a game with fewer tasks is rejected (user rule 2026-11-10)
+MAX_MEDIUM_TASKS = 1   # every task is hard; this many may be medium, none easier (user rule 2026-11-10)
+
+
+def task_bar_errors(levels):
+    """Why a game's tasks ({name: its difficulty or None}) miss the bar a game is accepted at: at least MIN_TASKS tasks,
+    all hard but for at most MAX_MEDIUM_TASKS medium ones. A task that names no difficulty is medium, the format's
+    default."""
+    errs = []
+    if len(levels) < MIN_TASKS:
+        errs.append(f'{len(levels)} task(s): a game ships at least {MIN_TASKS}')
+    level = {n: d or 'medium' for n, d in levels.items()}
+    errs += [f'{n}: difficulty {d!r}: a task is "hard"' for n, d in sorted(level.items()) if d not in ('medium', 'hard')]
+    medium = sorted(n for n, d in level.items() if d == 'medium')
+    if len(medium) > MAX_MEDIUM_TASKS:
+        errs.append(f'{len(medium)} medium tasks ({", ".join(medium)}): at most {MAX_MEDIUM_TASKS} of a game\'s tasks may be '
+                    'medium, the rest are hard')
+    return errs
 
 
 def thread_span_errors(repo, seed, on_main):
@@ -925,7 +949,7 @@ def check_repo_tasks(rep, repo, files=None):
     if not paths:
         rep.error(a, f'no task files in Tasks/ on {ref} (a game ships at least one; about 10 recommended)')
         return
-    known, current = {}, {'stem': ''}
+    known, current, levels = {}, {'stem': ''}, {}
 
     def has_commit(c):   # an ancestor of main's head, or of the task's own start branch
         key = (c, current['stem'])
@@ -952,6 +976,7 @@ def check_repo_tasks(rep, repo, files=None):
         if t.get('name') != stem:
             rep.error(a, f'{label}: name {t.get("name")!r} differs from the file name')
         current['stem'] = stem
+        levels[stem] = t.get('difficulty') if isinstance(t.get('difficulty'), str) else None
         check_task(rep, a, label, t, game, has_commit)
         seed = t.get('seed') if isinstance(t.get('seed'), dict) else {}
         for k in ('commit', 'reference'):
@@ -965,7 +990,9 @@ def check_repo_tasks(rep, repo, files=None):
                           for k in ('commit', 'reference'))
             for e in thread_span_errors(repo, seed, on_main):
                 rep.error(a, f'{label}: {e} (write-tasks section 1: only long threads of multiple edits)')
-    rep.note(a, f'{len(paths)} task(s) on {ref} (up to about 10, every one a long thread)')
+    for e in task_bar_errors(levels):
+        rep.error(a, f'{ref}: {e} (write-tasks section 1)')
+    rep.note(a, f'{len(paths)} task(s) on {ref} (at least {MIN_TASKS}, up to about 10, every one a long thread)')
 
 
 ENGINE = '5.7'   # the checker's engine: it builds a start exactly as committed
@@ -997,7 +1024,7 @@ def check_tasks(rep, area, v, m):
     if not folders:
         rep.error(a, 'no tasks (a game ships at least one)')
     commits = getattr(v, 'commits', None)
-    names = []
+    names, levels = [], {}
     for name in folders:
         tp, gp = f'Tasks/{name}/task.json', f'Tasks/{name}/grader.json'
         if not (v.has(tp) and v.has(gp)):
@@ -1028,6 +1055,9 @@ def check_tasks(rep, area, v, m):
             whole['seed'] = dict(whole['seed'], **grader['seed'])
         check_task(rep, a, f'Tasks/{name}', whole, m['game'], (lambda c: c in commits) if commits is not None else None)
         names.append(name)
+        levels[name] = whole.get('difficulty') if isinstance(whole.get('difficulty'), str) else None
+    for e in task_bar_errors(levels):
+        rep.error(a, f'Tasks/: {e}')
     if commits is None and folders:
         rep.note(a, 'seed commits not checked against History/ (bundle not unpacked: --quick)')
     mt = m.get('tasks')
@@ -1035,7 +1065,7 @@ def check_tasks(rep, area, v, m):
         rep.error(a, 'layout v1.3 needs manifest tasks {"count": n, "names": [...]}')
     elif sorted(mt.get('names') or []) != names or mt.get('count') != len(names):
         rep.error(a, 'manifest tasks (count, names) differ from Tasks/')
-    rep.note(a, f'{len(names)} task(s) (about 10 recommended)')
+    rep.note(a, f'{len(names)} task(s) (at least {MIN_TASKS}; about 10 recommended)')
 
 
 def run_layout_validator(rep, path, repo_dataset):
