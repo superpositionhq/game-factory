@@ -13,7 +13,7 @@ Skills (one source, [skills/](skills/); `machine/bootstrap.ps1` copies them to `
 
 - **commit-always** ([skills/commit-always/SKILL.md](skills/commit-always/SKILL.md)): every session. Commit after every
   meaningful step, never end a turn with uncommitted work, LFS for binaries, push only when the coordinator says.
-- **game-session** ([skills/game-session/SKILL.md](skills/game-session/SKILL.md)): sessions that build a game (art, UI,
+- **game-session** ([skills/game-session/SKILL.md](skills/game-session/SKILL.md)): sessions that build a game (art style, art, UI,
   story, naming, ue-heavy/GPU, workflow.jsonl, AutoPlay, framing screenshots, dataset v1.1).
 - **sound** ([skills/sound/SKILL.md](skills/sound/SKILL.md)): sessions that build a game, whenever it needs sound (the
   design doc's audio direction, every UI, player, combat, world or ambience sound): finding, choosing and importing

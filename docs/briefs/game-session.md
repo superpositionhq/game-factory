@@ -8,7 +8,7 @@ brief stays short and the rules stay in one place. The originals this was distil
 
 | Placeholder | From |
 |---|---|
-| `{{GAME_TITLE}}`, `{{SLUG}}`, `{{PROJECT}}`, `{{GENRE_LINE}}`, `{{PITCH}}`, `{{BRIEF}}`, `{{SCENARIOS}}`, `{{STORY}}`, `{{ART_PACKS}}`, `{{GAME_NOTES}}` | `games/<slug>.md` |
+| `{{GAME_TITLE}}`, `{{SLUG}}`, `{{PROJECT}}`, `{{GENRE_LINE}}`, `{{PITCH}}`, `{{BRIEF}}`, `{{SCENARIOS}}`, `{{STORY}}`, `{{ART_STYLE}}`, `{{ART_PACKS}}`, `{{GAME_NOTES}}` | `games/<slug>.md` |
 | `{{GF_ROOT}}` | the machine root (`machine/lib/gf-root.ps1`; e.g. `C:\Users\<name>\Work`) |
 | `{{ORG}}` | the GitHub organisation (or user) owning the repos: `github_org` in the machine config |
 | `{{MACHINE}}` | one line: `<CPU, RAM, GPU + driver, display>` of this machine |
@@ -31,7 +31,7 @@ commits and tell you when to push.
 Rules: follow the game-session, commit-always and sound skills (installed in ~\.claude\skills\ or ~\.agents\skills\, source
 game-factory/skills/), and no other skill: never install, enable or invoke a personal, project, plugin, marketplace or
 agent built-in skill. In short: every heavy or GPU job through {{GF_ROOT}}\tools\ue-heavy.ps1, Live Coding
-never on; premium art from the bought/downloaded Fab packs and animation packs, every sound through the
+never on; premium art in one art style, from the asset library, any licensed source or built from scratch, every sound through the
 sound skill, styled UI with no plain text, story
 embedded in play, gentle camera; never the names Superposition or game-factory anywhere in the game; one
 workflow.jsonl row per operation at the moment you act (rows never edited, except to remove a banned name with
@@ -78,6 +78,9 @@ Scenarios (AutoPlay contract; numbered start state + win/lose):
 
 Story:
 {{STORY}}
+
+Art style (docs/art-styles; a style's id and name, or "pick": the tool chooses, game-session skill, "Art style"):
+{{ART_STYLE}}
 
 Art to start from (paths under {{GF_ROOT}}\asset-library\):
 {{ART_PACKS}}

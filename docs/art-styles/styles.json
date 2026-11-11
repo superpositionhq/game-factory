@@ -1,0 +1,7004 @@
+[
+  {
+    "id": "001",
+    "slug": "ink-outline-comic-cel",
+    "name": "Ink-outline comic cel",
+    "family": "toon/cel",
+    "references": [
+      {
+        "title": "Borderlands",
+        "year": 2009,
+        "creator": "Gearbox Software",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Borderlands_(video_game)"
+      },
+      {
+        "title": "Borderlands 2",
+        "year": 2012,
+        "creator": "Gearbox Software",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Borderlands_2"
+      },
+      {
+        "title": "Borderlands 3",
+        "year": 2019,
+        "creator": "Gearbox Software",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Borderlands_3"
+      },
+      {
+        "title": "Tales from the Borderlands",
+        "year": 2014,
+        "creator": "Telltale Games",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Tales_from_the_Borderlands"
+      }
+    ],
+    "palette": [
+      "#17110f",
+      "#c9772e",
+      "#e8c27a",
+      "#8a3b24",
+      "#5f7f86",
+      "#6b4f8a",
+      "#f2e2c0"
+    ],
+    "genres": [
+      "fps",
+      "rpg",
+      "vehicle-combat",
+      "third-person-shooter",
+      "top-down-shooter"
+    ],
+    "moods": [
+      "irreverent",
+      "rowdy",
+      "gritty"
+    ],
+    "settings": [
+      "desert wasteland",
+      "scrapyard outpost",
+      "frontier mining planet"
+    ],
+    "nearest": [
+      "009",
+      "004",
+      "010"
+    ]
+  },
+  {
+    "id": "002",
+    "slug": "painterly-open-air-cel",
+    "name": "Painterly open-air cel",
+    "family": "toon/cel",
+    "references": [
+      {
+        "title": "The Legend of Zelda: Breath of the Wild",
+        "year": 2017,
+        "creator": "Nintendo EPD",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/The_Legend_of_Zelda:_Breath_of_the_Wild"
+      },
+      {
+        "title": "The Legend of Zelda: Tears of the Kingdom",
+        "year": 2023,
+        "creator": "Nintendo EPD",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/The_Legend_of_Zelda:_Tears_of_the_Kingdom"
+      },
+      {
+        "title": "The Legend of Zelda: Skyward Sword",
+        "year": 2011,
+        "creator": "Nintendo EAD",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/The_Legend_of_Zelda:_Skyward_Sword"
+      },
+      {
+        "title": "Immortals Fenyx Rising",
+        "year": 2020,
+        "creator": "Ubisoft Quebec",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Immortals_Fenyx_Rising"
+      }
+    ],
+    "palette": [
+      "#8fc46a",
+      "#4f8a5b",
+      "#bfe3f2",
+      "#f3e7b8",
+      "#c98d5a",
+      "#6f7fa8",
+      "#e06a4a"
+    ],
+    "genres": [
+      "exploration",
+      "action-adventure",
+      "survival-craft",
+      "rpg",
+      "puzzle"
+    ],
+    "moods": [
+      "serene",
+      "adventurous",
+      "wistful"
+    ],
+    "settings": [
+      "grassy highlands",
+      "overgrown ruins",
+      "mountain wilderness",
+      "sky islands"
+    ],
+    "nearest": [
+      "003",
+      "018",
+      "014"
+    ]
+  },
+  {
+    "id": "003",
+    "slug": "flat-shape-ocean-toon",
+    "name": "Flat-shape ocean toon",
+    "family": "toon/cel",
+    "references": [
+      {
+        "title": "The Legend of Zelda: The Wind Waker",
+        "year": 2002,
+        "creator": "Nintendo EAD",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/The_Legend_of_Zelda:_The_Wind_Waker"
+      },
+      {
+        "title": "The Legend of Zelda: Phantom Hourglass",
+        "year": 2007,
+        "creator": "Nintendo EAD",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/The_Legend_of_Zelda:_Phantom_Hourglass"
+      },
+      {
+        "title": "The Legend of Zelda: Spirit Tracks",
+        "year": 2009,
+        "creator": "Nintendo EAD",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/The_Legend_of_Zelda:_Spirit_Tracks"
+      },
+      {
+        "title": "Oceanhorn: Monster of Uncharted Seas",
+        "year": 2013,
+        "creator": "Cornfox & Bros.",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Oceanhorn:_Monster_of_Uncharted_Seas"
+      }
+    ],
+    "palette": [
+      "#1f8fd6",
+      "#6fd0f0",
+      "#ffffff",
+      "#5cc04a",
+      "#f2d15c",
+      "#e8553d",
+      "#2a5e2e"
+    ],
+    "genres": [
+      "action-adventure",
+      "exploration",
+      "platformer",
+      "puzzle",
+      "tower-defense"
+    ],
+    "moods": [
+      "cheerful",
+      "breezy",
+      "playful"
+    ],
+    "settings": [
+      "island archipelago",
+      "open sea",
+      "seaside village"
+    ],
+    "nearest": [
+      "002",
+      "067",
+      "015"
+    ]
+  },
+  {
+    "id": "004",
+    "slug": "graffiti-street-cel",
+    "name": "Graffiti street cel",
+    "family": "toon/cel",
+    "references": [
+      {
+        "title": "Jet Set Radio",
+        "year": 2000,
+        "creator": "Smilebit",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Jet_Set_Radio"
+      },
+      {
+        "title": "Jet Set Radio Future",
+        "year": 2002,
+        "creator": "Smilebit",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Jet_Set_Radio_Future"
+      },
+      {
+        "title": "Bomb Rush Cyberfunk",
+        "year": 2023,
+        "creator": "Team Reptile",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Bomb_Rush_Cyberfunk"
+      },
+      {
+        "title": "Hi-Fi Rush",
+        "year": 2023,
+        "creator": "Tango Gameworks",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Hi-Fi_Rush"
+      }
+    ],
+    "palette": [
+      "#101014",
+      "#ffd21f",
+      "#ff3f8e",
+      "#19c3ff",
+      "#7dff3a",
+      "#ff7a1a",
+      "#f4f4f4"
+    ],
+    "genres": [
+      "sports",
+      "platformer",
+      "racing",
+      "hack-and-slash",
+      "fighting"
+    ],
+    "moods": [
+      "energetic",
+      "rebellious",
+      "playful"
+    ],
+    "settings": [
+      "city streets",
+      "skate park",
+      "rooftops",
+      "train yard"
+    ],
+    "nearest": [
+      "001",
+      "015",
+      "008"
+    ]
+  },
+  {
+    "id": "005",
+    "slug": "rim-lit-illustrative-caricature",
+    "name": "Rim-lit illustrative caricature",
+    "family": "toon/cel",
+    "references": [
+      {
+        "title": "Team Fortress 2",
+        "year": 2007,
+        "creator": "Valve",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Team_Fortress_2"
+      },
+      {
+        "title": "Freedom from Want",
+        "year": 1943,
+        "creator": "Norman Rockwell",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Freedom_from_Want"
+      },
+      {
+        "title": "Evil Genius",
+        "year": 2004,
+        "creator": "Elixir Studios",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Evil_Genius_(video_game)"
+      }
+    ],
+    "palette": [
+      "#b8383b",
+      "#5885a2",
+      "#e7b53b",
+      "#7d4071",
+      "#c5b9a0",
+      "#3c352f",
+      "#f0e0c0"
+    ],
+    "genres": [
+      "fps",
+      "tower-defense",
+      "strategy",
+      "stealth",
+      "third-person-shooter"
+    ],
+    "moods": [
+      "comedic",
+      "mischievous",
+      "nostalgic"
+    ],
+    "settings": [
+      "industrial desert outpost",
+      "1960s spy base",
+      "farm and rail yard"
+    ],
+    "nearest": [
+      "013",
+      "023",
+      "048"
+    ]
+  },
+  {
+    "id": "006",
+    "slug": "glossy-ink-splat-pop",
+    "name": "Glossy ink-splat pop",
+    "family": "toon/cel",
+    "references": [
+      {
+        "title": "Splatoon",
+        "year": 2015,
+        "creator": "Nintendo EAD",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Splatoon_(video_game)"
+      },
+      {
+        "title": "Splatoon 2",
+        "year": 2017,
+        "creator": "Nintendo EPD",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Splatoon_2"
+      },
+      {
+        "title": "Splatoon 3",
+        "year": 2022,
+        "creator": "Nintendo EPD",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Splatoon_3"
+      },
+      {
+        "title": "De Blob",
+        "year": 2008,
+        "creator": "Blue Tongue Entertainment",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/De_Blob"
+      }
+    ],
+    "palette": [
+      "#f02d7d",
+      "#19d719",
+      "#603bff",
+      "#ff8a00",
+      "#1ad6c5",
+      "#2b2b33",
+      "#f5f5f0"
+    ],
+    "genres": [
+      "third-person-shooter",
+      "sports",
+      "platformer",
+      "top-down-shooter",
+      "puzzle"
+    ],
+    "moods": [
+      "playful",
+      "energetic",
+      "upbeat"
+    ],
+    "settings": [
+      "city plaza",
+      "skate park",
+      "shopping district",
+      "rooftop arena"
+    ],
+    "nearest": [
+      "013",
+      "052",
+      "004"
+    ]
+  },
+  {
+    "id": "007",
+    "slug": "rubber-hose-1930s-cartoon",
+    "name": "Rubber-hose 1930s cartoon",
+    "family": "toon/cel",
+    "references": [
+      {
+        "title": "Cuphead",
+        "year": 2017,
+        "creator": "Studio MDHR",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Cuphead"
+      },
+      {
+        "title": "Steamboat Willie",
+        "year": 1928,
+        "creator": "Walt Disney Studio",
+        "medium": "animated short film",
+        "url": "https://en.wikipedia.org/wiki/Steamboat_Willie"
+      },
+      {
+        "title": "The Skeleton Dance",
+        "year": 1929,
+        "creator": "Walt Disney Productions",
+        "medium": "animated short film",
+        "url": "https://en.wikipedia.org/wiki/The_Skeleton_Dance"
+      },
+      {
+        "title": "Minnie the Moocher",
+        "year": 1932,
+        "creator": "Fleischer Studios",
+        "medium": "animated short film",
+        "url": "https://en.wikipedia.org/wiki/Minnie_the_Moocher_(film)"
+      },
+      {
+        "title": "Bendy and the Ink Machine",
+        "year": 2017,
+        "creator": "Kindly Beast",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Bendy_and_the_Ink_Machine"
+      }
+    ],
+    "palette": [
+      "#1a1612",
+      "#f1e3c2",
+      "#c9543a",
+      "#e2a93b",
+      "#6f8f8a",
+      "#8a5a3c",
+      "#fff8e6"
+    ],
+    "genres": [
+      "platformer",
+      "top-down-shooter",
+      "fighting",
+      "puzzle",
+      "survival-horror"
+    ],
+    "moods": [
+      "zany",
+      "mischievous",
+      "eerie"
+    ],
+    "settings": [
+      "carnival",
+      "casino",
+      "cartoon islands",
+      "1930s animation studio"
+    ],
+    "nearest": [
+      "011",
+      "081",
+      "022"
+    ]
+  },
+  {
+    "id": "008",
+    "slug": "red-black-pop-punk-cel",
+    "name": "Red-black pop-punk graphic cel",
+    "family": "toon/cel",
+    "references": [
+      {
+        "title": "Persona 5",
+        "year": 2016,
+        "creator": "Atlus (P-Studio)",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Persona_5"
+      },
+      {
+        "title": "Persona 5 Royal",
+        "year": 2019,
+        "creator": "Atlus (P-Studio)",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Persona_5"
+      },
+      {
+        "title": "Persona 5 Strikers",
+        "year": 2020,
+        "creator": "Omega Force and P-Studio",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Persona_5_Strikers"
+      },
+      {
+        "title": "Persona 3 Reload",
+        "year": 2024,
+        "creator": "Atlus (P-Studio)",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Persona_3_Reload"
+      }
+    ],
+    "palette": [
+      "#e60012",
+      "#0d0d0d",
+      "#ffffff",
+      "#f5d400",
+      "#3a3a3a",
+      "#8c000a"
+    ],
+    "genres": [
+      "rpg",
+      "stealth",
+      "hack-and-slash",
+      "fighting",
+      "detective-mystery"
+    ],
+    "moods": [
+      "stylish",
+      "rebellious",
+      "tense"
+    ],
+    "settings": [
+      "modern Tokyo",
+      "night city",
+      "surreal palace"
+    ],
+    "nearest": [
+      "069",
+      "010",
+      "080"
+    ]
+  },
+  {
+    "id": "009",
+    "slug": "halftone-print-comic",
+    "name": "Halftone print comic",
+    "family": "toon/cel",
+    "references": [
+      {
+        "title": "Spider-Man: Into the Spider-Verse",
+        "year": 2018,
+        "creator": "Sony Pictures Animation",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Spider-Man:_Into_the_Spider-Verse"
+      },
+      {
+        "title": "Spider-Man: Across the Spider-Verse",
+        "year": 2023,
+        "creator": "Sony Pictures Animation",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Spider-Man:_Across_the_Spider-Verse"
+      },
+      {
+        "title": "The Mitchells vs. the Machines",
+        "year": 2021,
+        "creator": "Sony Pictures Animation",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/The_Mitchells_vs._the_Machines"
+      },
+      {
+        "title": "Marvel's Spider-Man: Miles Morales",
+        "year": 2020,
+        "creator": "Insomniac Games",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Marvel's_Spider-Man:_Miles_Morales"
+      }
+    ],
+    "palette": [
+      "#e23636",
+      "#1b1b3a",
+      "#25c4f2",
+      "#ff4fa3",
+      "#f7d038",
+      "#7b3fe4",
+      "#f2f2f2"
+    ],
+    "genres": [
+      "action-adventure",
+      "fighting",
+      "hack-and-slash",
+      "platformer",
+      "third-person-shooter"
+    ],
+    "moods": [
+      "energetic",
+      "vibrant",
+      "youthful"
+    ],
+    "settings": [
+      "New York City at night",
+      "neon rooftops",
+      "subway",
+      "glitching multiverse"
+    ],
+    "nearest": [
+      "081",
+      "001",
+      "017"
+    ]
+  },
+  {
+    "id": "010",
+    "slug": "heavy-black-gothic-comic",
+    "name": "Heavy-black gothic comic",
+    "family": "toon/cel",
+    "references": [
+      {
+        "title": "Hellboy: Seed of Destruction",
+        "year": 1994,
+        "creator": "Mike Mignola (Dark Horse Comics)",
+        "medium": "comic book",
+        "url": "https://en.wikipedia.org/wiki/Hellboy:_Seed_of_Destruction"
+      },
+      {
+        "title": "Hellboy",
+        "year": 1993,
+        "creator": "Mike Mignola (Dark Horse Comics)",
+        "medium": "comic book series",
+        "url": "https://en.wikipedia.org/wiki/Hellboy"
+      },
+      {
+        "title": "Batman: The Animated Series",
+        "year": 1992,
+        "creator": "Warner Bros. Animation",
+        "medium": "animated TV series",
+        "url": "https://en.wikipedia.org/wiki/Batman:_The_Animated_Series"
+      },
+      {
+        "title": "Darkest Dungeon",
+        "year": 2016,
+        "creator": "Red Hook Studios",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Darkest_Dungeon"
+      },
+      {
+        "title": "The Amazing Screw-On Head",
+        "year": 2002,
+        "creator": "Mike Mignola (Dark Horse Comics)",
+        "medium": "comic book",
+        "url": "https://en.wikipedia.org/wiki/The_Amazing_Screw-On_Head"
+      }
+    ],
+    "palette": [
+      "#0b0b0c",
+      "#b3261e",
+      "#4a5a63",
+      "#c8a45a",
+      "#2f3b2f",
+      "#d9d2c0"
+    ],
+    "genres": [
+      "survival-horror",
+      "roguelike",
+      "detective-mystery",
+      "action-adventure",
+      "soulslike",
+      "hack-and-slash"
+    ],
+    "moods": [
+      "ominous",
+      "brooding",
+      "pulpy"
+    ],
+    "settings": [
+      "ruined abbey",
+      "gothic crypt",
+      "haunted castle",
+      "art deco night city"
+    ],
+    "nearest": [
+      "069",
+      "008",
+      "001"
+    ]
+  },
+  {
+    "id": "011",
+    "slug": "clear-line-adventure-comic",
+    "name": "Clear-line adventure comic",
+    "family": "toon/cel",
+    "references": [
+      {
+        "title": "The Adventures of Tintin",
+        "year": 1929,
+        "creator": "Herge",
+        "medium": "comic album series",
+        "url": "https://en.wikipedia.org/wiki/The_Adventures_of_Tintin"
+      },
+      {
+        "title": "Blake and Mortimer",
+        "year": 1946,
+        "creator": "Edgar P. Jacobs",
+        "medium": "comic album series",
+        "url": "https://en.wikipedia.org/wiki/Blake_and_Mortimer"
+      },
+      {
+        "title": "The Adventures of Tintin (film)",
+        "year": 2011,
+        "creator": "Amblin Entertainment and WingNut Films",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/The_Adventures_of_Tintin_(film)"
+      },
+      {
+        "title": "XIII",
+        "year": 2003,
+        "creator": "Ubi Soft Paris",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/XIII_(2003_video_game)"
+      }
+    ],
+    "palette": [
+      "#1a1a1a",
+      "#f4efe1",
+      "#d93a2b",
+      "#2f6fb5",
+      "#f2c230",
+      "#7fb069",
+      "#c9a27a"
+    ],
+    "genres": [
+      "action-adventure",
+      "detective-mystery",
+      "exploration",
+      "puzzle",
+      "stealth",
+      "platformer"
+    ],
+    "moods": [
+      "adventurous",
+      "light-hearted",
+      "curious"
+    ],
+    "settings": [
+      "1930s port city",
+      "desert expedition",
+      "steamship and seaplane travel",
+      "mountain monastery"
+    ],
+    "nearest": [
+      "012",
+      "081",
+      "082"
+    ]
+  },
+  {
+    "id": "012",
+    "slug": "thin-line-pastel-desert",
+    "name": "Thin-line pastel desert",
+    "family": "toon/cel",
+    "references": [
+      {
+        "title": "Sable",
+        "year": 2021,
+        "creator": "Shedworks",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Sable_(video_game)"
+      },
+      {
+        "title": "Arzach",
+        "year": 1975,
+        "creator": "Moebius (Jean Giraud)",
+        "medium": "comic",
+        "url": "https://en.wikipedia.org/wiki/Arzach"
+      },
+      {
+        "title": "The Incal",
+        "year": 1980,
+        "creator": "Alejandro Jodorowsky and Moebius",
+        "medium": "comic series",
+        "url": "https://en.wikipedia.org/wiki/The_Incal"
+      },
+      {
+        "title": "Fantastic Planet",
+        "year": 1973,
+        "creator": "Rene Laloux",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Fantastic_Planet"
+      },
+      {
+        "title": "Rollerdrome",
+        "year": 2022,
+        "creator": "Roll7",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Rollerdrome"
+      }
+    ],
+    "palette": [
+      "#2b2623",
+      "#f3d9b1",
+      "#e8a87c",
+      "#c38d9e",
+      "#85cdca",
+      "#f6f1e7",
+      "#d96c4f"
+    ],
+    "genres": [
+      "exploration",
+      "racing",
+      "action-adventure",
+      "puzzle",
+      "sports",
+      "platformer"
+    ],
+    "moods": [
+      "calm",
+      "lonely",
+      "dreamlike"
+    ],
+    "settings": [
+      "desert wasteland",
+      "alien planet ruins",
+      "nomad camp",
+      "crashed starship"
+    ],
+    "nearest": [
+      "011",
+      "025",
+      "061"
+    ]
+  },
+  {
+    "id": "013",
+    "slug": "stylised-hero-pbr",
+    "name": "Stylised hero PBR",
+    "family": "toon/cel",
+    "references": [
+      {
+        "title": "Overwatch",
+        "year": 2016,
+        "creator": "Blizzard Entertainment",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Overwatch_(2016_video_game)"
+      },
+      {
+        "title": "Overwatch 2",
+        "year": 2022,
+        "creator": "Blizzard Entertainment",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Overwatch_(2023_video_game)"
+      },
+      {
+        "title": "Valorant",
+        "year": 2020,
+        "creator": "Riot Games",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Valorant"
+      },
+      {
+        "title": "Fortnite",
+        "year": 2017,
+        "creator": "Epic Games",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Fortnite"
+      },
+      {
+        "title": "Big Hero 6",
+        "year": 2014,
+        "creator": "Walt Disney Animation Studios",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Big_Hero_6_(film)"
+      }
+    ],
+    "palette": [
+      "#f79e1b",
+      "#2d9cdb",
+      "#f2f2f2",
+      "#3c4654",
+      "#e74c3c",
+      "#7ed6a5",
+      "#ffd66b"
+    ],
+    "genres": [
+      "fps",
+      "third-person-shooter",
+      "top-down-shooter",
+      "tower-defense",
+      "vehicle-combat",
+      "sports"
+    ],
+    "moods": [
+      "optimistic",
+      "energetic",
+      "heroic"
+    ],
+    "settings": [
+      "near-future city",
+      "sunny Mediterranean town",
+      "high-tech laboratory",
+      "moon base"
+    ],
+    "nearest": [
+      "005",
+      "023",
+      "006"
+    ]
+  },
+  {
+    "id": "014",
+    "slug": "hand-painted-pastoral-anime",
+    "name": "Hand-painted pastoral anime",
+    "family": "anime",
+    "references": [
+      {
+        "title": "My Neighbor Totoro",
+        "year": 1988,
+        "creator": "Studio Ghibli (Hayao Miyazaki)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/My_Neighbor_Totoro"
+      },
+      {
+        "title": "Spirited Away",
+        "year": 2001,
+        "creator": "Studio Ghibli (Hayao Miyazaki)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Spirited_Away"
+      },
+      {
+        "title": "Kiki's Delivery Service",
+        "year": 1989,
+        "creator": "Studio Ghibli (Hayao Miyazaki)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Kiki's_Delivery_Service"
+      },
+      {
+        "title": "Ni no Kuni: Wrath of the White Witch",
+        "year": 2011,
+        "creator": "Level-5",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Ni_no_Kuni:_Wrath_of_the_White_Witch"
+      },
+      {
+        "title": "Howl's Moving Castle",
+        "year": 2004,
+        "creator": "Studio Ghibli (Hayao Miyazaki)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Howl's_Moving_Castle_(film)"
+      }
+    ],
+    "palette": [
+      "#6aa84f",
+      "#2f6b3a",
+      "#9fd3f0",
+      "#fdfdf5",
+      "#d9b382",
+      "#b5533c",
+      "#5a4636",
+      "#f4d67a"
+    ],
+    "genres": [
+      "exploration",
+      "simulation",
+      "action-adventure",
+      "rpg",
+      "puzzle",
+      "platformer"
+    ],
+    "moods": [
+      "gentle",
+      "nostalgic",
+      "wondrous"
+    ],
+    "settings": [
+      "countryside village",
+      "forest shrine",
+      "seaside European town",
+      "spirit bathhouse"
+    ],
+    "nearest": [
+      "016",
+      "018",
+      "002"
+    ]
+  },
+  {
+    "id": "015",
+    "slug": "two-tone-fighting-anime-cel",
+    "name": "Two-tone fighting-anime cel",
+    "family": "anime",
+    "references": [
+      {
+        "title": "Guilty Gear Xrd",
+        "year": 2014,
+        "creator": "Arc System Works",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Guilty_Gear_Xrd"
+      },
+      {
+        "title": "Dragon Ball FighterZ",
+        "year": 2018,
+        "creator": "Arc System Works",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Dragon_Ball_FighterZ"
+      },
+      {
+        "title": "Guilty Gear Strive",
+        "year": 2021,
+        "creator": "Arc System Works",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Guilty_Gear_Strive"
+      },
+      {
+        "title": "Naruto: Ultimate Ninja Storm",
+        "year": 2008,
+        "creator": "CyberConnect2",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Naruto:_Ultimate_Ninja_Storm"
+      }
+    ],
+    "palette": [
+      "#141414",
+      "#e63946",
+      "#f1faee",
+      "#ffb703",
+      "#219ebc",
+      "#8338ec",
+      "#ffd6a5"
+    ],
+    "genres": [
+      "fighting",
+      "hack-and-slash",
+      "action-adventure",
+      "rpg",
+      "roguelike"
+    ],
+    "moods": [
+      "intense",
+      "flashy",
+      "heroic"
+    ],
+    "settings": [
+      "tournament arena",
+      "ninja village",
+      "ruined gothic city",
+      "floating sky fortress"
+    ],
+    "nearest": [
+      "018",
+      "004",
+      "019"
+    ]
+  },
+  {
+    "id": "016",
+    "slug": "luminous-sky-anime",
+    "name": "Luminous sky anime",
+    "family": "anime",
+    "references": [
+      {
+        "title": "Your Name",
+        "year": 2016,
+        "creator": "CoMix Wave Films (Makoto Shinkai)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Your_Name"
+      },
+      {
+        "title": "Weathering with You",
+        "year": 2019,
+        "creator": "CoMix Wave Films (Makoto Shinkai)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Weathering_with_You"
+      },
+      {
+        "title": "5 Centimeters per Second",
+        "year": 2007,
+        "creator": "CoMix Wave Inc. (Makoto Shinkai)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/5_Centimeters_per_Second"
+      },
+      {
+        "title": "The Garden of Words",
+        "year": 2013,
+        "creator": "CoMix Wave Films (Makoto Shinkai)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/The_Garden_of_Words"
+      },
+      {
+        "title": "Suzume",
+        "year": 2022,
+        "creator": "CoMix Wave Films (Makoto Shinkai)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Suzume"
+      }
+    ],
+    "palette": [
+      "#1e3a8a",
+      "#60a5fa",
+      "#fbcfe8",
+      "#fde68a",
+      "#f97316",
+      "#0f172a",
+      "#a7f3d0",
+      "#ffffff"
+    ],
+    "genres": [
+      "exploration",
+      "detective-mystery",
+      "puzzle",
+      "simulation",
+      "racing"
+    ],
+    "moods": [
+      "wistful",
+      "romantic",
+      "hopeful"
+    ],
+    "settings": [
+      "modern Tokyo rooftops",
+      "rural railway crossing",
+      "rain-soaked city park",
+      "lakeside mountain town"
+    ],
+    "nearest": [
+      "014",
+      "017",
+      "018"
+    ]
+  },
+  {
+    "id": "017",
+    "slug": "neon-megacity-anime",
+    "name": "Neon megacity 1980s anime",
+    "family": "anime",
+    "references": [
+      {
+        "title": "Akira",
+        "year": 1988,
+        "creator": "Tokyo Movie Shinsha (Katsuhiro Otomo)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Akira_(1988_film)"
+      },
+      {
+        "title": "Ghost in the Shell",
+        "year": 1995,
+        "creator": "Production I.G (Mamoru Oshii)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Ghost_in_the_Shell_(1995_film)"
+      },
+      {
+        "title": "Bubblegum Crisis",
+        "year": 1987,
+        "creator": "AIC and Artmic",
+        "medium": "original video animation",
+        "url": "https://en.wikipedia.org/wiki/Bubblegum_Crisis"
+      },
+      {
+        "title": "Cyberpunk: Edgerunners",
+        "year": 2022,
+        "creator": "Studio Trigger",
+        "medium": "animated TV series",
+        "url": "https://en.wikipedia.org/wiki/Cyberpunk:_Edgerunners"
+      }
+    ],
+    "palette": [
+      "#0a0a14",
+      "#d7263d",
+      "#f46036",
+      "#2e294e",
+      "#1b998b",
+      "#f5d547",
+      "#3a86ff"
+    ],
+    "genres": [
+      "racing",
+      "vehicle-combat",
+      "third-person-shooter",
+      "action-adventure",
+      "detective-mystery",
+      "stealth"
+    ],
+    "moods": [
+      "tense",
+      "rebellious",
+      "frenetic"
+    ],
+    "settings": [
+      "neon megacity at night",
+      "elevated highway",
+      "back-alley market",
+      "military research complex"
+    ],
+    "nearest": [
+      "089",
+      "009",
+      "016"
+    ]
+  },
+  {
+    "id": "018",
+    "slug": "soft-open-world-anime-cel",
+    "name": "Soft open-world anime cel",
+    "family": "anime",
+    "references": [
+      {
+        "title": "Genshin Impact",
+        "year": 2020,
+        "creator": "miHoYo",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Genshin_Impact"
+      },
+      {
+        "title": "Honkai: Star Rail",
+        "year": 2023,
+        "creator": "miHoYo",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Honkai:_Star_Rail"
+      },
+      {
+        "title": "Tales of Arise",
+        "year": 2021,
+        "creator": "Bandai Namco Studios",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Tales_of_Arise"
+      },
+      {
+        "title": "Zenless Zone Zero",
+        "year": 2024,
+        "creator": "miHoYo",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Zenless_Zone_Zero"
+      }
+    ],
+    "palette": [
+      "#a8d8ea",
+      "#fcefc7",
+      "#aa96da",
+      "#fcbad3",
+      "#7fcd91",
+      "#4d5b8c",
+      "#ffffff"
+    ],
+    "genres": [
+      "rpg",
+      "action-adventure",
+      "exploration",
+      "hack-and-slash",
+      "roguelike",
+      "puzzle"
+    ],
+    "moods": [
+      "serene",
+      "adventurous",
+      "bright"
+    ],
+    "settings": [
+      "fantasy meadows and cliffs",
+      "harbour city",
+      "mountain temple",
+      "floating islands"
+    ],
+    "nearest": [
+      "002",
+      "015",
+      "014"
+    ]
+  },
+  {
+    "id": "019",
+    "slug": "mecha-panel-line-cel",
+    "name": "Mecha panel-line cel",
+    "family": "anime",
+    "references": [
+      {
+        "title": "Mobile Suit Gundam",
+        "year": 1979,
+        "creator": "Nippon Sunrise (Yoshiyuki Tomino)",
+        "medium": "animated TV series",
+        "url": "https://en.wikipedia.org/wiki/Mobile_Suit_Gundam"
+      },
+      {
+        "title": "Mobile Suit Gundam: Char's Counterattack",
+        "year": 1988,
+        "creator": "Sunrise",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Mobile_Suit_Gundam:_Char's_Counterattack"
+      },
+      {
+        "title": "Neon Genesis Evangelion",
+        "year": 1995,
+        "creator": "Gainax",
+        "medium": "animated TV series",
+        "url": "https://en.wikipedia.org/wiki/Neon_Genesis_Evangelion"
+      },
+      {
+        "title": "The Super Dimension Fortress Macross",
+        "year": 1982,
+        "creator": "Studio Nue and Tatsunoko Production",
+        "medium": "animated TV series",
+        "url": "https://en.wikipedia.org/wiki/Super_Dimension_Fortress_Macross"
+      }
+    ],
+    "palette": [
+      "#f2f2f2",
+      "#1d3fa6",
+      "#d62828",
+      "#f6c90e",
+      "#3a3f4b",
+      "#9aa3ad",
+      "#111111"
+    ],
+    "genres": [
+      "vehicle-combat",
+      "third-person-shooter",
+      "strategy",
+      "fighting",
+      "tower-defense",
+      "top-down-shooter"
+    ],
+    "moods": [
+      "heroic",
+      "dramatic",
+      "militaristic"
+    ],
+    "settings": [
+      "space colony",
+      "orbital battlefield",
+      "desert military base",
+      "fortress city under attack"
+    ],
+    "nearest": [
+      "015",
+      "011",
+      "098"
+    ]
+  },
+  {
+    "id": "020",
+    "slug": "manga-screentone-monochrome",
+    "name": "Manga screentone monochrome",
+    "family": "anime",
+    "references": [
+      {
+        "title": "Berserk",
+        "year": 1989,
+        "creator": "Kentaro Miura",
+        "medium": "manga",
+        "url": "https://en.wikipedia.org/wiki/Berserk_(manga)"
+      },
+      {
+        "title": "Akira (manga)",
+        "year": 1982,
+        "creator": "Katsuhiro Otomo",
+        "medium": "manga",
+        "url": "https://en.wikipedia.org/wiki/Akira_(manga)"
+      },
+      {
+        "title": "Lone Wolf and Cub",
+        "year": 1970,
+        "creator": "Kazuo Koike and Goseki Kojima",
+        "medium": "manga",
+        "url": "https://en.wikipedia.org/wiki/Lone_Wolf_and_Cub"
+      },
+      {
+        "title": "Vagabond",
+        "year": 1998,
+        "creator": "Takehiko Inoue",
+        "medium": "manga",
+        "url": "https://en.wikipedia.org/wiki/Vagabond_(manga)"
+      }
+    ],
+    "palette": [
+      "#000000",
+      "#ffffff",
+      "#8c8c8c",
+      "#4d4d4d",
+      "#d9d9d9"
+    ],
+    "genres": [
+      "hack-and-slash",
+      "soulslike",
+      "fighting",
+      "action-adventure",
+      "survival-horror",
+      "detective-mystery"
+    ],
+    "moods": [
+      "grim",
+      "intense",
+      "dramatic"
+    ],
+    "settings": [
+      "feudal Japan",
+      "dark medieval battlefield",
+      "post-apocalyptic city",
+      "demon-haunted castle"
+    ],
+    "nearest": [
+      "041",
+      "072",
+      "073"
+    ]
+  },
+  {
+    "id": "021",
+    "slug": "brush-block-martial-painterly",
+    "name": "Brush-block martial painterly",
+    "family": "painterly",
+    "references": [
+      {
+        "title": "Sifu",
+        "year": 2022,
+        "creator": "Sloclap",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Sifu_(video_game)"
+      },
+      {
+        "title": "Absolver",
+        "year": 2017,
+        "creator": "Sloclap",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Absolver"
+      },
+      {
+        "title": "Hero",
+        "year": 2002,
+        "creator": "Zhang Yimou",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Hero_(2002_film)"
+      }
+    ],
+    "palette": [
+      "#c94f3d",
+      "#e8c9a0",
+      "#2f4858",
+      "#6b8f71",
+      "#f2a65a",
+      "#3b2f2f",
+      "#d8d2c4"
+    ],
+    "genres": [
+      "fighting",
+      "hack-and-slash",
+      "action-adventure",
+      "stealth",
+      "roguelike",
+      "soulslike"
+    ],
+    "moods": [
+      "focused",
+      "vengeful",
+      "stylish"
+    ],
+    "settings": [
+      "kung fu dojo",
+      "neon nightclub",
+      "art museum",
+      "Chinese city back streets"
+    ],
+    "nearest": [
+      "024",
+      "026",
+      "060"
+    ]
+  },
+  {
+    "id": "022",
+    "slug": "sumi-e-ink-wash",
+    "name": "Sumi-e ink wash",
+    "family": "painterly",
+    "references": [
+      {
+        "title": "Okami",
+        "year": 2006,
+        "creator": "Clover Studio",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Ōkami"
+      },
+      {
+        "title": "Okamiden",
+        "year": 2010,
+        "creator": "Capcom",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Ōkamiden"
+      },
+      {
+        "title": "Pine Trees",
+        "year": 1595,
+        "creator": "Hasegawa Tohaku",
+        "medium": "ink on paper folding screens",
+        "url": "https://en.wikipedia.org/wiki/Shōrin-zu_byōbu"
+      },
+      {
+        "title": "The Tale of the Princess Kaguya",
+        "year": 2013,
+        "creator": "Studio Ghibli (Isao Takahata)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/The_Tale_of_the_Princess_Kaguya_(film)"
+      }
+    ],
+    "palette": [
+      "#1c1a17",
+      "#f3ead7",
+      "#b23a2e",
+      "#6f8f5e",
+      "#d9a441",
+      "#5b6f8c",
+      "#e9c9b1"
+    ],
+    "genres": [
+      "action-adventure",
+      "exploration",
+      "rpg",
+      "puzzle",
+      "hack-and-slash",
+      "soulslike"
+    ],
+    "moods": [
+      "serene",
+      "mythic",
+      "playful"
+    ],
+    "settings": [
+      "mythic Japan",
+      "mountain villages",
+      "misty pine forests",
+      "spirit shrines"
+    ],
+    "nearest": [
+      "082",
+      "025",
+      "007"
+    ]
+  },
+  {
+    "id": "023",
+    "slug": "chunky-hand-painted-fantasy",
+    "name": "Chunky hand-painted fantasy",
+    "family": "painterly",
+    "references": [
+      {
+        "title": "World of Warcraft",
+        "year": 2004,
+        "creator": "Blizzard Entertainment",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/World_of_Warcraft"
+      },
+      {
+        "title": "Warcraft III: Reign of Chaos",
+        "year": 2002,
+        "creator": "Blizzard Entertainment",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Warcraft_III:_Reign_of_Chaos"
+      },
+      {
+        "title": "League of Legends",
+        "year": 2009,
+        "creator": "Riot Games",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/League_of_Legends"
+      },
+      {
+        "title": "Torchlight II",
+        "year": 2012,
+        "creator": "Runic Games",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Torchlight_II"
+      },
+      {
+        "title": "Dota 2",
+        "year": 2013,
+        "creator": "Valve",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Dota_2"
+      }
+    ],
+    "palette": [
+      "#7a4b2a",
+      "#c8a15a",
+      "#4f7a3a",
+      "#3b5fa8",
+      "#8b2f8f",
+      "#e8d8a8",
+      "#2a2333"
+    ],
+    "genres": [
+      "rpg",
+      "strategy",
+      "hack-and-slash",
+      "tower-defense",
+      "action-adventure",
+      "roguelike"
+    ],
+    "moods": [
+      "heroic",
+      "adventurous",
+      "warm"
+    ],
+    "settings": [
+      "high-fantasy kingdoms",
+      "orc war camps",
+      "enchanted forests",
+      "dungeon ruins"
+    ],
+    "nearest": [
+      "013",
+      "005",
+      "024"
+    ]
+  },
+  {
+    "id": "024",
+    "slug": "brush-textured-3d-drama",
+    "name": "Brush-textured 3D drama",
+    "family": "painterly",
+    "references": [
+      {
+        "title": "Arcane",
+        "year": 2021,
+        "creator": "Fortiche and Riot Games",
+        "medium": "animated TV series",
+        "url": "https://en.wikipedia.org/wiki/Arcane_(TV_series)"
+      },
+      {
+        "title": "Puss in Boots: The Last Wish",
+        "year": 2022,
+        "creator": "DreamWorks Animation",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Puss_in_Boots:_The_Last_Wish"
+      },
+      {
+        "title": "Teenage Mutant Ninja Turtles: Mutant Mayhem",
+        "year": 2023,
+        "creator": "Nickelodeon Movies and Mikros Animation",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Teenage_Mutant_Ninja_Turtles:_Mutant_Mayhem"
+      },
+      {
+        "title": "Klaus",
+        "year": 2019,
+        "creator": "The SPA Studios",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Klaus_(film)"
+      }
+    ],
+    "palette": [
+      "#1f2a44",
+      "#c2553f",
+      "#e3a857",
+      "#3e8e8c",
+      "#7a3e65",
+      "#d9cdb8",
+      "#12141c"
+    ],
+    "genres": [
+      "action-adventure",
+      "third-person-shooter",
+      "fighting",
+      "stealth",
+      "detective-mystery",
+      "rpg"
+    ],
+    "moods": [
+      "dramatic",
+      "gritty",
+      "tense"
+    ],
+    "settings": [
+      "steampunk undercity",
+      "art-deco upper city",
+      "industrial slums",
+      "back-alley laboratories"
+    ],
+    "nearest": [
+      "021",
+      "028",
+      "026"
+    ]
+  },
+  {
+    "id": "025",
+    "slug": "watercolour-wash-minimal",
+    "name": "Watercolour wash minimal",
+    "family": "painterly",
+    "references": [
+      {
+        "title": "Gris",
+        "year": 2018,
+        "creator": "Nomada Studio",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Gris"
+      },
+      {
+        "title": "Neva",
+        "year": 2024,
+        "creator": "Nomada Studio",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Neva_(video_game)"
+      },
+      {
+        "title": "Child of Light",
+        "year": 2014,
+        "creator": "Ubisoft Montreal",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Child_of_Light"
+      },
+      {
+        "title": "The Red Turtle",
+        "year": 2016,
+        "creator": "Michael Dudok de Wit (Studio Ghibli and Wild Bunch)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/The_Red_Turtle"
+      }
+    ],
+    "palette": [
+      "#f4efe9",
+      "#e4b7b2",
+      "#8fb8c9",
+      "#b7a3c9",
+      "#5d6d7e",
+      "#f2d6a2",
+      "#2f3a45"
+    ],
+    "genres": [
+      "platformer",
+      "puzzle",
+      "exploration",
+      "action-adventure"
+    ],
+    "moods": [
+      "melancholic",
+      "serene",
+      "hopeful"
+    ],
+    "settings": [
+      "ruined temples",
+      "pale deserts",
+      "underwater caverns",
+      "sky palaces"
+    ],
+    "nearest": [
+      "022",
+      "012",
+      "060"
+    ]
+  },
+  {
+    "id": "026",
+    "slug": "oily-concept-art-realism",
+    "name": "Oily concept-art realism",
+    "family": "painterly",
+    "references": [
+      {
+        "title": "Dishonored",
+        "year": 2012,
+        "creator": "Arkane Studios",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Dishonored"
+      },
+      {
+        "title": "Dishonored 2",
+        "year": 2016,
+        "creator": "Arkane Studios",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Dishonored_2"
+      },
+      {
+        "title": "Deathloop",
+        "year": 2021,
+        "creator": "Arkane Lyon",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Deathloop"
+      },
+      {
+        "title": "BioShock Infinite",
+        "year": 2013,
+        "creator": "Irrational Games",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/BioShock_Infinite"
+      }
+    ],
+    "palette": [
+      "#2e3138",
+      "#6b5a4a",
+      "#8c8f8a",
+      "#a23b2a",
+      "#c9b68c",
+      "#3f4f5c",
+      "#d8d4c8"
+    ],
+    "genres": [
+      "stealth",
+      "fps",
+      "action-adventure",
+      "detective-mystery",
+      "exploration"
+    ],
+    "moods": [
+      "oppressive",
+      "grim",
+      "conspiratorial"
+    ],
+    "settings": [
+      "plague-ridden port city",
+      "Victorian industrial districts",
+      "aristocratic mansions",
+      "whaling docks"
+    ],
+    "nearest": [
+      "021",
+      "095",
+      "029"
+    ]
+  },
+  {
+    "id": "027",
+    "slug": "glowing-forest-painterly",
+    "name": "Glowing forest painterly",
+    "family": "painterly",
+    "references": [
+      {
+        "title": "Ori and the Blind Forest",
+        "year": 2015,
+        "creator": "Moon Studios",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Ori_and_the_Blind_Forest"
+      },
+      {
+        "title": "Ori and the Will of the Wisps",
+        "year": 2020,
+        "creator": "Moon Studios",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Ori_and_the_Will_of_the_Wisps"
+      },
+      {
+        "title": "Trine 2",
+        "year": 2011,
+        "creator": "Frozenbyte",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Trine_2"
+      },
+      {
+        "title": "Rayman Legends",
+        "year": 2013,
+        "creator": "Ubisoft Montpellier",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Rayman_Legends"
+      }
+    ],
+    "palette": [
+      "#0d1b2a",
+      "#1b4965",
+      "#5fa8d3",
+      "#bee9e8",
+      "#ffd166",
+      "#7b2cbf",
+      "#2d6a4f",
+      "#ffffff"
+    ],
+    "genres": [
+      "platformer",
+      "exploration",
+      "action-adventure",
+      "puzzle"
+    ],
+    "moods": [
+      "wondrous",
+      "bittersweet",
+      "magical"
+    ],
+    "settings": [
+      "enchanted night forest",
+      "glowing caverns",
+      "ancient spirit trees",
+      "misty swamps"
+    ],
+    "nearest": [
+      "093",
+      "070",
+      "023"
+    ]
+  },
+  {
+    "id": "028",
+    "slug": "expressionist-oil-portrait",
+    "name": "Expressionist oil isometric",
+    "family": "painterly",
+    "references": [
+      {
+        "title": "Disco Elysium",
+        "year": 2019,
+        "creator": "ZA/UM",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Disco_Elysium"
+      },
+      {
+        "title": "Self-Portrait as a Soldier",
+        "year": 1915,
+        "creator": "Ernst Ludwig Kirchner",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Self-Portrait_as_a_Soldier"
+      },
+      {
+        "title": "The Scream",
+        "year": 1893,
+        "creator": "Edvard Munch",
+        "medium": "painting",
+        "url": "https://en.wikipedia.org/wiki/The_Scream"
+      }
+    ],
+    "palette": [
+      "#3a4a4f",
+      "#8a6f4d",
+      "#c4763a",
+      "#5d7a6a",
+      "#b9b3a0",
+      "#7c3f3a",
+      "#1d2326",
+      "#d7c38a"
+    ],
+    "genres": [
+      "detective-mystery",
+      "rpg",
+      "exploration",
+      "puzzle"
+    ],
+    "moods": [
+      "melancholic",
+      "bleak",
+      "introspective"
+    ],
+    "settings": [
+      "decaying harbour district",
+      "post-revolution city",
+      "run-down hostel",
+      "winter coastline"
+    ],
+    "nearest": [
+      "076",
+      "075",
+      "024"
+    ]
+  },
+  {
+    "id": "029",
+    "slug": "survival-horror-dark-photoreal",
+    "name": "Survival-horror dark photoreal",
+    "family": "realistic",
+    "references": [
+      {
+        "title": "Resident Evil 2",
+        "year": 2019,
+        "creator": "Capcom",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Resident_Evil_2_(2019_video_game)"
+      },
+      {
+        "title": "Resident Evil 7: Biohazard",
+        "year": 2017,
+        "creator": "Capcom",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Resident_Evil_7:_Biohazard"
+      },
+      {
+        "title": "Resident Evil Village",
+        "year": 2021,
+        "creator": "Capcom",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Resident_Evil_Village"
+      },
+      {
+        "title": "Resident Evil 4",
+        "year": 2023,
+        "creator": "Capcom",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Resident_Evil_4_(2023_video_game)"
+      },
+      {
+        "title": "Silent Hill 2",
+        "year": 2024,
+        "creator": "Bloober Team",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Silent_Hill_2_(2024_video_game)"
+      }
+    ],
+    "palette": [
+      "#0b0c0d",
+      "#2a2622",
+      "#5a4a3a",
+      "#7d1f1a",
+      "#8c8676",
+      "#3c4a3e",
+      "#c9b990"
+    ],
+    "genres": [
+      "survival-horror",
+      "third-person-shooter",
+      "fps",
+      "stealth",
+      "puzzle"
+    ],
+    "moods": [
+      "tense",
+      "oppressive",
+      "claustrophobic"
+    ],
+    "settings": [
+      "derelict police station",
+      "rotting farmhouse",
+      "fog-bound town",
+      "underground laboratory"
+    ],
+    "nearest": [
+      "031",
+      "092",
+      "085"
+    ]
+  },
+  {
+    "id": "030",
+    "slug": "gritty-desaturated-war-realism",
+    "name": "Gritty desaturated war realism",
+    "family": "realistic",
+    "references": [
+      {
+        "title": "Gears of War",
+        "year": 2006,
+        "creator": "Epic Games",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Gears_of_War_(video_game)"
+      },
+      {
+        "title": "Gears of War 2",
+        "year": 2008,
+        "creator": "Epic Games",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Gears_of_War_2"
+      },
+      {
+        "title": "Killzone 2",
+        "year": 2009,
+        "creator": "Guerrilla Games",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Killzone_2"
+      },
+      {
+        "title": "Children of Men",
+        "year": 2006,
+        "creator": "Alfonso Cuaron",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Children_of_Men"
+      }
+    ],
+    "palette": [
+      "#3b3a36",
+      "#6e6a5e",
+      "#8f8a7a",
+      "#4a5560",
+      "#7a3a2a",
+      "#b8b2a0",
+      "#1e1e1c"
+    ],
+    "genres": [
+      "third-person-shooter",
+      "fps",
+      "vehicle-combat",
+      "top-down-shooter",
+      "tower-defense",
+      "strategy"
+    ],
+    "moods": [
+      "grim",
+      "brutal",
+      "desperate"
+    ],
+    "settings": [
+      "ruined classical city",
+      "war-torn industrial zone",
+      "underground tunnels",
+      "refugee checkpoints"
+    ],
+    "nearest": [
+      "031",
+      "097",
+      "032"
+    ]
+  },
+  {
+    "id": "031",
+    "slug": "gothic-dark-fantasy-realism",
+    "name": "Gothic dark-fantasy realism",
+    "family": "realistic",
+    "references": [
+      {
+        "title": "Bloodborne",
+        "year": 2015,
+        "creator": "FromSoftware",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Bloodborne"
+      },
+      {
+        "title": "Dark Souls",
+        "year": 2011,
+        "creator": "FromSoftware",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Dark_Souls_(video_game)"
+      },
+      {
+        "title": "Elden Ring",
+        "year": 2022,
+        "creator": "FromSoftware",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Elden_Ring"
+      },
+      {
+        "title": "Demon's Souls",
+        "year": 2020,
+        "creator": "Bluepoint Games",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Demon's_Souls_(2020_video_game)"
+      },
+      {
+        "title": "Sleepy Hollow",
+        "year": 1999,
+        "creator": "Tim Burton",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Sleepy_Hollow_(film)"
+      }
+    ],
+    "palette": [
+      "#0e1116",
+      "#2b3038",
+      "#4d5560",
+      "#7c7466",
+      "#5c1a1a",
+      "#a8a08c",
+      "#1f2a33"
+    ],
+    "genres": [
+      "soulslike",
+      "hack-and-slash",
+      "action-adventure",
+      "rpg",
+      "survival-horror",
+      "exploration"
+    ],
+    "moods": [
+      "oppressive",
+      "dreadful",
+      "melancholic"
+    ],
+    "settings": [
+      "plague-ridden Victorian city",
+      "gothic cathedral district",
+      "moonlit graveyard",
+      "ruined castle"
+    ],
+    "nearest": [
+      "029",
+      "030",
+      "094"
+    ]
+  },
+  {
+    "id": "032",
+    "slug": "frontier-natural-light-realism",
+    "name": "Frontier natural-light realism",
+    "family": "realistic",
+    "references": [
+      {
+        "title": "Red Dead Redemption 2",
+        "year": 2018,
+        "creator": "Rockstar Games",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Red_Dead_Redemption_2"
+      },
+      {
+        "title": "The Last of Us Part II",
+        "year": 2020,
+        "creator": "Naughty Dog",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/The_Last_of_Us_Part_II"
+      },
+      {
+        "title": "The Revenant",
+        "year": 2015,
+        "creator": "Alejandro G. Inarritu",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/The_Revenant_(2015_film)"
+      },
+      {
+        "title": "Among the Sierra Nevada, California",
+        "year": 1868,
+        "creator": "Albert Bierstadt",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Among_the_Sierra_Nevada,_California"
+      },
+      {
+        "title": "Kingdom Come: Deliverance",
+        "year": 2018,
+        "creator": "Warhorse Studios",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Kingdom_Come:_Deliverance"
+      }
+    ],
+    "palette": [
+      "#8a7a5c",
+      "#c9b48a",
+      "#5f6f4a",
+      "#9db4c8",
+      "#6b4a32",
+      "#e8dcc0",
+      "#3a3a30",
+      "#d99a5a"
+    ],
+    "genres": [
+      "action-adventure",
+      "exploration",
+      "third-person-shooter",
+      "survival-craft",
+      "rpg",
+      "simulation"
+    ],
+    "moods": [
+      "contemplative",
+      "rugged",
+      "melancholic"
+    ],
+    "settings": [
+      "American frontier",
+      "mountain wilderness",
+      "medieval countryside",
+      "overgrown abandoned town"
+    ],
+    "nearest": [
+      "033",
+      "030",
+      "075"
+    ]
+  },
+  {
+    "id": "033",
+    "slug": "teal-orange-desert-blockbuster",
+    "name": "Teal-orange desert blockbuster",
+    "family": "realistic",
+    "references": [
+      {
+        "title": "Mad Max: Fury Road",
+        "year": 2015,
+        "creator": "George Miller",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Mad_Max:_Fury_Road"
+      },
+      {
+        "title": "Mad Max",
+        "year": 2015,
+        "creator": "Avalanche Studios",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Mad_Max_(2015_video_game)"
+      },
+      {
+        "title": "Furiosa: A Mad Max Saga",
+        "year": 2024,
+        "creator": "George Miller",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Furiosa:_A_Mad_Max_Saga"
+      },
+      {
+        "title": "Dune",
+        "year": 2021,
+        "creator": "Denis Villeneuve",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Dune_(2021_film)"
+      }
+    ],
+    "palette": [
+      "#e07b1a",
+      "#f2b04a",
+      "#1f6f8b",
+      "#0f3b4c",
+      "#3a2a1c",
+      "#f7e0b0",
+      "#b5451b"
+    ],
+    "genres": [
+      "vehicle-combat",
+      "racing",
+      "third-person-shooter",
+      "action-adventure",
+      "survival-craft",
+      "fps"
+    ],
+    "moods": [
+      "frantic",
+      "harsh",
+      "exhilarating"
+    ],
+    "settings": [
+      "desert wasteland",
+      "post-apocalyptic highway",
+      "salt flats",
+      "sand-planet outpost"
+    ],
+    "nearest": [
+      "032",
+      "060",
+      "061"
+    ]
+  },
+  {
+    "id": "034",
+    "slug": "symmetric-pastel-dollhouse-film",
+    "name": "Symmetric pastel dollhouse film",
+    "family": "realistic",
+    "references": [
+      {
+        "title": "The Grand Budapest Hotel",
+        "year": 2014,
+        "creator": "Wes Anderson",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/The_Grand_Budapest_Hotel"
+      },
+      {
+        "title": "Moonrise Kingdom",
+        "year": 2012,
+        "creator": "Wes Anderson",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Moonrise_Kingdom"
+      },
+      {
+        "title": "The Royal Tenenbaums",
+        "year": 2001,
+        "creator": "Wes Anderson",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/The_Royal_Tenenbaums"
+      },
+      {
+        "title": "Fantastic Mr. Fox",
+        "year": 2009,
+        "creator": "Wes Anderson",
+        "medium": "stop-motion film",
+        "url": "https://en.wikipedia.org/wiki/Fantastic_Mr._Fox_(film)"
+      },
+      {
+        "title": "Asteroid City",
+        "year": 2023,
+        "creator": "Wes Anderson",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Asteroid_City"
+      }
+    ],
+    "palette": [
+      "#f4b6c2",
+      "#c75b7a",
+      "#6b3fa0",
+      "#f6e3b4",
+      "#e8763a",
+      "#7fb7be",
+      "#8b2f2f"
+    ],
+    "genres": [
+      "puzzle",
+      "detective-mystery",
+      "exploration",
+      "simulation",
+      "stealth",
+      "platformer"
+    ],
+    "moods": [
+      "whimsical",
+      "deadpan",
+      "nostalgic"
+    ],
+    "settings": [
+      "grand alpine hotel",
+      "summer camp island",
+      "eccentric family townhouse",
+      "desert roadside town"
+    ],
+    "nearest": [
+      "099",
+      "057",
+      "059"
+    ]
+  },
+  {
+    "id": "035",
+    "slug": "white-city-primary-accent",
+    "name": "White city with primary accents",
+    "family": "realistic",
+    "references": [
+      {
+        "title": "Mirror's Edge",
+        "year": 2008,
+        "creator": "DICE",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Mirror's_Edge"
+      },
+      {
+        "title": "Mirror's Edge Catalyst",
+        "year": 2016,
+        "creator": "DICE",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Mirror's_Edge_Catalyst"
+      },
+      {
+        "title": "Portal",
+        "year": 2007,
+        "creator": "Valve",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Portal_(video_game)"
+      },
+      {
+        "title": "Playtime",
+        "year": 1967,
+        "creator": "Jacques Tati",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Playtime"
+      }
+    ],
+    "palette": [
+      "#ffffff",
+      "#e9edf0",
+      "#e2231a",
+      "#f7a800",
+      "#1f7ae0",
+      "#2bb673",
+      "#9aa4ad"
+    ],
+    "genres": [
+      "platformer",
+      "fps",
+      "action-adventure",
+      "puzzle",
+      "racing",
+      "exploration"
+    ],
+    "moods": [
+      "clean",
+      "airy",
+      "kinetic"
+    ],
+    "settings": [
+      "rooftop cityscape",
+      "glass corporate towers",
+      "sterile test facility",
+      "modernist plaza"
+    ],
+    "nearest": [
+      "063",
+      "091",
+      "097"
+    ]
+  },
+  {
+    "id": "036",
+    "slug": "ps1-low-poly-wobble",
+    "name": "PS1 low-poly wobble",
+    "family": "retro-hardware",
+    "references": [
+      {
+        "title": "Silent Hill",
+        "year": 1999,
+        "creator": "Konami (Team Silent)",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Silent_Hill_(video_game)"
+      },
+      {
+        "title": "Final Fantasy VII",
+        "year": 1997,
+        "creator": "Square",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Final_Fantasy_VII"
+      },
+      {
+        "title": "Metal Gear Solid",
+        "year": 1998,
+        "creator": "Konami",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Metal_Gear_Solid_(video_game)"
+      },
+      {
+        "title": "Tomb Raider",
+        "year": 1996,
+        "creator": "Core Design",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Tomb_Raider_(1996_video_game)"
+      },
+      {
+        "title": "Crash Bandicoot",
+        "year": 1996,
+        "creator": "Naughty Dog",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Crash_Bandicoot_(video_game)"
+      }
+    ],
+    "palette": [
+      "#1a1a22",
+      "#4a4438",
+      "#7a6a55",
+      "#5a6a7a",
+      "#8a3a2a",
+      "#b8a888",
+      "#2e3a2e"
+    ],
+    "genres": [
+      "survival-horror",
+      "rpg",
+      "action-adventure",
+      "stealth",
+      "platformer",
+      "exploration"
+    ],
+    "moods": [
+      "eerie",
+      "uneasy",
+      "nostalgic"
+    ],
+    "settings": [
+      "foggy abandoned town",
+      "industrial megacity slums",
+      "military base",
+      "ancient tomb"
+    ],
+    "nearest": [
+      "037",
+      "046",
+      "043"
+    ]
+  },
+  {
+    "id": "037",
+    "slug": "n64-filtered-fog",
+    "name": "N64 filtered fog",
+    "family": "retro-hardware",
+    "references": [
+      {
+        "title": "Super Mario 64",
+        "year": 1996,
+        "creator": "Nintendo EAD",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Super_Mario_64"
+      },
+      {
+        "title": "The Legend of Zelda: Ocarina of Time",
+        "year": 1998,
+        "creator": "Nintendo EAD",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/The_Legend_of_Zelda:_Ocarina_of_Time"
+      },
+      {
+        "title": "Banjo-Kazooie",
+        "year": 1998,
+        "creator": "Rare",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Banjo-Kazooie_(video_game)"
+      },
+      {
+        "title": "GoldenEye 007",
+        "year": 1997,
+        "creator": "Rare",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/GoldenEye_007"
+      }
+    ],
+    "palette": [
+      "#3a7fd5",
+      "#4caf50",
+      "#e53935",
+      "#fdd835",
+      "#8d6e63",
+      "#b0bec5",
+      "#f5f5f5"
+    ],
+    "genres": [
+      "platformer",
+      "action-adventure",
+      "exploration",
+      "racing",
+      "fps",
+      "sports"
+    ],
+    "moods": [
+      "cheerful",
+      "playful",
+      "nostalgic"
+    ],
+    "settings": [
+      "castle grounds",
+      "green fields and villages",
+      "tropical islands",
+      "snowy mountains"
+    ],
+    "nearest": [
+      "036",
+      "057",
+      "003"
+    ]
+  },
+  {
+    "id": "038",
+    "slug": "game-boy-four-shade-green",
+    "name": "Game Boy four-shade green",
+    "family": "retro-hardware",
+    "references": [
+      {
+        "title": "The Legend of Zelda: Link's Awakening",
+        "year": 1993,
+        "creator": "Nintendo EAD",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/The_Legend_of_Zelda:_Link's_Awakening"
+      },
+      {
+        "title": "Tetris (Game Boy)",
+        "year": 1989,
+        "creator": "Nintendo",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Tetris_(Game_Boy_video_game)"
+      },
+      {
+        "title": "Pokemon Red and Blue",
+        "year": 1996,
+        "creator": "Game Freak",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Pokémon_Red,_Blue,_and_Yellow"
+      },
+      {
+        "title": "Super Mario Land",
+        "year": 1989,
+        "creator": "Nintendo R&D1",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Super_Mario_Land"
+      }
+    ],
+    "palette": [
+      "#0f380f",
+      "#306230",
+      "#8bac0f",
+      "#9bbc0f",
+      "#cadc9f"
+    ],
+    "genres": [
+      "rpg",
+      "puzzle",
+      "action-adventure",
+      "platformer",
+      "roguelike",
+      "exploration"
+    ],
+    "moods": [
+      "cosy",
+      "nostalgic",
+      "simple"
+    ],
+    "settings": [
+      "island village",
+      "monster-filled routes and towns",
+      "tile dungeon",
+      "falling-block well"
+    ],
+    "nearest": [
+      "039",
+      "041",
+      "042"
+    ]
+  },
+  {
+    "id": "039",
+    "slug": "cga-four-colour",
+    "name": "CGA four-colour",
+    "family": "retro-hardware",
+    "references": [
+      {
+        "title": "Alley Cat",
+        "year": 1983,
+        "creator": "Synapse Software (Bill Williams)",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Alley_Cat_(video_game)"
+      },
+      {
+        "title": "Digger",
+        "year": 1983,
+        "creator": "Windmill Software",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Digger_(video_game)"
+      },
+      {
+        "title": "Lode Runner",
+        "year": 1983,
+        "creator": "Broderbund (Doug Smith)",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Lode_Runner"
+      },
+      {
+        "title": "Paratrooper",
+        "year": 1982,
+        "creator": "Orion Software (Greg Kuperberg)",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Paratrooper_(video_game)"
+      }
+    ],
+    "palette": [
+      "#000000",
+      "#55ffff",
+      "#ff55ff",
+      "#ffffff",
+      "#00aaaa",
+      "#aa00aa"
+    ],
+    "genres": [
+      "platformer",
+      "puzzle",
+      "top-down-shooter",
+      "tower-defense",
+      "roguelike"
+    ],
+    "moods": [
+      "quirky",
+      "garish",
+      "nostalgic"
+    ],
+    "settings": [
+      "back alley",
+      "underground mine",
+      "brick maze",
+      "night-sky gun emplacement"
+    ],
+    "nearest": [
+      "038",
+      "042",
+      "040"
+    ]
+  },
+  {
+    "id": "040",
+    "slug": "vector-display-glow",
+    "name": "Vector display glow",
+    "family": "retro-hardware",
+    "references": [
+      {
+        "title": "Asteroids",
+        "year": 1979,
+        "creator": "Atari, Inc.",
+        "medium": "arcade video game",
+        "url": "https://en.wikipedia.org/wiki/Asteroids_(video_game)"
+      },
+      {
+        "title": "Battlezone",
+        "year": 1980,
+        "creator": "Atari, Inc.",
+        "medium": "arcade video game",
+        "url": "https://en.wikipedia.org/wiki/Battlezone_(1980_video_game)"
+      },
+      {
+        "title": "Tempest",
+        "year": 1981,
+        "creator": "Atari, Inc.",
+        "medium": "arcade video game",
+        "url": "https://en.wikipedia.org/wiki/Tempest_(video_game)"
+      },
+      {
+        "title": "Star Wars",
+        "year": 1983,
+        "creator": "Atari, Inc.",
+        "medium": "arcade video game",
+        "url": "https://en.wikipedia.org/wiki/Star_Wars_(1983_video_game)"
+      },
+      {
+        "title": "Vectrex",
+        "year": 1982,
+        "creator": "Smith Engineering",
+        "medium": "vector display game console",
+        "url": "https://en.wikipedia.org/wiki/Vectrex"
+      }
+    ],
+    "palette": [
+      "#000000",
+      "#39ff14",
+      "#ffffff",
+      "#00e5ff",
+      "#ff2a2a",
+      "#ffe600"
+    ],
+    "genres": [
+      "top-down-shooter",
+      "vehicle-combat",
+      "fps",
+      "racing",
+      "simulation"
+    ],
+    "moods": [
+      "stark",
+      "tense",
+      "hypnotic"
+    ],
+    "settings": [
+      "deep space",
+      "wireframe battlefield",
+      "geometric tunnel",
+      "trench run"
+    ],
+    "nearest": [
+      "088",
+      "062",
+      "090"
+    ]
+  },
+  {
+    "id": "041",
+    "slug": "one-bit-dither",
+    "name": "One-bit dither",
+    "family": "retro-hardware",
+    "references": [
+      {
+        "title": "Return of the Obra Dinn",
+        "year": 2018,
+        "creator": "Lucas Pope",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Return_of_the_Obra_Dinn"
+      },
+      {
+        "title": "Dark Castle",
+        "year": 1986,
+        "creator": "Silicon Beach Software",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Dark_Castle"
+      },
+      {
+        "title": "Shadowgate",
+        "year": 1987,
+        "creator": "ICOM Simulations",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Shadowgate"
+      },
+      {
+        "title": "World of Horror",
+        "year": 2023,
+        "creator": "Panstasz",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/World_of_Horror"
+      }
+    ],
+    "palette": [
+      "#333319",
+      "#e5ffff",
+      "#000000",
+      "#ffffff",
+      "#2b2b26"
+    ],
+    "genres": [
+      "detective-mystery",
+      "exploration",
+      "puzzle",
+      "survival-horror"
+    ],
+    "moods": [
+      "eerie",
+      "austere",
+      "mysterious"
+    ],
+    "settings": [
+      "19th-century sailing ship",
+      "haunted castle",
+      "cursed coastal town"
+    ],
+    "nearest": [
+      "020",
+      "072",
+      "038"
+    ]
+  },
+  {
+    "id": "042",
+    "slug": "nes-8-bit-tile",
+    "name": "NES 8-bit tile",
+    "family": "retro-hardware",
+    "references": [
+      {
+        "title": "Super Mario Bros.",
+        "year": 1985,
+        "creator": "Nintendo R&D4",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Super_Mario_Bros."
+      },
+      {
+        "title": "The Legend of Zelda",
+        "year": 1986,
+        "creator": "Nintendo R&D4",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/The_Legend_of_Zelda_(video_game)"
+      },
+      {
+        "title": "3D Dot Game Heroes",
+        "year": 2009,
+        "creator": "Silicon Studio",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/3D_Dot_Game_Heroes"
+      },
+      {
+        "title": "Mega Man 2",
+        "year": 1988,
+        "creator": "Capcom",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Mega_Man_2"
+      },
+      {
+        "title": "Shovel Knight",
+        "year": 2014,
+        "creator": "Yacht Club Games",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Shovel_Knight"
+      }
+    ],
+    "palette": [
+      "#000000",
+      "#fcfcfc",
+      "#f83800",
+      "#0058f8",
+      "#00a800",
+      "#fca044",
+      "#5c94fc",
+      "#ac7c00"
+    ],
+    "genres": [
+      "platformer",
+      "action-adventure",
+      "rpg",
+      "top-down-shooter",
+      "puzzle",
+      "sports"
+    ],
+    "moods": [
+      "playful",
+      "nostalgic",
+      "bright"
+    ],
+    "settings": [
+      "cartoon kingdom",
+      "overworld fields and dungeons",
+      "robot fortress"
+    ],
+    "nearest": [
+      "044",
+      "047",
+      "039"
+    ]
+  },
+  {
+    "id": "043",
+    "slug": "flat-shaded-early-polygon",
+    "name": "Flat-shaded early polygon",
+    "family": "retro-hardware",
+    "references": [
+      {
+        "title": "Star Fox",
+        "year": 1993,
+        "creator": "Nintendo EAD and Argonaut Software",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Star_Fox_(1993_video_game)"
+      },
+      {
+        "title": "Virtua Fighter",
+        "year": 1993,
+        "creator": "Sega AM2",
+        "medium": "arcade video game",
+        "url": "https://en.wikipedia.org/wiki/Virtua_Fighter_(video_game)"
+      },
+      {
+        "title": "Another World",
+        "year": 1991,
+        "creator": "Eric Chahi (Delphine Software)",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Another_World_(video_game)"
+      },
+      {
+        "title": "Virtua Racing",
+        "year": 1992,
+        "creator": "Sega AM2",
+        "medium": "arcade video game",
+        "url": "https://en.wikipedia.org/wiki/Virtua_Racing"
+      },
+      {
+        "title": "Alone in the Dark",
+        "year": 1992,
+        "creator": "Infogrames",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Alone_in_the_Dark_(1992_video_game)"
+      }
+    ],
+    "palette": [
+      "#1c2a6b",
+      "#3e6fd1",
+      "#c8322b",
+      "#e8b83a",
+      "#8f9aa8",
+      "#2e8b57",
+      "#f0f0f0"
+    ],
+    "genres": [
+      "vehicle-combat",
+      "racing",
+      "fighting",
+      "action-adventure",
+      "platformer"
+    ],
+    "moods": [
+      "retro",
+      "brisk",
+      "abstract"
+    ],
+    "settings": [
+      "space battle corridor",
+      "race circuit",
+      "alien planet",
+      "fighting arena"
+    ],
+    "nearest": [
+      "066",
+      "036",
+      "063"
+    ]
+  },
+  {
+    "id": "044",
+    "slug": "voxel-block-world",
+    "name": "Voxel block world",
+    "family": "retro-hardware",
+    "references": [
+      {
+        "title": "Minecraft",
+        "year": 2011,
+        "creator": "Mojang Studios",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Minecraft"
+      },
+      {
+        "title": "Dragon Quest Builders",
+        "year": 2016,
+        "creator": "Square Enix",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Dragon_Quest_Builders"
+      },
+      {
+        "title": "Terraria",
+        "year": 2011,
+        "creator": "Re-Logic",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Terraria"
+      },
+      {
+        "title": "Minecraft Dungeons",
+        "year": 2020,
+        "creator": "Mojang Studios and Double Eleven",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Minecraft_Dungeons"
+      }
+    ],
+    "palette": [
+      "#7cb342",
+      "#8d6e4a",
+      "#7f7f7f",
+      "#4fa3e0",
+      "#c2b280",
+      "#3b6e2a",
+      "#d9d9d9",
+      "#5a3d28"
+    ],
+    "genres": [
+      "survival-craft",
+      "exploration",
+      "simulation",
+      "action-adventure",
+      "rpg",
+      "tower-defense"
+    ],
+    "moods": [
+      "calm",
+      "playful",
+      "adventurous"
+    ],
+    "settings": [
+      "blocky wilderness",
+      "underground mines",
+      "village and farmland",
+      "cube-built castle"
+    ],
+    "nearest": [
+      "052",
+      "042",
+      "036"
+    ]
+  },
+  {
+    "id": "045",
+    "slug": "ascii-terminal-glyph",
+    "name": "ASCII terminal glyph",
+    "family": "retro-hardware",
+    "references": [
+      {
+        "title": "Rogue",
+        "year": 1980,
+        "creator": "Michael Toy and Glenn Wichman",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Rogue_(video_game)"
+      },
+      {
+        "title": "NetHack",
+        "year": 1987,
+        "creator": "The NetHack DevTeam",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/NetHack"
+      },
+      {
+        "title": "Dwarf Fortress",
+        "year": 2006,
+        "creator": "Bay 12 Games",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Dwarf_Fortress"
+      },
+      {
+        "title": "Stone Story RPG",
+        "year": 2019,
+        "creator": "Martian Rex",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Stone_Story_RPG"
+      }
+    ],
+    "palette": [
+      "#000000",
+      "#33ff33",
+      "#00aa00",
+      "#ffb000",
+      "#c0c0c0",
+      "#ffffff"
+    ],
+    "genres": [
+      "roguelike",
+      "rpg",
+      "simulation",
+      "strategy",
+      "puzzle",
+      "survival-craft"
+    ],
+    "moods": [
+      "austere",
+      "cryptic",
+      "nostalgic"
+    ],
+    "settings": [
+      "dungeon depths",
+      "underground fortress",
+      "mainframe terminal"
+    ],
+    "nearest": [
+      "040",
+      "041",
+      "088"
+    ]
+  },
+  {
+    "id": "046",
+    "slug": "low-res-sprite-shooter",
+    "name": "Low-res sprite 2.5D shooter",
+    "family": "retro-hardware",
+    "references": [
+      {
+        "title": "Doom",
+        "year": 1993,
+        "creator": "id Software",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Doom_(1993_video_game)"
+      },
+      {
+        "title": "Wolfenstein 3D",
+        "year": 1992,
+        "creator": "id Software",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Wolfenstein_3D"
+      },
+      {
+        "title": "Duke Nukem 3D",
+        "year": 1996,
+        "creator": "3D Realms",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Duke_Nukem_3D"
+      },
+      {
+        "title": "Heretic",
+        "year": 1994,
+        "creator": "Raven Software",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Heretic_(video_game)"
+      }
+    ],
+    "palette": [
+      "#1b1b1b",
+      "#6b4f2f",
+      "#8f8f8f",
+      "#a32020",
+      "#3f5f2f",
+      "#c8a060",
+      "#2f3f6f",
+      "#ff7b00"
+    ],
+    "genres": [
+      "fps",
+      "survival-horror",
+      "roguelike",
+      "exploration"
+    ],
+    "moods": [
+      "aggressive",
+      "grim",
+      "tense"
+    ],
+    "settings": [
+      "Mars research base",
+      "hell dimension",
+      "medieval crypt",
+      "seedy city streets"
+    ],
+    "nearest": [
+      "036",
+      "047",
+      "044"
+    ]
+  },
+  {
+    "id": "047",
+    "slug": "hd-2d-pixel-diorama",
+    "name": "HD-2D pixel diorama",
+    "family": "retro-hardware",
+    "references": [
+      {
+        "title": "Octopath Traveler",
+        "year": 2018,
+        "creator": "Square Enix and Acquire",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Octopath_Traveler"
+      },
+      {
+        "title": "Triangle Strategy",
+        "year": 2022,
+        "creator": "Square Enix and Artdink",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Triangle_Strategy"
+      },
+      {
+        "title": "Dragon Quest III HD-2D Remake",
+        "year": 2024,
+        "creator": "Square Enix and Artdink",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Dragon_Quest_III"
+      },
+      {
+        "title": "Live A Live",
+        "year": 2022,
+        "creator": "Square Enix and Historia",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Live_A_Live"
+      },
+      {
+        "title": "Final Fantasy VI",
+        "year": 1994,
+        "creator": "Square",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Final_Fantasy_VI"
+      }
+    ],
+    "palette": [
+      "#2b2a33",
+      "#6b5b45",
+      "#a8895c",
+      "#3f6b4f",
+      "#4a6fa5",
+      "#e8c170",
+      "#c44d3a",
+      "#f4e9c9"
+    ],
+    "genres": [
+      "rpg",
+      "strategy",
+      "tower-defense",
+      "exploration",
+      "roguelike"
+    ],
+    "moods": [
+      "nostalgic",
+      "wistful",
+      "epic"
+    ],
+    "settings": [
+      "medieval kingdoms",
+      "torch-lit towns",
+      "snowy mountain villages",
+      "castle battlefields"
+    ],
+    "nearest": [
+      "057",
+      "042",
+      "046"
+    ]
+  },
+  {
+    "id": "048",
+    "slug": "claymation",
+    "name": "Claymation",
+    "family": "craft/material",
+    "references": [
+      {
+        "title": "Wallace & Gromit: The Wrong Trousers",
+        "year": 1993,
+        "creator": "Aardman Animations (Nick Park)",
+        "medium": "stop-motion film",
+        "url": "https://en.wikipedia.org/wiki/The_Wrong_Trousers"
+      },
+      {
+        "title": "Chicken Run",
+        "year": 2000,
+        "creator": "Aardman Animations",
+        "medium": "stop-motion film",
+        "url": "https://en.wikipedia.org/wiki/Chicken_Run"
+      },
+      {
+        "title": "Shaun the Sheep Movie",
+        "year": 2015,
+        "creator": "Aardman Animations",
+        "medium": "stop-motion film",
+        "url": "https://en.wikipedia.org/wiki/Shaun_the_Sheep_Movie"
+      },
+      {
+        "title": "The Neverhood",
+        "year": 1996,
+        "creator": "The Neverhood, Inc.",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/The_Neverhood"
+      },
+      {
+        "title": "Pingu",
+        "year": 1990,
+        "creator": "Otmar Gutmann",
+        "medium": "stop-motion TV series",
+        "url": "https://en.wikipedia.org/wiki/Pingu"
+      }
+    ],
+    "palette": [
+      "#e9d2a6",
+      "#c9793a",
+      "#6e9b5b",
+      "#4a78b0",
+      "#b5483a",
+      "#f3efe4",
+      "#5b4636"
+    ],
+    "genres": [
+      "puzzle",
+      "platformer",
+      "action-adventure",
+      "detective-mystery",
+      "stealth"
+    ],
+    "moods": [
+      "cosy",
+      "comic",
+      "warm"
+    ],
+    "settings": [
+      "English village",
+      "farmyard",
+      "inventor's workshop",
+      "wallpapered living room"
+    ],
+    "nearest": [
+      "049",
+      "057",
+      "051"
+    ]
+  },
+  {
+    "id": "049",
+    "slug": "gothic-stop-motion-puppet",
+    "name": "Gothic stop-motion puppet",
+    "family": "craft/material",
+    "references": [
+      {
+        "title": "The Nightmare Before Christmas",
+        "year": 1993,
+        "creator": "Henry Selick (Touchstone Pictures and Skellington Productions)",
+        "medium": "stop-motion film",
+        "url": "https://en.wikipedia.org/wiki/The_Nightmare_Before_Christmas"
+      },
+      {
+        "title": "Coraline",
+        "year": 2009,
+        "creator": "Laika (Henry Selick)",
+        "medium": "stop-motion film",
+        "url": "https://en.wikipedia.org/wiki/Coraline_(film)"
+      },
+      {
+        "title": "Corpse Bride",
+        "year": 2005,
+        "creator": "Tim Burton and Mike Johnson",
+        "medium": "stop-motion film",
+        "url": "https://en.wikipedia.org/wiki/Corpse_Bride"
+      },
+      {
+        "title": "ParaNorman",
+        "year": 2012,
+        "creator": "Laika",
+        "medium": "stop-motion film",
+        "url": "https://en.wikipedia.org/wiki/ParaNorman"
+      },
+      {
+        "title": "Frankenweenie",
+        "year": 2012,
+        "creator": "Tim Burton",
+        "medium": "stop-motion film",
+        "url": "https://en.wikipedia.org/wiki/Frankenweenie_(2012_film)"
+      }
+    ],
+    "palette": [
+      "#14141c",
+      "#3b3350",
+      "#6b6f7a",
+      "#c9c2b0",
+      "#d9772b",
+      "#5a7a4a",
+      "#8a2f3a"
+    ],
+    "genres": [
+      "action-adventure",
+      "platformer",
+      "stealth",
+      "puzzle",
+      "exploration",
+      "survival-horror"
+    ],
+    "moods": [
+      "macabre",
+      "whimsical",
+      "eerie"
+    ],
+    "settings": [
+      "haunted town",
+      "graveyard hill",
+      "crooked old house",
+      "twisted forest"
+    ],
+    "nearest": [
+      "048",
+      "071",
+      "031"
+    ]
+  },
+  {
+    "id": "050",
+    "slug": "papercraft",
+    "name": "Papercraft",
+    "family": "craft/material",
+    "references": [
+      {
+        "title": "Tearaway",
+        "year": 2013,
+        "creator": "Media Molecule",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Tearaway_(video_game)"
+      },
+      {
+        "title": "Paper Mario: The Origami King",
+        "year": 2020,
+        "creator": "Intelligent Systems",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Paper_Mario:_The_Origami_King"
+      },
+      {
+        "title": "Paper Mario: The Thousand-Year Door",
+        "year": 2004,
+        "creator": "Intelligent Systems",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Paper_Mario:_The_Thousand-Year_Door"
+      },
+      {
+        "title": "Lumino City",
+        "year": 2014,
+        "creator": "State of Play Games",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Lumino_City"
+      }
+    ],
+    "palette": [
+      "#f7f3e8",
+      "#ef5350",
+      "#ffca28",
+      "#42a5f5",
+      "#66bb6a",
+      "#8d6e63",
+      "#ab47bc"
+    ],
+    "genres": [
+      "platformer",
+      "puzzle",
+      "action-adventure",
+      "rpg",
+      "exploration",
+      "tower-defense"
+    ],
+    "moods": [
+      "playful",
+      "cheerful",
+      "handmade"
+    ],
+    "settings": [
+      "pop-up storybook world",
+      "paper town",
+      "folded forest",
+      "tabletop model city"
+    ],
+    "nearest": [
+      "064",
+      "098",
+      "067"
+    ]
+  },
+  {
+    "id": "051",
+    "slug": "felt-and-yarn",
+    "name": "Felt and yarn",
+    "family": "craft/material",
+    "references": [
+      {
+        "title": "Kirby's Epic Yarn",
+        "year": 2010,
+        "creator": "Good-Feel",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Kirby's_Epic_Yarn"
+      },
+      {
+        "title": "Yoshi's Woolly World",
+        "year": 2015,
+        "creator": "Good-Feel",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Yoshi's_Woolly_World"
+      },
+      {
+        "title": "Unravel",
+        "year": 2016,
+        "creator": "Coldwood Interactive",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Unravel_(video_game)"
+      },
+      {
+        "title": "LittleBigPlanet",
+        "year": 2008,
+        "creator": "Media Molecule",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/LittleBigPlanet_(2008_video_game)"
+      }
+    ],
+    "palette": [
+      "#f48fb1",
+      "#81d4fa",
+      "#fff59d",
+      "#a5d6a7",
+      "#ce93d8",
+      "#ffab91",
+      "#f5f0e6"
+    ],
+    "genres": [
+      "platformer",
+      "puzzle",
+      "exploration",
+      "action-adventure"
+    ],
+    "moods": [
+      "cosy",
+      "playful",
+      "gentle"
+    ],
+    "settings": [
+      "craft-table world",
+      "patchwork countryside",
+      "toy bedroom",
+      "knitted seaside"
+    ],
+    "nearest": [
+      "056",
+      "048",
+      "050"
+    ]
+  },
+  {
+    "id": "052",
+    "slug": "brick-toy",
+    "name": "Brick toy",
+    "family": "craft/material",
+    "references": [
+      {
+        "title": "The Lego Movie",
+        "year": 2014,
+        "creator": "Animal Logic (Phil Lord and Christopher Miller)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/The_Lego_Movie"
+      },
+      {
+        "title": "Lego Star Wars: The Skywalker Saga",
+        "year": 2022,
+        "creator": "Traveller's Tales",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Lego_Star_Wars:_The_Skywalker_Saga"
+      },
+      {
+        "title": "Lego Builder's Journey",
+        "year": 2019,
+        "creator": "Light Brick Studio",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Lego_Builder's_Journey"
+      },
+      {
+        "title": "The Lego Batman Movie",
+        "year": 2017,
+        "creator": "Animal Logic (Chris McKay)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/The_Lego_Batman_Movie"
+      }
+    ],
+    "palette": [
+      "#d01012",
+      "#0055bf",
+      "#f2cd37",
+      "#237841",
+      "#ffffff",
+      "#1b2a34",
+      "#a0a5a9"
+    ],
+    "genres": [
+      "action-adventure",
+      "platformer",
+      "puzzle",
+      "racing",
+      "vehicle-combat"
+    ],
+    "moods": [
+      "playful",
+      "comic",
+      "energetic"
+    ],
+    "settings": [
+      "toy city",
+      "pirate island",
+      "space base",
+      "medieval castle"
+    ],
+    "nearest": [
+      "044",
+      "057",
+      "006"
+    ]
+  },
+  {
+    "id": "053",
+    "slug": "blue-and-white-porcelain",
+    "name": "Blue-and-white glazed porcelain",
+    "family": "craft/material",
+    "references": [
+      {
+        "title": "The David Vases",
+        "year": 1351,
+        "creator": "Jingdezhen kilns, Yuan dynasty",
+        "medium": "blue-and-white porcelain",
+        "url": "https://en.wikipedia.org/wiki/David_Vases"
+      },
+      {
+        "title": "Delftware",
+        "year": "17th century",
+        "creator": "Delft potteries",
+        "medium": "tin-glazed earthenware tradition",
+        "url": "https://en.wikipedia.org/wiki/Delftware"
+      },
+      {
+        "title": "Willow pattern",
+        "year": "c. 1790",
+        "creator": "English potteries (attributed to Thomas Minton)",
+        "medium": "transfer-printed ceramic design",
+        "url": "https://en.wikipedia.org/wiki/Willow_pattern"
+      }
+    ],
+    "palette": [
+      "#fbfcfa",
+      "#1a3a8a",
+      "#2f5fc4",
+      "#8fa9dc",
+      "#dfe6ee",
+      "#0f2460"
+    ],
+    "genres": [
+      "puzzle",
+      "exploration",
+      "strategy",
+      "platformer"
+    ],
+    "moods": [
+      "serene",
+      "delicate",
+      "contemplative"
+    ],
+    "settings": [
+      "imperial China",
+      "Dutch canal town",
+      "tea house",
+      "willow garden"
+    ],
+    "nearest": [
+      "100",
+      "091",
+      "055"
+    ]
+  },
+  {
+    "id": "054",
+    "slug": "stained-glass",
+    "name": "Stained glass",
+    "family": "craft/material",
+    "references": [
+      {
+        "title": "Stained glass windows of Chartres Cathedral",
+        "year": "c. 1205-1240",
+        "creator": "Chartres workshops",
+        "medium": "stained glass",
+        "url": "https://en.wikipedia.org/wiki/Chartres_Cathedral"
+      },
+      {
+        "title": "Sainte-Chapelle windows",
+        "year": 1248,
+        "creator": "Parisian workshops",
+        "medium": "stained glass",
+        "url": "https://en.wikipedia.org/wiki/Sainte-Chapelle"
+      },
+      {
+        "title": "Tiffany lamp",
+        "year": 1895,
+        "creator": "Tiffany Studios (Louis Comfort Tiffany and Clara Driscoll)",
+        "medium": "leaded glass lamps",
+        "url": "https://en.wikipedia.org/wiki/Tiffany_lamp"
+      },
+      {
+        "title": "Beauty and the Beast (prologue windows)",
+        "year": 1991,
+        "creator": "Walt Disney Feature Animation",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Beauty_and_the_Beast_(1991_film)"
+      }
+    ],
+    "palette": [
+      "#0d0d10",
+      "#1e3fae",
+      "#c21f2b",
+      "#e8b21a",
+      "#1f8a4c",
+      "#7a2fa0",
+      "#f2e6c2"
+    ],
+    "genres": [
+      "puzzle",
+      "action-adventure",
+      "platformer",
+      "rpg",
+      "exploration",
+      "soulslike"
+    ],
+    "moods": [
+      "solemn",
+      "mystical",
+      "radiant"
+    ],
+    "settings": [
+      "gothic cathedral",
+      "medieval kingdom",
+      "enchanted castle"
+    ],
+    "nearest": [
+      "079",
+      "055",
+      "086"
+    ]
+  },
+  {
+    "id": "055",
+    "slug": "mosaic-tessera",
+    "name": "Mosaic tessera",
+    "family": "craft/material",
+    "references": [
+      {
+        "title": "Mosaics of the Basilica of San Vitale",
+        "year": 547,
+        "creator": "Byzantine workshops, Ravenna",
+        "medium": "glass and stone mosaic",
+        "url": "https://en.wikipedia.org/wiki/Basilica_of_San_Vitale"
+      },
+      {
+        "title": "Alexander Mosaic",
+        "year": "c. 100 BC",
+        "creator": "Roman workshop, House of the Faun, Pompeii",
+        "medium": "floor mosaic",
+        "url": "https://en.wikipedia.org/wiki/Alexander_Mosaic"
+      },
+      {
+        "title": "Mosaics of the Mausoleum of Galla Placidia",
+        "year": "c. 425-450",
+        "creator": "Late Roman workshops, Ravenna",
+        "medium": "glass mosaic",
+        "url": "https://en.wikipedia.org/wiki/Mausoleum_of_Galla_Placidia"
+      },
+      {
+        "title": "Park Guell trencadis",
+        "year": 1914,
+        "creator": "Antoni Gaudi and Josep Maria Jujol",
+        "medium": "broken-tile mosaic",
+        "url": "https://en.wikipedia.org/wiki/Park_Güell"
+      }
+    ],
+    "palette": [
+      "#c9a227",
+      "#1f3f7a",
+      "#2f7a5a",
+      "#9a2f2a",
+      "#e8dcc0",
+      "#3a3a3a",
+      "#d98a5a",
+      "#f5f1e6"
+    ],
+    "genres": [
+      "puzzle",
+      "strategy",
+      "rpg",
+      "tower-defense",
+      "exploration"
+    ],
+    "moods": [
+      "solemn",
+      "ancient",
+      "ornate"
+    ],
+    "settings": [
+      "Byzantine basilica",
+      "Roman villa",
+      "Mediterranean port",
+      "tiled garden park"
+    ],
+    "nearest": [
+      "100",
+      "077",
+      "054"
+    ]
+  },
+  {
+    "id": "056",
+    "slug": "embroidered-tapestry",
+    "name": "Embroidered tapestry",
+    "family": "craft/material",
+    "references": [
+      {
+        "title": "Bayeux Tapestry",
+        "year": "1070s",
+        "creator": "Anglo-Norman embroiderers",
+        "medium": "wool embroidery on linen",
+        "url": "https://en.wikipedia.org/wiki/Bayeux_Tapestry"
+      },
+      {
+        "title": "The Lady and the Unicorn",
+        "year": "c. 1500",
+        "creator": "Flemish workshops",
+        "medium": "wool and silk tapestry",
+        "url": "https://en.wikipedia.org/wiki/The_Lady_and_the_Unicorn"
+      },
+      {
+        "title": "The Hunt of the Unicorn",
+        "year": "1495-1505",
+        "creator": "South Netherlandish workshops",
+        "medium": "wool and silk tapestry",
+        "url": "https://en.wikipedia.org/wiki/The_Unicorn_Tapestries"
+      },
+      {
+        "title": "Apocalypse Tapestry",
+        "year": "1377-1382",
+        "creator": "Nicolas Bataille workshop (after Jean Bondol)",
+        "medium": "wool tapestry",
+        "url": "https://en.wikipedia.org/wiki/Apocalypse_Tapestry"
+      }
+    ],
+    "palette": [
+      "#d8c9a3",
+      "#8a3b2a",
+      "#2f4a5a",
+      "#b58a2f",
+      "#4f6b3a",
+      "#3a2a22",
+      "#c9a57a"
+    ],
+    "genres": [
+      "strategy",
+      "tower-defense",
+      "rpg",
+      "action-adventure",
+      "puzzle"
+    ],
+    "moods": [
+      "solemn",
+      "archaic",
+      "wry"
+    ],
+    "settings": [
+      "Norman conquest",
+      "medieval court",
+      "castle siege",
+      "hunting forest"
+    ],
+    "nearest": [
+      "051",
+      "086",
+      "082"
+    ]
+  },
+  {
+    "id": "057",
+    "slug": "toy-diorama-tilt-shift",
+    "name": "Toy-diorama tilt-shift",
+    "family": "craft/material",
+    "references": [
+      {
+        "title": "The Legend of Zelda: Link's Awakening",
+        "year": 2019,
+        "creator": "Grezzo",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/The_Legend_of_Zelda:_Link's_Awakening_(2019_video_game)"
+      },
+      {
+        "title": "Captain Toad: Treasure Tracker",
+        "year": 2014,
+        "creator": "Nintendo EAD Tokyo",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Captain_Toad:_Treasure_Tracker"
+      },
+      {
+        "title": "Animal Crossing: New Horizons",
+        "year": 2020,
+        "creator": "Nintendo EPD",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Animal_Crossing:_New_Horizons"
+      },
+      {
+        "title": "The Legend of Zelda: Echoes of Wisdom",
+        "year": 2024,
+        "creator": "Nintendo EPD and Grezzo",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/The_Legend_of_Zelda:_Echoes_of_Wisdom"
+      }
+    ],
+    "palette": [
+      "#7ed957",
+      "#4fc3f7",
+      "#ffd54f",
+      "#ff8a65",
+      "#f5f5f5",
+      "#8d6e63",
+      "#ba68c8"
+    ],
+    "genres": [
+      "action-adventure",
+      "puzzle",
+      "simulation",
+      "exploration",
+      "tower-defense",
+      "survival-craft"
+    ],
+    "moods": [
+      "cheerful",
+      "cosy",
+      "whimsical"
+    ],
+    "settings": [
+      "island village",
+      "tabletop dungeon",
+      "toy town",
+      "seaside meadow"
+    ],
+    "nearest": [
+      "048",
+      "037",
+      "052"
+    ]
+  },
+  {
+    "id": "058",
+    "slug": "shadow-puppet-cut-out",
+    "name": "Shadow-puppet cut-out",
+    "family": "craft/material",
+    "references": [
+      {
+        "title": "The Adventures of Prince Achmed",
+        "year": 1926,
+        "creator": "Lotte Reiniger",
+        "medium": "silhouette animated film",
+        "url": "https://en.wikipedia.org/wiki/The_Adventures_of_Prince_Achmed"
+      },
+      {
+        "title": "Tales of the Night",
+        "year": 2011,
+        "creator": "Michel Ocelot",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Tales_of_the_Night_(film)"
+      },
+      {
+        "title": "Badland",
+        "year": 2013,
+        "creator": "Frogmind",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Badland_(video_game)"
+      }
+    ],
+    "palette": [
+      "#000000",
+      "#f2a23a",
+      "#d9482b",
+      "#2a6f97",
+      "#f6e3b4",
+      "#7a3b69"
+    ],
+    "genres": [
+      "platformer",
+      "puzzle",
+      "action-adventure",
+      "stealth",
+      "exploration"
+    ],
+    "moods": [
+      "enchanted",
+      "eerie",
+      "theatrical"
+    ],
+    "settings": [
+      "Arabian Nights palace",
+      "enchanted forest",
+      "fairy-tale kingdom"
+    ],
+    "nearest": [
+      "070",
+      "087",
+      "064"
+    ]
+  },
+  {
+    "id": "059",
+    "slug": "isometric-pastel-architecture",
+    "name": "Isometric pastel impossible architecture",
+    "family": "graphic/flat",
+    "references": [
+      {
+        "title": "Monument Valley",
+        "year": 2014,
+        "creator": "Ustwo Games",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Monument_Valley_(video_game)"
+      },
+      {
+        "title": "Monument Valley 2",
+        "year": 2017,
+        "creator": "Ustwo Games",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Monument_Valley_2"
+      },
+      {
+        "title": "Relativity",
+        "year": 1953,
+        "creator": "M. C. Escher",
+        "medium": "lithograph",
+        "url": "https://en.wikipedia.org/wiki/Relativity_(M._C._Escher)"
+      },
+      {
+        "title": "Waterfall",
+        "year": 1961,
+        "creator": "M. C. Escher",
+        "medium": "lithograph",
+        "url": "https://en.wikipedia.org/wiki/Waterfall_(M._C._Escher)"
+      },
+      {
+        "title": "Echochrome",
+        "year": 2008,
+        "creator": "Japan Studio",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Echochrome"
+      }
+    ],
+    "palette": [
+      "#f6c6b4",
+      "#e58f8a",
+      "#7fc7c2",
+      "#3d7f8f",
+      "#f7efd9",
+      "#b89ad6",
+      "#2f3e56"
+    ],
+    "genres": [
+      "puzzle",
+      "exploration",
+      "platformer",
+      "tower-defense"
+    ],
+    "moods": [
+      "serene",
+      "dreamlike",
+      "contemplative"
+    ],
+    "settings": [
+      "floating temples",
+      "impossible palace",
+      "sky ruins"
+    ],
+    "nearest": [
+      "066",
+      "098",
+      "084"
+    ]
+  },
+  {
+    "id": "060",
+    "slug": "layered-flat-colour-wilderness",
+    "name": "Layered flat-colour wilderness",
+    "family": "graphic/flat",
+    "references": [
+      {
+        "title": "Firewatch",
+        "year": 2016,
+        "creator": "Campo Santo",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Firewatch"
+      },
+      {
+        "title": "Alto's Adventure",
+        "year": 2015,
+        "creator": "Snowman and Harry Nesbitt",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Alto's_Adventure"
+      },
+      {
+        "title": "A Short Hike",
+        "year": 2019,
+        "creator": "Adam Robinson-Yu",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/A_Short_Hike"
+      },
+      {
+        "title": "Federal Art Project posters",
+        "year": "1935-1943",
+        "creator": "Works Progress Administration",
+        "medium": "screen-printed posters",
+        "url": "https://en.wikipedia.org/wiki/Federal_Art_Project"
+      }
+    ],
+    "palette": [
+      "#f25c2a",
+      "#f7a531",
+      "#7a2f5a",
+      "#2b1e3f",
+      "#f9d9a0",
+      "#3f7a6a",
+      "#1c4a5a"
+    ],
+    "genres": [
+      "exploration",
+      "detective-mystery",
+      "survival-craft",
+      "action-adventure",
+      "sports"
+    ],
+    "moods": [
+      "wistful",
+      "calm",
+      "lonely"
+    ],
+    "settings": [
+      "national park forest",
+      "mountain range",
+      "canyon country",
+      "alpine slopes"
+    ],
+    "nearest": [
+      "064",
+      "061",
+      "066"
+    ]
+  },
+  {
+    "id": "061",
+    "slug": "soft-gradient-minimal-desert",
+    "name": "Soft-gradient minimal desert",
+    "family": "graphic/flat",
+    "references": [
+      {
+        "title": "Journey",
+        "year": 2012,
+        "creator": "Thatgamecompany",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Journey_(2012_video_game)"
+      },
+      {
+        "title": "Abzu",
+        "year": 2016,
+        "creator": "Giant Squid",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Abzû"
+      },
+      {
+        "title": "The Pathless",
+        "year": 2020,
+        "creator": "Giant Squid",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/The_Pathless"
+      },
+      {
+        "title": "Sky: Children of the Light",
+        "year": 2019,
+        "creator": "Thatgamecompany",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Sky:_Children_of_the_Light"
+      }
+    ],
+    "palette": [
+      "#e9a35a",
+      "#f6d08a",
+      "#c9683c",
+      "#7a2e2a",
+      "#fbe9c6",
+      "#5b3a4a"
+    ],
+    "genres": [
+      "exploration",
+      "platformer",
+      "puzzle",
+      "action-adventure"
+    ],
+    "moods": [
+      "serene",
+      "lonely",
+      "awed"
+    ],
+    "settings": [
+      "dune desert",
+      "buried ruins",
+      "mountain pilgrimage",
+      "sunken temple"
+    ],
+    "nearest": [
+      "012",
+      "060",
+      "033"
+    ]
+  },
+  {
+    "id": "062",
+    "slug": "blueprint-technical-drawing",
+    "name": "Blueprint technical drawing",
+    "family": "graphic/flat",
+    "references": [
+      {
+        "title": "Cyanotype process",
+        "year": 1842,
+        "creator": "John Herschel",
+        "medium": "photographic printing process",
+        "url": "https://en.wikipedia.org/wiki/Cyanotype"
+      },
+      {
+        "title": "Blueprint",
+        "year": "19th century",
+        "creator": "after John Herschel's cyanotype process",
+        "medium": "reprographic drawing process",
+        "url": "https://en.wikipedia.org/wiki/Blueprint"
+      },
+      {
+        "title": "Photographs of British Algae: Cyanotype Impressions",
+        "year": 1843,
+        "creator": "Anna Atkins",
+        "medium": "cyanotype book",
+        "url": "https://en.wikipedia.org/wiki/Anna_Atkins"
+      },
+      {
+        "title": "Vitruvian Man",
+        "year": "c. 1490",
+        "creator": "Leonardo da Vinci",
+        "medium": "pen and ink drawing",
+        "url": "https://en.wikipedia.org/wiki/Vitruvian_Man"
+      }
+    ],
+    "palette": [
+      "#0b3d91",
+      "#1f5fbf",
+      "#ffffff",
+      "#bcd4f6",
+      "#082a66"
+    ],
+    "genres": [
+      "puzzle",
+      "strategy",
+      "tower-defense",
+      "simulation",
+      "stealth"
+    ],
+    "moods": [
+      "precise",
+      "calm",
+      "cerebral"
+    ],
+    "settings": [
+      "engineering workshop",
+      "factory floor plan",
+      "machine interior",
+      "heist floor plan"
+    ],
+    "nearest": [
+      "040",
+      "088",
+      "073"
+    ]
+  },
+  {
+    "id": "063",
+    "slug": "white-and-red-faceted-minimal",
+    "name": "White-and-red faceted minimal",
+    "family": "graphic/flat",
+    "references": [
+      {
+        "title": "Superhot",
+        "year": 2016,
+        "creator": "Superhot Team",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Superhot"
+      },
+      {
+        "title": "Superhot: Mind Control Delete",
+        "year": 2020,
+        "creator": "Superhot Team",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Superhot:_Mind_Control_Delete"
+      },
+      {
+        "title": "THX 1138",
+        "year": 1971,
+        "creator": "George Lucas",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/THX_1138"
+      },
+      {
+        "title": "Antichamber",
+        "year": 2013,
+        "creator": "Alexander Bruce",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Antichamber"
+      }
+    ],
+    "palette": [
+      "#f4f4f4",
+      "#dcdcdc",
+      "#ff2a1a",
+      "#141414",
+      "#b8b8b8"
+    ],
+    "genres": [
+      "fps",
+      "puzzle",
+      "top-down-shooter",
+      "roguelike",
+      "stealth"
+    ],
+    "moods": [
+      "tense",
+      "clinical",
+      "stark"
+    ],
+    "settings": [
+      "office block",
+      "laboratory",
+      "virtual simulation",
+      "parking garage"
+    ],
+    "nearest": [
+      "035",
+      "074",
+      "091"
+    ]
+  },
+  {
+    "id": "064",
+    "slug": "mid-century-cut-paper-poster",
+    "name": "Mid-century cut-paper poster",
+    "family": "graphic/flat",
+    "references": [
+      {
+        "title": "Anatomy of a Murder (title sequence and poster)",
+        "year": 1959,
+        "creator": "Saul Bass",
+        "medium": "film title design",
+        "url": "https://en.wikipedia.org/wiki/Anatomy_of_a_Murder"
+      },
+      {
+        "title": "Vertigo (title sequence and poster)",
+        "year": 1958,
+        "creator": "Saul Bass",
+        "medium": "film title design",
+        "url": "https://en.wikipedia.org/wiki/Vertigo_(film)"
+      },
+      {
+        "title": "The Man with the Golden Arm (title sequence and poster)",
+        "year": 1955,
+        "creator": "Saul Bass",
+        "medium": "film title design",
+        "url": "https://en.wikipedia.org/wiki/The_Man_with_the_Golden_Arm"
+      },
+      {
+        "title": "Catch Me If You Can (title sequence)",
+        "year": 2002,
+        "creator": "Kuntzel + Deygas",
+        "medium": "film title design",
+        "url": "https://en.wikipedia.org/wiki/Catch_Me_If_You_Can"
+      },
+      {
+        "title": "Gerald McBoing-Boing",
+        "year": 1950,
+        "creator": "United Productions of America",
+        "medium": "animated short film",
+        "url": "https://en.wikipedia.org/wiki/Gerald_McBoing-Boing"
+      }
+    ],
+    "palette": [
+      "#e8501e",
+      "#111111",
+      "#f4ead2",
+      "#1f4e79",
+      "#f2b632"
+    ],
+    "genres": [
+      "detective-mystery",
+      "stealth",
+      "puzzle",
+      "platformer"
+    ],
+    "moods": [
+      "suspenseful",
+      "jazzy",
+      "bold"
+    ],
+    "settings": [
+      "1950s city",
+      "crime thriller",
+      "heist caper",
+      "courtroom"
+    ],
+    "nearest": [
+      "080",
+      "060",
+      "050"
+    ]
+  },
+  {
+    "id": "065",
+    "slug": "flat-vector-stage-light",
+    "name": "Flat-vector stage light",
+    "family": "graphic/flat",
+    "references": [
+      {
+        "title": "Kentucky Route Zero",
+        "year": 2013,
+        "creator": "Cardboard Computer",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Kentucky_Route_Zero"
+      },
+      {
+        "title": "Nighthawks",
+        "year": 1942,
+        "creator": "Edward Hopper",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Nighthawks_(Hopper)"
+      },
+      {
+        "title": "Night in the Woods",
+        "year": 2017,
+        "creator": "Infinite Fall",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Night_in_the_Woods"
+      },
+      {
+        "title": "Oxenfree",
+        "year": 2016,
+        "creator": "Night School Studio",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Oxenfree"
+      }
+    ],
+    "palette": [
+      "#0d1117",
+      "#1f2a36",
+      "#e8d9a8",
+      "#3a6f7a",
+      "#c2543c",
+      "#56616e"
+    ],
+    "genres": [
+      "detective-mystery",
+      "exploration",
+      "puzzle",
+      "stealth"
+    ],
+    "moods": [
+      "melancholic",
+      "quiet",
+      "eerie"
+    ],
+    "settings": [
+      "rural highway at night",
+      "small-town America",
+      "abandoned mine",
+      "roadside gas station"
+    ],
+    "nearest": [
+      "070",
+      "060",
+      "058"
+    ]
+  },
+  {
+    "id": "066",
+    "slug": "faceted-low-poly-gradient",
+    "name": "Faceted low-poly gradient",
+    "family": "graphic/flat",
+    "references": [
+      {
+        "title": "Astroneer",
+        "year": 2019,
+        "creator": "System Era Softworks",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Astroneer"
+      },
+      {
+        "title": "Islanders",
+        "year": 2019,
+        "creator": "Grizzly Games",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Islanders_(video_game)"
+      },
+      {
+        "title": "Lara Croft Go",
+        "year": 2015,
+        "creator": "Square Enix Montreal",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Lara_Croft_Go"
+      }
+    ],
+    "palette": [
+      "#f2a65a",
+      "#ef6f6c",
+      "#7fd1b9",
+      "#4a7fb5",
+      "#f7e3af",
+      "#8e6bbf",
+      "#2f4858"
+    ],
+    "genres": [
+      "survival-craft",
+      "strategy",
+      "simulation",
+      "exploration",
+      "tower-defense",
+      "puzzle"
+    ],
+    "moods": [
+      "calm",
+      "cheerful",
+      "curious"
+    ],
+    "settings": [
+      "alien planet",
+      "tropical islands",
+      "floating islands",
+      "crystal canyon"
+    ],
+    "nearest": [
+      "059",
+      "043",
+      "067"
+    ]
+  },
+  {
+    "id": "067",
+    "slug": "boxy-toybox-low-poly",
+    "name": "Boxy toybox low-poly",
+    "family": "graphic/flat",
+    "references": [
+      {
+        "title": "Katamari Damacy",
+        "year": 2004,
+        "creator": "Namco",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Katamari_Damacy"
+      },
+      {
+        "title": "We Love Katamari",
+        "year": 2005,
+        "creator": "Namco",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/We_Love_Katamari"
+      },
+      {
+        "title": "Noby Noby Boy",
+        "year": 2009,
+        "creator": "Namco Bandai Games (Keita Takahashi)",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Noby_Noby_Boy"
+      },
+      {
+        "title": "Wattam",
+        "year": 2019,
+        "creator": "Funomena (Keita Takahashi)",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Wattam"
+      }
+    ],
+    "palette": [
+      "#ff6fae",
+      "#ffd400",
+      "#3ec1ff",
+      "#7be04a",
+      "#ff8a1f",
+      "#ffffff",
+      "#8a4fff",
+      "#5a3a2a"
+    ],
+    "genres": [
+      "puzzle",
+      "platformer",
+      "simulation",
+      "sports",
+      "racing",
+      "exploration"
+    ],
+    "moods": [
+      "playful",
+      "silly",
+      "cheerful"
+    ],
+    "settings": [
+      "cluttered living room",
+      "suburban town",
+      "toy city",
+      "playground"
+    ],
+    "nearest": [
+      "003",
+      "098",
+      "057"
+    ]
+  },
+  {
+    "id": "068",
+    "slug": "film-noir-hard-light",
+    "name": "Film noir hard light",
+    "family": "noir/monochrome",
+    "references": [
+      {
+        "title": "The Third Man",
+        "year": 1949,
+        "creator": "Carol Reed",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/The_Third_Man"
+      },
+      {
+        "title": "Double Indemnity",
+        "year": 1944,
+        "creator": "Billy Wilder",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Double_Indemnity"
+      },
+      {
+        "title": "Touch of Evil",
+        "year": 1958,
+        "creator": "Orson Welles",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Touch_of_Evil"
+      },
+      {
+        "title": "The Maltese Falcon",
+        "year": 1941,
+        "creator": "John Huston",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/The_Maltese_Falcon_(1941_film)"
+      },
+      {
+        "title": "L.A. Noire",
+        "year": 2011,
+        "creator": "Team Bondi",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/L.A._Noire"
+      }
+    ],
+    "palette": [
+      "#050505",
+      "#2a2a2a",
+      "#6e6e6e",
+      "#b5b5b5",
+      "#f0f0f0"
+    ],
+    "genres": [
+      "detective-mystery",
+      "stealth",
+      "third-person-shooter",
+      "action-adventure"
+    ],
+    "moods": [
+      "tense",
+      "cynical",
+      "brooding"
+    ],
+    "settings": [
+      "1940s city at night",
+      "post-war Vienna",
+      "detective office",
+      "sewer tunnels"
+    ],
+    "nearest": [
+      "069",
+      "070",
+      "085"
+    ]
+  },
+  {
+    "id": "069",
+    "slug": "selective-colour-ink-noir",
+    "name": "Selective-colour ink noir",
+    "family": "noir/monochrome",
+    "references": [
+      {
+        "title": "Sin City",
+        "year": 2005,
+        "creator": "Robert Rodriguez and Frank Miller",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Sin_City_(film)"
+      },
+      {
+        "title": "Sin City (comics)",
+        "year": 1991,
+        "creator": "Frank Miller (Dark Horse Comics)",
+        "medium": "comic series",
+        "url": "https://en.wikipedia.org/wiki/Sin_City"
+      },
+      {
+        "title": "MadWorld",
+        "year": 2009,
+        "creator": "PlatinumGames",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/MadWorld"
+      },
+      {
+        "title": "Schindler's List",
+        "year": 1993,
+        "creator": "Steven Spielberg",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Schindler's_List"
+      }
+    ],
+    "palette": [
+      "#000000",
+      "#ffffff",
+      "#c40000",
+      "#f2d21b",
+      "#1a1a1a"
+    ],
+    "genres": [
+      "hack-and-slash",
+      "detective-mystery",
+      "third-person-shooter",
+      "fighting",
+      "stealth",
+      "action-adventure"
+    ],
+    "moods": [
+      "brutal",
+      "lurid",
+      "hardboiled"
+    ],
+    "settings": [
+      "corrupt city at night",
+      "rain-soaked alleys",
+      "docks",
+      "seedy bar"
+    ],
+    "nearest": [
+      "010",
+      "020",
+      "068"
+    ]
+  },
+  {
+    "id": "070",
+    "slug": "silhouette-fog-monochrome",
+    "name": "Silhouette fog monochrome",
+    "family": "noir/monochrome",
+    "references": [
+      {
+        "title": "Limbo",
+        "year": 2010,
+        "creator": "Playdead",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Limbo_(video_game)"
+      },
+      {
+        "title": "Inside",
+        "year": 2016,
+        "creator": "Playdead",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Inside_(video_game)"
+      },
+      {
+        "title": "Nosferatu",
+        "year": 1922,
+        "creator": "F. W. Murnau",
+        "medium": "silent film",
+        "url": "https://en.wikipedia.org/wiki/Nosferatu"
+      }
+    ],
+    "palette": [
+      "#000000",
+      "#1c1c1c",
+      "#5a5a5a",
+      "#9a9a9a",
+      "#d8d8d8",
+      "#ffffff"
+    ],
+    "genres": [
+      "platformer",
+      "puzzle",
+      "survival-horror",
+      "stealth",
+      "exploration",
+      "soulslike"
+    ],
+    "moods": [
+      "bleak",
+      "eerie",
+      "lonely"
+    ],
+    "settings": [
+      "dark forest",
+      "abandoned factory",
+      "rain-swept rooftops",
+      "flooded ruins"
+    ],
+    "nearest": [
+      "058",
+      "068",
+      "065"
+    ]
+  },
+  {
+    "id": "071",
+    "slug": "expressionist-painted-set",
+    "name": "Expressionist painted set",
+    "family": "noir/monochrome",
+    "references": [
+      {
+        "title": "The Cabinet of Dr. Caligari",
+        "year": 1920,
+        "creator": "Robert Wiene (sets by Hermann Warm, Walter Reimann and Walter Rohrig)",
+        "medium": "silent film",
+        "url": "https://en.wikipedia.org/wiki/The_Cabinet_of_Dr._Caligari"
+      },
+      {
+        "title": "Metropolis",
+        "year": 1927,
+        "creator": "Fritz Lang",
+        "medium": "silent film",
+        "url": "https://en.wikipedia.org/wiki/Metropolis_(1927_film)"
+      },
+      {
+        "title": "The Golem: How He Came into the World",
+        "year": 1920,
+        "creator": "Paul Wegener and Carl Boese",
+        "medium": "silent film",
+        "url": "https://en.wikipedia.org/wiki/The_Golem:_How_He_Came_into_the_World"
+      },
+      {
+        "title": "Vincent",
+        "year": 1982,
+        "creator": "Tim Burton",
+        "medium": "stop-motion short film",
+        "url": "https://en.wikipedia.org/wiki/Vincent_(1982_film)"
+      }
+    ],
+    "palette": [
+      "#0c0c0c",
+      "#f1ead6",
+      "#6b6b63",
+      "#2f3a35",
+      "#b5a878",
+      "#3a2f2a"
+    ],
+    "genres": [
+      "survival-horror",
+      "detective-mystery",
+      "stealth",
+      "puzzle",
+      "exploration"
+    ],
+    "moods": [
+      "uneasy",
+      "feverish",
+      "theatrical"
+    ],
+    "settings": [
+      "crooked hill town",
+      "asylum",
+      "travelling fairground",
+      "rooftops at night"
+    ],
+    "nearest": [
+      "068",
+      "049",
+      "078"
+    ]
+  },
+  {
+    "id": "072",
+    "slug": "engraved-crosshatch-print",
+    "name": "Engraved crosshatch print",
+    "family": "noir/monochrome",
+    "references": [
+      {
+        "title": "Illustrations for The Divine Comedy",
+        "year": 1861,
+        "creator": "Gustave Dore",
+        "medium": "wood engraving",
+        "url": "https://en.wikipedia.org/wiki/Gustave_Doré"
+      },
+      {
+        "title": "Melencolia I",
+        "year": 1514,
+        "creator": "Albrecht Durer",
+        "medium": "copper engraving",
+        "url": "https://en.wikipedia.org/wiki/Melencolia_I"
+      },
+      {
+        "title": "Knight, Death and the Devil",
+        "year": 1513,
+        "creator": "Albrecht Durer",
+        "medium": "copper engraving",
+        "url": "https://en.wikipedia.org/wiki/Knight,_Death_and_the_Devil"
+      },
+      {
+        "title": "The Rime of the Ancient Mariner (illustrated edition)",
+        "year": 1876,
+        "creator": "Gustave Dore",
+        "medium": "wood engraving",
+        "url": "https://en.wikipedia.org/wiki/The_Rime_of_the_Ancient_Mariner"
+      }
+    ],
+    "palette": [
+      "#14110f",
+      "#f2ead8",
+      "#3a332c",
+      "#8a8072",
+      "#d6ccb6"
+    ],
+    "genres": [
+      "soulslike",
+      "rpg",
+      "action-adventure",
+      "exploration",
+      "strategy",
+      "hack-and-slash"
+    ],
+    "moods": [
+      "solemn",
+      "epic",
+      "ominous"
+    ],
+    "settings": [
+      "underworld",
+      "medieval kingdom",
+      "storm-tossed sea",
+      "gothic cathedral"
+    ],
+    "nearest": [
+      "020",
+      "073",
+      "041"
+    ]
+  },
+  {
+    "id": "073",
+    "slug": "graphite-pencil-sketch",
+    "name": "Graphite pencil sketch",
+    "family": "noir/monochrome",
+    "references": [
+      {
+        "title": "Take On Me (music video)",
+        "year": 1985,
+        "creator": "Steve Barron (animation by Michael Patterson and Candace Reckinger)",
+        "medium": "rotoscoped pencil animation",
+        "url": "https://en.wikipedia.org/wiki/Take_On_Me"
+      },
+      {
+        "title": "Hotel Dusk: Room 215",
+        "year": 2007,
+        "creator": "Cing",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Hotel_Dusk:_Room_215"
+      },
+      {
+        "title": "Drawing Hands",
+        "year": 1948,
+        "creator": "M. C. Escher",
+        "medium": "lithograph",
+        "url": "https://en.wikipedia.org/wiki/Drawing_Hands"
+      }
+    ],
+    "palette": [
+      "#f7f5ef",
+      "#4a4a4a",
+      "#8c8c8c",
+      "#c8c6c0",
+      "#2e2e2e"
+    ],
+    "genres": [
+      "detective-mystery",
+      "puzzle",
+      "exploration",
+      "racing",
+      "platformer"
+    ],
+    "moods": [
+      "intimate",
+      "wistful",
+      "playful"
+    ],
+    "settings": [
+      "old roadside hotel",
+      "sketchbook pages",
+      "1980s diner",
+      "city backstreets"
+    ],
+    "nearest": [
+      "072",
+      "074",
+      "020"
+    ]
+  },
+  {
+    "id": "074",
+    "slug": "white-void-ink-splat",
+    "name": "White void ink-splat",
+    "family": "noir/monochrome",
+    "references": [
+      {
+        "title": "The Unfinished Swan",
+        "year": 2012,
+        "creator": "Giant Sparrow",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/The_Unfinished_Swan"
+      },
+      {
+        "title": "Elegy to the Spanish Republic",
+        "year": "1948-1967",
+        "creator": "Robert Motherwell",
+        "medium": "painting series",
+        "url": "https://en.wikipedia.org/wiki/Robert_Motherwell"
+      },
+      {
+        "title": "White on White",
+        "year": 1918,
+        "creator": "Kazimir Malevich",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/White_on_White"
+      }
+    ],
+    "palette": [
+      "#ffffff",
+      "#0a0a0a",
+      "#f2f2f2",
+      "#e6c84b",
+      "#d9d9d9"
+    ],
+    "genres": [
+      "exploration",
+      "puzzle",
+      "platformer",
+      "stealth"
+    ],
+    "moods": [
+      "quiet",
+      "curious",
+      "eerie"
+    ],
+    "settings": [
+      "storybook garden",
+      "empty castle",
+      "hedge maze",
+      "unfinished kingdom"
+    ],
+    "nearest": [
+      "063",
+      "073",
+      "069"
+    ]
+  },
+  {
+    "id": "075",
+    "slug": "impressionist-broken-colour",
+    "name": "Impressionist broken colour",
+    "family": "fine-art movement",
+    "references": [
+      {
+        "title": "Impression, Sunrise",
+        "year": 1872,
+        "creator": "Monet",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Impression,_Sunrise"
+      },
+      {
+        "title": "Water Lilies",
+        "year": "1896-1926",
+        "creator": "Monet",
+        "medium": "oil painting series",
+        "url": "https://en.wikipedia.org/wiki/Water_Lilies_(Monet_series)"
+      },
+      {
+        "title": "Bal du moulin de la Galette",
+        "year": 1876,
+        "creator": "Pierre-Auguste Renoir",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Bal_du_moulin_de_la_Galette"
+      },
+      {
+        "title": "Haystacks",
+        "year": "1890-1891",
+        "creator": "Monet",
+        "medium": "oil painting series",
+        "url": "https://en.wikipedia.org/wiki/Haystacks_(Monet_series)"
+      },
+      {
+        "title": "Woman with a Parasol - Madame Monet and Her Son",
+        "year": 1875,
+        "creator": "Monet",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Woman_with_a_Parasol_–_Madame_Monet_and_Her_Son"
+      }
+    ],
+    "palette": [
+      "#a9c7e8",
+      "#f4d9a0",
+      "#e8a6b8",
+      "#7fae7a",
+      "#c9b6e4",
+      "#f6f0dc",
+      "#5f7fb5",
+      "#e9905a"
+    ],
+    "genres": [
+      "exploration",
+      "simulation",
+      "puzzle",
+      "sports"
+    ],
+    "moods": [
+      "serene",
+      "sunny",
+      "nostalgic"
+    ],
+    "settings": [
+      "water garden",
+      "riverside village",
+      "summer meadow",
+      "seaside harbour at dawn"
+    ],
+    "nearest": [
+      "077",
+      "076",
+      "028"
+    ]
+  },
+  {
+    "id": "076",
+    "slug": "swirling-impasto",
+    "name": "Swirling impasto",
+    "family": "fine-art movement",
+    "references": [
+      {
+        "title": "The Starry Night",
+        "year": 1889,
+        "creator": "Vincent van Gogh",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/The_Starry_Night"
+      },
+      {
+        "title": "Wheatfield with Crows",
+        "year": 1890,
+        "creator": "Vincent van Gogh",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Wheatfield_with_Crows"
+      },
+      {
+        "title": "Cafe Terrace at Night",
+        "year": 1888,
+        "creator": "Vincent van Gogh",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Café_Terrace_at_Night"
+      },
+      {
+        "title": "Loving Vincent",
+        "year": 2017,
+        "creator": "Dorota Kobiela and Hugh Welchman (BreakThru Films)",
+        "medium": "oil-painted animated film",
+        "url": "https://en.wikipedia.org/wiki/Loving_Vincent"
+      },
+      {
+        "title": "Bedroom in Arles",
+        "year": 1888,
+        "creator": "Vincent van Gogh",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Bedroom_in_Arles"
+      }
+    ],
+    "palette": [
+      "#1f3b7a",
+      "#f2c12e",
+      "#2e6f8e",
+      "#e07b2a",
+      "#3f7a3a",
+      "#f5e6a8",
+      "#16203a"
+    ],
+    "genres": [
+      "exploration",
+      "action-adventure",
+      "detective-mystery",
+      "rpg",
+      "puzzle"
+    ],
+    "moods": [
+      "restless",
+      "dreamlike",
+      "intense"
+    ],
+    "settings": [
+      "Provençal village",
+      "wheat fields",
+      "starry night hillside",
+      "café terrace"
+    ],
+    "nearest": [
+      "075",
+      "028",
+      "077"
+    ]
+  },
+  {
+    "id": "077",
+    "slug": "pointillist-dot-field",
+    "name": "Pointillist dot field",
+    "family": "fine-art movement",
+    "references": [
+      {
+        "title": "A Sunday Afternoon on the Island of La Grande Jatte",
+        "year": 1886,
+        "creator": "Georges Seurat",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/A_Sunday_Afternoon_on_the_Island_of_La_Grande_Jatte"
+      },
+      {
+        "title": "Bathers at Asnieres",
+        "year": 1884,
+        "creator": "Georges Seurat",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Bathers_at_Asnières"
+      },
+      {
+        "title": "The Circus",
+        "year": 1891,
+        "creator": "Georges Seurat",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/The_Circus_(Seurat)"
+      },
+      {
+        "title": "The Port of Saint-Tropez",
+        "year": 1901,
+        "creator": "Paul Signac",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Paul_Signac"
+      }
+    ],
+    "palette": [
+      "#2f6fb0",
+      "#f2c94c",
+      "#e2574c",
+      "#4caf6a",
+      "#f08a3c",
+      "#8a5fb5",
+      "#f5efdc"
+    ],
+    "genres": [
+      "puzzle",
+      "strategy",
+      "simulation",
+      "sports",
+      "tower-defense",
+      "exploration"
+    ],
+    "moods": [
+      "calm",
+      "formal",
+      "sunny"
+    ],
+    "settings": [
+      "riverside park",
+      "seaside harbour",
+      "circus ring",
+      "Sunday promenade"
+    ],
+    "nearest": [
+      "075",
+      "081",
+      "055"
+    ]
+  },
+  {
+    "id": "078",
+    "slug": "analytic-cubist-facets",
+    "name": "Analytic cubist facets",
+    "family": "fine-art movement",
+    "references": [
+      {
+        "title": "Les Demoiselles d'Avignon",
+        "year": 1907,
+        "creator": "Pablo Picasso",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Les_Demoiselles_d'Avignon"
+      },
+      {
+        "title": "Violin and Candlestick",
+        "year": 1910,
+        "creator": "Georges Braque",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Georges_Braque"
+      },
+      {
+        "title": "Portrait of Daniel-Henry Kahnweiler",
+        "year": 1910,
+        "creator": "Pablo Picasso",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Daniel-Henry_Kahnweiler_(Picasso)"
+      },
+      {
+        "title": "Houses at l'Estaque",
+        "year": 1908,
+        "creator": "Georges Braque",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Houses_at_l'Estaque"
+      },
+      {
+        "title": "Nude Descending a Staircase, No. 2",
+        "year": 1912,
+        "creator": "Marcel Duchamp",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Nude_Descending_a_Staircase,_No._2"
+      }
+    ],
+    "palette": [
+      "#8a7a5c",
+      "#5f5a50",
+      "#c9b88f",
+      "#3a3a36",
+      "#a89a7a",
+      "#6f7a7a",
+      "#e3d9c0"
+    ],
+    "genres": [
+      "puzzle",
+      "detective-mystery",
+      "exploration",
+      "stealth",
+      "strategy"
+    ],
+    "moods": [
+      "cerebral",
+      "disorienting",
+      "sombre"
+    ],
+    "settings": [
+      "Paris studio",
+      "café table still life",
+      "hillside village",
+      "music hall"
+    ],
+    "nearest": [
+      "071",
+      "066",
+      "079"
+    ]
+  },
+  {
+    "id": "079",
+    "slug": "primary-grid-neoplasticism",
+    "name": "Primary grid neoplasticism",
+    "family": "fine-art movement",
+    "references": [
+      {
+        "title": "Composition with Red, Blue and Yellow",
+        "year": 1930,
+        "creator": "Piet Mondrian",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Composition_with_Red,_Blue_and_Yellow"
+      },
+      {
+        "title": "Broadway Boogie Woogie",
+        "year": 1943,
+        "creator": "Piet Mondrian",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Broadway_Boogie_Woogie"
+      },
+      {
+        "title": "Rietveld Schroder House",
+        "year": 1924,
+        "creator": "Gerrit Rietveld",
+        "medium": "architecture",
+        "url": "https://en.wikipedia.org/wiki/Rietveld_Schröder_House"
+      },
+      {
+        "title": "Red and Blue Chair",
+        "year": 1918,
+        "creator": "Gerrit Rietveld",
+        "medium": "furniture",
+        "url": "https://en.wikipedia.org/wiki/Red_and_Blue_Chair"
+      }
+    ],
+    "palette": [
+      "#f7f5ee",
+      "#111111",
+      "#d21f1f",
+      "#1f3fa8",
+      "#f2cc1f",
+      "#bdbdbd"
+    ],
+    "genres": [
+      "puzzle",
+      "strategy",
+      "tower-defense",
+      "platformer",
+      "simulation",
+      "racing"
+    ],
+    "moods": [
+      "orderly",
+      "crisp",
+      "upbeat"
+    ],
+    "settings": [
+      "modernist house",
+      "city street grid",
+      "abstract board",
+      "gallery"
+    ],
+    "nearest": [
+      "098",
+      "054",
+      "080"
+    ]
+  },
+  {
+    "id": "080",
+    "slug": "constructivist-agit-poster",
+    "name": "Constructivist agit poster",
+    "family": "fine-art movement",
+    "references": [
+      {
+        "title": "Beat the Whites with the Red Wedge",
+        "year": 1919,
+        "creator": "El Lissitzky",
+        "medium": "lithographic poster",
+        "url": "https://en.wikipedia.org/wiki/Beat_the_Whites_with_the_Red_Wedge"
+      },
+      {
+        "title": "Books (Please)! In All Branches of Knowledge",
+        "year": 1924,
+        "creator": "Alexander Rodchenko",
+        "medium": "poster",
+        "url": "https://en.wikipedia.org/wiki/Alexander_Rodchenko"
+      },
+      {
+        "title": "Monument to the Third International",
+        "year": 1920,
+        "creator": "Vladimir Tatlin",
+        "medium": "architectural model",
+        "url": "https://en.wikipedia.org/wiki/Tatlin's_Tower"
+      },
+      {
+        "title": "Black Square",
+        "year": 1915,
+        "creator": "Kazimir Malevich",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Black_Square"
+      },
+      {
+        "title": "Battleship Potemkin",
+        "year": 1925,
+        "creator": "Sergei Eisenstein",
+        "medium": "silent film",
+        "url": "https://en.wikipedia.org/wiki/Battleship_Potemkin"
+      }
+    ],
+    "palette": [
+      "#d7261e",
+      "#111111",
+      "#efe6d0",
+      "#8a8a8a",
+      "#f4f0e4"
+    ],
+    "genres": [
+      "strategy",
+      "tower-defense",
+      "top-down-shooter",
+      "vehicle-combat",
+      "fighting",
+      "platformer"
+    ],
+    "moods": [
+      "urgent",
+      "militant",
+      "bold"
+    ],
+    "settings": [
+      "revolutionary city",
+      "factory floor",
+      "battleship harbour",
+      "rally square"
+    ],
+    "nearest": [
+      "064",
+      "008",
+      "098"
+    ]
+  },
+  {
+    "id": "081",
+    "slug": "ben-day-pop-art",
+    "name": "Ben-Day pop art",
+    "family": "fine-art movement",
+    "references": [
+      {
+        "title": "Whaam!",
+        "year": 1963,
+        "creator": "Roy Lichtenstein",
+        "medium": "acrylic and oil painting",
+        "url": "https://en.wikipedia.org/wiki/Whaam!"
+      },
+      {
+        "title": "Drowning Girl",
+        "year": 1963,
+        "creator": "Roy Lichtenstein",
+        "medium": "oil and acrylic painting",
+        "url": "https://en.wikipedia.org/wiki/Drowning_Girl"
+      },
+      {
+        "title": "Look Mickey",
+        "year": 1961,
+        "creator": "Roy Lichtenstein",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Look_Mickey"
+      },
+      {
+        "title": "Oh, Jeff...I Love You, Too...But...",
+        "year": 1964,
+        "creator": "Roy Lichtenstein",
+        "medium": "oil and acrylic painting",
+        "url": "https://en.wikipedia.org/wiki/Oh,_Jeff...I_Love_You,_Too...But..."
+      },
+      {
+        "title": "Marilyn Diptych",
+        "year": 1962,
+        "creator": "Andy Warhol",
+        "medium": "silkscreen painting",
+        "url": "https://en.wikipedia.org/wiki/Marilyn_Diptych"
+      }
+    ],
+    "palette": [
+      "#000000",
+      "#ffffff",
+      "#e3202a",
+      "#ffd500",
+      "#1747b5",
+      "#f7c8b0"
+    ],
+    "genres": [
+      "fighting",
+      "vehicle-combat",
+      "top-down-shooter",
+      "platformer",
+      "puzzle"
+    ],
+    "moods": [
+      "bold",
+      "ironic",
+      "melodramatic"
+    ],
+    "settings": [
+      "1960s America",
+      "aerial dogfight",
+      "comic-book city"
+    ],
+    "nearest": [
+      "009",
+      "011",
+      "079"
+    ]
+  },
+  {
+    "id": "082",
+    "slug": "ukiyo-e-woodblock",
+    "name": "Ukiyo-e woodblock",
+    "family": "fine-art movement",
+    "references": [
+      {
+        "title": "The Great Wave off Kanagawa",
+        "year": 1831,
+        "creator": "Katsushika Hokusai",
+        "medium": "woodblock print",
+        "url": "https://en.wikipedia.org/wiki/The_Great_Wave_off_Kanagawa"
+      },
+      {
+        "title": "Fine Wind, Clear Morning",
+        "year": 1831,
+        "creator": "Katsushika Hokusai",
+        "medium": "woodblock print",
+        "url": "https://en.wikipedia.org/wiki/Fine_Wind,_Clear_Morning"
+      },
+      {
+        "title": "The Fifty-three Stations of the Tokaido",
+        "year": 1834,
+        "creator": "Utagawa Hiroshige",
+        "medium": "woodblock print series",
+        "url": "https://en.wikipedia.org/wiki/The_Fifty-three_Stations_of_the_Tōkaidō"
+      },
+      {
+        "title": "Sudden Shower over Shin-Ohashi Bridge and Atake",
+        "year": 1857,
+        "creator": "Utagawa Hiroshige",
+        "medium": "woodblock print",
+        "url": "https://en.wikipedia.org/wiki/Sudden_Shower_over_Shin-Ōhashi_Bridge_and_Atake"
+      }
+    ],
+    "palette": [
+      "#1d3557",
+      "#3d6a9e",
+      "#f1e3c4",
+      "#c9d6c2",
+      "#c8553d",
+      "#2b2b2b",
+      "#e8c98a"
+    ],
+    "genres": [
+      "action-adventure",
+      "exploration",
+      "hack-and-slash",
+      "stealth",
+      "strategy",
+      "soulslike"
+    ],
+    "moods": [
+      "serene",
+      "contemplative",
+      "dramatic"
+    ],
+    "settings": [
+      "Edo-period Japan",
+      "coastal fishing village",
+      "mountain road",
+      "stormy sea"
+    ],
+    "nearest": [
+      "022",
+      "011",
+      "083"
+    ]
+  },
+  {
+    "id": "083",
+    "slug": "art-nouveau-ornamental-poster",
+    "name": "Art Nouveau ornamental poster",
+    "family": "fine-art movement",
+    "references": [
+      {
+        "title": "Gismonda",
+        "year": 1894,
+        "creator": "Alphonse Mucha",
+        "medium": "lithographic poster",
+        "url": "https://en.wikipedia.org/wiki/Gismonda"
+      },
+      {
+        "title": "The Seasons",
+        "year": 1896,
+        "creator": "Alphonse Mucha",
+        "medium": "colour lithograph series",
+        "url": "https://en.wikipedia.org/wiki/The_Seasons_(Mucha)"
+      },
+      {
+        "title": "Hotel Tassel",
+        "year": 1893,
+        "creator": "Victor Horta",
+        "medium": "architecture",
+        "url": "https://en.wikipedia.org/wiki/Hôtel_Tassel"
+      },
+      {
+        "title": "The Kiss",
+        "year": 1908,
+        "creator": "Gustav Klimt",
+        "medium": "oil and gold leaf painting",
+        "url": "https://en.wikipedia.org/wiki/The_Kiss_(Klimt)"
+      },
+      {
+        "title": "Paris Metro entrances",
+        "year": 1900,
+        "creator": "Hector Guimard",
+        "medium": "cast-iron architecture",
+        "url": "https://en.wikipedia.org/wiki/Paris_Metro_entrances_by_Hector_Guimard"
+      }
+    ],
+    "palette": [
+      "#3b2f2f",
+      "#e8d5a9",
+      "#c9a24b",
+      "#8fa98b",
+      "#d9897a",
+      "#6f8fa8",
+      "#f3ead2",
+      "#a8566a"
+    ],
+    "genres": [
+      "puzzle",
+      "rpg",
+      "exploration",
+      "detective-mystery",
+      "strategy"
+    ],
+    "moods": [
+      "elegant",
+      "dreamy",
+      "romantic"
+    ],
+    "settings": [
+      "Belle Époque Paris",
+      "flower garden",
+      "theatre",
+      "fairy-tale court"
+    ],
+    "nearest": [
+      "082",
+      "086",
+      "096"
+    ]
+  },
+  {
+    "id": "084",
+    "slug": "metaphysical-long-shadow-plaza",
+    "name": "Metaphysical long-shadow plaza",
+    "family": "fine-art movement",
+    "references": [
+      {
+        "title": "The Song of Love",
+        "year": 1914,
+        "creator": "Giorgio de Chirico",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/The_Song_of_Love"
+      },
+      {
+        "title": "Mystery and Melancholy of a Street",
+        "year": 1914,
+        "creator": "Giorgio de Chirico",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Mystery_and_Melancholy_of_a_Street"
+      },
+      {
+        "title": "Ico",
+        "year": 2001,
+        "creator": "Team Ico (Fumito Ueda)",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Ico"
+      },
+      {
+        "title": "The Persistence of Memory",
+        "year": 1931,
+        "creator": "Salvador Dali",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/The_Persistence_of_Memory"
+      },
+      {
+        "title": "The Disquieting Muses",
+        "year": "1916-1918",
+        "creator": "Giorgio de Chirico",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/The_Disquieting_Muses"
+      }
+    ],
+    "palette": [
+      "#d9a441",
+      "#c8553d",
+      "#2f5d50",
+      "#1f3a4d",
+      "#e9d9a6",
+      "#6b4a32",
+      "#f2efe2"
+    ],
+    "genres": [
+      "puzzle",
+      "exploration",
+      "action-adventure",
+      "detective-mystery",
+      "stealth",
+      "platformer"
+    ],
+    "moods": [
+      "eerie",
+      "melancholic",
+      "lonely",
+      "dreamlike"
+    ],
+    "settings": [
+      "empty Italian piazza",
+      "deserted seaside town",
+      "ruined castle"
+    ],
+    "nearest": [
+      "059",
+      "061",
+      "097"
+    ]
+  },
+  {
+    "id": "085",
+    "slug": "baroque-chiaroscuro",
+    "name": "Baroque chiaroscuro",
+    "family": "fine-art movement",
+    "references": [
+      {
+        "title": "The Calling of Saint Matthew",
+        "year": 1600,
+        "creator": "Caravaggio",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/The_Calling_of_Saint_Matthew"
+      },
+      {
+        "title": "Judith Beheading Holofernes",
+        "year": "c. 1599",
+        "creator": "Caravaggio",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Judith_Beheading_Holofernes_(Caravaggio)"
+      },
+      {
+        "title": "The Night Watch",
+        "year": 1642,
+        "creator": "Rembrandt",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/The_Night_Watch"
+      },
+      {
+        "title": "Girl with a Pearl Earring",
+        "year": "c. 1665",
+        "creator": "Johannes Vermeer",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Girl_with_a_Pearl_Earring"
+      },
+      {
+        "title": "Barry Lyndon",
+        "year": 1975,
+        "creator": "Stanley Kubrick",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Barry_Lyndon"
+      }
+    ],
+    "palette": [
+      "#0a0705",
+      "#3a2416",
+      "#8a4b2a",
+      "#c9905a",
+      "#e8cfa0",
+      "#7a1f1a",
+      "#2a3a2f"
+    ],
+    "genres": [
+      "soulslike",
+      "stealth",
+      "survival-horror",
+      "detective-mystery",
+      "action-adventure",
+      "rpg"
+    ],
+    "moods": [
+      "dramatic",
+      "solemn",
+      "tense"
+    ],
+    "settings": [
+      "17th-century tavern",
+      "candlelit chapel",
+      "palace interior",
+      "cellar"
+    ],
+    "nearest": [
+      "029",
+      "068",
+      "049"
+    ]
+  },
+  {
+    "id": "086",
+    "slug": "insular-illuminated-manuscript",
+    "name": "Insular illuminated manuscript",
+    "family": "fine-art movement",
+    "references": [
+      {
+        "title": "Book of Kells",
+        "year": "c. 800",
+        "creator": "Columban monks (Iona and Kells)",
+        "medium": "illuminated manuscript",
+        "url": "https://en.wikipedia.org/wiki/Book_of_Kells"
+      },
+      {
+        "title": "Lindisfarne Gospels",
+        "year": "c. 715-720",
+        "creator": "Eadfrith of Lindisfarne",
+        "medium": "illuminated manuscript",
+        "url": "https://en.wikipedia.org/wiki/Lindisfarne_Gospels"
+      },
+      {
+        "title": "The Secret of Kells",
+        "year": 2009,
+        "creator": "Cartoon Saloon (Tomm Moore and Nora Twomey)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/The_Secret_of_Kells"
+      },
+      {
+        "title": "Song of the Sea",
+        "year": 2014,
+        "creator": "Cartoon Saloon (Tomm Moore)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Song_of_the_Sea_(2014_film)"
+      }
+    ],
+    "palette": [
+      "#2b1d14",
+      "#e9d8a6",
+      "#c8962e",
+      "#b3261e",
+      "#1f6f6b",
+      "#3b4fa0",
+      "#6a3d7c",
+      "#3f7d3a"
+    ],
+    "genres": [
+      "puzzle",
+      "platformer",
+      "exploration",
+      "action-adventure",
+      "rpg",
+      "tower-defense"
+    ],
+    "moods": [
+      "mystical",
+      "reverent",
+      "whimsical"
+    ],
+    "settings": [
+      "early medieval Ireland",
+      "island monastery",
+      "enchanted forest",
+      "Viking raid coast"
+    ],
+    "nearest": [
+      "056",
+      "083",
+      "100"
+    ]
+  },
+  {
+    "id": "087",
+    "slug": "greek-black-figure-pottery",
+    "name": "Greek black-figure pottery",
+    "family": "fine-art movement",
+    "references": [
+      {
+        "title": "Achilles and Ajax playing a board game (Vatican amphora)",
+        "year": "c. 540-530 BC",
+        "creator": "Exekias",
+        "medium": "black-figure amphora",
+        "url": "https://en.wikipedia.org/wiki/Exekias"
+      },
+      {
+        "title": "Francois Vase",
+        "year": "c. 570 BC",
+        "creator": "Kleitias and Ergotimos",
+        "medium": "black-figure krater",
+        "url": "https://en.wikipedia.org/wiki/François_Vase"
+      },
+      {
+        "title": "Apotheon",
+        "year": 2015,
+        "creator": "Alientrap",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Apotheon"
+      },
+      {
+        "title": "Hercules",
+        "year": 1997,
+        "creator": "Walt Disney Feature Animation",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Hercules_(1997_film)"
+      }
+    ],
+    "palette": [
+      "#c96a2b",
+      "#1a1512",
+      "#e08a45",
+      "#7a2f1a",
+      "#f2e2c4",
+      "#5a2a1a"
+    ],
+    "genres": [
+      "hack-and-slash",
+      "platformer",
+      "action-adventure",
+      "fighting",
+      "sports",
+      "strategy"
+    ],
+    "moods": [
+      "heroic",
+      "mythic",
+      "austere"
+    ],
+    "settings": [
+      "ancient Greece",
+      "Mount Olympus",
+      "the underworld",
+      "Trojan battlefield"
+    ],
+    "nearest": [
+      "058",
+      "086",
+      "064"
+    ]
+  },
+  {
+    "id": "088",
+    "slug": "neon-grid-cyberspace",
+    "name": "Neon grid cyberspace",
+    "family": "sci-fi/neon",
+    "references": [
+      {
+        "title": "Tron",
+        "year": 1982,
+        "creator": "Steven Lisberger (Walt Disney Productions)",
+        "medium": "live-action and computer-animated film",
+        "url": "https://en.wikipedia.org/wiki/Tron"
+      },
+      {
+        "title": "Tron: Legacy",
+        "year": 2010,
+        "creator": "Joseph Kosinski (Walt Disney Pictures)",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Tron:_Legacy"
+      },
+      {
+        "title": "Tron 2.0",
+        "year": 2003,
+        "creator": "Monolith Productions",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Tron_2.0"
+      },
+      {
+        "title": "Rez",
+        "year": 2001,
+        "creator": "United Game Artists",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Rez_(video_game)"
+      }
+    ],
+    "palette": [
+      "#020308",
+      "#0a1220",
+      "#18e0ff",
+      "#ff7a1a",
+      "#e8fbff",
+      "#123a5a"
+    ],
+    "genres": [
+      "racing",
+      "vehicle-combat",
+      "fps",
+      "third-person-shooter",
+      "fighting",
+      "top-down-shooter"
+    ],
+    "moods": [
+      "cold",
+      "sleek",
+      "tense"
+    ],
+    "settings": [
+      "inside a computer",
+      "digital arena",
+      "light-cycle grid"
+    ],
+    "nearest": [
+      "040",
+      "090",
+      "089"
+    ]
+  },
+  {
+    "id": "089",
+    "slug": "rain-soaked-tech-noir",
+    "name": "Rain-soaked tech-noir",
+    "family": "sci-fi/neon",
+    "references": [
+      {
+        "title": "Blade Runner",
+        "year": 1982,
+        "creator": "Ridley Scott",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Blade_Runner"
+      },
+      {
+        "title": "Blade Runner 2049",
+        "year": 2017,
+        "creator": "Denis Villeneuve",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Blade_Runner_2049"
+      },
+      {
+        "title": "Cyberpunk 2077",
+        "year": 2020,
+        "creator": "CD Projekt Red",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Cyberpunk_2077"
+      },
+      {
+        "title": "Deus Ex: Human Revolution",
+        "year": 2011,
+        "creator": "Eidos-Montreal",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Deus_Ex:_Human_Revolution"
+      },
+      {
+        "title": "The Fifth Element",
+        "year": 1997,
+        "creator": "Luc Besson",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/The_Fifth_Element"
+      }
+    ],
+    "palette": [
+      "#0b0e14",
+      "#1c2a3a",
+      "#ff3b6b",
+      "#18c8e8",
+      "#f2a23a",
+      "#6b4fd8",
+      "#3a3a3a",
+      "#d8e6f0"
+    ],
+    "genres": [
+      "detective-mystery",
+      "third-person-shooter",
+      "fps",
+      "stealth",
+      "rpg",
+      "action-adventure"
+    ],
+    "moods": [
+      "brooding",
+      "melancholic",
+      "tense"
+    ],
+    "settings": [
+      "rainy megacity street",
+      "neon night market",
+      "corporate tower",
+      "rooftop landing pad"
+    ],
+    "nearest": [
+      "017",
+      "029",
+      "093"
+    ]
+  },
+  {
+    "id": "090",
+    "slug": "synthwave-sunset-grid",
+    "name": "Synthwave sunset grid",
+    "family": "sci-fi/neon",
+    "references": [
+      {
+        "title": "Far Cry 3: Blood Dragon",
+        "year": 2013,
+        "creator": "Ubisoft Montreal",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Far_Cry_3:_Blood_Dragon"
+      },
+      {
+        "title": "Out Run",
+        "year": 1986,
+        "creator": "Sega AM2 (Yu Suzuki)",
+        "medium": "arcade video game",
+        "url": "https://en.wikipedia.org/wiki/Out_Run"
+      },
+      {
+        "title": "Hotline Miami",
+        "year": 2012,
+        "creator": "Dennaton Games",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Hotline_Miami"
+      },
+      {
+        "title": "Kung Fury",
+        "year": 2015,
+        "creator": "David Sandberg",
+        "medium": "live-action short film",
+        "url": "https://en.wikipedia.org/wiki/Kung_Fury"
+      },
+      {
+        "title": "Drive",
+        "year": 2011,
+        "creator": "Nicolas Winding Refn",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Drive_(2011_film)"
+      }
+    ],
+    "palette": [
+      "#12002b",
+      "#ff2fd1",
+      "#19f0ff",
+      "#ff9a1f",
+      "#6a1bff",
+      "#ffe14d",
+      "#2a0a4a"
+    ],
+    "genres": [
+      "racing",
+      "fps",
+      "top-down-shooter",
+      "vehicle-combat",
+      "fighting",
+      "third-person-shooter"
+    ],
+    "moods": [
+      "nostalgic",
+      "energetic",
+      "campy"
+    ],
+    "settings": [
+      "1980s Miami",
+      "neon highway",
+      "retro-future wasteland"
+    ],
+    "nearest": [
+      "088",
+      "060",
+      "040"
+    ]
+  },
+  {
+    "id": "091",
+    "slug": "clinical-white-space-age",
+    "name": "Clinical white space-age",
+    "family": "sci-fi/neon",
+    "references": [
+      {
+        "title": "2001: A Space Odyssey",
+        "year": 1968,
+        "creator": "Stanley Kubrick",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/2001:_A_Space_Odyssey"
+      },
+      {
+        "title": "THX 1138",
+        "year": 1971,
+        "creator": "George Lucas",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/THX_1138"
+      },
+      {
+        "title": "Moon",
+        "year": 2009,
+        "creator": "Duncan Jones",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Moon_(2009_film)"
+      },
+      {
+        "title": "Portal 2",
+        "year": 2011,
+        "creator": "Valve",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Portal_2"
+      },
+      {
+        "title": "Oblivion",
+        "year": 2013,
+        "creator": "Joseph Kosinski",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Oblivion_(2013_film)"
+      }
+    ],
+    "palette": [
+      "#f4f4f1",
+      "#dcdcd8",
+      "#b9bcbf",
+      "#1a1a1c",
+      "#c4302b",
+      "#8fa3b0"
+    ],
+    "genres": [
+      "puzzle",
+      "exploration",
+      "simulation",
+      "stealth",
+      "fps"
+    ],
+    "moods": [
+      "sterile",
+      "calm",
+      "eerie",
+      "lonely"
+    ],
+    "settings": [
+      "space station",
+      "lunar base",
+      "test laboratory",
+      "orbital spacecraft"
+    ],
+    "nearest": [
+      "035",
+      "063",
+      "092"
+    ]
+  },
+  {
+    "id": "092",
+    "slug": "industrial-used-future",
+    "name": "Industrial used-future",
+    "family": "sci-fi/neon",
+    "references": [
+      {
+        "title": "Alien",
+        "year": 1979,
+        "creator": "Ridley Scott",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Alien_(film)"
+      },
+      {
+        "title": "Alien: Isolation",
+        "year": 2014,
+        "creator": "Creative Assembly",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Alien:_Isolation"
+      },
+      {
+        "title": "Aliens",
+        "year": 1986,
+        "creator": "James Cameron",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Aliens_(film)"
+      },
+      {
+        "title": "Dead Space",
+        "year": 2008,
+        "creator": "EA Redwood Shores",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Dead_Space_(2008_video_game)"
+      },
+      {
+        "title": "Outland",
+        "year": 1981,
+        "creator": "Peter Hyams",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Outland_(film)"
+      }
+    ],
+    "palette": [
+      "#0f1412",
+      "#2b332f",
+      "#59645c",
+      "#8a8f80",
+      "#c9b458",
+      "#a8402a",
+      "#3f6f6a"
+    ],
+    "genres": [
+      "survival-horror",
+      "stealth",
+      "fps",
+      "third-person-shooter",
+      "exploration",
+      "survival-craft"
+    ],
+    "moods": [
+      "tense",
+      "claustrophobic",
+      "oppressive",
+      "lonely"
+    ],
+    "settings": [
+      "commercial towing spaceship",
+      "mining station",
+      "deep-space refinery",
+      "colony outpost"
+    ],
+    "nearest": [
+      "029",
+      "094",
+      "089"
+    ]
+  },
+  {
+    "id": "093",
+    "slug": "bioluminescent-alien-jungle",
+    "name": "Bioluminescent alien jungle",
+    "family": "sci-fi/neon",
+    "references": [
+      {
+        "title": "Avatar",
+        "year": 2009,
+        "creator": "James Cameron",
+        "medium": "live-action and computer-animated film",
+        "url": "https://en.wikipedia.org/wiki/Avatar_(2009_film)"
+      },
+      {
+        "title": "Avatar: The Way of Water",
+        "year": 2022,
+        "creator": "James Cameron",
+        "medium": "live-action and computer-animated film",
+        "url": "https://en.wikipedia.org/wiki/Avatar:_The_Way_of_Water"
+      },
+      {
+        "title": "Avatar: Frontiers of Pandora",
+        "year": 2023,
+        "creator": "Massive Entertainment",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Avatar:_Frontiers_of_Pandora"
+      },
+      {
+        "title": "Subnautica",
+        "year": 2018,
+        "creator": "Unknown Worlds Entertainment",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Subnautica"
+      }
+    ],
+    "palette": [
+      "#030812",
+      "#0a2a3a",
+      "#19e6c8",
+      "#3a7bff",
+      "#c44dff",
+      "#7dff6a",
+      "#ff6ad5"
+    ],
+    "genres": [
+      "exploration",
+      "survival-craft",
+      "action-adventure",
+      "stealth",
+      "rpg"
+    ],
+    "moods": [
+      "wondrous",
+      "serene",
+      "mysterious"
+    ],
+    "settings": [
+      "alien jungle at night",
+      "glowing cave",
+      "deep ocean reef",
+      "forested alien moon"
+    ],
+    "nearest": [
+      "027",
+      "088",
+      "089"
+    ]
+  },
+  {
+    "id": "094",
+    "slug": "biomechanical-monochrome",
+    "name": "Biomechanical monochrome",
+    "family": "sci-fi/neon",
+    "references": [
+      {
+        "title": "Necronom IV",
+        "year": 1976,
+        "creator": "H. R. Giger",
+        "medium": "airbrush painting",
+        "url": "https://en.wikipedia.org/wiki/H._R._Giger"
+      },
+      {
+        "title": "Alien",
+        "year": 1979,
+        "creator": "Ridley Scott (creature and derelict design by H. R. Giger)",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/Alien_(film)"
+      },
+      {
+        "title": "Scorn",
+        "year": 2022,
+        "creator": "Ebb Software",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Scorn_(video_game)"
+      },
+      {
+        "title": "Dark Seed",
+        "year": 1992,
+        "creator": "Cyberdreams",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Dark_Seed_(video_game)"
+      }
+    ],
+    "palette": [
+      "#0c0c0d",
+      "#2b2a28",
+      "#5b5852",
+      "#8c877c",
+      "#b9b2a2",
+      "#3f3a36"
+    ],
+    "genres": [
+      "survival-horror",
+      "exploration",
+      "puzzle",
+      "fps",
+      "soulslike"
+    ],
+    "moods": [
+      "oppressive",
+      "grotesque",
+      "unsettling"
+    ],
+    "settings": [
+      "derelict alien ship",
+      "living machine temple",
+      "bone-walled labyrinth"
+    ],
+    "nearest": [
+      "092",
+      "031",
+      "030"
+    ]
+  },
+  {
+    "id": "095",
+    "slug": "brass-steampunk",
+    "name": "Brass steampunk",
+    "family": "sci-fi/neon",
+    "references": [
+      {
+        "title": "Steamboy",
+        "year": 2004,
+        "creator": "Sunrise (Katsuhiro Otomo)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Steamboy"
+      },
+      {
+        "title": "Syberia",
+        "year": 2002,
+        "creator": "Microids (Benoit Sokal)",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Syberia"
+      },
+      {
+        "title": "20,000 Leagues Under the Sea",
+        "year": 1954,
+        "creator": "Richard Fleischer (Walt Disney Productions)",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/20,000_Leagues_Under_the_Sea_(1954_film)"
+      },
+      {
+        "title": "Machinarium",
+        "year": 2009,
+        "creator": "Amanita Design",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Machinarium"
+      },
+      {
+        "title": "Castle in the Sky",
+        "year": 1986,
+        "creator": "Studio Ghibli (Hayao Miyazaki)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/Castle_in_the_Sky"
+      }
+    ],
+    "palette": [
+      "#b5802e",
+      "#7a4a1e",
+      "#3a2a1c",
+      "#c9a36a",
+      "#5a6b5e",
+      "#2f1f14",
+      "#e6c88a",
+      "#8a2f1f"
+    ],
+    "genres": [
+      "puzzle",
+      "action-adventure",
+      "exploration",
+      "vehicle-combat",
+      "platformer",
+      "strategy"
+    ],
+    "moods": [
+      "adventurous",
+      "inventive",
+      "warm",
+      "nostalgic"
+    ],
+    "settings": [
+      "Victorian factory",
+      "airship deck",
+      "clockwork workshop",
+      "steam submarine"
+    ],
+    "nearest": [
+      "096",
+      "026",
+      "092"
+    ]
+  },
+  {
+    "id": "096",
+    "slug": "art-deco",
+    "name": "Art Deco streamline",
+    "family": "design/architecture",
+    "references": [
+      {
+        "title": "Chrysler Building",
+        "year": 1930,
+        "creator": "William Van Alen",
+        "medium": "architecture",
+        "url": "https://en.wikipedia.org/wiki/Chrysler_Building"
+      },
+      {
+        "title": "BioShock",
+        "year": 2007,
+        "creator": "2K Boston and 2K Australia",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/BioShock"
+      },
+      {
+        "title": "Autoportrait (Tamara in a Green Bugatti)",
+        "year": 1929,
+        "creator": "Tamara de Lempicka",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Autoportrait_(Tamara_in_a_Green_Bugatti)"
+      },
+      {
+        "title": "The Great Gatsby",
+        "year": 2013,
+        "creator": "Baz Luhrmann",
+        "medium": "live-action film",
+        "url": "https://en.wikipedia.org/wiki/The_Great_Gatsby_(2013_film)"
+      },
+      {
+        "title": "Metropolis",
+        "year": 1927,
+        "creator": "Fritz Lang",
+        "medium": "silent film",
+        "url": "https://en.wikipedia.org/wiki/Metropolis_(1927_film)"
+      }
+    ],
+    "palette": [
+      "#0f1a24",
+      "#c9a24b",
+      "#1f4e4a",
+      "#e8dcc0",
+      "#7a1f2b",
+      "#2b2b2b",
+      "#8fa3a8"
+    ],
+    "genres": [
+      "detective-mystery",
+      "fps",
+      "action-adventure",
+      "stealth",
+      "racing",
+      "strategy"
+    ],
+    "moods": [
+      "glamorous",
+      "grand",
+      "decadent",
+      "ominous"
+    ],
+    "settings": [
+      "1920s skyscraper",
+      "underwater city",
+      "luxury ocean liner",
+      "grand hotel lobby"
+    ],
+    "nearest": [
+      "095",
+      "083",
+      "099"
+    ]
+  },
+  {
+    "id": "097",
+    "slug": "brutalist-concrete",
+    "name": "Brutalist concrete",
+    "family": "design/architecture",
+    "references": [
+      {
+        "title": "Control",
+        "year": 2019,
+        "creator": "Remedy Entertainment",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Control_(video_game)"
+      },
+      {
+        "title": "Barbican Estate",
+        "year": 1976,
+        "creator": "Chamberlin, Powell and Bon",
+        "medium": "architecture",
+        "url": "https://en.wikipedia.org/wiki/Barbican_Estate"
+      },
+      {
+        "title": "Unite d'Habitation",
+        "year": 1952,
+        "creator": "Le Corbusier",
+        "medium": "architecture",
+        "url": "https://en.wikipedia.org/wiki/Unité_d'habitation"
+      },
+      {
+        "title": "Boston City Hall",
+        "year": 1968,
+        "creator": "Kallmann McKinnell and Knowles",
+        "medium": "architecture",
+        "url": "https://en.wikipedia.org/wiki/Boston_City_Hall"
+      },
+      {
+        "title": "Habitat 67",
+        "year": 1967,
+        "creator": "Moshe Safdie",
+        "medium": "architecture",
+        "url": "https://en.wikipedia.org/wiki/Habitat_67"
+      }
+    ],
+    "palette": [
+      "#8c8a84",
+      "#6b6964",
+      "#a9a69f",
+      "#4a4946",
+      "#c4c1b8",
+      "#2e2d2b"
+    ],
+    "genres": [
+      "third-person-shooter",
+      "stealth",
+      "puzzle",
+      "exploration",
+      "fps"
+    ],
+    "moods": [
+      "austere",
+      "imposing",
+      "uncanny"
+    ],
+    "settings": [
+      "government bureau",
+      "housing estate",
+      "civic megastructure",
+      "underground bunker"
+    ],
+    "nearest": [
+      "030",
+      "035",
+      "091"
+    ]
+  },
+  {
+    "id": "098",
+    "slug": "bauhaus-primary-geometry",
+    "name": "Bauhaus primary geometry",
+    "family": "design/architecture",
+    "references": [
+      {
+        "title": "Triadic Ballet",
+        "year": 1922,
+        "creator": "Oskar Schlemmer",
+        "medium": "ballet costume and stage design",
+        "url": "https://en.wikipedia.org/wiki/Triadisches_Ballett"
+      },
+      {
+        "title": "Bauhaus Dessau building",
+        "year": 1926,
+        "creator": "Walter Gropius",
+        "medium": "architecture",
+        "url": "https://en.wikipedia.org/wiki/Bauhaus_Dessau"
+      },
+      {
+        "title": "Yellow-Red-Blue",
+        "year": 1925,
+        "creator": "Wassily Kandinsky",
+        "medium": "oil painting",
+        "url": "https://en.wikipedia.org/wiki/Wassily_Kandinsky"
+      },
+      {
+        "title": "Wassily Chair",
+        "year": 1926,
+        "creator": "Marcel Breuer",
+        "medium": "furniture",
+        "url": "https://en.wikipedia.org/wiki/Wassily_chair"
+      },
+      {
+        "title": "Bauhaus chess set",
+        "year": 1924,
+        "creator": "Josef Hartwig",
+        "medium": "product design",
+        "url": "https://en.wikipedia.org/wiki/Josef_Hartwig"
+      }
+    ],
+    "palette": [
+      "#f5f2ea",
+      "#e63329",
+      "#1c4fa1",
+      "#f7c81e",
+      "#141414",
+      "#bfbfbf"
+    ],
+    "genres": [
+      "puzzle",
+      "strategy",
+      "platformer",
+      "tower-defense",
+      "sports"
+    ],
+    "moods": [
+      "playful",
+      "orderly",
+      "cerebral"
+    ],
+    "settings": [
+      "white stage",
+      "design school studio",
+      "abstract board game",
+      "geometric theatre"
+    ],
+    "nearest": [
+      "079",
+      "052",
+      "067"
+    ]
+  },
+  {
+    "id": "099",
+    "slug": "atomic-age-googie",
+    "name": "Atomic-age Googie",
+    "family": "design/architecture",
+    "references": [
+      {
+        "title": "Fallout 4",
+        "year": 2015,
+        "creator": "Bethesda Game Studios",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Fallout_4"
+      },
+      {
+        "title": "The Jetsons",
+        "year": 1962,
+        "creator": "Hanna-Barbera Productions",
+        "medium": "animated TV series",
+        "url": "https://en.wikipedia.org/wiki/The_Jetsons"
+      },
+      {
+        "title": "The Incredibles",
+        "year": 2004,
+        "creator": "Pixar Animation Studios (Brad Bird)",
+        "medium": "animated film",
+        "url": "https://en.wikipedia.org/wiki/The_Incredibles"
+      },
+      {
+        "title": "Theme Building, Los Angeles International Airport",
+        "year": 1961,
+        "creator": "Pereira and Luckman with Paul Williams and Welton Becket",
+        "medium": "architecture",
+        "url": "https://en.wikipedia.org/wiki/Theme_Building"
+      },
+      {
+        "title": "TWA Flight Center",
+        "year": 1962,
+        "creator": "Eero Saarinen",
+        "medium": "architecture",
+        "url": "https://en.wikipedia.org/wiki/TWA_Flight_Center"
+      }
+    ],
+    "palette": [
+      "#4fc1c9",
+      "#f26b4f",
+      "#f6d55c",
+      "#f4efe1",
+      "#e8a0b4",
+      "#3b3b3b",
+      "#c9d1d3"
+    ],
+    "genres": [
+      "action-adventure",
+      "racing",
+      "survival-craft",
+      "simulation",
+      "vehicle-combat",
+      "rpg"
+    ],
+    "moods": [
+      "optimistic",
+      "playful",
+      "cheerful",
+      "retro"
+    ],
+    "settings": [
+      "1950s space-age suburb",
+      "roadside diner",
+      "sky city",
+      "world's fair"
+    ],
+    "nearest": [
+      "034",
+      "096",
+      "057"
+    ]
+  },
+  {
+    "id": "100",
+    "slug": "islamic-geometric-tile",
+    "name": "Islamic geometric tile",
+    "family": "design/architecture",
+    "references": [
+      {
+        "title": "Alhambra",
+        "year": "13th-14th century",
+        "creator": "Nasrid dynasty builders",
+        "medium": "palace architecture with zellij tilework",
+        "url": "https://en.wikipedia.org/wiki/Alhambra"
+      },
+      {
+        "title": "Shah Mosque, Isfahan",
+        "year": 1629,
+        "creator": "Safavid builders (Ali Akbar Isfahani)",
+        "medium": "architecture with tile mosaic",
+        "url": "https://en.wikipedia.org/wiki/Shah_Mosque_(Isfahan)"
+      },
+      {
+        "title": "Engare",
+        "year": 2017,
+        "creator": "Mahdi Bahrami",
+        "medium": "video game",
+        "url": "https://en.wikipedia.org/wiki/Engare"
+      },
+      {
+        "title": "Bou Inania Madrasa, Fez",
+        "year": 1355,
+        "creator": "Marinid builders",
+        "medium": "architecture with zellij tilework",
+        "url": "https://en.wikipedia.org/wiki/Bou_Inania_Madrasa"
+      }
+    ],
+    "palette": [
+      "#1f5fa8",
+      "#2f9e8f",
+      "#f2efe6",
+      "#d9a441",
+      "#1a1a1a",
+      "#b3472e",
+      "#6fc3d0"
+    ],
+    "genres": [
+      "puzzle",
+      "exploration",
+      "action-adventure",
+      "platformer",
+      "strategy"
+    ],
+    "moods": [
+      "contemplative",
+      "serene",
+      "ornate"
+    ],
+    "settings": [
+      "Moorish palace",
+      "Persian mosque courtyard",
+      "desert madrasa",
+      "walled garden"
+    ],
+    "nearest": [
+      "055",
+      "053",
+      "086"
+    ]
+  }
+]
