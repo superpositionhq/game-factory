@@ -336,6 +336,25 @@ committed yet ([docs/task-check.md](../../docs/task-check.md)). The check builds
 probe plugin, plays them and writes VALID or INVALID per task with the reasons and the measured values. **A task ships only when the task check says VALID**; for INVALID, fix the task (the
 docs' "Common reasons and fixes"), never the threshold toward what the start happens to measure.
 
+### Every ask has a check
+
+Before the game is packaged, read each task you wrote, its instruction against its checks, yourself; no tool or
+reviewer does this for you. Lab reviews every task the same way at submission and sends the game back when an ask has
+no check at all, naming the task and the sentence. Fix what you find in the task before it is packed:
+
+- **Go through the instruction sentence by sentence.** The game's description, the controls line and the art line are
+  context, and so are a bug report's symptom, cause and steps to reproduce; they ask nothing. What should now be
+  different is an ask (in a bug report, the expected behaviour); what must stay as it is is a keep.
+- **Every ask has a check that would fail if that ask alone were not done**: a required probe for each key, direction,
+  scenario or case it lists; a number it states held on both sides; a look-and-feel ask as a `judge` rubric item in
+  the ask's own words, with the judge's own `plays` when the state must be reached first; motion as a probe sampled
+  every 0.1 s with `agg` `step`, or a `judge` with a run of `shots`.
+- **A keep that names a thing** ("the boss bar still starts full") has a required `still_works` check reading that
+  thing; a bare "everything else keeps working" is covered by any required `still_works` check.
+- **Never cover an ask with an optional probe, a `build` or `boot` check, or the `worked_well` actions judge alone.**
+- **An ask that cannot be checked fairly** comes out: rewrite the instruction so it no longer asks for it, rather than
+  ship an ask nothing checks. The instruction stays plain prose, never fields.
+
 ## 6. Difficulty, limits and what the validator enforces
 
 - `difficulty` is `hard` (at most one of the game's tasks may be `medium`, never `easy`), and `tags` hold `long-thread`.
@@ -377,6 +396,7 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 | pitfall | rule |
 |---|---|
 | checks or log patterns shown in the brief | the agent gets the brief only |
+| an ask in the brief that no check reads, so Lab sends the game back | read each task against its checks before packing (section 5, "Every ask has a check") |
 | a model judge misread screenshots and failed a correct fix (or passed a wrong one) | pass/fail by probes only; judges are `"required": false` |
 | a judge was shown only the title screen, or never the state a task's own key opens | the `judge` check names its own `plays` that reach it (section 5) |
 | five stills couldn't show whether a move eased or feet slid | a number: a probe sampled every 0.1 s with `agg` `step`; only seen: a `judge` with a short play and `shots` (section 5) |
