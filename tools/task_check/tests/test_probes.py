@@ -1258,3 +1258,43 @@ class Editor(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NamesTheStartHas(unittest.TestCase):
+    """write-tasks section 5: a required probe never depends on a name only the reference has (a class, tag, map or
+    asset the thread created), since another fair build names it otherwise."""
+
+    def test_a_name_or_map_the_thread_created_is_refused_and_the_rest_pass(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as d:
+            def git(*a):
+                return subprocess.run(["git", "-C", d, *a], check=True, capture_output=True).stdout.decode().strip()
+            git("init", "-q")
+            git("config", "user.email", "t@t")
+            git("config", "user.name", "t")
+            (Path(d) / "Source" / "G").mkdir(parents=True)
+            (Path(d) / "Content" / "Maps").mkdir(parents=True)
+            (Path(d) / "Source" / "G" / "Hero.h").write_text("class AGHero {};\n")
+            (Path(d) / "Content" / "Maps" / "L_Start.umap").write_bytes(b"")
+            git("add", "-A")
+            git("commit", "-qm", "start")
+            (Path(d) / "Source" / "G" / "Turret.h").write_text('class AGTurret {}; Tags.Add("Turret");\n')
+            (Path(d) / "Content" / "Maps" / "L_Yard.umap").write_bytes(b"")
+            git("add", "-A")
+            git("commit", "-qm", "reference")
+            def check(name, measure, play="look", **extra):
+                return {"kind": "probe", "name": name, "measure": measure, "play": play, **extra}
+            task = {"seed": {"commit": git("rev-parse", "HEAD~1"), "reference": git("rev-parse", "HEAD")},
+                    "milestones": [{"name": "done", "checks": [
+                        check("turrets", {"probe": "actors", "select": {"class": "AGTurret_C"}, "field": "count"}),
+                        check("tagged", {"probe": "actors", "select": {"tag": "Turret"}, "field": "count"}),
+                        check("yard", {"probe": "pawn", "field": "z"},
+                              play={"name": "yard", "seconds": 5, "map": "/Game/Maps/L_Yard?Scenario=1"}),
+                        check("hero", {"probe": "actors", "select": {"class": "AGHero"}, "field": "count"}),
+                        check("lights", {"probe": "components", "field": "count",
+                                         "select": {"class": "PointLightComponent", "owner": {"class": "AGHero"}}}),
+                        check("pattern", {"probe": "actors", "select": {"class": "AGTur*"}, "field": "count"}),
+                        check("optional", {"probe": "actors", "select": {"class": "AGTurret"}, "field": "count"},
+                              required=False)]}]}
+            found = tasks.validator().reference_only_names(d, task)
+        self.assertEqual(found, [("turrets", "AGTurret"), ("tagged", "Turret"), ("yard", "/Game/Maps/L_Yard")])

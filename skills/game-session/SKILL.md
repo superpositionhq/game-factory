@@ -86,6 +86,15 @@ offers one (AGENTS.md, "Only these skills"). Do what they don't cover by hand un
   the screen, never at hip height or jammed into the body (spring arm collisions in narrow spaces, crouching).
 - **Quality bar:** main menu, settings (volume, resolution, mouse sensitivity), pause, save/load where it fits, HUD,
   sound, clear win/lose, packaged Win64 Shipping build. Recorded and TTS voices are allowed.
+- **Room for hard tasks.** A game's tasks come from its own history (write-tasks skill), and strong agents miss what
+  only shows when the game runs. So build these in, and work them over several rounds rather than in one commit:
+  feedback for every gameplay event (a HUD readout, marker, sound or effect); visible state changes (materials,
+  colours, lights, dressing); a pause menu with settings and back navigation on Escape; tuned numbers a player feels
+  (ranges, detection, damage, timers). Fix each playtest issue in its own commit whose message says what the player
+  saw, so the thread can be found and checked later.
+- **Every state reachable by a scenario.** Each scenario option starts straight in the situation it shows, so a check
+  reaches any moment in a short play from `play_map` options; no state reachable only after minutes of play or only
+  from the title menu.
 
 ## Names
 

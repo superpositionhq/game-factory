@@ -990,9 +990,82 @@ def check_repo_tasks(rep, repo, files=None):
                           for k in ('commit', 'reference'))
             for e in thread_span_errors(repo, seed, on_main):
                 rep.error(a, f'{label}: {e} (write-tasks section 1: only long threads of multiple edits)')
+            for check, name in reference_only_names(repo, t):
+                rep.error(a, f'{label}: check {check} names {name}, which only the reference has: another fair build '
+                             'names it otherwise; select by what it does or where it is (write-tasks section 5)')
     for e in task_bar_errors(levels):
         rep.error(a, f'{ref}: {e} (write-tasks section 1)')
     rep.note(a, f'{len(paths)} task(s) on {ref} (at least {MIN_TASKS}, up to about 10, every one a long thread)')
+
+
+# What a probe names: the class, tag, name, mesh and asset path keys of its selects (owner selects and `has` included)
+# and the asset/map paths of its measure and play. A name that exists in the reference and not at the start can only be
+# matched by a build that chose the reference's names; another fair build reads as absent (write-tasks section 5).
+NAMED_KEYS = ('class', 'tag', 'name', 'mesh', 'slate')
+PATH_KEYS = ('asset', 'map')
+
+
+def probe_names(c):
+    """The literal names and /Game paths a probe check depends on (wildcards skipped: they match by pattern)."""
+    names, paths = set(), set()
+
+    def walk(v, key=None):
+        if isinstance(v, dict):
+            for k, x in v.items():
+                walk(x, k)
+        elif isinstance(v, list):
+            for x in v:
+                walk(x, key)
+        elif isinstance(v, str) and key in PATH_KEYS and v.startswith('/Game/'):
+            path = v.split('?', 1)[0].split('.', 1)[0]   # a map's URL options and an object's .Name left out
+            if not any(ch in path for ch in '*?'):
+                paths.add(path)
+        elif isinstance(v, str) and not any(ch in v for ch in '*?'):
+            if key in NAMED_KEYS and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{2,120}', v):
+                names.add(re.sub(r'_C$', '', v))   # a Blueprint's generated class names its asset
+
+    walk(c.get('measure'))
+    play = c.get('play')
+    if isinstance(play, dict):
+        walk({'map': play.get('map')})
+        for i in play.get('inputs') or []:
+            if isinstance(i, dict):
+                walk(i.get('teleport_to'))
+    return names, paths
+
+
+def _has_name(repo, commit, name, tree):
+    """Whether `name` shows at `commit`: as a file name in its tree, or in a text file under Source/ or Config/."""
+    if any(re.search(rf'(^|/){re.escape(name)}(\.|$)', p) for p in tree):
+        return True
+    return _git(repo, 'grep', '-q', '-I', '-w', '-F', name, commit, '--', 'Source', 'Config').returncode == 0
+
+
+def reference_only_names(repo, t):
+    """[(check, name)] of required probes that name something the reference has and the start doesn't (a class, tag,
+    widget, component, mesh, map or asset the thread itself created). Engine names are in neither tree and pass."""
+    seed = t.get('seed') if isinstance(t.get('seed'), dict) else {}
+    start, ref = seed.get('commit'), seed.get('reference')
+    if not (start and ref):
+        return []
+    trees = {k: _git(repo, '-c', 'core.quotepath=off', 'ls-tree', '-r', '--name-only', k).stdout.decode('utf-8', 'replace')
+             .splitlines() for k in (start, ref)}
+    found, cache = [], {}
+    for m in t.get('milestones') or []:
+        for c in (m.get('checks') or []) if isinstance(m, dict) else []:
+            if not (isinstance(c, dict) and c.get('kind') == 'probe' and c.get('required', True)):
+                continue
+            names, paths = probe_names(c)
+            for p in sorted(paths):
+                rel = 'Content/' + p[len('/Game/'):] + '.'
+                if any(x.startswith(rel) for x in trees[ref]) and not any(x.startswith(rel) for x in trees[start]):
+                    found.append((c.get('name'), p))
+            for n in sorted(names):
+                if n not in cache:
+                    cache[n] = (_has_name(repo, ref, n, trees[ref]), _has_name(repo, start, n, trees[start]))
+                if cache[n][0] and not cache[n][1]:
+                    found.append((c.get('name'), n))
+    return found
 
 
 ENGINE = '5.7'   # the checker's engine: it builds a start exactly as committed
