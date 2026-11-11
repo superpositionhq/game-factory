@@ -586,6 +586,8 @@ UI_SIGNATURE_AGGS = ('changes', 'any', 'all', 'count')  # a ui signature's value
 DRAWN_NEAR = ('drawn', 'motion', 'base_r', 'base_g', 'base_b', 'base_change')  # a drawn measure near a point
 DRAWN_LINE = ('drawn', 'reach', 'length')    # a drawn measure along a line
 WAITS = 300   # seconds of real time a task play's waits add at most
+JUDGE_PLAY_SHOTS = 5   # the screenshots a judge check is shown of each of its own plays, unless its `shots` says
+JUDGE_SHOTS = 20       # the screenshots a judge check is shown at most: its plays times its shots
 
 
 def nears(o):
@@ -737,7 +739,8 @@ def probe_errors(c, seed, ref, plays):
 def task_semantic_errors(t):
     """What the schema cannot say (the task format's own rules): check names unique, `needs` naming earlier
     checks, a code judge or a reference judge only with seed.reference, a before/after judge only with a seed, a judge's
-    own `plays` each named once in the check and under a task play's rules (task_play_errors), and the
+    own `plays` each named once in the check and under a task play's rules (task_play_errors), its `shots` only with
+    plays of its own and its plays times its shots 20 at most, and the
     probe rules (probe_errors); and a task whose start doesn't build (a build check's `fails_at_start`) has nothing
     that needs the start played: no start-relative threshold, no before/after judge (docs/task-probes.md, 3.1)."""
     errs, seen, plays = [], set(), {}
@@ -768,6 +771,12 @@ def task_semantic_errors(t):
                 for p in own:
                     errs.extend(task_play_errors(n, p, plays))
                     errs.extend(near_errors(n, p.get('inputs')))
+                shots = c.get('shots', JUDGE_PLAY_SHOTS)
+                if shots != JUDGE_PLAY_SHOTS and not own:
+                    errs.append(f'judge check {n} sets shots but names no play of its own to take them in')
+                if isinstance(shots, int) and len(own) * shots > JUDGE_SHOTS:
+                    errs.append(f"judge check {n} asks {len(own)} plays of {shots} screenshots: more than a judge's "
+                                f'{JUDGE_SHOTS}')
             if k == 'code_judge' and not ref:
                 errs.append(f'check {n}: a code judge needs seed.reference')
             if k == 'judge' and c.get('before') and not seed:

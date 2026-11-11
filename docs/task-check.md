@@ -126,7 +126,8 @@ A task is **VALID** when all of this holds:
   `"weight": 0`. Judges aren't measured here, so a judge's weight isn't covered by this rule.
 
 Never part of the check: judges (`judge`, `code_judge`, `actions_judge`: quality scores, never pass/fail; a judge's
-own `plays`, [task-probes.md](task-probes.md) section 3.2, are validated, and played only where a probe names the same play), trace probes
+own `plays` and `shots`, [task-probes.md](task-probes.md) section 3.2, are validated, and a play is played only where
+a probe names the same one), trace probes
 (they read an agent's own tool calls), and `package` checks. The reference's other failures (`log_absent`,
 `file_exists`, probes with `"required": false`) are reported as notes and never make a task INVALID.
 

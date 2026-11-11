@@ -103,6 +103,32 @@ class Tasks(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, said):
                 task_with(*checks)
 
+    def test_a_judge_check_with_plays_may_ask_a_run_of_screenshots(self):
+        judge = {"kind": "judge", "name": "door_eases", "question": "Does the door ease open?", "required": False,
+                 "rubric": [{"key": "eases", "criterion": "The door slows into its open position."}]}
+        door = {"name": "open_door", "seconds": 5, "inputs": [{"t": 1.0, "key": "E", "press": True}]}
+        two = [door, {**door, "name": "close_door"}]
+        self.assertEqual(first_check(task_with({**judge, "plays": [door], "shots": 20}))["shots"], 20)
+        task_with({**judge, "plays": two, "shots": 10})
+        task_with({**judge, "plays": [{**door, "name": f"play_{i}"} for i in range(4)], "shots": 5})
+        task_with({**judge, "plays": [door], "shots": 2})
+        task_with({**judge, "shots": 5})
+        # a probe measuring the same play every 0.1 s for its largest jump, beside the judge
+        task_with(probe(play={**door, "every": 0.1}, measure={"probe": "pawn", "field": "z", "agg": "step"},
+                        expect={"op": "<=", "value": 30}), {**judge, "plays": [{**door, "every": 0.1}], "shots": 20})
+        for check, said in [
+            ({**judge, "shots": 8}, "sets shots but names no play of its own"),
+            ({**judge, "plays": two, "shots": 11}, "asks 2 plays of 11 screenshots"),
+            ({**judge, "plays": [{**door, "name": f"play_{i}"} for i in range(4)], "shots": 6}, "more than a judge's 20"),
+            ({**judge, "plays": [door], "shots": 1}, "1 < 2"),
+            ({**judge, "plays": [door], "shots": 21}, "21 > 20"),
+            ({**judge, "plays": [door], "shots": 7.5}, "expected integer"),
+        ]:
+            with self.assertRaisesRegex(ValueError, said):
+                task_with(check)
+        with self.assertRaisesRegex(ValueError, "not one of"):
+            task_with(probe(measure={"probe": "pawn", "field": "z", "agg": "jolt"}))
+
     def test_a_screen_measure_takes_a_threshold_from_the_start_never_a_literal(self):
         screen = {"probe": "screen", "rect": [0.25, 0.25, 0.75, 0.75], "field": "luminance", "window": [10, 20]}
         with self.assertRaisesRegex(ValueError, "never a literal value"):
@@ -258,11 +284,14 @@ class Reducers(unittest.TestCase):
     def test_every_agg_and_of(self):
         values = [0.0, 2.0, None, 5.0, 0.0]
         want = {"min": 0, "max": 5, "mean": 1.75, "first": 0, "last": 0, "delta": 0, "any": 1, "all": 0, "count": 2,
-                "sum": 7, "range": 5, "changes": 3, "rises": 2, "falls": 1}
+                "sum": 7, "range": 5, "changes": 3, "rises": 2, "falls": 1, "step": 5}
         for agg, value in want.items():
             self.assertEqual(probes.aggregate(values, agg), value, agg)
         self.assertAlmostEqual(probes.aggregate(values, "std"), 2.0463, places=4)
         self.assertIsNone(probes.aggregate([None], "sum"))
+        self.assertEqual(probes.aggregate([4.0], "step"), 0, "one sample has no neighbour")
+        self.assertEqual(probes.aggregate([0.0, 1.0, 2.0, 3.0], "step"), 1, "an eased move")
+        self.assertEqual(probes.aggregate([0.0, 0.0, 3.0, 3.0], "step"), 3, "a snap over the same distance")
         self.assertEqual(probes.aggregate([3.0, 4.0], "all"), 1)
         self.assertEqual({of: probes.combine([3.0, 0.0, None], of) for of in
                           ("count", "any", "all", "min", "max", "mean", "sum", "first")},

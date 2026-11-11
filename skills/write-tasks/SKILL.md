@@ -267,9 +267,14 @@ plays that reach that state (when a probe's play already does, reuse it under it
 
 The judge is shown 5 screenshots of each play, at 10, 30, 50, 70 and 90% of its `seconds`: time the inputs so the
 state is on screen at those moments. A play also runs on the task's start (`"before": true`) and on the reference
-(`"reference": true`), so it must run there too; a key that does nothing at the start is fine. Stills can't show
-motion that happens between frames (sliding feet, a shake, an ease instead of a cut): that stays a probe's job or is
-left out ([docs/task-probes.md](../../docs/task-probes.md), section 3.2).
+(`"reference": true`), so it must run there too; a key that does nothing at the start is fine
+([docs/task-probes.md](../../docs/task-probes.md), section 3.2).
+
+**Motion is asked two ways.** Motion that is a number (eases instead of snapping, gentle, no sudden moves) is a
+probe: a task play with `"every": 0.1` and a field over the window of the move, with `"agg": "step"` for the largest
+jump between two samples (section 2.1 of the same doc). Motion that can only be seen (feet that slide, a trail) is a
+`judge` with a short play and many `shots` (2-20 of each play, plays times shots 20 at most): a 5 s play with
+`"shots": 20` is a frame every 0.25 s, screenshot i of N at `seconds` x (i + 0.5) / N.
 
 A probe names one measurement and its threshold:
 
@@ -374,6 +379,7 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 | checks or log patterns shown in the brief | the agent gets the brief only |
 | a model judge misread screenshots and failed a correct fix (or passed a wrong one) | pass/fail by probes only; judges are `"required": false` |
 | a judge was shown only the title screen, or never the state a task's own key opens | the `judge` check names its own `plays` that reach it (section 5) |
+| five stills couldn't show whether a move eased or feet slid | a number: a probe sampled every 0.1 s with `agg` `step`; only seen: a `judge` with a short play and `shots` (section 5) |
 | a fix made only in binary assets failed the code review | the cause is checked by its measured effect (a probe), never by reading the diff |
 | a pixel threshold moved between GPUs | light and colour from the engine (`light`, `grading`); the frame's luminance (`screen`) only calibrated or relative to the start, never a literal |
 | a level dressed with instanced meshes counted as one actor | count placed pieces (`pieces`), not actors or components |

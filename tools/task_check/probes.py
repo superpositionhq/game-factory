@@ -306,6 +306,8 @@ def aggregate(values, agg):
         return float(sum(1 for a, b in zip(found, found[1:]) if b > a + 1e-9))
     if agg == "falls":
         return float(sum(1 for a, b in zip(found, found[1:]) if b < a - 1e-9))
+    if agg == "step":
+        return float(max((abs(b - a) for a, b in zip(found, found[1:])), default=0.0))
     raise ValueError(f"no agg {agg}")
 
 
