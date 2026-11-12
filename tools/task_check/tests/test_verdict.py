@@ -80,6 +80,15 @@ class Verdict(unittest.TestCase):
         start = record(checked("hud", "probe", False), checked("camera", "probe", True), checked("spawns", "probe", False))
         self.assertEqual(verdict.verdict(task, ref, start), (False, ["start already passes required probe camera"], []))
 
+    def test_a_weight_0_required_guard_outside_still_works_may_pass_at_the_start(self):
+        task = task_with(milestones=[{"name": "fixed", "checks": [probe("hud"), probe("camera", weight=0)]}])
+        ref = record(checked("hud", "probe", True), checked("camera", "probe", True))
+        start = record(checked("hud", "probe", False), checked("camera", "probe", True))
+        self.assertEqual(verdict.verdict(task, ref, start), (True, [], []))
+        start["checks"][0] = checked("hud", "probe", True)
+        self.assertEqual(verdict.verdict(task, ref, start)[1], ["start already passes every required probe"],
+                         "guards alone never make a task: one weighted outcome must still fail at the start")
+
     def test_a_task_with_no_reference_is_checked_on_its_start_alone(self):
         task = task_with(probe(expect={"op": ">=", "start_plus": 50}), seed=NO_FIX)
         self.assertTrue(verdict.verdict(task, None, record(checked("hero_on_ground", "probe", False)))[0])

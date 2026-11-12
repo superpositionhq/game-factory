@@ -19,6 +19,8 @@ A task is VALID when
 - either way, every required probe of the task's `still_works` milestone already passes at the start: what still works
   must hold there, or the probe is broken and would fail every correct solution. A still-works probe the start
   measured nothing for (its play crashed: the task's own bug) is no sign of a broken probe;
+- a required check of weight 0 outside still_works that the start passes is a guard, not refused (it rewards
+  nothing; a task may hold more guards than still_works' 32);
 - a no-op scores zero (owner, 2026-11-04): no check the start passes carries weight. The cloud's score is the weighted
   share of checks passed, so build, boot and still-works checks and anything else true of the start take `"weight": 0`.
 Judges (judge, code_judge, actions_judge) never take part, and neither do trace probes or packaging."""
@@ -145,6 +147,9 @@ def verdict(task, reference, start):
     elif all(c["passed"] for c in gates):
         why.append("start already passes every required probe")
     else:  # every outcome is one issue of the thread: one the start already has rewards no work (write-tasks section 5)
+        # A required check of weight 0 rewards nothing, so one the start passes is a guard wherever it sits (a task
+        # with more guards than still_works holds): it gates, never pays, and is not refused for passing at the start.
+        weight = {c["name"]: c["weight"] for _, c in tasks.checks(task)}
         why.extend(f"start already passes required probe {c['name']}" for c in gates
-                   if c["passed"] and c not in broken)
+                   if c["passed"] and c not in broken and weight.get(c["name"], 1) > 0)
     return not why, why, notes
