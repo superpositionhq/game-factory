@@ -110,8 +110,8 @@ hooks and never overwrites it.
   that has sessions under way. A transcript written while the agent's summary setting was off holds no summary text:
   those rows come out `redacted`. Claude Code deletes transcripts after its clean-up period (30 days by default), so
   run it before they go.
-  The summary is what the agent shows: Claude Code's `thinking` blocks, Codex's `summary_text` (never its
-  `raw_content`, the reasoning itself where a model gives it). A long command output that Claude Code cut in the
+  The summary is what the agent saved: Claude Code's `thinking` blocks, Codex's `summary_text` and, where the rollout
+  holds it as plain text, its `raw_content`. A long command output that Claude Code cut in the
   result and saved to a file (`persistedOutputPath`) is read from that file while it is there.
 - Every row carries `agent` (`claude` or `codex`). Codex rows differ in two ways: file edits are `apply_patch` rows
   (`input.command` = the patch; the replay ledger applies them like Write/Edit, `tools/ue-replay/patchfx.py`), and

@@ -297,8 +297,8 @@ function Get-ClaudeMessages([string]$Sid, $Lines, [datetime]$Created) {
   return , $out
 }
 # Codex: the rollout's finished UserMessage, AgentMessage and Reasoning items (item.id is the message's id). A
-# Reasoning item's summary_text is the reasoning summary Codex shows; one saved without readable text is a row with
-# none. raw_content, the reasoning itself where a model gives it, is not a summary and is never read.
+# Reasoning item's summary_text (and raw_content, when the rollout holds it as text) is the reasoning summary; one saved
+# without readable text is a row with none.
 function Get-CodexMessages([string]$Sid, $Lines, [datetime]$Created) {
   $out = New-Object System.Collections.Generic.List[object]
   foreach ($line in $Lines) {
@@ -313,7 +313,7 @@ function Get-CodexMessages([string]$Sid, $Lines, [datetime]$Created) {
     $ts = ConvertTo-Time $o.timestamp
     if ($ts.UtcDateTime -lt $Created) { continue }
     if ($role -eq 'thinking') {
-      $parts = @(foreach ($b in @($it.summary_text)) {
+      $parts = @(foreach ($b in (@($it.summary_text) + @($it.raw_content))) {
           if ($b -is [string]) { $b } elseif ($b -and $b.PSObject.Properties['text'] -and $b.text) { [string]$b.text }
         })
       $text = (@($parts | Where-Object { "$_".Trim() }) -join "`n")

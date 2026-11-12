@@ -9,7 +9,7 @@
   long command output read from
   the file Claude Code saved it to; the reasoning summaries as role "thinking" rows of messages.jsonl in the
   transcript's order (Claude Code thinking blocks, Codex Reasoning items, a summary saved without text as "redacted",
-  Codex raw_content never read), written once; -Backfill adding them to a session recorded before they were and
+  Codex raw_content kept when it is text), written once; -Backfill adding them to a session recorded before they were and
   putting its rows back in order; and config.toml's reasoning-summary settings read and set without touching other lines.
   Exit code: the number of failed checks.
 .EXAMPLE
@@ -126,7 +126,7 @@ try {
   function Item($i, $item) { return (Line ([ordered]@{ timestamp = (T $i); type = 'event_msg'; payload = [ordered]@{ type = 'item_completed'; thread_id = $sid2; turn_id = 'turn-1'; item = $item } })) }
   $lines = @(
     (Item 20 ([ordered]@{ type = 'UserMessage'; id = 'um-1'; content = @([ordered]@{ type = 'text'; text = 'Add a lamp.' }) })),
-    (Item 21 ([ordered]@{ type = 'Reasoning'; id = 'rs-1'; summary_text = @('Plan the lamp.', 'Then wire it.'); raw_content = @('RAW-REASONING-NEVER-READ') })),
+    (Item 21 ([ordered]@{ type = 'Reasoning'; id = 'rs-1'; summary_text = @('Plan the lamp.', 'Then wire it.'); raw_content = @('Raw reasoning kept as text.') })),
     (Item 22 ([ordered]@{ type = 'Reasoning'; id = 'rs-2'; summary_text = @(); raw_content = @() })),
     (Item 23 ([ordered]@{ type = 'CommandExecution'; id = 'call-1'; command = @('cmd', '/c', 'dir'); cwd = $cwd; status = 'completed'; aggregated_output = $big; exit_code = 0 })),
     (Item 24 ([ordered]@{ type = 'AgentMessage'; id = 'am-1'; content = @([ordered]@{ type = 'Text'; text = 'Lamp added.' }); phase = 'final' }))
@@ -139,8 +139,7 @@ try {
   Invoke-Hook (Line ([ordered]@{ session_id = $sid2; transcript_path = $roll; cwd = $cwd; hook_event_name = 'Stop'; last_assistant_message = 'Lamp added.' })) @('-Stop', '-Agent', 'codex')
   $m = @(Rows $messages | Where-Object { $_.session_id -eq $sid2 })
   Check 'Codex: prompt, two reasoning summaries, reply, in the rollout''s order' ((@($m | ForEach-Object { "$($_.role) $($_.message_id)" }) -join ', ') -ceq 'user um-1, thinking rs-1, thinking rs-2, assistant am-1') (@($m | ForEach-Object { "$($_.role) $($_.message_id)" }) -join ', ')
-  Check 'Codex: a summary''s parts are one row; one without a summary is redacted' ($m.Count -eq 4 -and $m[1].text -ceq "Plan the lamp.`nThen wire it." -and $m[1].agent -eq 'codex' -and $null -eq $m[1].redacted -and $m[2].text -ceq '' -and $m[2].redacted -eq $true)
-  Check 'Codex: raw_content is never recorded' (-not [IO.File]::ReadAllText($messages, $utf8).Contains('RAW-REASONING'))
+  Check 'Codex: a summary''s parts are one row; one without a summary is redacted' ($m.Count -eq 4 -and $m[1].text -ceq "Plan the lamp.`nThen wire it.`nRaw reasoning kept as text." -and $m[1].agent -eq 'codex' -and $null -eq $m[1].redacted -and $m[2].text -ceq '' -and $m[2].redacted -eq $true)
   Check 'the other session''s rows are as they were' (@(Rows $messages | Where-Object { $_.session_id -eq $sid }).Count -eq 4)
 
   # ---- config.toml: the settings that make Codex show and save its reasoning summaries ------------------------------
