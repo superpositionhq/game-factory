@@ -147,9 +147,10 @@ def ask_text(task, check, sides, notes=(), blind=False, saved=None):
                 + (f", and the named ones: {', '.join(names)}" if names else "")
         lines.append(f"- `{name}_NN.png`: {label}: {what}.")
     lines += ["", "Each side's folder holds the pictures in time order, play by play."]
-    for side, rows in (saved or {}).items():
-        files = [f"{s} ({'named ' + named(f) if named(f) else f})" for _, _, picked in rows for f, s in picked]
-        lines.append(f"- `{side}/`: {len(files)} picture(s)" + (": " + ", ".join(files) if files else ""))
+    if blind:  # a side's picture count or its notes would tell a blind scorer which side is which
+        lines.append("Which pictures each side has, and any side's notes, are in `sides.md`: open it with the key.")
+    else:
+        lines += side_lines(saved)
     if check["before"] or check["reference"]:
         shown = [x for x, on in (("the start as BEFORE", check["before"]), ("the reference as REFERENCE",
                                                                              check["reference"])) if on]
@@ -169,9 +170,18 @@ def ask_text(task, check, sides, notes=(), blind=False, saved=None):
     elif "agent" in sides:
         lines += ["Score the agent's game the same way, before calling the task too easy or held: the try's own "
                   "number leaves judges out."]
-    if notes:
+    if notes and not blind:
         lines += ["", "## Notes", ""] + [f"- {n}" for n in notes]
     return "\n".join(lines).rstrip() + "\n"
+
+
+def side_lines(saved):
+    """One line per side: its pictures, by file name and what each is."""
+    lines = []
+    for side, rows in (saved or {}).items():
+        files = [f"{s} ({'named ' + named(f) if named(f) else f})" for _, _, picked in rows for f, s in picked]
+        lines.append(f"- `{side}/`: {len(files)} picture(s)" + (": " + ", ".join(files) if files else ""))
+    return lines
 
 
 def save(task, check, played, folder, blind=False, notes=(), rng=None):
@@ -198,10 +208,23 @@ def save(task, check, played, folder, blind=False, notes=(), rng=None):
     key = None
     if blind and len(saved) == 2:
         key = blind_key(saved, rng)
+        # Only pictures both sides have go in: a side with fewer (a play cut short) would be told apart by its count.
+        both = set.intersection(*({p.name for p in (base / side).iterdir()} for side in saved))
+        for side in saved:
+            only = sorted({p.name for p in (base / side).iterdir()} - both)
+            if only:
+                notes.append(f"{side}: {len(only)} picture(s) the other side lacks, left out of the blind copy "
+                             f"({', '.join(only)})")
         for letter, side in key.items():
-            shutil.copytree(base / side, base / "blind" / letter)
+            (base / "blind" / letter).mkdir(parents=True)
+            for name in sorted(both):
+                shutil.copy2(base / side / name, base / "blind" / letter / name)
         (base / "blind" / "key.json").write_text(json.dumps(key, indent=2) + "\n", encoding="utf-8")
     (base / "ask.md").write_text(ask_text(task, check, list(saved), notes, key is not None, saved), encoding="utf-8")
+    if key is not None:  # what would unblind the scorer, kept beside the key
+        (base / "sides.md").write_text("\n".join(["# Each side's pictures", ""] + side_lines(saved)
+                                                 + (["", "## Notes", ""] + [f"- {n}" for n in notes] if notes else []))
+                                       + "\n", encoding="utf-8")
     return {"sides": {s: [n for _, _, p in rows for _, n in p] for s, rows in saved.items()},
             "blind": key is not None, "notes": notes,
             "status": PENDING.format(sides="/".join(saved) or "no side")}
