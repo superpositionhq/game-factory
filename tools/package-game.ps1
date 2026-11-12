@@ -1573,6 +1573,15 @@ New-Item -ItemType Directory -Force $gameOut | Out-Null
 $problems = New-Object 'System.Collections.Generic.List[string]'
 $warnings = New-Object System.Collections.ArrayList
 Write-Step "package $Game @ $short ($variant)  repo $repo  ->  $final$(if ($DryRun) { '  (dry run)' })"
+# The game contract and the sound rule (the owner's decisions of 2026-11-11): a game that fails them is not packaged.
+# tools\validate-game.py --rules-only reads the repo's Source/ as checked out; its findings say what to change.
+$rulesPy = (Get-Command python -ErrorAction SilentlyContinue | Where-Object { $_.Source -notmatch 'WindowsApps' } | Select-Object -First 1).Source
+if (-not $rulesPy) { $rulesPy = 'py' }
+$rulesOut = & $rulesPy (Join-Path $PSScriptRoot 'validate-game.py') $repo --rules-only 2>&1 | ForEach-Object { "$_" }
+if ($LASTEXITCODE -ne 0) {
+    $rulesOut | ForEach-Object { Write-Host $_ }
+    throw "the game fails the game contract or the sound rule (above): bring it up to them before packaging (game-session skill, ""Combat through the engine"" and ""Sound"")"
+}
 
 # Store packs kept out of git: folders under Content/ that are git-ignored in the game's working tree and not tracked
 # at the commit (tower-defense Content/<Pack>/, another game's Content/Fab/). The full variant copies them from the

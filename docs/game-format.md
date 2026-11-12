@@ -54,7 +54,7 @@ history: main never tracks `Tasks/` and never references the tasks branch, the r
 commits on it, and the delivered history leaves it out. Seeds (`seed.commit`, `seed.reference`) point at commits of
 main's history.
 
-**Combat contract (games begun from 2026-11-12).** In a game where anything can be hurt, damage is received in
+**Combat contract (every game not yet submitted, from 2026-11-11).** In a game where anything can be hurt, damage is received in
 `AActor::TakeDamage` (or an `OnTake*Damage` handler) and dealt through `UGameplayStatics::Apply*Damage` or a target's
 `TakeDamage`; every key gameplay state member (a number, bool or enum named with a word of health, hp, hitpoints,
 hull, poise, armor, shield, stamina, mana, lives, dead, alive, dying, stun, stagger, invulnerable, invincible, guard,
@@ -62,8 +62,9 @@ blocking, parry, alert, aggro, awake, asleep, dormant, roused or cooldown; a who
 state) is a `UPROPERTY` of a `UCLASS` or `USTRUCT`, UI classes aside; and a situation that takes more than a minute
 of play to reach has a scenario start option. Every sound the game plays is an imported asset (a file, or a WAV a
 committed script made), never made at run time (no procedural sound wave, synth component or sound generator). The
-validator checks the first two (rule `contract`) and the last (rule `sound`); games begun earlier are not re-validated
-(`--no-contract` skips them).
+validator checks the first two (rule `contract`) and the last (rule `sound`) as errors, and `package-game.ps1` and
+`package-dataset.ps1` refuse a game that fails them (`validate-game.py <repo> --rules-only`). A game in progress is
+brought up to them before it is packaged; games already approved in the Lab are not re-validated.
 
 No tool, vendor or owner names anywhere in the repo's text (the validator scans tracked text files; the packager
 scans binaries too). The build machine's account name (machine paths carry it) counts too: the validator reads it at

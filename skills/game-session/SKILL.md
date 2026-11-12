@@ -83,7 +83,10 @@ offers one (AGENTS.md, "Only these skills"). Do what they don't cover by hand un
   any whole-number or enum member with a word `phase` or `state` (UI copies of them in a widget or HUD class aside). A
   boss phase, an ending or any situation that takes more than a minute of play to reach gets a scenario start option
   (a map URL option or a flag), listed in the README's QA section. `tools/validate-game.py` checks the damage path
-  and the members (rule `contract`, games begun from 2026-11-12). _(failure: combat asks could not be graded because
+  and the members (rule `contract`), and the packager refuses a game that fails it. It applies to every game not yet
+  submitted: a game in progress is brought up to it before it is packaged (route its hits through `TakeDamage` and
+  the `Apply*Damage` calls, make its key state `UPROPERTY` members of an actor or component; owner, 2026-11-11). Games
+  already approved in the Lab are not re-validated. _(failure: combat asks could not be graded because
   damage and state lived in private sim code: a task's hit, stagger, parry, stun or boss phase could not be staged or
   read by the grader, so 500 reworked tasks shipped those asks unchecked)_
 - **Art style (user rule):** every game has one style from the library
@@ -133,7 +136,9 @@ offers one (AGENTS.md, "Only these skills"). Do what they don't cover by hand un
   imported sound asset (a clip from the sound skill, or a WAV a committed script made and imported; user rule,
   2026-11-11); none is made at run time: no `USoundWaveProcedural`/`QueueAudio`, `USynthComponent`, `ISoundGenerator`
   or `OnGenerateAudio` for a game sound, and a MetaSound only plays imported waves (no oscillators or generators).
-  `tools/validate-game.py` scans for them (rule `sound`, games begun from 2026-11-12). _(failure: 52 of 218 games
+  `tools/validate-game.py` scans for them (rule `sound`), and the packager refuses a game that fails it. A game in
+  progress replaces each sound it makes at run time with an imported asset (a WAV a committed script makes, then
+  imports) before it is packaged. _(failure: 52 of 218 games
   synthesised their sounds at run time, so a task asking "each gun has its own sound" had no asset name for the
   grader to tell sounds apart by)_
 - **UI (user rule):** matches the game's art style (its guide's UI and typography line): kit frames, icons, display fonts, styled numbers. No plain or

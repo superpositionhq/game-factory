@@ -280,6 +280,15 @@ function Invoke-ShaRemap([string]$Dir) {
     return $n
 }
 $info = Get-GameInfo $Game
+# The game contract and the sound rule (the owner's decisions of 2026-11-11): a game that fails them is not packaged.
+# tools\validate-game.py --rules-only reads the repo's Source/ as checked out; its findings say what to change.
+$rulesPy = (Get-Command python -ErrorAction SilentlyContinue | Where-Object { $_.Source -notmatch 'WindowsApps' } | Select-Object -First 1).Source
+if (-not $rulesPy) { $rulesPy = 'py' }
+$rulesOut = & $rulesPy (Join-Path $PSScriptRoot 'validate-game.py') $info.Dir --rules-only 2>&1 | ForEach-Object { "$_" }
+if ($LASTEXITCODE -ne 0) {
+    $rulesOut | ForEach-Object { Write-Host $_ }
+    throw "the game fails the game contract or the sound rule (above): bring it up to them before packaging (game-session skill, ""Combat through the engine"" and ""Sound"")"
+}
 # Everything lives in the game's own folder (user decision 2026-10-12): the full dataset zip is <game>\Dataset.zip
 # (Dataset.pending.zip while ReplayScripts\ is missing); the unpacked delivery, videos and reports are scratch in
 # <game>\.dataset\. Both are git-ignored (template .gitignore; added to .git/info/exclude below if a repo lacks it).
