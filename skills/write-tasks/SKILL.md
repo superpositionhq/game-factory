@@ -361,15 +361,11 @@ no check at all, naming the task and the sentence. Fix what you find in the task
 - **A keep that names a thing** ("the boss bar still starts full") has a required `still_works` check reading that
   thing; a bare "everything else keeps working" is covered by any required `still_works` check.
 - **Never cover an ask with an optional probe, a `build` or `boot` check, or the `worked_well` actions judge alone.**
-- **An ask that shows only after a contact** (a blow landing, getting hit, a stun, a guard at the last moment, the last
-  foe of a group falling) is staged, never left out because "no fixed play guarantees the contact": `pin` the foe or
-  target ahead of the player and press the task's own attack key; `set` a start-named health to set the fight up;
-  `damage` for a hit taken at a known moment; `where` to pick the live ones; then read `frozen`, `world`
-  `time_dilation`, `montage`, `damage_taken`, a property, live effects or sounds near it (docs/task-probes.md, section
-  1.3). Names a stage or read uses come from the start commit, never from the instruction (below); `set`, `call` and
-  `where` only on start members the task does not ask to change. A game under the combat contract
-  (docs/game-format.md) always has them; in an older game, an ask whose thing the start doesn't have and only the build
-  makes stays unchecked: word it out of the instruction and list it in your notes.
+- **An ask that shows only after a contact** (a blow landing, getting hit, a stun, the last foe of a group falling):
+  make the contact happen with what plays have today (a scenario start option the game has, `teleport_to` the foe
+  with `hold`, the task's own keys) and read it where the start keeps it (a property, an effect, a sound near it).
+  When no play can make it happen surely, word the ask out of the instruction and list it in your notes; never use an
+  input or measure that docs/task-probes.md doesn't list.
 - **Hints, never answers (owner, 2026-11-11).** An instruction may hint, in the ticket's own words, at what a player
   must see, hear or meet, or what must exist in the world, and may say that damage goes through the engine's damage
   interface. It never says how the build names or stores it: no class, property, function, tag, asset or file name,

@@ -1,5 +1,5 @@
 {
-  "$comment": "game-factory's task format, GameTask (game-task/1): one task a game ships with, on its orphan tasks branch (Tasks/<name>.json) and, split into the agent's and the grader's parts, in its dataset. The deterministic `probe` check kind is described for task authors in docs/task-probes.md, and every task is seeded; a build check's `fails_at_start` marks a start that doesn't compile. tools/validate-game.py checks every task in a game repo's tasks branch and in a dataset against this schema and the rules it cannot express. Since 2026-11-11 (Lab game grader 1.4.0) a task play may stage a contact (`pin`, `damage`, `set`, `call`), an actor select may filter by a reflected property (`where`), a probe may read the world (`world`) and an actor's `frozen`, `montage`, `damage_taken` and `focus_player`.",
+  "$comment": "game-factory's task format, GameTask (game-task/1): one task a game ships with, on its orphan tasks branch (Tasks/<name>.json) and, split into the agent's and the grader's parts, in its dataset. The deterministic `probe` check kind is described for task authors in docs/task-probes.md, and every task is seeded; a build check's `fails_at_start` marks a start that doesn't compile. tools/validate-game.py checks every task in a game repo's tasks branch and in a dataset against this schema and the rules it cannot express.",
   "$defs": {
     "ActionsJudge": {
       "additionalProperties": false,
@@ -116,7 +116,7 @@
           "title": "At"
         },
         "field": {
-          "pattern": "^(count|x|y|z|yaw|pitch|roll|scale|extent_x|extent_y|extent_z|hidden|collision|speed|spin|simulating|spread|changed|bounds_change|pose_change|lit|glow|prop:[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?(\\.[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?){0,5}|facing_vs_velocity|bone:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz]|rel_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|bb:[A-Za-z_][A-Za-z0-9_]{0,63}|world_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|world_pitch:[A-Za-z_][A-Za-z0-9_]{0,63}|world_roll:[A-Za-z_][A-Za-z0-9_]{0,63}|forward:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz]|frozen|montage|damage_taken|focus_player)$",
+          "pattern": "^(count|x|y|z|yaw|pitch|roll|scale|extent_x|extent_y|extent_z|hidden|collision|speed|spin|simulating|spread|changed|bounds_change|pose_change|lit|glow|prop:[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?(\\.[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?){0,5}|facing_vs_velocity|bone:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz]|rel_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|bb:[A-Za-z_][A-Za-z0-9_]{0,63}|world_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|world_pitch:[A-Za-z_][A-Za-z0-9_]{0,63}|world_roll:[A-Za-z_][A-Za-z0-9_]{0,63}|forward:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz])$",
           "title": "Field",
           "type": "string"
         },
@@ -745,57 +745,6 @@
       "title": "Calibrate",
       "type": "object"
     },
-    "Call": {
-      "additionalProperties": false,
-      "description": "A reflected function (UFUNCTION) the game's own code declares, never an engine class's, called on the actor `on`\nselects nearest to the player pawn (or on every match with `all`), or on its component (`<Component>.<Function>`),\nwith up to four `args`: numbers, booleans, strings (a name, an enum by its text), and \"player\" or \"self\" for an\nactor parameter; for a function the task's start already has (a hit, a stun, a rouse). A call no actor or no\nfunction takes is a miss the play reports.",
-      "properties": {
-        "all": {
-          "default": false,
-          "title": "All",
-          "type": "boolean"
-        },
-        "args": {
-          "items": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "maxLength": 120,
-                "type": "string"
-              }
-            ]
-          },
-          "maxItems": 4,
-          "title": "Args",
-          "type": "array"
-        },
-        "call": {
-          "pattern": "^([A-Za-z_][A-Za-z0-9_]{0,63}\\.)?[A-Za-z_][A-Za-z0-9_]{0,63}$",
-          "title": "Call",
-          "type": "string"
-        },
-        "on": {
-          "$ref": "#/$defs/Select"
-        },
-        "t": {
-          "maximum": 120,
-          "minimum": 0,
-          "title": "T",
-          "type": "number"
-        }
-      },
-      "required": [
-        "t",
-        "call",
-        "on"
-      ],
-      "title": "Call",
-      "type": "object"
-    },
     "CameraMeasure": {
       "additionalProperties": false,
       "properties": {
@@ -1291,45 +1240,6 @@
         "cursor"
       ],
       "title": "Cursor",
-      "type": "object"
-    },
-    "Damage": {
-      "additionalProperties": false,
-      "description": "`damage` points dealt through the engine's own damage call (UGameplayStatics::ApplyPointDamage, which calls the\nactor's TakeDamage and its OnTakeAnyDamage and OnTakePointDamage events) to the actor `to` selects nearest to the\nplayer pawn (`{\"player\": true}`: the pawn), struck from the actor `from` selects nearest to it (default: the pawn,\nor, when the pawn is struck, the nearest other pawn), whose controller is the instigator. What the target's\nTakeDamage returned is its `damage_taken`. For a game that takes damage through the engine (a game with its own hit\nfunction is staged by its own controls, `pin`, or `call`). No target is a miss the play reports.",
-      "properties": {
-        "damage": {
-          "exclusiveMinimum": 0,
-          "maximum": 1000000,
-          "title": "Damage",
-          "type": "number"
-        },
-        "from": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Select"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "t": {
-          "maximum": 120,
-          "minimum": 0,
-          "title": "T",
-          "type": "number"
-        },
-        "to": {
-          "$ref": "#/$defs/Select"
-        }
-      },
-      "required": [
-        "t",
-        "damage",
-        "to"
-      ],
-      "title": "Damage",
       "type": "object"
     },
     "DrawnMeasure": {
@@ -2897,78 +2807,6 @@
       "title": "PiecesMeasure",
       "type": "object"
     },
-    "Pin": {
-      "additionalProperties": false,
-      "description": "The actor `pin` selects nearest to the player pawn (never the pawn itself) held at its place for `hold` seconds\nof play, put back after every tick of the world with its movement stopped while its own logic runs on (it still\nturns, swings, blocks, opens its shutters); with `front`, first set that many cm ahead of the pawn along the pawn's\nfacing (plus `offset`, cm), at the height above the ground it had, turned to face the pawn: a target or an opponent\nwhere the player's blow or shot lands, whatever place a build gave it; with `at`, first set at that point (plus\n`offset`), facing the pawn: next to what the player threw or dropped (a flare that landed). A pin no actor matches,\nor whose point doesn't resolve, is a miss the play reports.",
-      "properties": {
-        "at": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/AtXYZ"
-            },
-            {
-              "$ref": "#/$defs/AtPawn"
-            },
-            {
-              "$ref": "#/$defs/AtCamera"
-            },
-            {
-              "$ref": "#/$defs/AtActor"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "At"
-        },
-        "front": {
-          "anyOf": [
-            {
-              "maximum": 10000,
-              "minimum": 0,
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Front"
-        },
-        "hold": {
-          "exclusiveMinimum": 0,
-          "maximum": 120,
-          "title": "Hold",
-          "type": "number"
-        },
-        "offset": {
-          "items": {
-            "type": "number"
-          },
-          "maxItems": 3,
-          "minItems": 3,
-          "title": "Offset",
-          "type": "array"
-        },
-        "pin": {
-          "$ref": "#/$defs/Select"
-        },
-        "t": {
-          "maximum": 120,
-          "minimum": 0,
-          "title": "T",
-          "type": "number"
-        }
-      },
-      "required": [
-        "t",
-        "pin",
-        "hold"
-      ],
-      "title": "Pin",
-      "type": "object"
-    },
     "Probe": {
       "additionalProperties": false,
       "description": "A deterministic check (docs/task-probes.md): `measure` taken where `play` says, reduced to one number, compared with\n`expect`. `describe` is the assertion in plain English, shown in the grade.",
@@ -3021,8 +2859,7 @@
               "spawns": "#/$defs/SpawnsMeasure",
               "trace": "#/$defs/TraceMeasure",
               "ui": "#/$defs/UiMeasure",
-              "widgets": "#/$defs/WidgetsMeasure",
-              "world": "#/$defs/WorldMeasure"
+              "widgets": "#/$defs/WidgetsMeasure"
             },
             "propertyName": "probe"
           },
@@ -3077,9 +2914,6 @@
             },
             {
               "$ref": "#/$defs/DrawnMeasure"
-            },
-            {
-              "$ref": "#/$defs/WorldMeasure"
             }
           ],
           "title": "Measure"
@@ -3436,74 +3270,9 @@
           ],
           "default": null,
           "title": "Tag"
-        },
-        "where": {
-          "anyOf": [
-            {
-              "items": {
-                "$ref": "#/$defs/Where"
-              },
-              "maxItems": 4,
-              "minItems": 1,
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Where"
         }
       },
       "title": "Select",
-      "type": "object"
-    },
-    "SetProp": {
-      "additionalProperties": false,
-      "description": "A reflected property (the path a prop: field reads, no array index) written on the actor `on` selects nearest to\nthe player pawn, or on every match with `all`: a number, a boolean, or an enum, name or string by its text; for a\nproperty the task's start already has (a revenant's Health at 1, so one blow fells it through the game's own death;\nthe player's own high, so a staged fight can't end the play). A set no actor or no property takes is a miss the\nplay reports.",
-      "properties": {
-        "all": {
-          "default": false,
-          "title": "All",
-          "type": "boolean"
-        },
-        "on": {
-          "$ref": "#/$defs/Select"
-        },
-        "set": {
-          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}(\\.[A-Za-z_][A-Za-z0-9_]{0,63}){0,5}$",
-          "title": "Set",
-          "type": "string"
-        },
-        "t": {
-          "maximum": 120,
-          "minimum": 0,
-          "title": "T",
-          "type": "number"
-        },
-        "value": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "number"
-            },
-            {
-              "maxLength": 120,
-              "type": "string"
-            }
-          ],
-          "title": "Value"
-        }
-      },
-      "required": [
-        "t",
-        "set",
-        "on",
-        "value"
-      ],
-      "title": "SetProp",
       "type": "object"
     },
     "Shot": {
@@ -3774,18 +3543,6 @@
               },
               {
                 "$ref": "#/$defs/View"
-              },
-              {
-                "$ref": "#/$defs/Pin"
-              },
-              {
-                "$ref": "#/$defs/Damage"
-              },
-              {
-                "$ref": "#/$defs/SetProp"
-              },
-              {
-                "$ref": "#/$defs/Call"
               }
             ]
           },
@@ -4298,50 +4055,6 @@
       "title": "Wait",
       "type": "object"
     },
-    "Where": {
-      "additionalProperties": false,
-      "description": "A reflected property of the actor (the path a prop: field reads) compared with a value: a number, a boolean (1\nor 0) or a string (docs/planning/2026-11-11_game-contact-checks/spec.md); an actor whose property doesn't resolve\ndoesn't match.",
-      "properties": {
-        "op": {
-          "enum": [
-            ">",
-            ">=",
-            "<",
-            "<=",
-            "==",
-            "!="
-          ],
-          "title": "Op",
-          "type": "string"
-        },
-        "prop": {
-          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?(\\.[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?){0,5}$",
-          "title": "Prop",
-          "type": "string"
-        },
-        "value": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "title": "Value"
-        }
-      },
-      "required": [
-        "prop",
-        "op",
-        "value"
-      ],
-      "title": "Where",
-      "type": "object"
-    },
     "WidgetSelect": {
       "additionalProperties": false,
       "description": "Widgets on screen: UMG widgets in the viewport by their class (WBP_HUD_C, TextBlock) and/or name, or Slate\nwidgets under the game viewport by their type (`slate`: STextBlock, SImage, a game's own S... type); `text`: a\nregular expression the widget's text must match; `visible`: only the widgets drawn (as the `visible` field reads\nthem: never a collapsed or hidden one, nor one under such a parent), so a select counts what is on screen.",
@@ -4577,129 +4290,6 @@
         "field"
       ],
       "title": "WidgetsMeasure",
-      "type": "object"
-    },
-    "WorldMeasure": {
-      "additionalProperties": false,
-      "description": "The game world as a whole (game-contact-checks spec): `time_dilation`, the lowest global time dilation over the\nframes since the previous sample (a hit pause made by slowing the world, however short: 1 when the world ran at\nits pace); `paused`, 1 when the game was paused in any of those frames.",
-      "properties": {
-        "agg": {
-          "anyOf": [
-            {
-              "enum": [
-                "min",
-                "max",
-                "mean",
-                "first",
-                "last",
-                "delta",
-                "any",
-                "all",
-                "count",
-                "sum",
-                "range",
-                "std",
-                "changes",
-                "rises",
-                "falls",
-                "step"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Agg"
-        },
-        "at": {
-          "anyOf": [
-            {
-              "items": {
-                "maximum": 120,
-                "minimum": 0,
-                "type": "number"
-              },
-              "maxItems": 40,
-              "minItems": 1,
-              "type": "array"
-            },
-            {
-              "const": "end",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "At"
-        },
-        "field": {
-          "enum": [
-            "time_dilation",
-            "paused"
-          ],
-          "title": "Field",
-          "type": "string"
-        },
-        "probe": {
-          "const": "world",
-          "title": "Probe",
-          "type": "string"
-        },
-        "to_angle": {
-          "anyOf": [
-            {
-              "maximum": 360,
-              "minimum": -360,
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "To Angle"
-        },
-        "to_axis": {
-          "anyOf": [
-            {
-              "maximum": 360,
-              "minimum": -360,
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "To Axis"
-        },
-        "window": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "number"
-              },
-              "maxItems": 2,
-              "minItems": 2,
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Window"
-        }
-      },
-      "required": [
-        "probe",
-        "field"
-      ],
-      "title": "WorldMeasure",
       "type": "object"
     }
   },
