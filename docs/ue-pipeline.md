@@ -433,6 +433,8 @@ to LogPython (stdout with `-AllowStdOutLogVerbosity`, always in `Saved/Logs/<Pro
 - It byte-scans `Content/**/*.uasset|umap|uexp` (streamed in 8 MB chunks) for the user name as a substring anywhere
   (allowlist as the packager: `zh_XIANG`, `zh-xiang`, `wuxiangshan`), `claude` and `anthropic`, case-insensitive,
   ASCII and UTF-16LE, and loads only packages with hits. Default is a dry run; `--apply` saves only changed packages.
+  A user name shorter than 4 characters or generic (`dev`, `admin`, ...) is not scanned for: it is the game's own
+  vocabulary (a `Content/Dev` folder); import paths under the user profile are still rewritten.
 - `AssetImportData`: each source file under the user profile becomes a path inside the project if it is there
   (stored package-relative by UE; `--original-project-dir=<dir>` also counts files under the project's original
   location when running on a copy), else just the file name. Written with `ScriptedAddFilename`, which re-reads the

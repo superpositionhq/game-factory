@@ -39,6 +39,12 @@ def path_rx(path):
     return re.compile(r'(?i)' + head + SEP.join(parts) + r'(?![A-Za-z0-9_.-])')
 
 
+# names too generic to replace as a word (same rule as package-game.ps1 Test-NameTerm)
+GENERIC_NAMES = ('dev', 'devs', 'developer', 'user', 'users', 'admin', 'administrator', 'root', 'test', 'tester', 'guest', 'owner',
+               'default', 'build', 'builder', 'player', 'unknown', 'noreply', 'github', 'author', 'agent', 'claude', 'codex',
+               'anthropic', 'openai', 'studio', 'home', 'work', 'game', 'local', 'public')
+
+
 def rules():
     root = gfroot.root()
     home = os.path.expanduser('~')
@@ -62,7 +68,8 @@ def rules():
                              r'(?!(?:[A-Za-z0-9-]+\.)*(?:example\.(?:com|org|net)|invalid|test|localhost)\b)'
                              r'(?:[A-Za-z0-9-]+\.)+(?!(?:png|jpe?g|uasset|umap|json|py|ps1|md|txt)\b)[A-Za-z]{2,}\b'), '<email>'),
     ]
-    if user and len(user) >= 3:
+    # a short or generic account name ("dev", "admin") is the game's own vocabulary: only the home path above goes
+    if user and len(user) >= 4 and user.lower() not in GENERIC_NAMES:
         out.append(('user', re.compile(r'(?i)' + word % re.escape(user)), '<user>'))
     return out
 

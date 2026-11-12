@@ -125,7 +125,11 @@ validators note it, never an error).
 
 **The history is rewritten for delivery** (user decision 2026-10-15; the game repos are not changed): authors and
 committers become `dev_NN`, agent trailer lines go, the scrub rules apply to every message and text blob, and LFS
-objects that name the build machine's account are patched (same length). Commit ids therefore differ from the private
+objects that name the build machine's account are patched (same length). The scrub replaces a name in text only as a
+whole word, never inside an identifier (`_` counts as part of a word), and only a name of 4+ characters that is not a
+generic word (dev, user, admin, test, ...): a short or generic author name is anonymised in the commit metadata only
+(author, committer, tagger, `Co-authored-by:` / `Signed-off-by:` trailers), a short or generic account name in user
+paths only, so the game's code (`WITH_DEV_AUTOMATION_TESTS`) is delivered as it was written. Commit ids therefore differ from the private
 repo; the dataset uses the delivered ids everywhere (`manifest.json` `commit`, `git.log`, `ReplayScripts/`), and the
 packager keeps the old -> new map next to the package. Restore a commit:
 

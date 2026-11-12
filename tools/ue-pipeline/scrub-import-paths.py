@@ -69,10 +69,22 @@ class Term(object):
         self.label, self.text, self.rep, self.allow = label, text, rep, allow_prefixes
 
 
+# An account name too short or too generic to be a person's ("dev", "admin", "test"): it is the game's own vocabulary
+# (a Content/Dev folder, WITH_DEV_AUTOMATION_TESTS) and is never rewritten as a term; import paths under the user
+# profile are still rewritten (user_profile()). Same rule as package-game.ps1 Test-NameTerm.
+GENERIC_NAMES = ('dev', 'devs', 'developer', 'user', 'users', 'admin', 'administrator', 'root', 'test', 'tester', 'guest', 'owner',
+               'default', 'build', 'builder', 'player', 'unknown', 'noreply', 'github', 'author', 'agent', 'claude', 'codex',
+               'anthropic', 'openai', 'studio', 'home', 'work', 'game', 'local', 'public')
+
+
+def name_term(name):
+    return len(name) >= 4 and name.lower() not in GENERIC_NAMES
+
+
 def terms():
     name = os.environ.get('USERNAME', '')
     out = []
-    if name:
+    if name and name_term(name):
         out.append(Term('username', name, placeholder(len(name)), ('zh_', 'zh-', 'wu')))
     out += [Term('agent-name', 'Claude (agent)', 'Developer team'), Term('agent-name', 'claude', 'helper'),
             Term('provider-name', 'anthropic', 'assistant')]

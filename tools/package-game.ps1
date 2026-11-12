@@ -30,7 +30,9 @@
   Scrub (package copy only; the repo, .recording and recordings are never written): every text file gets, in order,
   agent trailer lines removed, the agent identity -> dev, the names Superposition / game-factory replaced (scrub-history
   defaults), git author names/handles -> dev_NN, the account user name (incl. in user paths) -> dev, e-mail addresses ->
-  <redacted-email>, other agent/provider mentions -> agent/provider. Then every file is rescanned: it refuses (exit 2,
+  <redacted-email>, other agent/provider mentions -> agent/provider. Names are replaced only as whole words, never
+  inside an identifier, and only names of 4+ characters that are not generic words (Test-NameTerm): a short or generic
+  author name (Dev) goes in commit metadata and -by: trailers only, a short or generic account name in user paths only. Then every file is rescanned: it refuses (exit 2,
   nothing published, hits in deliverables\<game>\<name>.refused-hits.tsv) on any remaining hit in a path or text file,
   or any blocked term in a binary (ASCII or UTF-16). One exception: the short terms (claude, opus) and the account name inside the
   compressed audio/video stream payload of .mp4/.mkv/.mka/.wav are random bytes and are listed, not refused
@@ -1094,14 +1096,88 @@ $UserName = if ($env:USERNAME) { $env:USERNAME } else { [Environment]::UserName 
 if (-not $UserName) { throw 'cannot tell the Windows user name (USERNAME unset): the scrub needs it' }
 # start of a word, also right after a JSON escape such as \n (whose letter would otherwise hide the boundary)
 $WordStart = '(?:(?<=\\[nrtfb])|(?<=\\u[0-9a-fA-F]{4})|(?<![A-Za-z0-9_]))'
-$UserRx = "$WordStart$([regex]::Escape($UserName))(?![A-Za-z0-9_])"
 $MachineName = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { [Environment]::MachineName }
-# enforcement (text and paths): the account name as a word or path segment of its own: not inside a longer word (a place
-# name such as wuxiangshan_bgm). A segment ends at anything but a letter (digits, _ . / \ - and JSON escapes such as \n
-# count as separators, so Name2 and Name_x still block) or at a lower->upper camel boundary (FooName, NameBar).
-# Binaries keep the substring needle (Scan's needles).
-$UserSegRx = '(?:(?<=\\[nrtfb])|(?<=\\u[0-9a-fA-F]{4})|(?<![A-Za-z])|(?-i:(?<=[a-z])(?=[A-Z])))' + [regex]::Escape($UserName) +
-    '(?:(?![A-Za-z])|(?-i:(?<=[a-z])(?=[A-Z])))'
+# Names the scrub may replace as words of text (an account, machine or git author name, a name word, an e-mail handle):
+# 4+ characters and not a generic word. A shorter or generic name ("Dev", "DEV", "admin", "test") is everywhere in a
+# game's code and config as an ordinary word or part of an identifier: an author named Dev had the engine macro
+# WITH_DEV_AUTOMATION_TESTS rewritten in 38 places of two delivered games, which then failed to compile. Such a name is
+# replaced only where it is metadata: commit author/committer/tagger, trailer lines (Co-authored-by: ...), user paths.
+$GenericNames = @('dev', 'devs', 'developer', 'user', 'users', 'admin', 'administrator', 'root', 'test', 'tester', 'guest',
+    'owner', 'default', 'build', 'builder', 'player', 'unknown', 'noreply', 'github', 'author', 'agent', 'claude', 'codex',
+    'anthropic', 'openai', 'studio', 'home', 'work', 'game', 'local', 'public')
+function Test-NameTerm([string]$Term) {
+    $Term.Length -ge 4 -and $GenericNames -notcontains $Term.ToLowerInvariant() -and $Term -notmatch '(?i)^dev_?\d*$'
+}
+# The account name's rules. Replaced as a word of its own: never inside an identifier (_ and alphanumerics are word
+# characters on both sides). Enforcement (text and paths): the account name as a word or path segment of its own: not
+# inside a longer word (a place name such as wuxiangshan_bgm). A segment ends at anything but a letter (digits, _ . / \ -
+# and JSON escapes such as \n count as separators, so Name2 and Name_x still block: the package refuses, it is never
+# rewritten) or at a lower->upper camel boundary (FooName, NameBar). Binaries keep the substring needle (Scan's
+# needles). A generic or short account name (Test-NameTerm) is replaced and enforced in user paths only, and in binaries
+# only listed: as a word it is the game's own vocabulary, and "dev" is the scrub's own placeholder.
+function Get-AccountRules([string]$Name, [string]$Machine) {
+    $e = [regex]::Escape($Name)
+    $r = @{ Generic = -not (Test-NameTerm $Name); Rules = @() }
+    if ($Machine -and (Test-NameTerm $Machine)) {   # the machine name often contains the account name (NAME-PC)
+        $r.Rules += @{ id = 'username'; scope = 'all'; match = "(?i)$WordStart$([regex]::Escape($Machine))(?![A-Za-z0-9_])"; replace = 'dev-pc' }
+    }
+    # paths that lost their separators (C:UsersNameWork...) or use a regex backreference (Users\1Name\1Work)
+    $r.Rules += @{ id = 'username'; scope = 'all'; match = "(?i)(?<=users[\\/:0-9]{0,6})$e"; replace = 'dev' }
+    if ($r.Generic) {
+        # "dev" is the placeholder itself: nothing left to find
+        $r.ScanRx = if ($Name -ieq 'dev') { '(?!)' } else { "(?<=users[\\/:0-9]{0,6})$e(?![A-Za-z0-9_])" }
+    } else {
+        $r.Rules += @{ id = 'username'; scope = 'all'; match = "(?i)$WordStart$e(?![A-Za-z0-9_])"; replace = 'dev' }
+        $r.ScanRx = '(?:(?<=\\[nrtfb])|(?<=\\u[0-9a-fA-F]{4})|(?<![A-Za-z])|(?-i:(?<=[a-z])(?=[A-Z])))' + $e + '(?:(?![A-Za-z])|(?-i:(?<=[a-z])(?=[A-Z])))'
+    }
+    $r
+}
+# Git identities in text -> dev_NN. $Pairs: (name, e-mail) of the history's authors and committers; $Map: name -> dev_NN
+# (git.log's numbering: names not in it are skipped; with -Number, $Pairs in git.log's order, they are numbered the same
+# way). Text
+# terms: the full name, its words and the e-mail handle, each only when Test-NameTerm passes; every identity, a short or
+# generic name too, gets the trailer rule (Co-authored-by: / Signed-off-by: <name> <address>, the name as written), which
+# is metadata.
+function Get-IdentityTerms($Pairs, $Map, [switch]$Number) {
+    $terms = New-Object System.Collections.ArrayList; $trailers = New-Object System.Collections.ArrayList; $metaOnly = @{}
+    foreach ($pr in $Pairs) {
+        $nm = "$($pr[0])".Trim(); $em = "$($pr[1])".Trim(); if (-not $nm) { continue }
+        if ($Number) {
+            if ($nm -match '^dev_\d+$') { continue }   # already anonymised; every other name numbered as git.log does
+            if (-not $Map.ContainsKey($nm)) { $Map[$nm] = 'dev_' + ($Map.Count + 1).ToString('00') }
+        } elseif (-not $Map.ContainsKey($nm)) { continue }
+        $dev = $Map[$nm]
+        if ($nm -notmatch '^dev_\d+$') { [void]$trailers.Add(@($nm, $dev)) }
+        $local = ($em -split '@')[0]; if ($local -match '\+') { $local = ($local -split '\+')[-1] }
+        foreach ($t in @(@($nm) + @($nm -split '[^A-Za-z0-9]+') + @($local))) {
+            if (-not $t) { continue }
+            if (Test-NameTerm $t) { [void]$terms.Add(@($t, $dev)) } elseif ($t -eq $nm -and $nm -notmatch '(?i)^(claude|agent|dev_\d+)$') { $metaOnly[$nm] = 1 }
+        }
+    }
+    @{ Terms = @($terms | Sort-Object { - $_[0].Length }); Trailers = @($trailers); MetadataOnly = $metaOnly.Count }
+}
+# Replace: a whole word, never inside an identifier (_ and alphanumerics are word characters on both sides). A term with
+# a digit is a handle (e.g. a name spelled with 0 for o): it also takes the letters/digits glued to it, which catches
+# account names built on it, but not across an _.
+function Get-IdentityRx([string]$t) {
+    $e = [regex]::Escape($t)
+    if ($t -match '\d' -and $t.Length -ge 5) { return "(?i)$WordStart$e(?>[A-Za-z0-9]*)(?!_)" }
+    return "(?i)$WordStart$e(?![A-Za-z0-9_])"
+}
+# Enforce: also glued to an _ (Name_notes): such a name is never rewritten, so the package refuses for a person to fix.
+function Get-IdentityScanRx([string]$t) {
+    $e = [regex]::Escape($t)
+    if ($t -match '\d' -and $t.Length -ge 5) { return "$WordStart$e[A-Za-z0-9]*" }
+    return "$WordStart$e(?![A-Za-z0-9])"
+}
+function Get-IdentityRules($Ids) {
+    @($Ids.Trailers | ForEach-Object { @{ id = 'git-identity'; scope = 'all'; replace = ('${1}' + $_[1])
+            match = '(?im)((?:^|(?<=\\n))[ \t]*[A-Za-z][A-Za-z-]*-by:[ \t]*)(?-i:' + [regex]::Escape($_[0]) + ')(?=[ \t]*(?:<|\\u003[cC]))' } }) +
+    @($Ids.Terms | ForEach-Object { @{ id = 'git-identity'; scope = 'all'; match = (Get-IdentityRx $_[0]); replace = $_[1] } })
+}
+$Account = Get-AccountRules $UserName $MachineName
+$UserSegRx = $Account.ScanRx
+if ($Account.Generic) { Write-Host 'note: the account name is short or generic: it is replaced and checked in user paths only, never as a word' }
 $EmailRx = '(?:(?<=\\u[0-9a-fA-F]{4})|(?<=\\[nrtfb"/])|(?<![A-Za-z0-9._%+\\-]))(?!(?:git@(?:github|gitlab|bitbucket)\.(?:com|org)|noreply@github\.com)\b)' +
     '[A-Za-z0-9._%+-]+@(?!(?:[A-Za-z0-9-]+\.)*(?:example\.(?:com|org|net)|invalid|test|localhost)\b)(?:[A-Za-z0-9-]+\.)+' +
     '(?!(?:png|jpe?g|tga|gif|svg|webp|exr|hdr|bmp|dds|uasset|umap|wav|ogg|mp3|flac|fbx|glb|gltf|obj|json|jsonl|txt|md|ini|py|ps1|sh|cpp|h|cs|bin|zip)\b)[A-Za-z]{2,}\b'
@@ -1161,9 +1237,7 @@ $RulesTail = @(
     @{ id = 'session-path'; scope = 'all'; match = '\$\{1\}session\$\{2\}notes(?=(\\\\|[\\/]))'; replace = 'AppData${1}Roaming${1}session${1}notes' },
     @{ id = 'session-path'; scope = 'all'; match = '\$\{1\}session\$\{3\}(?=(\\\\|[\\/]))'; replace = 'AppData${1}Local${1}Temp${1}session' },
     @{ id = 'session-path'; scope = 'all'; match = '(?i)scratc[h]pad'; replace = 'scratch' },
-    @{ id = 'username'; scope = 'all'; match = "(?i)$([regex]::Escape($MachineName))"; replace = 'dev-pc' },   # the machine name contains it
-    @{ id = 'username'; scope = 'all'; match = "(?i)(?<=users[\\/:0-9]{0,6})$([regex]::Escape($UserName))"; replace = 'dev' },   # paths that lost their separators (C:UsersNameWork...) or use a regex backreference (Users\1Name\1Work)
-    @{ id = 'username'; scope = 'all'; match = "(?i)$UserRx"; replace = 'dev' },
+    @{ id = 'username'; scope = 'all'; match = 'ACCOUNT_RULES' },   # spliced in below: $Account.Rules
     @{ id = 'email'; scope = 'all'; match = $EmailRx; replace = '<redacted-email>' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bclaude[-_ ]code\b'; replace = 'agent-tool' },
     # Codex (OpenAI): the tool's names, model ids and the provider; a bare "codex" stays (games have lore codices)
@@ -1188,13 +1262,14 @@ $RulesTail = @(
     @{ id = 'agent-mention'; scope = 'all'; match = 'ANTHROPIC'; replace = 'PROVIDER' }, @{ id = 'agent-mention'; scope = 'all'; match = 'Anthropic'; replace = 'Provider' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)anthropic'; replace = 'provider' }
 )
+$RulesTail = @($RulesTail | ForEach-Object { if ($_.match -eq 'ACCOUNT_RULES') { $Account.Rules } else { $_ } })
 # the recording's session ids right after the session-path rules (which need the uuid inside a path to recognise it)
 $RulesTail = @($RulesTail | Where-Object { $_.id -eq 'session-path' }) + @($SessionIdRule) + @($RulesTail | Where-Object { $_.id -ne 'session-path' })
 $BannedPattern = 'superposition|game[-_]?factory'
 # Binary needles (ASCII + UTF-16LE, case-insensitive). The agent/provider names block like the two names (user rule);
 # the account name in binaries is reported (and blocks inside Build/, checked separately).
 $BinNeedles = @('superposition', 'game-factory', 'game_factory', 'gamefactory', $UserName, 'claude', 'anthropic', 'opus')
-$BinRefuse = @($true, $true, $true, $true, $true, $true, $true, $true)   # the account name blocks anywhere too (user rule)
+$BinRefuse = @($true, $true, $true, $true, (-not $Account.Generic), $true, $true, $true)   # the account name blocks anywhere too (user rule); a generic one is listed only
 $BinCats = @('banned-name', 'banned-name', 'banned-name', 'banned-name', 'username', 'agent-name', 'agent-name', 'agent-name')
 # Exact allowlist, matched against the whole word around a hit (letters, digits, _ . / : -). Only forms seen in the
 # packages' engine binaries (Opus audio codec inside the EOS SDK / WebRTC and the engine) and UE's locale ids.
@@ -1309,6 +1384,14 @@ if ($SelfCheck) {
         @{ id = 'wav-user-in-stream'; mode = 'scan'; expect = 'pass'; ext = '.wav'; bin = (& $mkWav ([byte[]](@(0x9b, 0x98, 0x81) + [Text.Encoding]::ASCII.GetBytes($mixed + 'L') + @(0x92, 0x00, 0x3e))) $null) }
         @{ id = 'wav-user-in-metadata'; mode = 'scan'; expect = 'refuse'; ext = '.wav'; bin = (& $mkWav $null ([Text.Encoding]::ASCII.GetBytes("$U1 recorded this" + [char]0))) }
     )
+    if ($Account.Generic) {
+        # a generic or short account name (this machine's): checked in user paths only; as a word or inside an
+        # identifier it is the game's own vocabulary and stays as it is
+        $cases = @($cases | Where-Object { $_.id -notmatch '^(user-|wav-user-in-metadata)' -or $_.id -eq 'user-path-scrubbed' }) + @(
+            @{ id = 'user-generic-path'; mode = 'scan'; expect = $(if ($u -eq 'dev') { 'pass' } else { 'refuse' }); text = "C:\\Users\\${U1}\\Work\\games" }
+            @{ id = 'user-generic-in-code'; mode = 'scrub'; expect = 'pass'; same = $true; text = "#if WITH_$($u.ToUpperInvariant())_AUTOMATION_TESTS // ${u} build, ${U1}Tools, b${u}Mode=True" }
+        )
+    }
     if ($Reviewed.Values -contains 'opusWTTj') { $cases += @{ id = 'codec-reviewed-word'; mode = 'scan'; expect = 'pass'; text = 'the first: `opusWTTj` in the raw pixels' } }
     $dir = Join-Path ([IO.Path]::GetTempPath()) ('pkg-selfcheck-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     try {
@@ -1336,11 +1419,64 @@ if ($SelfCheck) {
         $bad = 0
         foreach ($c in $cases) {
             $got = if ($hitsBy.ContainsKey("$($c.mode)/$($c.file)")) { 'refuse' } else { 'pass' }
+            if ($c.ContainsKey('same') -and $got -eq 'pass' -and [IO.File]::ReadAllText((Join-Path $sd "$($c.file).jsonl")) -cne ($c.text + "`n")) { $got = 'changed' }
             if ($got -ne $c.expect) { $bad++ }
             Write-Host ("  {0}  {1,-34} {2,-5} expected {3}, got {4}{5}" -f $(if ($got -eq $c.expect) { 'ok  ' } else { 'FAIL' }), $c.id, $c.mode, $c.expect, $got,
                 $(if ($got -ne $c.expect -and $got -eq 'refuse') { ': ' + ($hitsBy["$($c.mode)/$($c.file)"] -replace '\s+', ' ') } else { '' }))
         }
-        Write-Host "$(if ($bad) { 'FAIL' } else { 'PASS' })  self-check: $($cases.Count - $bad) of $($cases.Count) cases as expected"
+        # regression (whatever this machine's account): an author and an account named Dev / DEV. Their name is everywhere
+        # in a game's code (WITH_DEV_AUTOMATION_TESTS): the history rewrite anonymises the commits (author, committer,
+        # trailers) and leaves every file's code as it is; a personal name still goes as a word, and still refuses
+        # where it is left (glued to an _, or not scrubbed at all).
+        $gr = Join-Path $dir 'history'; $gb = Join-Path $dir 'history.git'; $gt = Join-Path $dir 'history-tree'
+        New-Item -ItemType Directory -Force $gr, $gb, $gt | Out-Null
+        $code = "#include `"CoreMinimal.h`"`n#if WITH_DEV_AUTOMATION_TESTS`nIMPLEMENT_SIMPLE_AUTOMATION_TEST(FDevTest, `"Game.Dev`", EAutomationTestFlags::EditorContext)`n#endif`n"
+        $ini = "[/Script/Engine.Engine]`nbDevMode=True`nDevName=dev`n"
+        $notes = "Reviewed by Jordan Pike.`n"
+        $gitIn = { param([string]$Repo, [string[]]$A) Invoke-Git $Repo $A }
+        & $gitIn $gr @('init', '-q', '-b', 'main') | Out-Null; & $gitIn $gb @('init', '-q', '--bare') | Out-Null
+        New-Item -ItemType Directory -Force (Join-Path $gr 'Source/Game'), (Join-Path $gr 'Config'), (Join-Path $gr 'Docs') | Out-Null
+        $utf8 = New-Object System.Text.UTF8Encoding $false
+        [IO.File]::WriteAllText((Join-Path $gr 'Source/Game/GameTests.cpp'), $code, $utf8); [IO.File]::WriteAllText((Join-Path $gr 'Config/DefaultEngine.ini'), $ini, $utf8)
+        & $gitIn $gr @('add', '-A') | Out-Null
+        & $gitIn $gr @('-c', 'user.name=DEV', '-c', 'user.email=dev@home.lan', 'commit', '-q', '-m', "Add the game's tests`n`nCo-authored-by: Dev <dev@home.lan>") | Out-Null
+        [IO.File]::WriteAllText((Join-Path $gr 'Docs/Notes.md'), $notes, $utf8); & $gitIn $gr @('add', '-A') | Out-Null
+        & $gitIn $gr @('-c', 'user.name=Jordan Pike', '-c', 'user.email=jpike@home.lan', 'commit', '-q', '-m', "Notes`n`nSigned-off-by: Jordan Pike <jpike@home.lan>`nCo-authored-by: Dev <dev@home.lan>") | Out-Null
+        $map = New-Object 'System.Collections.Generic.Dictionary[string,string]'
+        $map['DEV'] = 'dev_01'; $map['Jordan Pike'] = 'dev_02'; $map['Dev'] = 'dev_03'   # git.log numbers names as written
+        $gids = Get-IdentityTerms @(@('DEV', 'dev@home.lan'), @('Jordan Pike', 'jpike@home.lan'), @('Dev', 'dev@home.lan')) $map
+        $acct = Get-AccountRules 'Dev' 'DEV'
+        $grules = @($RulesHead) + @(Get-IdentityRules $gids) + @($RulesTail | Where-Object { $_.id -ne 'username' }) + @($acct.Rules)
+        $gprob = New-Object 'System.Collections.Generic.List[string]'
+        [void][GameDeliverable.Tools]::RewriteHistory($gr, $gb, $map, (New-Object 'System.Collections.Generic.Dictionary[string,string[]]'),
+            [string[]]@($grules | ForEach-Object { $_.match }), [string[]]@($grules | ForEach-Object { $_.replace }), [string[]]@($grules | ForEach-Object { $_.scope }),
+            [string[]]@($grules | ForEach-Object { '' }), $gprob)
+        $gscan = New-Object System.Text.RegularExpressions.Regex(((@($BannedPattern, 'claude', 'anthropic', 'opus', $acct.ScanRx, $EmailRx) + @($gids.Terms | ForEach-Object { Get-IdentityScanRx $_[0] })) -join '|'), 'IgnoreCase')
+        $scanDir = { param([string]$D) $rels = [string[]]@(Get-ChildItem $D -Recurse -File | ForEach-Object { $_.FullName.Substring((Resolve-Path $D).Path.Length + 1).Replace('\', '/') } | Where-Object { $_ -notlike '.git/*' })
+            @([GameDeliverable.Tools]::Scan($D, $rels, $gscan, $null, $lk, 20, [string[]]@(), [bool[]]@(), [string[]]@()) | Where-Object { $_.Kind -notlike 'binary-info*' -and $_.Kind -notlike 'allowed*' }) }
+        $ok = @{}
+        $ok['dev-history-code-unchanged'] = ((& $gitIn $gb @('show', 'main:Source/Game/GameTests.cpp')) -join "`n") + "`n" -ceq $code
+        $ok['dev-history-config-unchanged'] = ((& $gitIn $gb @('show', 'main:Config/DefaultEngine.ini')) -join "`n") + "`n" -ceq $ini
+        $who = @(& $gitIn $gb @('log', '--all', '--format=%an|%ae|%cn|%ce'))
+        $ok['dev-history-authors-anonymised'] = $who.Count -eq 2 -and -not @($who | Where-Object { $_ -notmatch '^(dev_\d\d)\|\1@example\.invalid\|(dev_\d\d)\|\2@example\.invalid$' })
+        $msgs = (& $gitIn $gb @('log', '--all', '--format=%B')) -join "`n"
+        $ok['dev-history-trailers-anonymised'] = $msgs -cmatch 'Co-authored-by: dev_03 <<redacted-email>>' -and $msgs -cmatch 'Signed-off-by: dev_02 <<redacted-email>>' -and $msgs -notmatch '(?i)\b(Dev|Jordan|Pike) <'
+        $ok['dev-history-name-in-text'] = ((& $gitIn $gb @('show', 'main:Docs/Notes.md')) -join "`n") -ceq 'Reviewed by dev_02.'
+        & $gitIn $gb @('--work-tree', $gt, 'checkout', '-q', '-f', 'main', '--', '.') | Out-Null
+        $ok['dev-history-scan-passes'] = (@(& $scanDir $gt)).Count -eq 0
+        $ok['name-left-refuses'] = (@(& $scanDir $gr)).Count -gt 0   # the original tree still names Jordan Pike
+        $gl = Join-Path $dir 'glued'; New-Item -ItemType Directory -Force $gl | Out-Null; $glued = "owner: Jordan_Pike, file jpike_notes.txt`n"
+        [IO.File]::WriteAllText((Join-Path $gl 'c.md'), $glued, $utf8)
+        [void][GameDeliverable.Tools]::ScrubAll($gl, [string[]]@('c.md'), [string[]]@($grules | ForEach-Object { $_.match }), [string[]]@($grules | ForEach-Object { $_.replace }),
+            [string[]]@($grules | ForEach-Object { $_.scope }), [string[]]@($grules | ForEach-Object { '' }))
+        $ok['name-glued-not-rewritten-refuses'] = [IO.File]::ReadAllText((Join-Path $gl 'c.md')) -ceq $glued -and (@(& $scanDir $gl)).Count -gt 0
+        foreach ($k in $ok.Keys | Sort-Object) {
+            if (-not $ok[$k]) { $bad++ }
+            Write-Host ("  {0}  {1,-34} {2}" -f $(if ($ok[$k]) { 'ok  ' } else { 'FAIL' }), $k, $(if ($ok[$k]) { 'as expected' } else { 'NOT as expected' }))
+        }
+        if ($gprob.Count) { $bad++; Write-Host "  FAIL  history rewrite problems: $($gprob -join '; ')" }
+        $total = $cases.Count + $ok.Count
+        Write-Host "$(if ($bad) { 'FAIL' } else { 'PASS' })  self-check: $($total - $bad) of $total cases as expected"
     } finally { Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue }
     exit $(if ($bad) { 2 } else { 0 })
 }
@@ -1355,8 +1491,8 @@ $repo = if ($RepoPath) { (Resolve-Path $RepoPath).Path } else { $info.Dir }
 # Opus-codec allowlist, account name, e-mail addresses, git identity names) without changing it.
 if ($Rescan) {
     $pkg = (Resolve-Path $Rescan).Path
-    $terms = @(Invoke-Git $repo (@('log') + $HistoryRefArgs + @('--format=%an%n%cn')) | ForEach-Object { "$_".Trim() } | Where-Object { $_ -and $_ -notmatch '(?i)^(claude|agent|dev|dev_\d+)$' } | Sort-Object -Unique)
-    $parts = @($BannedPattern, 'claude', 'anthropic', 'opus', $UserSegRx, $EmailRx) + @($terms | ForEach-Object { "$WordStart$([regex]::Escape($_))(?![A-Za-z0-9])" })
+    $ids = Get-IdentityTerms @(Invoke-Git $repo (@('log') + $HistoryRefArgs + @('--format=%an%x09%ae%n%cn%x09%ce')) | Sort-Object -Unique | ForEach-Object { , @("$_" -split "`t") } | Where-Object { $_.Count -ge 2 }) (New-Object 'System.Collections.Generic.Dictionary[string,string]') -Number
+    $parts = @($BannedPattern, 'claude', 'anthropic', 'opus', $UserSegRx, $EmailRx) + @($ids.Terms | ForEach-Object { Get-IdentityScanRx $_[0] })
     $rx = New-Object System.Text.RegularExpressions.Regex(($parts -join '|'), 'IgnoreCase')
     $rels = [string[]]@(Get-ChildItem $pkg -Recurse -File | ForEach-Object { $_.FullName.Substring($pkg.Length + 1).Replace('\', '/') })
     $lk = New-Object 'System.Collections.Generic.List[GameDeliverable.Hit]'
@@ -1385,18 +1521,8 @@ if ($Rescan) {
 # appearance in the repo's history, as in git.log.
 if ($ScrubDir) {
     $sd = (Resolve-Path $ScrubDir).Path
-    $ids = New-Object System.Collections.ArrayList; $seen = @{}
-    foreach ($line in (Invoke-Git $repo (@('log') + $HistoryRefArgs + @('--reverse', '--topo-order', '--format=%an%x09%ae%n%cn%x09%ce')))) {
-        $parts = "$line" -split "`t"; if ($parts.Count -lt 2) { continue }
-        $nm = $parts[0].Trim(); if ($nm -match '(?i)^(claude|agent|dev|dev_\d+)$') { continue }
-        if (-not $seen.ContainsKey($nm)) { $seen[$nm] = 'dev_' + ($seen.Count + 1).ToString('00') }
-        $dev = $seen[$nm]; [void]$ids.Add(@($nm, $dev))
-        foreach ($w in ($nm -split '[^A-Za-z0-9]+')) { if ($w.Length -ge 4 -and $w -notmatch '(?i)^(claude|anthropic|agent|users?|admin|root|dev|noreply|github|unknown)$') { [void]$ids.Add(@($w, $dev)) } }
-        $local = ($parts[1].Trim() -split '@')[0]; if ($local -match '\+') { $local = ($local -split '\+')[-1] }
-        if ($local.Length -ge 4) { [void]$ids.Add(@($local, $dev)) }
-    }
-    function Get-IdRx([string]$t) { $e = [regex]::Escape($t); if ($t -match '\d' -and $t.Length -ge 5) { "(?i)$WordStart$e[A-Za-z0-9]*" } else { "(?i)$WordStart$e(?![A-Za-z0-9])" } }
-    $rules = @($RulesHead) + @($ids | Sort-Object { - $_[0].Length } | ForEach-Object { @{ id = 'git-identity'; scope = 'all'; match = (Get-IdRx $_[0]); replace = $_[1] } }) + @($RulesTail)
+    $pairs = @(Invoke-Git $repo (@('log') + $HistoryRefArgs + @('--reverse', '--topo-order', '--format=%an%x09%ae%n%cn%x09%ce')) | ForEach-Object { , @("$_" -split "`t") } | Where-Object { $_.Count -ge 2 })
+    $rules = @($RulesHead) + @(Get-IdentityRules (Get-IdentityTerms $pairs (New-Object 'System.Collections.Generic.Dictionary[string,string]') -Number)) + @($RulesTail)
     $rels = [string[]]@(Get-ChildItem $sd -Recurse -File | ForEach-Object { $_.FullName.Substring($sd.Length + 1).Replace('\', '/') })
     $res = [GameDeliverable.Tools]::ScrubAll($sd, $rels, [string[]]@($rules | ForEach-Object { $_.match }), [string[]]@($rules | ForEach-Object { $_.replace }),
         [string[]]@($rules | ForEach-Object { $_.scope }), [string[]]@($rules | ForEach-Object { '' }))
@@ -2036,33 +2162,19 @@ Write-Utf8 (Join-Path $stage 'README.md') $sb.ToString()
 # scrub (package copy only), then scan everything: names, user name, e-mails, agent mentions, git identities
 # ---------------------------------------------------------------------------------------------------------------------
 function Get-Rels { @(Get-ChildItem $stage -Recurse -File | ForEach-Object { $_.FullName.Substring($stage.Length + 1).Replace('\', '/') }) }
-# git identities -> dev_NN (numbered by git.log): full names, name words of 4+ letters, e-mail handles
-$identityTerms = New-Object System.Collections.ArrayList
-$skipWords = @('claude', 'anthropic', 'agent', 'user', 'users', 'admin', 'root', 'dev', 'noreply', 'github', 'unknown')
-foreach ($line in (Invoke-Git $repo @('log', '--format=%an%x09%ae%n%cn%x09%ce', $sha) | Sort-Object -Unique)) {
-    $parts = "$line" -split "`t"; if ($parts.Count -lt 2) { continue }
-    $nm = $parts[0].Trim(); $em = $parts[1].Trim(); if (-not $authors.ContainsKey($nm)) { continue }
-    $dev = $authors[$nm]
-    if ($nm -notmatch '(?i)^(claude|agent|dev|dev_\d+)$') { [void]$identityTerms.Add(@($nm, $dev)) }
-    foreach ($w in ($nm -split '[^A-Za-z0-9]+')) { if ($w.Length -ge 4 -and $skipWords -notcontains $w.ToLowerInvariant()) { [void]$identityTerms.Add(@($w, $dev)) } }
-    $local = ($em -split '@')[0]; if ($local -match '\+') { $local = ($local -split '\+')[-1] }
-    if ($local.Length -ge 4 -and $skipWords -notcontains $local.ToLowerInvariant()) { [void]$identityTerms.Add(@($local, $dev)) }
-}
-# A term with a digit is a handle (e.g. a name spelled with 0 for o): it also takes the letters/digits glued to it,
-# which catches account names built on it; plain words match as whole words only.
-function Get-IdentityRx([string]$t) {
-    $e = [regex]::Escape($t)
-    if ($t -match '\d' -and $t.Length -ge 5) { return "(?i)$WordStart$e[A-Za-z0-9]*" }
-    return "(?i)$WordStart$e(?![A-Za-z0-9])"
-}
-$idRules = @($identityTerms | Sort-Object { - $_[0].Length } | ForEach-Object { @{ id = 'git-identity'; scope = 'all'; match = (Get-IdentityRx $_[0]); replace = $_[1] } })
+# git identities -> dev_NN (numbered by git.log): full names, name words of 4+ letters, e-mail handles (Get-IdentityTerms)
+$ids = Get-IdentityTerms @(Invoke-Git $repo @('log', '--format=%an%x09%ae%n%cn%x09%ce', $sha) | Sort-Object -Unique | ForEach-Object { , @("$_" -split "`t") } | Where-Object { $_.Count -ge 2 }) $authors
+if ($ids.MetadataOnly) { Write-Step "$($ids.MetadataOnly) git identity name(s) short or generic: anonymised in commit metadata and trailers only, never as a word" }
+$identityTerms = $ids.Terms
+$idRules = Get-IdentityRules $ids
 $Rules = @($RulesHead) + $idRules + @($RulesTail)
 $enforcedParts = @($BannedPattern, 'claude', 'anthropic', 'opus', $UserSegRx, $EmailRx) +
-    @($identityTerms | ForEach-Object { (Get-IdentityRx $_[0]) -replace '^\(\?i\)', '' })
+    @($identityTerms | ForEach-Object { Get-IdentityScanRx $_[0] })
 $Enforced = New-Object System.Text.RegularExpressions.Regex(($enforcedParts -join '|'), 'IgnoreCase')
 $needles = $BinNeedles; $refuse = $BinRefuse; $cats = $BinCats
 # reported only (outside the package): any other user-folder paths
-$leakRx = New-Object System.Text.RegularExpressions.Regex(('[A-Za-z]:[\\/]{1,2}Users[\\/]{1,2}(?!dev\b)[^\\/"\s]+|/Users/(?!dev\b)[^/"\s]+|/home/[^/"\s]+|[A-Za-z0-9._-]*' + [regex]::Escape($UserName) + '[A-Za-z0-9._-]*'), 'IgnoreCase')
+$leakRx = New-Object System.Text.RegularExpressions.Regex(('[A-Za-z]:[\\/]{1,2}Users[\\/]{1,2}(?!dev\b)[^\\/"\s]+|/Users/(?!dev\b)[^/"\s]+|/home/[^/"\s]+' +
+    $(if ($Account.Generic) { '' } else { '|[A-Za-z0-9._-]*' + [regex]::Escape($UserName) + '[A-Za-z0-9._-]*' })), 'IgnoreCase')
 
 $scrubReport = [ordered]@{ schema = 'scrub-report/1'; applied = (-not $NoScrub) }
 $touched = @{}
@@ -2109,7 +2221,7 @@ if (-not $NoScrub) {
         if ($changed) { Write-JsonFile $bm.FullName $mj; $touched["$relDir/manifest.json"] = 1 }
     }
     $scrubReport.rules = @($perRule.Values)
-    $scrubReport.git_log = [ordered]@{ commit_message_trailer_lines_removed = $tr; identities_numbered = $authors.Count }
+    $scrubReport.git_log = [ordered]@{ commit_message_trailer_lines_removed = $tr; identities_numbered = $authors.Count; identities_metadata_only = $ids.MetadataOnly }
     $scrubReport.files_touched_count = $touched.Count
     $scrubReport.files_touched = @($filesOut)
     $scrubReport.gameplay_manifests = 'entries of rewritten bundle files carry the new bytes and sha256'

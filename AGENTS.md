@@ -77,3 +77,11 @@ Background is in `docs/`; keep this section to rules.
 - Anonymize authors as `dev_NN` and run the leak scan (real names, e-mails, `C:\Users\…`, `/Users/…`, `/home/…`)
   over every text file of a package before calling it done. _(failure: commit metadata and asset files can
   carry real names and machine paths)_
+- The anonymiser never changes a game's code, config or asset identifiers. It replaces a name in text only as a
+  whole word (`_` and letters and digits count as part of a word on both sides, so never inside an identifier) and only
+  a name of 4+ characters that is not a generic word (`Test-NameTerm` in `tools/package-game.ps1`: dev, user, admin,
+  test, ...). A short or generic author name is anonymised in commit metadata only (author, committer, tagger,
+  `...-by:` trailers); a short or generic account name only in user paths. Never "fix" a refused package by widening a
+  replacement: a real name glued into an identifier refuses for a person to fix, and the leak scan stays as strict.
+  `package-game.ps1 _ -SelfCheck` must pass. _(failure: an author named Dev had the engine macro
+  `WITH_DEV_AUTOMATION_TESTS` rewritten in 38 places of two delivered games, which then failed to compile on Windows)_

@@ -412,6 +412,10 @@ def check_dataset(rep, path, area='dataset'):
 
 LFS_PTR = re.compile(rb'^version https://git-lfs\.github\.com/spec/v1\r?\noid sha256:([0-9a-f]{64})\r?\nsize ([0-9]+)')
 OPTS = {'hash': True, 'quick': False, 'no_contract': False}
+# account names too generic to check as a word (same rule as package-game.ps1 Test-NameTerm)
+GENERIC_NAMES = ('dev', 'devs', 'developer', 'user', 'users', 'admin', 'administrator', 'root', 'test', 'tester', 'guest', 'owner',
+                 'default', 'build', 'builder', 'player', 'unknown', 'noreply', 'github', 'author', 'agent', 'claude', 'codex',
+                 'anthropic', 'openai', 'studio', 'home', 'work', 'game', 'local', 'public')
 
 
 def git_out(*args, input=None):
@@ -1298,7 +1302,7 @@ def check_repo(rep, repo):
     # not enforced in scripts (account_name.exempt_paths: Scripts/ and script files anywhere), which stay unchanged
     # once they ran and are scrubbed at packaging (user decision b)
     acct = os.environ.get('USERNAME') or os.path.basename(os.path.expanduser('~'))
-    if acct and len(acct) >= 4:
+    if acct and len(acct) >= 4 and acct.lower() not in GENERIC_NAMES:   # a generic one ("admin") is the game's own word
         rxs.append(re.compile(r'(?i)(?<![A-Za-z0-9_])' + re.escape(acct) + r'(?![A-Za-z0-9_])'))
         labels.append('the account name')
         exempt.append(re.compile(bn.get('account_name', {}).get('exempt_paths', r'^Scripts/')))
