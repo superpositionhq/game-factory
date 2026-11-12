@@ -1,7 +1,9 @@
 # Agent hook (Claude Code: PostToolUse / PostToolUseFailure / Stop, and UserPromptSubmit / SessionEnd with -Messages;
 # Codex: PostToolUse / Stop, and UserPromptSubmit / SessionEnd with -Messages; all with -Agent codex):
 # append every tool call of a game-building or replay session to <root>\.recording\<project>\actions.jsonl, and every
-# prompt the person typed and every reply the model wrote to <root>\.recording\<project>\messages.jsonl.
+# prompt the person typed, every reply the model wrote and every reasoning summary the agent saved to
+# <root>\.recording\<project>\messages.jsonl. A tool call's row holds its whole result (up to 1,000,000 chars; a
+# picture or other binary payload as a short marker).
 # Both agents send the same hook JSON on stdin (session_id, transcript_path, cwd, hook_event_name, tool_name,
 # tool_input, tool_response, tool_use_id). Codex names its shell tool "Bash" (tool_input.command, a string) and its
 # file edits "apply_patch" (tool_input.command = the patch text); it has no PostToolUseFailure (a failed call is a
@@ -17,7 +19,7 @@
 # existed: the rows go in just before that session's first row. Each session is backfilled at most once
 # (recording-backfill.json next to this file), and a call already in actions.jsonl is never written twice.
 # On Stop, leftover changes in a game repo are committed ("WIP") so no work stays uncommitted.
-# Messages (schema superposition.agent-message/v0: time, project, session_id, agent, role "user" | "assistant",
+# Messages (schema superposition.agent-message/v0: time, project, session_id, agent, role "user" | "assistant" | "thinking",
 # message_id, text; "model"; "images" = pictures attached to a prompt; "mid_turn" for a prompt typed while the model
 # was working; Codex "phase"; "subagent" for a Claude Code subagent's transcript, where "user" is the prompt the
 # session gave it) are read from the session's transcript, never
@@ -26,7 +28,9 @@
 # read (recording-messages.json next to this file: transcript file -> bytes read), so a session mapped late gets its
 # earlier messages too. A call waits up to 2 s for its own message (Stop: the turn's last reply; UserPromptSubmit: the
 # prompt) to reach the transcript. Not recorded: tool
-# calls and results (actions.jsonl), the model's reasoning, text the agent tool puts into a turn itself (Claude Code
+# calls and results (actions.jsonl), reasoning the agent saved without readable text (a "thinking" row with
+# "redacted": true and no text marks it: Claude Code saves the text when its showThinkingSummaries setting is on, Codex
+# when model_reasoning_summary is and its model gives summaries; bootstrap.ps1 sets both), text the agent tool puts into a turn itself (Claude Code
 # isMeta rows, compaction summaries, background-task notices, API error notices) and a fork's copied context.
 # `record-action.ps1 -Backfill <session id>` also imports that session's messages; `-Backfill all` imports the messages
 # of every mapped session whose transcript is still on this machine (either agent), and nothing else.
@@ -55,11 +59,21 @@ $backfillFile = Join-Path $hooks 'recording-backfill.json'
 $messagesFile = Join-Path $hooks 'recording-messages.json'
 $excludeFile = Join-Path $hooks 'recording-exclude.txt'
 $maxText = 200000   # chars kept per string field of tool_input
-$maxResp = 8000     # chars kept of the tool response
+$maxResp = 1000000  # chars kept of a tool's result: the whole result unless it is larger than this
 
 function Clip($v, $n) {
   if ($v -is [string] -and $v.Length -gt $n) { return $v.Substring(0, $n) + "...[truncated $($v.Length - $n) chars]" }
   return $v
+}
+# A tool's result as recorded: the whole text (up to $maxResp chars; a longer one is cut and the row says so in
+# <key>_chars and <key>_truncated). A picture or other binary payload inside it (base64) becomes a short marker.
+function Set-Output($Row, [string]$Key, $Value) {
+  if ($null -eq $Value) { $Row[$Key] = $null; return }
+  $s = if ($Value -is [string]) { $Value } else { $Value | ConvertTo-Json -Depth 8 -Compress }
+  $s = [regex]::Replace($s, '"(data|base64|bytes|image)"\s*:\s*"([A-Za-z0-9+/=\\]{2000,})"',
+    [System.Text.RegularExpressions.MatchEvaluator] { param($m) '"' + $m.Groups[1].Value + '":"[binary ' + $m.Groups[2].Value.Length + ' chars]"' })
+  if ($s.Length -gt $maxResp) { $Row[$Key + '_chars'] = $s.Length; $Row[$Key + '_truncated'] = $true }
+  $Row[$Key] = Clip $s $maxResp
 }
 function Read-JsonMap([string]$Path) {
   $h = @{}
@@ -175,8 +189,8 @@ function New-BackfillRows([string]$Sid, [string]$Project, $Got, $Skip) {
     $inp = [ordered]@{}
     if ($c.input) { foreach ($p in $c.input.PSObject.Properties) { $inp[$p.Name] = Clip $p.Value $maxText } }
     $row.input = $inp
-    if ($r.error) { $row.error = Clip $r.text $maxResp }
-    $row.response = Clip $r.resp $maxResp
+    if ($r.error) { Set-Output $row 'error' $r.text }
+    Set-Output $row 'response' $r.resp
     $row.result_time = $r.ts.ToLocalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffzzz')
     $rows.Add(($row | ConvertTo-Json -Depth 12 -Compress))
   }
@@ -212,7 +226,8 @@ function Read-TranscriptTail([string]$Path, [long]$From) {
   return [pscustomobject]@{ lines = $utf8.GetString($buf, 0, $end).Split("`n"); next = $From + $end + 1 }
 }
 # Claude Code: a "user" row whose content holds text or a picture is a prompt (a tool result holds neither), an
-# "assistant" row's text blocks are a reply (thinking and tool_use blocks are not text). A prompt typed while the model
+# "assistant" row's text blocks are a reply, its thinking blocks the turn's reasoning summary (role "thinking";
+# tool_use blocks are in actions.jsonl). A prompt typed while the model
 # was working is an "attachment" row of type queued_command from a person ("mid_turn" in its row).
 function Get-ClaudeMessages([string]$Sid, $Lines, [datetime]$Created) {
   $out = New-Object System.Collections.Generic.List[object]
@@ -230,7 +245,7 @@ function Get-ClaudeMessages([string]$Sid, $Lines, [datetime]$Created) {
       $ts = ConvertTo-Time $o.timestamp
       if ($ts.UtcDateTime -lt $Created) { continue }
       $text = if ($a.prompt -is [string]) { $a.prompt } else { (@(foreach ($b in @($a.prompt)) { if ($b.type -eq 'text') { [string]$b.text } }) -join "`n") }
-      if ("$text".Trim()) { $out.Add([pscustomobject]@{ id = [string]$o.uuid; role = 'user'; ts = $ts; text = "$text"; images = 0; model = ''; phase = ''; mid = $true }) }
+      if ("$text".Trim()) { $out.Add([pscustomobject]@{ id = [string]$o.uuid; role = 'user'; ts = $ts; text = "$text"; images = 0; model = ''; phase = ''; mid = $true; redacted = $false }) }
       continue
     }
     $role = [string]$o.type
@@ -239,34 +254,53 @@ function Get-ClaudeMessages([string]$Sid, $Lines, [datetime]$Created) {
     if ($o.PSObject.Properties['origin'] -and $o.origin -and [string]$o.origin.kind -ne 'human') { continue }   # e.g. a background task's notice
     $ts = ConvertTo-Time $o.timestamp
     if ($ts.UtcDateTime -lt $Created) { continue }
-    $c = $o.message.content; $images = 0
+    $c = $o.message.content; $images = 0; $hidden = 0
+    $think = New-Object System.Collections.Generic.List[string]
     $text = if ($c -is [string]) { $c } else {
-      (@(foreach ($b in @($c)) { if ($b.type -eq 'text') { [string]$b.text } elseif ($b.type -eq 'image') { $images++ } }) -join "`n")
+      (@(foreach ($b in @($c)) {
+          if ($b.type -eq 'text') { [string]$b.text } elseif ($b.type -eq 'image') { $images++ }
+          elseif ($b.type -eq 'thinking') { if ("$($b.thinking)".Trim()) { $think.Add([string]$b.thinking) } else { $hidden++ } }
+          elseif ($b.type -eq 'redacted_thinking') { $hidden++ }
+        }) -join "`n")
+    }
+    $model = if ($role -eq 'assistant') { [string]$o.message.model } else { '' }
+    # the reasoning summary of the turn, as the agent saved it; a block saved without readable text is a row with none
+    if ($role -eq 'assistant' -and ($think.Count -or $hidden)) {
+      $out.Add([pscustomobject]@{ id = [string]$o.uuid + ':thinking'; role = 'thinking'; ts = $ts; text = ($think -join "`n"); images = 0; model = $model; phase = ''; mid = $false; redacted = ($think.Count -eq 0) })
     }
     if (-not "$text".Trim() -and -not $images) { continue }
-    $model = if ($role -eq 'assistant') { [string]$o.message.model } else { '' }
-    $out.Add([pscustomobject]@{ id = [string]$o.uuid; role = $role; ts = $ts; text = "$text"; images = $images; model = $model; phase = ''; mid = $false })
+    $out.Add([pscustomobject]@{ id = [string]$o.uuid; role = $role; ts = $ts; text = "$text"; images = $images; model = $model; phase = ''; mid = $false; redacted = $false })
   }
   return , $out
 }
-# Codex: the rollout's finished UserMessage and AgentMessage items (item.id is the message's id).
+# Codex: the rollout's finished UserMessage, AgentMessage and Reasoning items (item.id is the message's id). A
+# Reasoning item's summary_text (and raw_content, when the rollout holds it as text) is the reasoning summary; one saved
+# without readable text is a row with none.
 function Get-CodexMessages([string]$Sid, $Lines, [datetime]$Created) {
   $out = New-Object System.Collections.Generic.List[object]
   foreach ($line in $Lines) {
-    if ($line -notmatch '"item_completed"' -or $line -notmatch '"(?:UserMessage|AgentMessage)"') { continue }
+    if ($line -notmatch '"item_completed"' -or $line -notmatch '"(?:UserMessage|AgentMessage|Reasoning)"') { continue }
     try { $o = $line | ConvertFrom-Json } catch { continue }
     $p = $o.payload
     if ($o.type -ne 'event_msg' -or $p.type -ne 'item_completed' -or -not $p.item -or -not $o.timestamp) { continue }
     if ($p.thread_id -and [string]$p.thread_id -ne $Sid) { continue }
     $it = $p.item
-    $role = if ([string]$it.type -eq 'UserMessage') { 'user' } elseif ([string]$it.type -eq 'AgentMessage') { 'assistant' } else { '' }
+    $role = if ([string]$it.type -eq 'UserMessage') { 'user' } elseif ([string]$it.type -eq 'AgentMessage') { 'assistant' } elseif ([string]$it.type -eq 'Reasoning') { 'thinking' } else { '' }
     if (-not $role -or -not $it.id) { continue }
     $ts = ConvertTo-Time $o.timestamp
     if ($ts.UtcDateTime -lt $Created) { continue }
+    if ($role -eq 'thinking') {
+      $parts = @(foreach ($b in (@($it.summary_text) + @($it.raw_content))) {
+          if ($b -is [string]) { $b } elseif ($b -and $b.PSObject.Properties['text'] -and $b.text) { [string]$b.text }
+        })
+      $text = (@($parts | Where-Object { "$_".Trim() }) -join "`n")
+      $out.Add([pscustomobject]@{ id = [string]$it.id; role = 'thinking'; ts = $ts; text = "$text"; images = 0; model = ''; phase = ''; mid = $false; redacted = (-not "$text".Trim()) })
+      continue
+    }
     $images = 0
     $text = (@(foreach ($b in @($it.content)) { if ($b.PSObject.Properties['text'] -and $b.text) { [string]$b.text } elseif ([string]$b.type -match '(?i)image') { $images++ } }) -join "`n")
     if (-not "$text".Trim() -and -not $images) { continue }
-    $out.Add([pscustomobject]@{ id = [string]$it.id; role = $role; ts = $ts; text = "$text"; images = $images; model = ''; phase = [string]$it.phase; mid = $false })
+    $out.Add([pscustomobject]@{ id = [string]$it.id; role = $role; ts = $ts; text = "$text"; images = $images; model = ''; phase = [string]$it.phase; mid = $false; redacted = $false })
   }
   return , $out
 }
@@ -298,7 +332,7 @@ function Sync-Messages([string]$Sid, [string]$Project, [string]$Path) {
     $subagent = if ($f -eq $Path) { '' } else { [IO.Path]::GetFileNameWithoutExtension($f) }
     $msgs = if ($Agent -eq 'codex') { Get-CodexMessages $Sid $tail.lines $created } else { Get-ClaudeMessages $Sid $tail.lines $created }
     foreach ($m in $msgs) {
-      if (-not $subagent) { $script:Read.Add("$($m.role) $($m.text)") }
+      if (-not $subagent -and $m.role -ne 'thinking') { $script:Read.Add("$($m.role) $($m.text)") }
       if ($null -ne $seen -and -not $seen.Add($m.id)) { continue }
       $row = [ordered]@{
         schema     = 'superposition.agent-message/v0'
@@ -314,6 +348,7 @@ function Sync-Messages([string]$Sid, [string]$Project, [string]$Path) {
       if ($m.phase) { $row.phase = $m.phase }
       if ($m.images) { $row.images = $m.images }
       if ($m.mid) { $row.mid_turn = $true }
+      if ($m.redacted) { $row.redacted = $true }
       $row.text = Clip $m.text $maxText
       $rows.Add(($row | ConvertTo-Json -Depth 4 -Compress))
     }
@@ -472,9 +507,8 @@ try {
     $inp = [ordered]@{}
     if ($e.tool_input) { foreach ($p in $e.tool_input.PSObject.Properties) { $inp[$p.Name] = Clip $p.Value $maxText } }
     $row.input = $inp
-    $resp = if ($e.tool_response -is [string]) { $e.tool_response } elseif ($null -ne $e.tool_response) { $e.tool_response | ConvertTo-Json -Depth 8 -Compress } else { $null }
-    if ($e.error) { $row.error = Clip ([string]$e.error) $maxResp }
-    $row.response = Clip $resp $maxResp
+    if ($e.error) { Set-Output $row 'error' ([string]$e.error) }
+    Set-Output $row 'response' $e.tool_response
   }
   [IO.File]::AppendAllText($actions, ($row | ConvertTo-Json -Depth 12 -Compress) + "`n", $utf8)
 } finally { $mutex.ReleaseMutex() }

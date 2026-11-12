@@ -90,15 +90,15 @@ hooks and never overwrites it.
   `actions.jsonl` (finds the transcript under `~\.claude\projects\`, or `~\.codex\sessions\` with `-Agent codex`,
   when not given); a second run does nothing.
 - Live rows carry no `status`; every row of a backfill carries `from_transcript`, so the two are never confused.
-- **Prompts and replies.** `messages.jsonl` next to `actions.jsonl` holds every prompt the person typed and every
-  reply the model wrote in a session mapped to the project, one row each (`"schema": "superposition.agent-message/v0"`:
-  `time`, `project`, `session_id`, `agent`, `role` `user` or `assistant`, `message_id`, `text`; `model`; `images` for
+- **Prompts, replies and reasoning summaries.** `messages.jsonl` next to `actions.jsonl` holds every prompt the person typed, every
+  reply the model wrote and every reasoning summary the agent saved in a session mapped to the project, one row each (`"schema": "superposition.agent-message/v0"`:
+  `time`, `project`, `session_id`, `agent`, `role` `user`, `assistant` or `thinking`, `message_id`, `text`; `model`; `images` for
   pictures attached to a prompt; `mid_turn` for a prompt typed while the model was working; Codex `phase`; `subagent`
   for a Claude Code subagent's transcript, where `user` is the prompt the session gave it). The hook reads them from
   the session's transcript, never from its own input, so each is written once with the transcript's id and time: every
   Stop, UserPromptSubmit and SessionEnd reads what the transcript gained since the last read
   (`recording-messages.json` next to the hooks: transcript file, bytes read), so a session mapped late gets its
-  earlier messages too. Not recorded: tool calls and results (`actions.jsonl`), the model's reasoning, text the agent
+  earlier messages too. In it, a `thinking` row is a reasoning summary the agent saved for a turn (`"redacted": true` and no text when the agent saved it without readable text); `machine/bootstrap.ps1` turns the summaries on for both agents (Claude Code `showThinkingSummaries` and `alwaysThinkingEnabled` in `settings.json`; Codex `model_reasoning_summary = "detailed"` and `hide_agent_reasoning = false` in `config.toml`) and `machine/check.ps1` checks them; a Codex model that gives no summaries leaves only the textless rows. Not recorded here: tool calls and results (`actions.jsonl`, each call with its whole result (up to 1,000,000 characters, `response_chars` and `response_truncated` on a longer one; a picture or other binary payload as a short marker)), text the agent
   tool puts into a turn itself (meta rows, compaction summaries, background-task notices, API error notices) and a
   fork's copied context.
 - **Sessions recorded before prompts and replies were:** `record-action.ps1 -Backfill <session id>` imports that

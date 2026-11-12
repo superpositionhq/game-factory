@@ -463,12 +463,12 @@ def check_sessions(rep, area, v, m):
             rep.warn(a, f'{name}: {bad} of {rows} row(s) are not a JSON object with {", ".join(("time", "session_id") + keys)}')
         if raw_ids:
             rep.warn(a, f"{name}: {raw_ids} row(s) carry the build machine's session id, not session_NN")
-        if name == 'messages.jsonl' and set(roles) - {'user', 'assistant'}:
-            rep.warn(a, f'{name}: roles other than user and assistant: {", ".join(sorted(set(roles) - {"user", "assistant"}))}')
+        if name == 'messages.jsonl' and set(roles) - {'user', 'assistant', 'thinking'}:
+            rep.warn(a, f'{name}: roles other than user, assistant and thinking: {", ".join(sorted(set(roles) - {"user", "assistant", "thinking"}))}')
         want = (listed.get(name[:-len('.jsonl')]) or {}).get('rows') if isinstance(listed, dict) else None
         if want is not None and want != rows:
             rep.warn(a, f'{name}: {rows} row(s), manifest.json history.sessions says {want}')
-        detail = f'{roles.get("user", 0)} prompt(s), {roles.get("assistant", 0)} repl(ies)' if name == 'messages.jsonl' else f'{rows} row(s)'
+        detail = f'{roles.get("user", 0)} prompt(s), {roles.get("assistant", 0)} repl(ies), {roles.get("thinking", 0)} reasoning summar(ies)' if name == 'messages.jsonl' else f'{rows} row(s)'
         rep.note(a, f'{name}: {detail} in {len(sessions)} session(s)')
 
 

@@ -249,11 +249,17 @@ if ($Agents -contains 'claude') {
     $settings = Read-JsonOrEmpty $settingsPath
     $frag = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'hooks\settings-hooks.json')).Replace('{{HOOKS_DIR}}', $hooksSlash) | ConvertFrom-Json
     $claudeChanged = Merge-RecordingHooks $settings $frag
+    # the reasoning summaries the hook records are in the session's transcript only with these two settings on
+    foreach ($want in 'showThinkingSummaries', 'alwaysThinkingEnabled') {
+        $p = $settings.PSObject.Properties[$want]
+        if (-not $p) { $settings | Add-Member -NotePropertyName $want -NotePropertyValue $true; $claudeChanged = $true }
+        elseif ($p.Value -ne $true) { $p.Value = $true; $claudeChanged = $true }
+    }
 }
 # Codex: ~\.codex\hooks.json gets PostToolUse, Stop, UserPromptSubmit and SessionEnd (Codex has no PostToolUseFailure),
 # and config.toml the trust
 # entries for exactly those handlers (machine/lib/codex-hooks.ps1: Codex skips an untrusted hook silently).
-$codexChanged = $false; $codexTrustChanged = $false; $codexTrust = @()
+$codexChanged = $false; $codexTrustChanged = $false; $codexTrust = @(); $codexSummaryChanged = $false
 if ($Agents -contains 'codex') {
     $codexHooksPath = Join-Path $CodexDir 'hooks.json'
     $codexToml = Join-Path $CodexDir 'config.toml'
@@ -268,21 +274,26 @@ if ($Agents -contains 'codex') {
     }
     $have = Get-GFCodexTrustState $codexToml
     $codexTrustChanged = @($codexTrust | Where-Object { $have[$_.key] -ne $_.hash }).Count -gt 0
+    # reasoning summaries shown and saved in the rollout file, where the hook reads them
+    $haveTop = Get-GFCodexTopLevel $codexToml
+    $codexSummaryChanged = @($script:GFCodexSummary.Keys | Where-Object { $haveTop[$_] -ne $script:GFCodexSummary[$_] }).Count -gt 0
 }
 
-if (($claudeChanged -or $codexChanged -or $codexTrustChanged) -and -not $Yes) {
+if (($claudeChanged -or $codexChanged -or $codexTrustChanged -or $codexSummaryChanged) -and -not $Yes) {
     # Say plainly what the hooks do before wiring them into every session of the chosen agents on this Windows account.
     Write-Host ""
     Write-Host "  About to add the game-factory recording hooks (a backup .bak-$stamp of each file is kept):" -ForegroundColor Yellow
     if ($claudeChanged) { Write-Host "    - Claude Code: PostToolUse, PostToolUseFailure, Stop, UserPromptSubmit and SessionEnd in $ClaudeDir\settings.json" }
+    if ($claudeChanged) { Write-Host "      and its reasoning summaries turned on there (showThinkingSummaries, alwaysThinkingEnabled)" }
     if ($codexChanged -or $codexTrustChanged) { Write-Host "    - Codex: PostToolUse, Stop, UserPromptSubmit and SessionEnd in $CodexDir\hooks.json, marked trusted in $CodexDir\config.toml" }
+    if ($codexSummaryChanged) { Write-Host "    - Codex: its reasoning summaries turned on in $CodexDir\config.toml (model_reasoning_summary, hide_agent_reasoning)" }
     Write-Host "    They run $hooksDir\record-action.ps1 after every tool call, at every prompt and at the end of every turn and"
     Write-Host "    session, for every session of that agent on this account."
     Write-Host "    - A session that works on a game (a tool call naming $Root\games\<slug>) has every tool call recorded"
-    Write-Host "      (command, file paths, inputs, results, times) to $Root\.recording\<slug>\actions.jsonl, including its"
+    Write-Host "      (command, file paths, inputs, whole results, times) to $Root\.recording\<slug>\actions.jsonl, including its"
     Write-Host "      earlier calls, imported from its transcript; at the end of each turn its uncommitted work is committed as WIP."
     Write-Host "    - The same session has every prompt you type and every reply the model writes recorded, read from its"
-    Write-Host "      transcript, to $Root\.recording\<slug>\messages.jsonl (not the model's reasoning)."
+    Write-Host "      transcript, to $Root\.recording\<slug>\messages.jsonl with the reasoning summaries the agent shows."
     Write-Host "    - Each game repo's post-commit hook records commits to $Root\.recording\<slug>\commits.jsonl."
     Write-Host "    - Sessions that never touch a game folder are not recorded; session ids in hooks\recording-exclude.txt never are."
     Write-Host "    These records become the game-creation dataset. Remove the entries from those files to stop recording."
@@ -292,6 +303,7 @@ if (($claudeChanged -or $codexChanged -or $codexTrustChanged) -and -not $Yes) {
         $hooksDeclined = $true
         if ($claudeChanged) { Note warn 'Claude Code hooks' 'not installed (declined or non-interactive; -Yes installs them without asking)' }
         if ($codexChanged -or $codexTrustChanged) { Note warn 'Codex hooks' 'not installed (declined or non-interactive; -Yes installs them without asking)' }
+        $codexSummaryChanged = $false
         $claudeChanged = $false; $codexChanged = $false; $codexTrustChanged = $false
     }
 }
@@ -310,6 +322,11 @@ if ($codexTrustChanged) {
     Set-GFCodexTrustState $codexToml $codexTrust
     Note changed 'Codex hook trust' "config.toml [hooks.state] for $(@($codexTrust).Count) handler(s) (backup .bak-$stamp; check with /hooks in Codex)"
 } elseif ($Agents -contains 'codex' -and -not $hooksDeclined) { Note ok 'Codex hook trust' }
+if ($codexSummaryChanged) {
+    if ((Test-Path -LiteralPath $codexToml) -and -not (Test-Path -LiteralPath "$codexToml.bak-$stamp")) { Copy-Item -LiteralPath $codexToml "$codexToml.bak-$stamp" }
+    Set-GFCodexTopLevel $codexToml $script:GFCodexSummary
+    Note changed 'Codex reasoning summaries' "config.toml: model_reasoning_summary detailed, hide_agent_reasoning false (backup .bak-$stamp)"
+} elseif ($Agents -contains 'codex' -and -not $hooksDeclined) { Note ok 'Codex reasoning summaries' }
 
 # Skills: one source (<repo>\skills\<name>\SKILL.md), copied to where each agent looks for personal skills
 # (Claude Code: ~\.claude\skills; Codex: ~\.agents\skills). Copies, not links: links need Developer Mode on Windows.

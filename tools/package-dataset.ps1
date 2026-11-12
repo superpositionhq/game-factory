@@ -588,8 +588,8 @@ function Write-Readme([string]$Dest, [string]$Variant) {
         if (-not $repo) { A "- ``History/`` — the full git history: ``History/$Game.bundle`` (every commit up to the release, and each task's start branch) and ``History/lfs/objects/`` (every Git LFS file of those commits). Authors are anonymised as dev_NN." }
         if (-not $repo -and (Test-Path -LiteralPath (Join-Path $Dest 'History\sessions'))) {
             A ('  `History/sessions/` — the creation sessions as recorded, one JSON row per line, oldest first within a session: ' +
-               '`messages.jsonl` holds every prompt the person typed (`role` "user") and every reply the model wrote (`role` "assistant"); ' +
-               '`actions.jsonl` holds every tool call with its input and the start of its result. `session_id` (session_NN) and `time` tie the two together.')
+               '`messages.jsonl` holds every prompt the person typed (`role` "user") and every reply the model wrote (`role` "assistant") and, where the sessions were recorded with them, the reasoning summaries the agent saved (`role` "thinking"); ' +
+               '`actions.jsonl` holds every tool call with its input and its result. `session_id` (session_NN) and `time` tie the two together.')
         }
         A '- `Brief/` — the original brief the game was built from (`Brief/brief.md`) and its design doc with story bible and status (`Brief/design.md`).'
         if ($layout -eq 'dataset-layout/v1.3' -and -not $repo) { A "- ``Tasks/`` — $($taskNames.Count) tasks on this game for a game-creation environment (``Tasks/README.md``)." }

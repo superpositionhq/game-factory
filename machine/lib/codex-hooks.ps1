@@ -100,6 +100,42 @@ function Get-GFCodexTrustState([string]$ConfigToml) {
 
 $script:CodexTrustMarker = '# game-factory recording hooks (machine/bootstrap.ps1): trusted so Codex runs them; /hooks in Codex shows them'
 # Writes (or replaces) the hooks.state tables for $Entries in $ConfigToml; every other line stays as it was.
+# The reasoning-summary settings the recording needs in config.toml (key -> the value as TOML text): with them Codex
+# shows its reasoning summaries and saves them in the session's rollout file, where the recording hook reads them.
+$script:GFCodexSummary = [ordered]@{ model_reasoning_summary = '"detailed"'; hide_agent_reasoning = 'false' }
+# Top-level settings of a config.toml (the lines before its first [table]): key -> the value as TOML text.
+function Get-GFCodexTopLevel([string]$ConfigToml) {
+    $h = @{}
+    if (Test-Path -LiteralPath $ConfigToml) {
+        foreach ($line in [IO.File]::ReadAllLines($ConfigToml)) {
+            if ($line -match '^\s*\[') { break }
+            if ($line -match '^\s*([A-Za-z0-9_-]+)\s*=\s*(.*?)\s*$') { $h[$Matches[1]] = ($Matches[2] -replace '\s+#.*$', '') }
+        }
+    }
+    return $h
+}
+# Sets top-level settings in $ConfigToml: a line that sets the key is replaced, a new key goes in before the first
+# [table] (a top-level key after a table header would belong to that table); every other line stays as it was.
+function Set-GFCodexTopLevel([string]$ConfigToml, $Values) {
+    $left = @{}; foreach ($k in $Values.Keys) { $left[$k] = $Values[$k] }
+    $lines = if (Test-Path -LiteralPath $ConfigToml) { [IO.File]::ReadAllLines($ConfigToml) } else { @() }
+    $out = New-Object Collections.Generic.List[string]
+    $top = $true
+    foreach ($line in $lines) {
+        if ($top -and $line -match '^\s*\[') {
+            foreach ($k in @($left.Keys | Sort-Object)) { $out.Add("$k = $($left[$k])") }
+            $left = @{}; $top = $false
+        }
+        if ($top -and $line -match '^\s*([A-Za-z0-9_-]+)\s*=') {
+            $k = $Matches[1]
+            if ($left.ContainsKey($k)) { $out.Add("$k = $($left[$k])"); $left.Remove($k); continue }
+        }
+        $out.Add($line)
+    }
+    foreach ($k in @($left.Keys | Sort-Object)) { $out.Add("$k = $($left[$k])") }
+    New-Item -ItemType Directory -Force (Split-Path $ConfigToml) | Out-Null
+    [IO.File]::WriteAllText($ConfigToml, (($out -join "`n") + "`n"), (New-Object Text.UTF8Encoding($false)))
+}
 function Set-GFCodexTrustState([string]$ConfigToml, $Entries) {
     $keys = @{}; foreach ($e in $Entries) { $keys[$e.key] = $e.hash }
     $lines = if (Test-Path -LiteralPath $ConfigToml) { [IO.File]::ReadAllLines($ConfigToml) } else { @() }

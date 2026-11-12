@@ -266,6 +266,11 @@ if ($Agents -contains 'claude') {
         $wired = if (Test-Path $sp) { @(Get-WiredEvents ([IO.File]::ReadAllText($sp) | ConvertFrom-Json) $events) } else { @() }
         if ($wired.Count -eq $events.Count) { Add-Result PASS 'Claude Code hooks' "$sp wires $($events -join ', ')" }
         else { Add-Result FAIL 'Claude Code hooks' "$sp wires: $(if ($wired) { $wired -join ', ' } else { 'none' })" 'machine\bootstrap.ps1 -Agent claude (asks before installing them)' }
+        # the recording keeps the reasoning summaries only when Claude Code saves them in the transcript
+        $st = if (Test-Path $sp) { [IO.File]::ReadAllText($sp) | ConvertFrom-Json } else { $null }
+        $off = @('showThinkingSummaries', 'alwaysThinkingEnabled' | Where-Object { -not $st -or -not $st.PSObject.Properties[$_] -or $st.$_ -ne $true })
+        if (-not $off) { Add-Result PASS 'Claude Code reasoning summaries' "${sp}: showThinkingSummaries and alwaysThinkingEnabled are on" }
+        else { Add-Result FAIL 'Claude Code reasoning summaries' "${sp}: not on: $($off -join ', ')" 'machine\bootstrap.ps1 -Agent claude (sets both to true)' }
     }
 }
 if ($Agents -contains 'codex') {
@@ -289,6 +294,10 @@ if ($Agents -contains 'codex') {
         $bad = @($trust | Where-Object { $state[$_.key] -ne $_.hash -and $state["\\?\$($_.key)"] -ne $_.hash } | ForEach-Object { $_.event })
         if (-not $bad) { Add-Result PASS 'Codex hooks' "$hp wires $($events -join ', '); trusted in config.toml" }
         else { Add-Result FAIL 'Codex hooks' "wired but not trusted (Codex skips them): $($bad -join ', ')" 'machine\bootstrap.ps1 -Agent codex, or in Codex type /hooks and trust the record-action.ps1 hooks' }
+        $top = Get-GFCodexTopLevel (Join-Path $CodexDir 'config.toml')
+        $off = @($script:GFCodexSummary.Keys | Where-Object { $top[$_] -ne $script:GFCodexSummary[$_] })
+        if (-not $off) { Add-Result PASS 'Codex reasoning summaries' 'config.toml: model_reasoning_summary detailed, hide_agent_reasoning false' }
+        else { Add-Result FAIL 'Codex reasoning summaries' "config.toml: not set: $($off -join ', ')" 'machine\bootstrap.ps1 -Agent codex (sets both)' }
     }
 }
 Try-Check 'Skills' {
