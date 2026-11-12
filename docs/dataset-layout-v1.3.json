@@ -223,8 +223,8 @@
   "sessions": {
     "what": "History/sessions/ (full variant, optional): the creation sessions as the machine's recording hooks wrote them, one JSON row per line",
     "files": {
-      "messages.jsonl": "every prompt the person typed (role user) and every reply the model wrote (role assistant): time, session_id, agent, role, message_id, text; model, images, mid_turn, phase, subagent when they apply",
-      "actions.jsonl": "every tool call: time, session_id, agent, event, cwd, tool, tool_use_id, input, response (its first 8,000 characters)"
+      "messages.jsonl": "every prompt the person typed (role user), every reply the model wrote (role assistant) and every reasoning summary the agent saved (role thinking; redacted true and no text when it was saved without readable text): time, session_id, agent, role, message_id, text; model, images, mid_turn, phase, subagent when they apply",
+      "actions.jsonl": "every tool call: time, session_id, agent, event, cwd, tool, tool_use_id, input, response (the whole result up to 1,000,000 characters; its first 8,000 in a game recorded before 2026-11-12)"
     },
     "rows": "up to the release commit's time; the sessions that packaged the game and the ones left out by hand are not in either file; session_id is session_NN, the same session in both files",
     "scrub": "like every other text file of the delivery; full commit ids are the delivered history's",

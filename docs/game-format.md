@@ -118,7 +118,7 @@ lists what needs a person).
 **The sessions' record (`History/sessions/`, owner 2026-11-10).** What the recording hooks wrote while the game was
 made (machine/README.md, Recording), one JSON row per line: `messages.jsonl`, every prompt the person typed (`role`
 `user`), every reply the model wrote (`role` `assistant`) and every reasoning summary the agent saved (`role` `thinking`;
-a `thinking` row is a reasoning summary the agent saved for a turn (`"redacted": true` and no text when the agent saved it without readable text)), and `actions.jsonl`, every tool call with its input and
+a `thinking` row is a reasoning summary the agent saved for a turn (`redacted` true and no text when the agent saved it without readable text)), and `actions.jsonl`, every tool call with its input and
 its whole result (up to 1,000,000 characters, `response_chars` and `response_truncated` on a longer one; a picture or other binary payload as a short marker). A game recorded before 2026-11-12 has no `thinking` rows and only the start of each result. Rows up to the release commit's time, without the sessions that packaged; scrubbed like every
 other text file; full commit ids are the delivered history's. `session_id` is `session_NN`, the same session in both
 files, and `time` orders the rows. `manifest.json` `history.sessions` names the files and counts their rows. Both files
