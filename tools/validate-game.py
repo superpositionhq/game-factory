@@ -411,7 +411,7 @@ def check_dataset(rep, path, area='dataset'):
 
 
 LFS_PTR = re.compile(rb'^version https://git-lfs\.github\.com/spec/v1\r?\noid sha256:([0-9a-f]{64})\r?\nsize ([0-9]+)')
-OPTS = {'hash': True, 'quick': False}
+OPTS = {'hash': True, 'quick': False, 'no_contract': False}
 
 
 def git_out(*args, input=None):
@@ -1342,6 +1342,197 @@ def check_repo(rep, repo):
         with open(os.path.join(repo, 'workflow.jsonl'), encoding='utf-8-sig', errors='replace') as f:
             check_workflow(rep, 'repo: workflow.jsonl', f)
     check_repo_tasks(rep, repo, files)
+    if OPTS['no_contract']:
+        rep.note('contract', 'skipped (--no-contract)')
+    elif contract_applies(repo):
+        check_contract(rep, repo, files)
+    else:
+        rep.note('contract', f'a game begun before {CONTRACT_FROM}: the damage and key-state contract is not enforced')
+
+
+# ---- the contract on a game with combat (Lab docs/planning/2026-11-11_game-contact-checks/spec.md section 11.1):
+# ---- damage through the engine's damage interface, key gameplay state in reflected UPROPERTY members -----------------
+HEALTH_WORDS = {'health', 'hp', 'hitpoints', 'hull', 'poise', 'armor', 'armour'}
+STATE_WORDS = {'shield', 'stamina', 'mana', 'lives', 'dead', 'alive', 'dying', 'stun', 'stunned', 'stagger', 'staggered',
+               'invulnerable', 'invincible', 'guard', 'guarding', 'blocking', 'parry', 'parrying', 'alert', 'aggro',
+               'awake', 'asleep', 'dormant', 'roused'}
+WHOLE_WORDS = {'phase', 'state'}  # only on whole-number or enum members
+# a member about how state is shown or heard, not the state itself (a HUD's last shown health, a hit sound's throttle)
+SHOWN_WORDS = {'sound', 'sfx', 'audio', 'fx', 'vfx', 'shown', 'display', 'shake'}
+# a UI class keeps copies of state to draw it; the state itself lives on the actor
+UI_CLASS = re.compile(r'\b(?:UUserWidget|UWidget|AHUD|SCompoundWidget|SLeafWidget|SWidget)\b|\b\w*(?:Hud|HUD|Widget)\w*\s*(?::|$)')
+NUMBER_TYPES = re.compile(r'^(?:float|double|bool|int|unsigned|uint8|uint16|uint32|uint64|int8|int16|int32|int64|'
+                          r'unsigned int|E[A-Z]\w*|TEnumAsByte<\s*E\w*\s*>|uint8\s*:\s*1)$')
+WHOLE_TYPES = re.compile(r'^(?:int|unsigned|uint8|uint16|uint32|uint64|int8|int16|int32|int64|E[A-Z]\w*|'
+                         r'TEnumAsByte<\s*E\w*\s*>)$')
+HIT_FUNCTION = re.compile(r'\b(?:Take|Receive|Apply|Deal)(?:Hit|Hurt|Damage)\w*\s*\(')
+ENGINE_DAMAGE = {'TakeDamage', 'ApplyDamage', 'ApplyPointDamage', 'ApplyRadialDamage', 'ApplyRadialDamageWithFalloff',
+                 'ReceiveAnyDamage', 'ReceivePointDamage', 'ReceiveRadialDamage'}
+RECEIVES = re.compile(r'\bTakeDamage\s*\([^;{]*\)\s*(?:const\s*)?override|::TakeDamage\s*\(|'
+                      r'\bOnTake(?:Any|Point|Radial)Damage\s*\.\s*Add')
+DEALS = re.compile(r'\bUGameplayStatics\s*::\s*Apply(?:Point|Radial)?Damage(?:WithFalloff)?\s*\(|'
+                   r'(?:->|\.)\s*TakeDamage\s*\(')
+
+
+def _words(name):
+    name = re.sub(r'^b(?=[A-Z])', '', name)
+    return [w.lower() for w in re.findall(r'[A-Z]+(?=[A-Z][a-z]|\d|$)|[A-Z]?[a-z]+|\d+', name)]
+
+
+def _key_member(type_, name):
+    """Why a data member is key state (spec 11.1 K), or None."""
+    t = re.sub(r'\s+', ' ', type_).strip()
+    words, low = _words(name), name.lower()
+    if not NUMBER_TYPES.match(t) or SHOWN_WORDS & set(words):
+        return None
+    if HEALTH_WORDS & set(words) or 'hitpoint' in low:
+        return 'health'
+    if STATE_WORDS & set(words) or 'cooldown' in low:
+        return 'combat state'
+    if WHOLE_WORDS & set(words) and WHOLE_TYPES.match(t):
+        return 'phase or state'
+    return None
+
+
+def _strip_cpp(text):
+    """C++ text without comments, string and char literals (their length kept as spaces, so line numbers hold)."""
+    out, i, n = [], 0, len(text)
+    while i < n:
+        c = text[i]
+        if text.startswith('//', i):
+            j = text.find('\n', i)
+            j = n if j < 0 else j
+            out.append(' ' * (j - i)); i = j
+        elif text.startswith('/*', i):
+            j = text.find('*/', i + 2)
+            j = n if j < 0 else j + 2
+            out.append(re.sub(r'[^\n]', ' ', text[i:j])); i = j
+        elif c in '"\'':
+            j = i + 1
+            while j < n and text[j] != c and text[j] != '\n':
+                j += 2 if text[j] == '\\' else 1
+            j = min(j + 1, n)
+            out.append(c + ' ' * max(0, j - i - 2) + (c if j - i >= 2 else '')); i = j
+        else:
+            out.append(c); i += 1
+    return ''.join(out)
+
+
+MEMBER = re.compile(r'^(?P<prefix>(?:\s*UPROPERTY\s*\((?:[^()]|\([^()]*\))*\))?)\s*(?P<quals>(?:(?:mutable|volatile)\s+)*)'
+                    r'(?P<type>[A-Za-z_][\w:]*(?:\s*<[^;{}()]*>)?)\s+(?P<name>[A-Za-z_]\w*)\s*'
+                    r'(?::\s*1\s*)?(?:\[[^\]]*\]\s*)?(?:=[^;]*|\{[^;]*\})?$', re.S)
+
+
+def key_state_members(text):
+    """[(line, name, why, reflected, in_reflected_type)] of the key state data members of the class and struct bodies
+    in C++ `text` (spec 11.1 K): members only, never locals or functions, static/const/constexpr left out."""
+    src = _strip_cpp(text)
+    found, stack, stmt, stmt_line = [], [], [], None
+    depth, i, n = 0, 0, len(src)
+    pending = None  # (kind, reflected) of a class/struct head waiting for its `{`
+    line = 1
+    while i < n:
+        c = src[i]
+        if c == '\n':
+            line += 1
+        if c == '{':
+            head = ''.join(stmt)
+            m = re.search(r'\b(class|struct)\s+(?:[A-Z_]+_API\s+)?(\w+)\s*(?:final\s*)?(?::[^{]*)?$', head.strip())
+            if m and not re.search(r'\benum\b', head):
+                reflected = bool(re.search(r'\b(UCLASS|USTRUCT)\s*\(', head))
+                ui = bool(UI_CLASS.search(head[head.rfind(m.group(1)):]))
+                stack.append((depth + 1, reflected, ui))
+            depth += 1
+            stmt, stmt_line = [], None
+        elif c == '}':
+            depth -= 1
+            if stack and stack[-1][0] == depth + 1:
+                stack.pop()
+            stmt, stmt_line = [], None
+        elif c == ';':
+            if stack and stack[-1][0] == depth:
+                body = ''.join(stmt)
+                body = re.sub(r'^.*?\b(?:public|private|protected)\s*:', '', body, flags=re.S)
+                body = re.sub(r'\b(?:GENERATED_BODY|GENERATED_UCLASS_BODY|GENERATED_USTRUCT_BODY)\s*\(\s*\)', '', body)
+                body = re.sub(r'\bU(?:CLASS|STRUCT)\s*\((?:[^()]|\([^()]*\))*\)', '', body)
+                body = body.strip()
+                if body and not stack[-1][2] and not re.search(r'\b(?:static|constexpr|const|typedef|using|friend|virtual|operator|'
+                                          r'DECLARE_\w+)\b', body):
+                    m = MEMBER.match(body)
+                    if m and '(' not in m.group('type'):
+                        why = _key_member(m.group('type'), m.group('name'))
+                        if why:
+                            found.append((stmt_line or line, m.group('name'), why, bool(m.group('prefix').strip()),
+                                          stack[-1][1]))
+            stmt, stmt_line = [], None
+        else:
+            if c == ':' and stack and stack[-1][0] == depth and re.search(r'\b(?:public|private|protected)\s*$', ''.join(stmt)):
+                stmt, stmt_line = [], None
+                i += 1
+                continue
+            if not stmt and c.isspace():
+                pass
+            else:
+                if stmt_line is None and not c.isspace():
+                    stmt_line = line
+                stmt.append(c)
+        i += 1
+    return found
+
+
+CONTRACT_FROM = '2026-11-12'  # games begun on or after this day (their first commit); older games are not re-validated
+
+
+def contract_applies(repo):
+    """Whether the contract binds this game: its first commit is on or after CONTRACT_FROM (UTC)."""
+    out = subprocess.run(['git', '-C', repo, 'log', '--reverse', '--format=%cs', '--date=short'], capture_output=True,
+                         text=True, env=dict(os.environ, TZ='UTC')).stdout.split()
+    return bool(out) and out[0] >= CONTRACT_FROM
+
+
+def check_contract(rep, repo, files):
+    """Spec 11.1 D and K on the game's Source/: a game with combat receives damage in TakeDamage (or an OnTake*Damage
+    handler) and deals it through the engine's damage calls; every key state member is a UPROPERTY of a UCLASS or
+    USTRUCT. For new games (the owner's decision of 2026-11-11); its findings are errors."""
+    # the factory's own AutoPlay recorder, copied into every game, is harness code, not the game's
+    sources = [f for f in files if f.startswith('Source/') and f.endswith(('.h', '.cpp')) and '/AutoPlay/' not in f]
+    keys, hit_functions, receives, deals = [], [], [], []
+    for f in sources:
+        try:
+            text = open(os.path.join(repo, f), encoding='utf-8-sig', errors='replace').read()
+        except OSError:
+            continue
+        for ln, name, why, reflected, in_reflected in key_state_members(text):
+            keys.append((f, ln, name, why, reflected, in_reflected))
+        plain = _strip_cpp(text)
+        for m in HIT_FUNCTION.finditer(plain):
+            word = re.match(r'\w+', m.group(0)).group(0)
+            if word not in ENGINE_DAMAGE:
+                hit_functions.append((f, plain.count('\n', 0, m.start()) + 1, word))
+        if RECEIVES.search(plain):
+            receives.append(f)
+        if DEALS.search(plain):
+            deals.append(f)
+    combat = any(why == 'health' for *_, why, _r, _i in keys) or bool(hit_functions)
+    if not combat:
+        rep.note('contract', 'no combat (no health member, no hit function): the damage rule does not apply')
+    else:
+        if not receives:
+            rep.error('contract', 'combat without the engine\'s damage interface: nothing overrides AActor::TakeDamage or '
+                      'binds OnTakeAnyDamage/OnTakePointDamage/OnTakeRadialDamage' + (
+                          f' (the game\'s own hit function {hit_functions[0][2]} at {hit_functions[0][0]}:{hit_functions[0][1]} '
+                          'must be a step called from TakeDamage)' if hit_functions else ''))
+        if not deals:
+            rep.error('contract', 'combat without the engine\'s damage calls: nothing calls UGameplayStatics::ApplyDamage, '
+                      'ApplyPointDamage, ApplyRadialDamage(WithFalloff) or an actor\'s TakeDamage')
+    bad = [k for k in keys if not (k[4] and k[5])]
+    for f, ln, name, why, reflected, in_reflected in bad[:20]:
+        rep.error('contract', f'{f}:{ln}: {name} ({why}) is not a UPROPERTY' + (
+            '' if in_reflected else ' of a UCLASS or USTRUCT (its class or struct is not reflected)'))
+    if len(bad) > 20:
+        rep.error('contract', f'... {len(bad) - 20} more key state members not reflected')
+    if not bad:
+        rep.note('contract', f'{len(keys)} key state member(s), all UPROPERTY')
 
 
 def main():
@@ -1355,7 +1546,10 @@ def main():
     ap.add_argument('--quiet', action='store_true', help='print only errors and warnings')
     ap.add_argument('--no-hash', action='store_true', help='skip hashing History/ LFS objects')
     ap.add_argument('--quick', action='store_true', help='skip unpacking the History/ bundle')
+    ap.add_argument('--no-contract', action='store_true',
+                    help='skip the damage and key-state contract (a game approved before 2026-11-11)')
     a = ap.parse_args()
+    OPTS['no_contract'] = a.no_contract
     OPTS['hash'] = not a.no_hash
     OPTS['quick'] = a.quick
     if not a.repo and not a.dataset:

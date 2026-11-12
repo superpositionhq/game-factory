@@ -131,6 +131,28 @@ When the start can't be measured (its play ended before the window), a calibrate
 `r - 0.25 * |r|` for `>`/`>=`, `r + 0.25 * |r|` for `<`/`<=`. When the fix can't be measured, or the start of a
 `start_times`/`start_plus` check can't, the task is invalid for that check.
 
+### 1.3 Staging a contact (Lab game grader 1.4.0, 2026-11-11)
+
+An ask that only shows after a blow, a shot, a hit taken or a foe falling is checked by making the contact happen at a
+time the play knows. Names come from the task's start commit or its instruction, never the reference alone.
+
+- `{"t", "pin": <actor select>, "hold": s, "front": cm | "at": <point>, "offset": [x, y, z]}`: the nearest match
+  (never the player) held at its place for `hold` s while its own AI, animation and attacks run on; first set `front`
+  cm ahead of the player (at its own height above the ground) or `at` a point, facing the player. The player's own
+  blow or shot, by the task's keys, lands on it. The first choice: the whole contact path of the build runs.
+- `{"t", "damage": points, "to": <select>, "from": <select>}`: `UGameplayStatics::ApplyPointDamage` on the nearest
+  match (`{"player": true}`: the player); its TakeDamage return is the actor's `damage_taken`. Incoming hits at a known
+  moment (a parry, invulnerable frames), in a game under the combat contract (docs/game-format.md).
+- `{"t", "set": "<property path>", "on": <select>, "value": v, "all": bool}`: a reflected property written, to set a
+  fight up (a foe's health at 1, the player's high), never to decide the outcome a check reads.
+- `{"t", "call": "[<Component>.]<Function>", "on": <select>, "args": [...], "all": bool}`: a `UFUNCTION` of the game's
+  own code.
+- `where` in any actor select: `[{"prop": "<path>", "op": "==", "value": v}]`, e.g. only foes not dead, a bay's group.
+
+A stage that nothing takes is a miss the play reports: the check fails, or is a task error when the reference misses
+it too. Read what the contact leaves with `frozen` (an actor still frame to frame: a hit stop), `montage`,
+`damage_taken`, `focus_player` (actors, 2.4) and the `world` measure (2.20).
+
 ## 2. Measures
 
 ### 2.1 Common fields
@@ -673,6 +695,12 @@ opaque behind it (translucent particles).
   translucent particle shows as lit by direct and sky light only; a surface that writes no base colour (unlit,
   translucent) has none; a primitive hidden from scene captures reads nothing. Keep the place tight around what the
   task is about: a floor or a wall inside it counts too.
+
+### 2.20 `world`: the game world as a whole
+
+`{"probe": "world", "field": "time_dilation" | "paused"}`: `time_dilation` is the lowest global time dilation over the
+frames since the previous sample (a hit pause made by slowing the world shows even between samples), `paused` 1 when
+the game was paused in any of them.
 
 ## 3. What gates, and how a probe fails
 

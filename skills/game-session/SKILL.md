@@ -69,6 +69,23 @@ offers one (AGENTS.md, "Only these skills"). Do what they don't cover by hand un
   pose by a native anim instance or proxy: the mesh collapses to a point or the arms leave the view (blade-duel hitstun,
   fps-breach). Check `AnimSequence.AdditiveAnimType`; play an additive clip as a layer over a full-pose base (e.g. the
   idle), or use the clip's NoAdditive variant.
+- **Combat through the engine, state readable (user rule, 2026-11-11):** in a game where anything can be hurt, every
+  hit goes through Unreal's damage interface: what can be hurt receives it in an `AActor::TakeDamage` override (or an
+  `OnTakeAnyDamage`/`OnTakePointDamage`/`OnTakeRadialDamage` handler) and decides health, death, stagger, guard, parry
+  and invulnerability there or in what it calls; what hurts calls `UGameplayStatics::ApplyDamage`,
+  `ApplyPointDamage` or `ApplyRadialDamage(WithFalloff)` (or the target's `TakeDamage`), never changing health
+  directly. Your own hit function may exist only as a step called from `TakeDamage`. Key gameplay state is a
+  `UPROPERTY` of a `UCLASS`/`USTRUCT` on an actor or one of its components (or reached from one through `UPROPERTY`
+  pointers and structs), never a plain member or an unreflected simulation behind a `TUniquePtr`: by rule, any
+  number, bool or enum member whose name has a word `health`, `hp`, `hitpoints`, `hull`, `poise`, `armor`, `shield`,
+  `stamina`, `mana`, `lives`, `dead`, `alive`, `dying`, `stun(ned)`, `stagger(ed)`, `invulnerable`, `invincible`,
+  `guard(ing)`, `blocking`, `parry(ing)`, `alert`, `aggro`, `awake`, `asleep`, `dormant`, `roused` or `cooldown`, and
+  any whole-number or enum member with a word `phase` or `state` (UI copies of them in a widget or HUD class aside). A
+  boss phase, an ending or any situation that takes more than a minute of play to reach gets a scenario start option
+  (a map URL option or a flag), listed in the README's QA section. `tools/validate-game.py` checks the damage path
+  and the members (rule `contract`, games begun from 2026-11-12). _(failure: combat asks could not be graded because
+  damage and state lived in private sim code: a task's hit, stagger, parry, stun or boss phase could not be staged or
+  read by the grader, so 500 reworked tasks shipped those asks unchecked)_
 - **Art style (user rule):** every game has one style from the library
   [docs/art-styles/](../../docs/art-styles/index.md) (100 guides: references, visual definition, Unreal recipe, do /
   do not), and everything on screen follows it: models and materials, lighting, post-processing, effects, UI.

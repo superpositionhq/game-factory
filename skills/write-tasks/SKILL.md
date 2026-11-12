@@ -361,6 +361,14 @@ no check at all, naming the task and the sentence. Fix what you find in the task
 - **A keep that names a thing** ("the boss bar still starts full") has a required `still_works` check reading that
   thing; a bare "everything else keeps working" is covered by any required `still_works` check.
 - **Never cover an ask with an optional probe, a `build` or `boot` check, or the `worked_well` actions judge alone.**
+- **An ask that shows only after a contact** (a blow landing, getting hit, a stun, a guard at the last moment, the last
+  foe of a group falling) is staged, never left out because "no fixed play guarantees the contact": `pin` the foe or
+  target ahead of the player and press the task's own attack key; `set` a start-named health to set the fight up;
+  `damage` for a hit taken at a known moment; `where` to pick the live ones; then read `frozen`, `world`
+  `time_dilation`, `montage`, `damage_taken`, a property, live effects or sounds near it (docs/task-probes.md, section
+  1.3). A game under the combat contract (docs/game-format.md) always gives these handles; for an older game, name in
+  the instruction what the check must read when the start has nothing to select. _(failure: the 500-task rework left
+  every contact ask unchecked, "no fixed play can guarantee the contact", and Lab's content review sent the tasks back)_
 - **An ask that cannot be checked fairly** comes out: rewrite the instruction so it no longer asks for it, rather than
   ship an ask nothing checks. The instruction stays plain prose, never fields.
 

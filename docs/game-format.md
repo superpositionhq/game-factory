@@ -54,6 +54,15 @@ history: main never tracks `Tasks/` and never references the tasks branch, the r
 commits on it, and the delivered history leaves it out. Seeds (`seed.commit`, `seed.reference`) point at commits of
 main's history.
 
+**Combat contract (games begun from 2026-11-12).** In a game where anything can be hurt, damage is received in
+`AActor::TakeDamage` (or an `OnTake*Damage` handler) and dealt through `UGameplayStatics::Apply*Damage` or a target's
+`TakeDamage`; every key gameplay state member (a number, bool or enum named with a word of health, hp, hitpoints,
+hull, poise, armor, shield, stamina, mana, lives, dead, alive, dying, stun, stagger, invulnerable, invincible, guard,
+blocking, parry, alert, aggro, awake, asleep, dormant, roused or cooldown; a whole number or enum named with phase or
+state) is a `UPROPERTY` of a `UCLASS` or `USTRUCT`, UI classes aside; and a situation that takes more than a minute
+of play to reach has a scenario start option. The validator checks the first two (rule `contract`); games begun
+earlier are not re-validated (`--no-contract` skips it).
+
 No tool, vendor or owner names anywhere in the repo's text (the validator scans tracked text files; the packager
 scans binaries too). The build machine's account name (machine paths carry it) counts too: the validator reads it at
 run time, and enforces it everywhere except in scripts (`Scripts/`, and `.ps1`/`.psm1`/`.py`/`.sh`/`.bat`/`.cmd` files
