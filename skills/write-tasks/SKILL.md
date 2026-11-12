@@ -366,8 +366,24 @@ no check at all, naming the task and the sentence. Fix what you find in the task
   target ahead of the player and press the task's own attack key; `set` a start-named health to set the fight up;
   `damage` for a hit taken at a known moment; `where` to pick the live ones; then read `frozen`, `world`
   `time_dilation`, `montage`, `damage_taken`, a property, live effects or sounds near it (docs/task-probes.md, section
-  1.3). A game under the combat contract (docs/game-format.md) always gives these handles; for an older game, name in
-  the instruction what the check must read when the start has nothing to select. _(failure: the 500-task rework left
+  1.3). Names a stage or read uses come from the start commit, never from the instruction (below); `set`, `call` and
+  `where` only on start members the task does not ask to change. A game under the combat contract
+  (docs/game-format.md) always has them; in an older game, an ask whose thing the start doesn't have and only the build
+  makes stays unchecked: word it out of the instruction and list it in your notes.
+- **Hints, never answers (owner, 2026-11-11).** An instruction may hint, in the ticket's own words, at what a player
+  must see, hear or meet, or what must exist in the world, and may say that damage goes through the engine's damage
+  interface. It never says how the build names or stores it: no class, property, function, tag, asset or file name,
+  nothing that is really the check's read target dictated to the solver.
+  - Good: "Every blow that lands throws sparks and a short pause." "A training post stands in the yard to practise
+    on." "Hits reach her through the engine's damage events."
+  - Refused: "Add an actor of class AsTrainingPost to the yard." "Keep the enemy's health in a property called
+    Health." "Tag each generator Generator so QA can find it."
+  _(failure: tasks were reworked by writing the check's read target into the ticket, which hands the solver the
+  answer)_
+- **A sound ask** is checked by a sound starting when the event happens (`audio` count or volume near the source,
+  rising in a window right after the event; or a sound asset's name with `sound` when the ticket asks for distinct
+  sounds, "each gun has its own sound"). What the sound is, how it sounds, is never checked. New games import every
+  sound (game-session skill), so every sound has an asset name. _(failure: the 500-task rework left
   every contact ask unchecked, "no fixed play can guarantee the contact", and Lab's content review sent the tasks back)_
 - **An ask that cannot be checked fairly** comes out: rewrite the instruction so it no longer asks for it, rather than
   ship an ask nothing checks. The instruction stays plain prose, never fields.

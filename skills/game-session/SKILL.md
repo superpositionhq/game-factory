@@ -129,7 +129,13 @@ offers one (AGENTS.md, "Only these skills"). Do what they don't cover by hand un
   requests" list (URL, price, licence, UE 5.7 support, what it replaces) in your design doc and message the coordinator.
 - **Sound:** every sound effect comes through the **sound** skill (read it before writing the audio direction): cues
   listed in the design doc, clips chosen by their numbers and measured with `tools/sfx.py`, CC0 or CC BY only, recorded in
-  `assets.manifest.json`. Never leave a cue silent or ship an engine placeholder.
+  `assets.manifest.json`. Never leave a cue silent or ship an engine placeholder. Every sound the game plays is an
+  imported sound asset (a clip from the sound skill, or a WAV a committed script made and imported; user rule,
+  2026-11-11); none is made at run time: no `USoundWaveProcedural`/`QueueAudio`, `USynthComponent`, `ISoundGenerator`
+  or `OnGenerateAudio` for a game sound, and a MetaSound only plays imported waves (no oscillators or generators).
+  `tools/validate-game.py` scans for them (rule `sound`, games begun from 2026-11-12). _(failure: 52 of 218 games
+  synthesised their sounds at run time, so a task asking "each gun has its own sound" had no asset name for the
+  grader to tell sounds apart by)_
 - **UI (user rule):** matches the game's art style (its guide's UI and typography line): kit frames, icons, display fonts, styled numbers. No plain or
   default-font text on screen.
 - **UI colours, when you are Codex (user rule, 2026-11-11):** Codex's habit, whatever the game, is a dense blue

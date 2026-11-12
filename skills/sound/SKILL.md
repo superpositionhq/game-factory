@@ -75,6 +75,11 @@ Run `measure` on every clip you keep and reject or trim what is wrong for its cu
   `unreal.Paths.project_dir()`, `unreal.AssetImportTask` with `automated=True` and `replace_existing=True`, into
   `/Game/Audio/SFX`, one workflow row per run (game-session skill, "Replay-friendly work"). `RawAssets/` is replayed
   from the commit, so it needs no `asset_drops` entry. Commit the WAVs with the script that imports them.
+- **Imported assets only (user rule, 2026-11-11).** Every sound the game plays is a Sound Wave imported from a file
+  (a Freesound clip, or a WAV a committed script generated, then imported like the rest), so it has an asset name the
+  grader can tell apart. Never synthesise one at run time: no `USoundWaveProcedural`/`QueueAudio`, `USynthComponent`,
+  `ISoundGenerator` or `OnGenerateAudio`, and no MetaSound oscillator or generator standing in for a clip (a MetaSound
+  that plays imported waves is fine). `tools/validate-game.py` checks the code (rule `sound`).
 - A cue that repeats (footsteps, hits, gunfire) gets 3 to 5 clips in a random Sound Cue or MetaSound, with slight pitch
   variation, so it never sounds like a loop. World sounds get an attenuation setting.
 - Every sound goes through a Sound Class (at least UI, SFX, Ambience), so the settings menu's volume controls it.

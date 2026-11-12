@@ -60,8 +60,10 @@ main's history.
 hull, poise, armor, shield, stamina, mana, lives, dead, alive, dying, stun, stagger, invulnerable, invincible, guard,
 blocking, parry, alert, aggro, awake, asleep, dormant, roused or cooldown; a whole number or enum named with phase or
 state) is a `UPROPERTY` of a `UCLASS` or `USTRUCT`, UI classes aside; and a situation that takes more than a minute
-of play to reach has a scenario start option. The validator checks the first two (rule `contract`); games begun
-earlier are not re-validated (`--no-contract` skips it).
+of play to reach has a scenario start option. Every sound the game plays is an imported asset (a file, or a WAV a
+committed script made), never made at run time (no procedural sound wave, synth component or sound generator). The
+validator checks the first two (rule `contract`) and the last (rule `sound`); games begun earlier are not re-validated
+(`--no-contract` skips them).
 
 No tool, vendor or owner names anywhere in the repo's text (the validator scans tracked text files; the packager
 scans binaries too). The build machine's account name (machine paths carry it) counts too: the validator reads it at
