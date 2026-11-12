@@ -1886,6 +1886,12 @@ foreach ($h in @(
         }
     }
     Write-Utf8 (Join-Path $histDir $h.file) ((($kept -join "`n") + $(if ($kept.Count) { "`n" } else { '' })))
+    # The scrub, the commit-id remap and the text scan read a text file whole and leave one of 256 MB or more alone
+    # (ScrubAll, RemapShas, Scan). A session log holds every tool call's whole result (up to 1,000,000 characters a
+    # call) and every reasoning summary, so it could get there: never deliver it unscrubbed, refuse and say why.
+    if ($sessionLog -and (Get-Item -LiteralPath (Join-Path $histDir $h.file)).Length -ge 256MB) {
+        throw "History/$($h.file) is $([math]::Round((Get-Item -LiteralPath (Join-Path $histDir $h.file)).Length / 1MB)) MB: the scrub and the leak scan read text files under 256 MB only, so this package is refused rather than delivered with an unscrubbed session log (leave sessions out with -ExcludeSessions, or have the packager taught to scrub a session log row by row)"
+    }
     $histStats[$h.file] = [ordered]@{ rows = $kept.Count; source_rows = $total }
     if ($sessionLog) { $histStats[$h.file].sessions_left_out = $skipSessions.Count }
 }

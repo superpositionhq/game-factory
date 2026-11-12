@@ -3,7 +3,8 @@
 # append every tool call of a game-building or replay session to <root>\.recording\<project>\actions.jsonl, and every
 # prompt the person typed, every reply the model wrote and every reasoning summary the agent saved to
 # <root>\.recording\<project>\messages.jsonl. A tool call's row holds its whole result (up to 1,000,000 chars; a
-# picture or other binary payload as a short marker).
+# picture or other binary payload as a short marker; a long command output that Claude Code cut in the result and saved
+# to a file, the result's persistedOutputPath, is read from that file while it is there).
 # Both agents send the same hook JSON on stdin (session_id, transcript_path, cwd, hook_event_name, tool_name,
 # tool_input, tool_response, tool_use_id). Codex names its shell tool "Bash" (tool_input.command, a string) and its
 # file edits "apply_patch" (tool_input.command = the patch text); it has no PostToolUseFailure (a failed call is a
@@ -34,6 +35,8 @@
 # isMeta rows, compaction summaries, background-task notices, API error notices) and a fork's copied context.
 # `record-action.ps1 -Backfill <session id>` also imports that session's messages; `-Backfill all` imports the messages
 # of every mapped session whose transcript is still on this machine (either agent), and nothing else.
+# Both read each transcript from its start, so what an earlier read left out (the reasoning summaries of a session
+# recorded before they were) is added, and the session's rows are put back in the transcript's order.
 # Nothing is recorded when GF_NO_RECORDING is set: tools/task-try.py sets it for the agent it runs on a task.
 # <root> = the machine root (gf-root.ps1 next to this file; machine/lib/gf-root.ps1 in the repo).
 # machine/bootstrap.ps1 installs this into the hooks dir (config "hooks_dir") and wires it into Claude Code
@@ -67,9 +70,29 @@ function Clip($v, $n) {
 }
 # A tool's result as recorded: the whole text (up to $maxResp chars; a longer one is cut and the row says so in
 # <key>_chars and <key>_truncated). A picture or other binary payload inside it (base64) becomes a short marker.
+# Claude Code keeps only the start of a long command output in the result and saves all of it to a file
+# (persistedOutputPath, persistedOutputSize): the row takes the saved text (its first 64 MB) while the file is there.
+function Expand-Saved($r) {
+  try {
+    if ($null -eq $r -or $r -is [string] -or $r -is [array] -or -not $r.PSObject.Properties['persistedOutputPath'] -or -not $r.PSObject.Properties['stdout']) { return $r }
+    $p = [string]$r.persistedOutputPath
+    if (-not $p -or -not (Test-Path -LiteralPath $p -PathType Leaf)) { return $r }
+    $fs = New-Object IO.FileStream($p, [IO.FileMode]::Open, [IO.FileAccess]::Read, ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+    try {
+      $n = [int][Math]::Min($fs.Length, 67108864)
+      $buf = New-Object byte[] $n
+      $got = 0
+      while ($got -lt $n) { $k = $fs.Read($buf, $got, $n - $got); if ($k -le 0) { break }; $got += $k }
+    } finally { $fs.Dispose() }
+    $text = $utf8.GetString($buf, 0, $got)
+    if ($text.Length -gt ([string]$r.stdout).Length) { $r.stdout = $text }
+  } catch { }   # the result as the tool gave it
+  return $r
+}
 function Set-Output($Row, [string]$Key, $Value) {
   if ($null -eq $Value) { $Row[$Key] = $null; return }
-  $s = if ($Value -is [string]) { $Value } else { $Value | ConvertTo-Json -Depth 8 -Compress }
+  $s = if ($Value -is [string]) { $Value } else { (Expand-Saved $Value) | ConvertTo-Json -Depth 8 -Compress }
+  if ($null -eq $s) { $Row[$Key] = $null; return }   # an empty list serializes to nothing
   $s = [regex]::Replace($s, '"(data|base64|bytes|image)"\s*:\s*"([A-Za-z0-9+/=\\]{2000,})"',
     [System.Text.RegularExpressions.MatchEvaluator] { param($m) '"' + $m.Groups[1].Value + '":"[binary ' + $m.Groups[2].Value.Length + ' chars]"' })
   if ($s.Length -gt $maxResp) { $Row[$Key + '_chars'] = $s.Length; $Row[$Key + '_truncated'] = $true }
@@ -157,7 +180,7 @@ function Get-TranscriptCalls([string]$Sid, [string]$Path, [string]$Until) {
           $calls[[string]$b.id] = [pscustomobject]@{ id = [string]$b.id; name = [string]$b.name; input = $b.input; ts = $ts; cwd = [string]$o.cwd; agent = $agent; n = $n++ }
         } elseif ($b.type -eq 'tool_result') {
           $text = if ($b.content -is [string]) { $b.content } else { (@($b.content) | Where-Object { $_.type -eq 'text' } | ForEach-Object { $_.text }) -join "`n" }
-          $resp = if ($null -ne $o.toolUseResult -and $o.toolUseResult -isnot [string]) { $o.toolUseResult | ConvertTo-Json -Depth 8 -Compress } elseif ($o.toolUseResult) { [string]$o.toolUseResult } else { $text }
+          $resp = if ($null -ne $o.toolUseResult -and $o.toolUseResult -isnot [string]) { (Expand-Saved $o.toolUseResult) | ConvertTo-Json -Depth 8 -Compress } elseif ($o.toolUseResult) { [string]$o.toolUseResult } else { $text }
           $results[[string]$b.tool_use_id] = [pscustomobject]@{ resp = $resp; error = [bool]$b.is_error; text = $text; ts = $ts }
         }
       }
@@ -274,8 +297,8 @@ function Get-ClaudeMessages([string]$Sid, $Lines, [datetime]$Created) {
   return , $out
 }
 # Codex: the rollout's finished UserMessage, AgentMessage and Reasoning items (item.id is the message's id). A
-# Reasoning item's summary_text (and raw_content, when the rollout holds it as text) is the reasoning summary; one saved
-# without readable text is a row with none.
+# Reasoning item's summary_text is the reasoning summary Codex shows; one saved without readable text is a row with
+# none. raw_content, the reasoning itself where a model gives it, is not a summary and is never read.
 function Get-CodexMessages([string]$Sid, $Lines, [datetime]$Created) {
   $out = New-Object System.Collections.Generic.List[object]
   foreach ($line in $Lines) {
@@ -290,7 +313,7 @@ function Get-CodexMessages([string]$Sid, $Lines, [datetime]$Created) {
     $ts = ConvertTo-Time $o.timestamp
     if ($ts.UtcDateTime -lt $Created) { continue }
     if ($role -eq 'thinking') {
-      $parts = @(foreach ($b in (@($it.summary_text) + @($it.raw_content))) {
+      $parts = @(foreach ($b in @($it.summary_text)) {
           if ($b -is [string]) { $b } elseif ($b -and $b.PSObject.Properties['text'] -and $b.text) { [string]$b.text }
         })
       $text = (@($parts | Where-Object { "$_".Trim() }) -join "`n")
@@ -306,9 +329,38 @@ function Get-CodexMessages([string]$Sid, $Lines, [datetime]$Created) {
 }
 # Append to <project>\messages.jsonl what the session's transcript (and, Claude Code, its subagents' transcripts) gained
 # since the last read. Returns the number of rows written; $script:Read collects the session's own messages read
-# ("<role> <text>").
+# ("<role> <text>"). -All (the backfill): every transcript from its start, whatever was read before, and then the
+# session's rows in the order read ($script:Order: message id -> its place).
 $script:Read = New-Object System.Collections.Generic.List[string]
-function Sync-Messages([string]$Sid, [string]$Project, [string]$Path) {
+$script:Order = @{}
+# The session's rows of a messages.jsonl back in the transcript's order (time, then the order read), in the places
+# its rows already hold; every other session's rows stay where they are.
+function Sort-SessionRows([string]$File, [string]$Sid) {
+  $lines = [IO.File]::ReadAllLines($File, $utf8)
+  $want = '"session_id":"' + $Sid + '"'
+  $at = New-Object System.Collections.Generic.List[int]
+  $items = New-Object System.Collections.Generic.List[object]
+  for ($i = 0; $i -lt $lines.Count; $i++) {
+    if (-not $lines[$i].Contains($want)) { continue }
+    $t = [DateTimeOffset]::MinValue
+    [void][DateTimeOffset]::TryParse([regex]::Match($lines[$i], '"time":"([^"]+)"').Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$t)
+    $id = [regex]::Match($lines[$i], '"message_id":"([^"]+)"').Groups[1].Value
+    $ord = if ($id -and $script:Order.ContainsKey($id)) { [int]$script:Order[$id] } else { 0 }
+    $at.Add($i)
+    $items.Add([pscustomobject]@{ line = $lines[$i]; t = [long]$t.UtcTicks; ord = $ord; i = $i })
+  }
+  $sorted = @($items | Sort-Object t, ord, i)
+  $changed = $false
+  for ($k = 0; $k -lt $at.Count; $k++) {
+    if ($lines[$at[$k]] -cne $sorted[$k].line) { $lines[$at[$k]] = $sorted[$k].line; $changed = $true }
+  }
+  if ($changed) {
+    $tmp = "$File.sort-tmp"
+    [IO.File]::WriteAllText($tmp, (($lines -join "`n") + "`n"), $utf8)
+    Move-Item -Force $tmp $File
+  }
+}
+function Sync-Messages([string]$Sid, [string]$Project, [string]$Path, [switch]$All) {
   if (-not $Path) { $Path = Find-Transcript $Sid }
   if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return 0 }   # a session's first prompt comes before its transcript
   $files = @($Path)
@@ -323,39 +375,45 @@ function Sync-Messages([string]$Sid, [string]$Project, [string]$Path) {
   $seen = $null; $moved = $false
   $rows = New-Object System.Collections.Generic.List[string]
   foreach ($f in $files) {
-    $from = if ($state.ContainsKey($f)) { [long]$state[$f] } else { [long]0 }
-    $tail = Read-TranscriptTail $f $from
-    if ($tail.next -eq $from) { continue }
-    $state[$f] = $tail.next; $moved = $true
-    # a transcript read from its start (first read, or the state file was lost): never write a message twice
-    if ($tail.next -lt $from -or $from -eq 0) { if ($null -eq $seen) { $seen = Get-RecordedIds $file 'message_id' } }
-    $subagent = if ($f -eq $Path) { '' } else { [IO.Path]::GetFileNameWithoutExtension($f) }
-    $msgs = if ($Agent -eq 'codex') { Get-CodexMessages $Sid $tail.lines $created } else { Get-ClaudeMessages $Sid $tail.lines $created }
-    foreach ($m in $msgs) {
-      if (-not $subagent -and $m.role -ne 'thinking') { $script:Read.Add("$($m.role) $($m.text)") }
-      if ($null -ne $seen -and -not $seen.Add($m.id)) { continue }
-      $row = [ordered]@{
-        schema     = 'superposition.agent-message/v0'
-        time       = $m.ts.ToLocalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffzzz', [Globalization.CultureInfo]::InvariantCulture)
-        project    = $Project
-        session_id = $Sid
-        agent      = $Agent
-        role       = $m.role
-        message_id = $m.id
+    $from = if (-not $All -and $state.ContainsKey($f)) { [long]$state[$f] } else { [long]0 }
+    while ($true) {   # one read a call; -All: read after read (256 MB each) to the transcript's end
+      $tail = Read-TranscriptTail $f $from
+      if ($tail.next -eq $from) { break }
+      $state[$f] = $tail.next; $moved = $true
+      # a transcript read from its start (first read, the state file was lost, or -All): never write a message twice
+      if ($All -or $tail.next -lt $from -or $from -eq 0) { if ($null -eq $seen) { $seen = Get-RecordedIds $file 'message_id' } }
+      $subagent = if ($f -eq $Path) { '' } else { [IO.Path]::GetFileNameWithoutExtension($f) }
+      $msgs = if ($Agent -eq 'codex') { Get-CodexMessages $Sid $tail.lines $created } else { Get-ClaudeMessages $Sid $tail.lines $created }
+      foreach ($m in $msgs) {
+        if (-not $subagent -and $m.role -ne 'thinking') { $script:Read.Add("$($m.role) $($m.text)") }
+        if ($All -and -not $script:Order.ContainsKey($m.id)) { $script:Order[$m.id] = $script:Order.Count }
+        if ($null -ne $seen -and -not $seen.Add($m.id)) { continue }
+        $row = [ordered]@{
+          schema     = 'superposition.agent-message/v0'
+          time       = $m.ts.ToLocalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffzzz', [Globalization.CultureInfo]::InvariantCulture)
+          project    = $Project
+          session_id = $Sid
+          agent      = $Agent
+          role       = $m.role
+          message_id = $m.id
+        }
+        if ($subagent) { $row.subagent = $subagent }
+        if ($m.model) { $row.model = $m.model }
+        if ($m.phase) { $row.phase = $m.phase }
+        if ($m.images) { $row.images = $m.images }
+        if ($m.mid) { $row.mid_turn = $true }
+        if ($m.redacted) { $row.redacted = $true }
+        $row.text = Clip $m.text $maxText
+        $rows.Add(($row | ConvertTo-Json -Depth 4 -Compress))
       }
-      if ($subagent) { $row.subagent = $subagent }
-      if ($m.model) { $row.model = $m.model }
-      if ($m.phase) { $row.phase = $m.phase }
-      if ($m.images) { $row.images = $m.images }
-      if ($m.mid) { $row.mid_turn = $true }
-      if ($m.redacted) { $row.redacted = $true }
-      $row.text = Clip $m.text $maxText
-      $rows.Add(($row | ConvertTo-Json -Depth 4 -Compress))
+      if (-not $All -or $tail.next -lt $from) { break }
+      $from = $tail.next
     }
   }
   if ($rows.Count) {
     New-Item -ItemType Directory -Force $dir | Out-Null
     [IO.File]::AppendAllText($file, (($rows -join "`n") + "`n"), $utf8)
+    if ($All) { Sort-SessionRows $file $Sid }
   }
   if ($moved) { [IO.File]::WriteAllText($messagesFile, ($state | ConvertTo-Json -Compress), $utf8) }
   return $rows.Count
@@ -385,14 +443,14 @@ if ($Backfill) {
         $t = $null
         foreach ($a in 'claude', 'codex') { $Agent = $a; $t = Find-Transcript $s; if ($t) { break } }
         if (-not $t) { continue }
-        $found++; $n = Sync-Messages $s ([string]$map[$s]) $t; $total += $n
+        $found++; $n = Sync-Messages $s ([string]$map[$s]) $t -All; $total += $n
         if ($n) { Write-Host "$n message(s) of session $s ($Agent) -> $([string]$map[$s])\messages.jsonl" }
       }
       Write-Host "imported $total message(s) from $found of $($map.Count) mapped session(s)$(if ($found -lt $map.Count) { '; the others have no transcript on this machine' })"
       exit 0
     }
     if (-not $map.ContainsKey($Backfill)) { throw "session $Backfill is not mapped to a project (recording-sessions.json)" }
-    $n = Sync-Messages $Backfill ([string]$map[$Backfill]) $TranscriptPath
+    $n = Sync-Messages $Backfill ([string]$map[$Backfill]) $TranscriptPath -All
     Write-Host "imported $n message(s) of session $Backfill into $(Join-Path (Join-Path $recRoot ([string]$map[$Backfill])) 'messages.jsonl')"
     if ((Read-JsonMap $backfillFile).ContainsKey($Backfill)) { Write-Host "session $Backfill was already backfilled; nothing to do"; exit 0 }
     $project = $map[$Backfill]
