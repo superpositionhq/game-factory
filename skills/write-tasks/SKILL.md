@@ -361,12 +361,17 @@ no check at all, naming the task and the sentence. Fix what you find in the task
 - **A keep that names a thing** ("the boss bar still starts full") has a required `still_works` check reading that
   thing; a bare "everything else keeps working" is covered by any required `still_works` check.
 - **Never cover an ask with an optional probe, a `build` or `boot` check, or the `worked_well` actions judge alone.**
-- **An ask that shows only after a contact** (a blow landing, getting hit, a stun, the last foe of a group falling):
-  make the contact happen with what plays have today (a scenario start option the game has, `teleport_to` the foe
-  with `hold`, the task's own keys) and read it where the start keeps it (a property, an effect, a sound near it).
-  Contact asks that need a staged hit are written as soon as the factory announces the staging inputs; until then
-  keep the ask in the instruction and say in the task's notes that it is waiting for them. Never use an input or
-  measure that docs/task-probes.md doesn't list.
+- **An ask that shows only after a contact** (a blow landing, getting hit, a stun, the last foe of a group falling) is
+  staged, never left out because "no fixed play guarantees the contact": `pin` the foe or target ahead of the player
+  (a target the build invents: the nearest movable drawn thing near the player) and press the task's own attack key;
+  `set` a start-named health only to set the fight up; `damage` for a hit taken at a known moment where the game
+  takes damage through the engine; `where` to pick the live ones (docs/task-probes.md, section 1.3). Read the result
+  deterministically: a state change in a probe one sentence explains; a hit stop by `world` `time_dilation` or
+  `frozen`, never a judge (no screenshot shows it); a stagger, knock-back or interrupted action by `montage`, the
+  actor unable to move, or its distance from the attacker, never a judge. What it looks like (sparks, colours, glow)
+  goes to the required visual judge on named frames across the contact. Names come from the start commit; `set` and
+  `where` only on members the task does not ask to change. Where the nearest movable thing is not surely the target,
+  the ask is listed as not testable.
 - **Hints, never answers (owner, 2026-11-11).** An instruction may hint, in the ticket's own words, at what a player
   must see, hear or meet, or what must exist in the world, and may say that damage goes through the engine's damage
   interface. It never says how the build names or stores it: no class, property, function, tag, asset or file name,
@@ -377,11 +382,10 @@ no check at all, naming the task and the sentence. Fix what you find in the task
     Health." "Tag each generator Generator so QA can find it."
   _(failure: tasks were reworked by writing the check's read target into the ticket, which hands the solver the
   answer)_
-- **A sound ask** is checked by a sound starting when the event happens (`audio` count or volume near the source,
-  rising in a window right after the event; or a sound asset's name with `sound` when the ticket asks for distinct
-  sounds, "each gun has its own sound"). What the sound is, how it sounds, is never checked. New games import every
-  sound (game-session skill), so every sound has an asset name. _(failure: the 500-task rework left
-  every contact ask unchecked, "no fixed play can guarantee the contact", and Lab's content review sent the tasks back)_
+- **A sound ask** is checked by a sound starting when the event happens: `audio` `started_audible` near the source,
+  in a window right after the event; `sounds` or `repeats` (by asset name) when the ticket asks for distinct sounds,
+  "each gun has its own sound". What the sound is, how it sounds, is never checked. New games import every sound
+  (game-session skill), so every sound has an asset name.
 - **An ask that cannot be checked fairly** comes out: rewrite the instruction so it no longer asks for it, rather than
   ship an ask nothing checks. The instruction stays plain prose, never fields.
 

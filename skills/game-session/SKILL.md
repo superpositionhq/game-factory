@@ -74,7 +74,9 @@ offers one (AGENTS.md, "Only these skills"). Do what they don't cover by hand un
   `OnTakeAnyDamage`/`OnTakePointDamage`/`OnTakeRadialDamage` handler) and decides health, death, stagger, guard, parry
   and invulnerability there or in what it calls; what hurts calls `UGameplayStatics::ApplyDamage`,
   `ApplyPointDamage` or `ApplyRadialDamage(WithFalloff)` (or the target's `TakeDamage`), never changing health
-  directly. Your own hit function may exist only as a step called from `TakeDamage`. Key gameplay state is a
+  directly. `TakeDamage` returns the damage actually applied (0 when the hit did nothing: a guard, a shield,
+invulnerability), so a staged hit can be read by what it did. Your own hit function may exist only as a step called
+from `TakeDamage`. Key gameplay state is a
   `UPROPERTY` of a `UCLASS`/`USTRUCT` on an actor or one of its components (or reached from one through `UPROPERTY`
   pointers and structs), never a plain member or an unreflected simulation behind a `TUniquePtr`: by rule, any
   number, bool or enum member whose name has a word `health`, `hp`, `hitpoints`, `hull`, `poise`, `armor`, `shield`,

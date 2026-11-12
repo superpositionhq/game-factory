@@ -9,14 +9,19 @@
 #include "Dom/JsonValue.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
+#include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
+#include "Engine/HitResult.h"
+#include "GameFramework/DamageType.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PawnMovementComponent.h"
+#include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
 #include "InputKeyEventArgs.h"
+#include "Kismet/GameplayStatics.h"
 #include "Misc/App.h"
 #include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
@@ -27,6 +32,10 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "UnrealClient.h"
+#include "Widgets/SViewport.h"
+#if PLATFORM_LINUX && WITH_EDITOR
+#include "ShaderCompiler.h"
+#endif
 
 IMPLEMENT_MODULE(FDefaultModuleImpl, TaskProbe)
 
@@ -59,6 +68,13 @@ static void PlacePawn(APlayerController* PC, const FVector& Location, bool bHasY
 		Control.Yaw = Yaw;
 		PC->SetControlRotation(Control);
 	}
+}
+
+/** The game viewport's Slate widget, or null. */
+static TSharedPtr<SViewport> GameViewportWidget()
+{
+	const UGameViewportClient* GVC = GEngine ? GEngine->GameViewport.Get() : nullptr;
+	return GVC ? GVC->GetGameViewportWidget() : nullptr;
 }
 
 bool UTaskProbe::ShouldCreateSubsystem(UObject* Outer) const
@@ -122,10 +138,16 @@ void UTaskProbe::LoadInputs(const FString& Path)
 	// {"t", "teleport": [x, y, z], "yaw": deg} (place the player pawn) and {"t", "teleport_to": <actor select>,
 	// "distance": cm, "offset": [x, y, z], "face": <point>} (place it next to the nearest actor the select matches,
 	// facing that actor or the point); either teleport with "hold": seconds keeps the pawn at the spot that long, put back
-	// after every world tick; {"t", "wait": seconds} (the play's clock holds that long in real time while the game
-	// runs on); {"t", "shot": "<name>"} (a screenshot with the UI, shot_<name>.png); {"t", "map": "/Game/...?opts"} (the
-	// play travels to that map; its clock runs on through the load) and {"t", "view": [pitch, yaw]} (the player's view
-	// turns there): one launch visits several places and scenarios and pictures each
+	// after every world tick; {"t", "wait": seconds} (the play's clock holds that long in real time while the game runs
+	// on); {"t", "wheel": notches} (mouse wheel steps at the cursor, positive away from the player) and {"t", "move":
+	// [dx, dy], "over": seconds} (the mouse moved by that many pixels, right and down, spread over the seconds), both
+	// through Slate as a device's are; {"t", "shot": "<name>"} (a screenshot with the UI, shot_<name>.png); {"t", "map":
+	// "/Game/...?opts"} (the play travels to that map; its clock runs on through the load) and {"t", "view": [pitch,
+	// yaw]} (the player's view turns there): one launch visits several places and scenarios and pictures each; and the stages of a contact
+	// (docs/task-probes.md, section 1.3): {"t", "pin": <actor select>, "hold": seconds, "front": cm, "at": <point>, "offset": [x, y, z]} (the nearest match
+	// held at its place, first set ahead of the pawn with front, or at a point with at), {"t", "damage": points, "to": <select>, "from": <select>} (the
+	// engine's damage call), {"t", "set": "<path>", "on": <select>, "value": v, "all": bool} (a reflected property
+	// written)
 	FString Text;
 	if (!FFileHelper::LoadFileToString(Text, *Path))
 	{
@@ -168,7 +190,42 @@ void UTaskProbe::LoadInputs(const FString& Path)
 		TArray<double> Numbers;
 		bool bClick = false;
 		const TSharedPtr<FJsonObject>* Target = nullptr;
-		if ((*Obj)->TryGetStringField(TEXT("widget"), K.Widget) && (*Obj)->TryGetBoolField(TEXT("click"), bClick) && bClick && !K.Widget.IsEmpty())
+		const TSharedPtr<FJsonObject>* On = nullptr;
+		if ((*Obj)->TryGetObjectField(TEXT("pin"), Target) && Target->IsValid())
+		{
+			K.Kind = EScriptedKind::Pin;
+			K.Target = *Target;
+			(*Obj)->TryGetNumberField(TEXT("hold"), K.Hold);
+			K.bFront = (*Obj)->TryGetNumberField(TEXT("front"), K.Front);
+			K.Front = FMath::Clamp(K.Front, 0.0, 100000.0);
+			const TSharedPtr<FJsonObject>* At = nullptr;
+			if ((*Obj)->TryGetObjectField(TEXT("at"), At) && At->IsValid())
+			{
+				K.At = *At;
+			}
+			if (ReadNumbers(*Obj, TEXT("offset"), 3, Numbers))
+			{
+				K.Offset = FVector(Numbers[0], Numbers[1], Numbers[2]);
+			}
+		}
+		else if ((*Obj)->TryGetNumberField(TEXT("damage"), K.Amount) && (*Obj)->TryGetObjectField(TEXT("to"), Target) && Target->IsValid())
+		{
+			K.Kind = EScriptedKind::Damage;
+			K.Target = *Target;
+			const TSharedPtr<FJsonObject>* From = nullptr;
+			if ((*Obj)->TryGetObjectField(TEXT("from"), From) && From->IsValid())
+			{
+				K.From = *From;
+			}
+		}
+		else if ((*Obj)->TryGetStringField(TEXT("set"), K.Path) && (*Obj)->TryGetObjectField(TEXT("on"), On) && On->IsValid())
+		{
+			K.Kind = EScriptedKind::Set;
+			K.Target = *On;
+			K.Value = (*Obj)->TryGetField(TEXT("value"));
+			(*Obj)->TryGetBoolField(TEXT("all"), K.bAll);
+		}
+		else if ((*Obj)->TryGetStringField(TEXT("widget"), K.Widget) && (*Obj)->TryGetBoolField(TEXT("click"), bClick) && bClick && !K.Widget.IsEmpty())
 		{
 			K.Kind = EScriptedKind::Click;
 		}
@@ -227,6 +284,29 @@ void UTaskProbe::LoadInputs(const FString& Path)
 			K.Kind = EScriptedKind::Wait;
 			K.Wait = FMath::Clamp(K.Wait, 0.0, 600.0);
 		}
+		else if ((*Obj)->HasField(TEXT("wheel")))
+		{
+			double Notches = 0.0;
+			(*Obj)->TryGetNumberField(TEXT("wheel"), Notches);
+			K.Wheel = FMath::Clamp(FMath::RoundToInt(Notches), -20, 20);
+			if (K.Wheel == 0)
+			{
+				continue;
+			}
+			K.Kind = EScriptedKind::Wheel;
+		}
+		else if ((*Obj)->HasField(TEXT("move")))
+		{
+			TArray<double> By;
+			if (!ReadNumbers(*Obj, TEXT("move"), 2, By))
+			{
+				continue;
+			}
+			K.Kind = EScriptedKind::Move;
+			K.Move = FVector2D(FMath::Clamp(By[0], -5000.0, 5000.0), FMath::Clamp(By[1], -5000.0, 5000.0));
+			(*Obj)->TryGetNumberField(TEXT("over"), K.Over);
+			K.Over = FMath::Clamp(K.Over, 0.0, 120.0);
+		}
 		else if ((*Obj)->TryGetStringField(TEXT("key"), Name))
 		{
 			K.Key = FKey(*Name);
@@ -255,16 +335,40 @@ void UTaskProbe::LoadInputs(const FString& Path)
 	Inputs.StableSort([](const FScriptedKey& A, const FScriptedKey& B) { return A.Time < B.Time; });
 	if (Inputs.ContainsByPredicate([](const FScriptedKey& K) { return K.Hold > 0.0; }))
 	{
-		HoldHandle = FWorldDelegates::OnWorldPostActorTick.AddUObject(this, &UTaskProbe::HoldPawn);
+		HoldHandle = FWorldDelegates::OnWorldPostActorTick.AddUObject(this, &UTaskProbe::HoldInPlace);
 	}
 }
 
-void UTaskProbe::HoldPawn(UWorld* World, ELevelTick TickType, float DeltaSeconds)
+void UTaskProbe::HoldInPlace(UWorld* World, ELevelTick TickType, float DeltaSeconds)
 {
 	// after every world tick of a hold, the pawn goes back to the spot (still), whatever the game's own tick did with
-	// it, and the camera is brought up to date with it
+	// it, and the camera is brought up to date with it; a pinned actor goes back to its spot, its movement stopped (its
+	// own logic, turning, animation and attacks run on)
 	UGameInstance* GI = GetGameInstance();
-	if (bDone || Elapsed >= HoldUntil || !GI || World != GI->GetWorld() || !World->HasBegunPlay())
+	if (bDone || !GI || World != GI->GetWorld() || !World->HasBegunPlay())
+	{
+		return;
+	}
+	for (const FPinned& P : Pinned)
+	{
+		AActor* A = P.Actor.Get();
+		if (!A || A->IsActorBeingDestroyed() || Elapsed >= P.Until)
+		{
+			continue;
+		}
+		if (FVector::DistSquared(A->GetActorLocation(), P.At) > 0.01)
+		{
+			A->SetActorLocation(P.At, false, nullptr, ETeleportType::TeleportPhysics);
+		}
+		if (const APawn* Held = Cast<APawn>(A))
+		{
+			if (UPawnMovementComponent* Move = Held->GetMovementComponent())
+			{
+				Move->Velocity = FVector::ZeroVector;
+			}
+		}
+	}
+	if (Elapsed >= HoldUntil)
 	{
 		return;
 	}
@@ -326,9 +430,10 @@ void UTaskProbe::SendInput(const FScriptedKey& K, UWorld* World, APlayerControll
 			Button->OnClicked.Broadcast();
 			UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: clicked button %s (%s)"), *Button->GetName(), *Button->GetClass()->GetName());
 		}
-		else
+		else if (!ClickSlate(K))
 		{
 			UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: no visible button matches '%s'"), *K.Widget);
+			Missed(K, TEXT("click"), K.Widget, TEXT("no visible button matches it, UMG or Slate"));
 		}
 		break;
 	case EScriptedKind::Cursor:
@@ -337,6 +442,7 @@ void UTaskProbe::SendInput(const FScriptedKey& K, UWorld* World, APlayerControll
 		if (!TaskProbe::ViewportPoint(K.Cursor.X, K.Cursor.Y, Absolute) || !FSlateApplication::IsInitialized())
 		{
 			UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: cursor move skipped (no game viewport)"));
+			Missed(K, TEXT("cursor"), FString::Printf(TEXT("%.3f, %.3f"), K.Cursor.X, K.Cursor.Y), TEXT("no game viewport"));
 			break;
 		}
 		// a synthetic mouse move at that point: Slate's pointer position and the viewport's mouse position follow it
@@ -386,11 +492,11 @@ void UTaskProbe::SendInput(const FScriptedKey& K, UWorld* World, APlayerControll
 	}
 	case EScriptedKind::Shot:
 	{
-		// with the UI, as the evenly spaced screenshots: what the player sees at that moment
-		const FString Name = FString::Printf(TEXT("shot_%s.png"), *K.Shot);
-		FScreenshotRequest::RequestScreenshot(FPaths::Combine(OutDir, Name), true, false);
-		ShotNames.Add(MakeShared<FJsonValueString>(Name));
-		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: screenshot %s at %.2f s"), *Name, Elapsed);
+		// with the UI, as the evenly spaced screenshots: what the player sees at that moment (the inputs after it wait
+		// until its frame is drawn: NamedShotWaiting)
+		const FString File = FString::Printf(TEXT("shot_%s.png"), *K.Shot);
+		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: screenshot %s at %.2f s"), *File, Elapsed);
+		AskShot(File, static_cast<int32>(&K - Inputs.GetData()));
 		break;
 	}
 	case EScriptedKind::Travel:
@@ -413,8 +519,342 @@ void UTaskProbe::SendInput(const FScriptedKey& K, UWorld* World, APlayerControll
 		WaitStart = FPlatformTime::Seconds();
 		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: the play's clock holds at %.2f s for %.1f s of real time"), Elapsed, K.Wait);
 		break;
+	case EScriptedKind::Wheel:
+		SendWheel(K);
+		break;
+	case EScriptedKind::Pin:
+	case EScriptedKind::Damage:
+	case EScriptedKind::Set:
+		Stage(K, World, PC);
+		break;
+	case EScriptedKind::Move:
+	{
+		FMoving M;
+		M.Input = static_cast<int32>(&K - Inputs.GetData());
+		M.Start = Elapsed;
+		Moving.Add(M);
+		MoveMouse(Moving.Last());  // all of it now when it isn't spread over time
+		break;
+	}
 	}
 	++InputsSent;
+}
+
+/** Where a pin sets an actor ahead of the pawn: Front cm along the pawn's facing (plus Offset), at the height above the
+ *  ground below it the actor had, facing the pawn. */
+static FVector PinSpot(UWorld* World, const APawn* Pawn, const AActor* A, double Front, const FVector& Offset)
+{
+	const FVector Base = Pawn->GetActorLocation() + Pawn->GetActorForwardVector().GetSafeNormal2D() * Front + FVector(Offset.X, Offset.Y, 0.0);
+	auto GroundZ = [World, Pawn, A](const FVector& At, double& OutZ)
+	{
+		FHitResult Hit;
+		FCollisionQueryParams Params(TEXT("TaskProbePin"), false);
+		Params.AddIgnoredActor(Pawn);
+		Params.AddIgnoredActor(A);
+		if (!World->LineTraceSingleByChannel(Hit, At + FVector(0, 0, 500), At - FVector(0, 0, 5000), ECC_Visibility, Params))
+		{
+			return false;
+		}
+		OutZ = Hit.ImpactPoint.Z;
+		return true;
+	};
+	double Was = 0.0, Now = 0.0;
+	const FVector Here = A->GetActorLocation();
+	const double Above = GroundZ(Here, Was) ? Here.Z - Was : Here.Z - Pawn->GetActorLocation().Z;
+	const double Z = GroundZ(FVector(Base.X, Base.Y, Pawn->GetActorLocation().Z), Now) ? Now + Above : Pawn->GetActorLocation().Z + Above;
+	return FVector(Base.X, Base.Y, Z + Offset.Z);
+}
+
+void UTaskProbe::PinActor(const FScriptedKey& K, UWorld* World, APlayerController* PC)
+{
+	AActor* A = TaskProbe::NearestMatch(World, PC, K.Target);
+	if (!A)
+	{
+		Missed(K, TEXT("pin"), TEXT("select"), TEXT("no actor but the player matches it"));
+		return;
+	}
+	const APawn* Pawn = PC->GetPawn();
+	FVector Point;
+	if (K.At.IsValid() && !TaskProbe::PointOf(World, PC, K.At, Point))
+	{
+		Missed(K, TEXT("pin"), TEXT("at"), TEXT("its point doesn't resolve (no actor matches it, or no pawn)"));
+		return;
+	}
+	if ((K.bFront || K.At.IsValid()) && Pawn)
+	{
+		const FVector At = K.At.IsValid() ? Point + K.Offset : PinSpot(World, Pawn, A, K.Front, K.Offset);
+		const FVector Look = Pawn->GetActorLocation() - At;
+		FRotator Rot = A->GetActorRotation();
+		Rot.Yaw = FMath::RadiansToDegrees(FMath::Atan2(Look.Y, Look.X));
+		A->SetActorLocationAndRotation(At, Rot, false, nullptr, ETeleportType::TeleportPhysics);
+		if (APawn* Held = Cast<APawn>(A); Held && Held->GetController())
+		{
+			Held->GetController()->SetControlRotation(Rot);
+		}
+	}
+	FPinned P;
+	P.Actor = A;
+	P.At = A->GetActorLocation();
+	P.Until = Elapsed + K.Hold;
+	Pinned.Add(P);
+	UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: pinned %s at (%.0f, %.0f, %.0f) for %.1f s"), *A->GetName(), P.At.X, P.At.Y, P.At.Z, K.Hold);
+}
+
+void UTaskProbe::Stage(const FScriptedKey& K, UWorld* World, APlayerController* PC)
+{
+	if (K.Kind == EScriptedKind::Pin)
+	{
+		PinActor(K, World, PC);
+		return;
+	}
+	if (K.Kind == EScriptedKind::Damage)
+	{
+		AActor* Target = TaskProbe::NearestMatch(World, PC, K.Target);
+		if (!Target)
+		{
+			Missed(K, TEXT("damage"), TEXT("to"), TEXT("no actor matches it"));
+			return;
+		}
+		// struck from `from`'s nearest match; by default the pawn, or the nearest other pawn when the pawn is struck
+		AActor* From = nullptr;
+		if (K.From.IsValid())
+		{
+			From = TaskProbe::NearestMatch(World, PC, K.From);
+		}
+		else if (Target == PC->GetPawn())
+		{
+			const TSharedRef<FJsonObject> Pawns = MakeShared<FJsonObject>();
+			Pawns->SetStringField(TEXT("class"), TEXT("Pawn"));
+			From = TaskProbe::NearestMatch(World, PC, Pawns);
+		}
+		else
+		{
+			From = PC->GetPawn();
+		}
+		const FVector There = Target->GetActorLocation();
+		const FVector Dir = From ? (There - From->GetActorLocation()).GetSafeNormal() : -Target->GetActorForwardVector();
+		FHitResult Hit(Target, Cast<UPrimitiveComponent>(Target->GetRootComponent()), There, -Dir);
+		Hit.ImpactPoint = There;
+		Hit.TraceStart = There - Dir * 100.0;
+		Hit.TraceEnd = There;
+		const APawn* Striker = Cast<APawn>(From);
+		const float Taken = UGameplayStatics::ApplyPointDamage(Target, (float)K.Amount, Dir, Hit, Striker ? Striker->GetController() : nullptr, From,
+			UDamageType::StaticClass());
+		TaskProbe::NoteDamage(Target, Taken);
+		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: %.1f damage to %s from %s: it took %.1f"), K.Amount, *Target->GetName(),
+			From ? *From->GetName() : TEXT("nothing"), Taken);
+		return;
+	}
+	TArray<AActor*> All;
+	AActor* Nearest = TaskProbe::NearestMatch(World, PC, K.Target, &All);
+	const TCHAR* Kind = TEXT("set");
+	if (!Nearest)
+	{
+		Missed(K, Kind, K.Path, TEXT("no actor matches its select"));
+		return;
+	}
+	if (!K.bAll)
+	{
+		All = {Nearest};
+	}
+	int32 Done = 0;
+	FString Why;
+	for (AActor* A : All)
+	{
+		FString Failed;
+		const bool bTook = TaskProbe::WriteProp(A, K.Path, K.Value, Failed);
+		Done += bTook ? 1 : 0;
+		Why = bTook ? Why : Failed;
+		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: %s %s on %s: %s"), Kind, *K.Path, *A->GetName(),
+			bTook ? TEXT("done") : *Failed);
+	}
+	if (Done < All.Num())
+	{
+		Missed(K, Kind, K.Path, FString::Printf(TEXT("%d of %d actors didn't take it: %s"), All.Num() - Done, All.Num(), *Why));
+	}
+}
+
+void UTaskProbe::Missed(const FScriptedKey& K, const TCHAR* Kind, const FString& Target, const FString& Why)
+{
+	const TSharedRef<FJsonObject> Row = MakeShared<FJsonObject>();
+	Row->SetNumberField(TEXT("t"), K.Time);
+	Row->SetStringField(TEXT("kind"), Kind);
+	Row->SetStringField(TEXT("target"), Target.Left(200));
+	Row->SetStringField(TEXT("why"), Why.Left(1000));
+	InputsMissed.Add(MakeShared<FJsonValueObject>(Row));
+	UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: %s %s at %.2f s did not land: %s"), Kind, *Target, K.Time, *Why);
+}
+
+void UTaskProbe::AskShot(const FString& File, int32 Input)
+{
+	// One capture serves every shot asked before the viewport next draws: the engine holds one screenshot request
+	// (FScreenshotRequest keeps a single filename, so a second request before the draw replaces the first, whose file
+	// is never written), and every shot is taken the same way (with the UI), so they would all be the same picture. The
+	// first asked is the capture, a `shot` input's ahead of an evenly spaced one (inputs are sent before the evenly
+	// spaced shot of their tick); the others are copies of its file (Finish), each listed under its own name.
+	ShotTaken();
+	if (ShotFrame.IsEmpty())
+	{
+		FScreenshotRequest::RequestScreenshot(FPaths::Combine(OutDir, File), true, false);
+		ShotFrame = File;
+	}
+	FShotAsked Entry;
+	Entry.File = File;
+	Entry.Source = ShotFrame;
+	Entry.Input = Input;
+	Entry.At = Elapsed;
+	ShotsAsked.Add(Entry);
+	if (ShotFrame != File)
+	{
+		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: screenshot %s is the same frame as %s"), *File, *ShotFrame);
+	}
+}
+
+void UTaskProbe::ShotTaken()
+{
+	// the engine takes the request when the game viewport next draws, then clears it
+	if (!ShotFrame.IsEmpty() && !FScreenshotRequest::IsScreenshotRequested())
+	{
+		ShotFrame.Reset();
+	}
+}
+
+bool UTaskProbe::NamedShotWaiting() const
+{
+	// a `shot` input whose frame isn't drawn yet: the inputs after it wait, so a travel, a view turn or a teleport at the
+	// same time never shows in the picture asked for before it; a second of play at most (a viewport that doesn't draw
+	// never holds the rest of the play)
+	return !ShotFrame.IsEmpty() && ShotsAsked.ContainsByPredicate([this](const FShotAsked& S)
+		{ return S.Input != INDEX_NONE && S.Source == ShotFrame && Elapsed - S.At < 1.0; });
+}
+
+bool UTaskProbe::ShotWritten(const FString& File) const
+{
+	return IFileManager::Get().FileSize(*FPaths::Combine(OutDir, File)) > 0;
+}
+
+bool UTaskProbe::ShotsWritten() const
+{
+	return ShotFrame.IsEmpty() && !ShotsAsked.ContainsByPredicate([this](const FShotAsked& S) { return !ShotWritten(S.Source); });
+}
+
+bool UTaskProbe::ClickSlate(const FScriptedKey& K)
+{
+	// no UMG button matches: a Slate button (SNew(SButton) in a game's own UI) named by its text, tag or type, pressed
+	// as a player's click at its centre would press it (the pointer moves there, so it is hovered, then the left button
+	// goes down and up through Slate: its OnClicked fires as for a player)
+	FVector2D At;
+	FString Label;
+	if (!FSlateApplication::IsInitialized())
+	{
+		return false;
+	}
+	const TSharedPtr<SWidget> Button = TaskProbe::FindSlateButton(K.Widget, At, Label);
+	if (!Button.IsValid())
+	{
+		return false;
+	}
+	const TSharedPtr<SViewport> Viewport = GameViewportWidget();
+	const bool bViewportCaptured = Viewport.IsValid() && Viewport->HasMouseCapture();
+	FSlateApplication& Slate = FSlateApplication::Get();
+	const TSet<FKey> NoButtons;
+	TSet<FKey> Left;
+	Left.Add(EKeys::LeftMouseButton);
+	const FVector2D From = bCursorSet ? CursorAbsolute : At;
+	Slate.ProcessMouseMoveEvent(FPointerEvent(FSlateApplication::CursorPointerIndex, At, From, NoButtons, EKeys::Invalid, 0.f, FModifierKeysState()));
+	const bool bDown = Slate.ProcessMouseButtonDownEvent(TSharedPtr<FGenericWindow>(),
+		FPointerEvent(FSlateApplication::CursorPointerIndex, At, At, Left, EKeys::LeftMouseButton, 0.f, FModifierKeysState()));
+	// it took the press: a button pressed the default way (down and up) holds the mouse from the press to the release;
+	// one that clicks on the press alone handled it while hovered (the pointer reached it, nothing covering it)
+	const bool bPressed = Button->HasMouseCapture() || (bDown && Button->IsHovered());
+	const bool bUp = Slate.ProcessMouseButtonUpEvent(FPointerEvent(FSlateApplication::CursorPointerIndex, At, At, NoButtons, EKeys::LeftMouseButton, 0.f, FModifierKeysState()));
+	CursorAbsolute = At;
+	bCursorSet = true;
+	UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: clicked Slate button %s at (%.0f, %.0f): press %s, release %s"), *Label, At.X, At.Y,
+		bDown ? TEXT("handled") : TEXT("unhandled"), bUp ? TEXT("handled") : TEXT("unhandled"));
+	if (!bPressed)
+	{
+		Missed(K, TEXT("click"), K.Widget, FString::Printf(TEXT("Slate button (%s) found, but it didn't take the press at its centre%s"), *Label,
+			bViewportCaptured ? TEXT(" (the game viewport holds the mouse captured)") : TEXT(" (covered, or Slate found no window there)")));
+	}
+	return true;
+}
+
+void UTaskProbe::SendWheel(const FScriptedKey& K)
+{
+	// a player's wheel at the cursor (the viewport's centre before any cursor move), one event per notch: Slate gives it to
+	// the UI under the cursor or the game viewport, which sends the engine's MouseWheelAxis and a MouseScrollUp or
+	// MouseScrollDown press and release, so legacy mappings and Enhanced Input alike receive it
+	const FString Target = FString::Printf(TEXT("%+d"), K.Wheel);
+	const TSharedPtr<SViewport> Viewport = GameViewportWidget();
+	FVector2D At = CursorAbsolute;
+	if (!FSlateApplication::IsInitialized() || !Viewport.IsValid() || (!bCursorSet && !TaskProbe::ViewportPoint(0.5, 0.5, At)))
+	{
+		Missed(K, TEXT("wheel"), Target, TEXT("no game viewport"));
+		return;
+	}
+	const TSet<FKey> NoButtons;
+	int32 Handled = 0;
+	for (int32 i = 0; i < FMath::Abs(K.Wheel); ++i)
+	{
+		const FPointerEvent Event(FSlateApplication::CursorPointerIndex, At, At, NoButtons, EKeys::Invalid, K.Wheel > 0 ? 1.f : -1.f, FModifierKeysState());
+		Handled += FSlateApplication::Get().ProcessMouseWheelOrGestureEvent(Event, nullptr) ? 1 : 0;
+	}
+	UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: wheel %s at (%.0f, %.0f) through Slate, %d of %d notches handled"), *Target, At.X, At.Y,
+		Handled, FMath::Abs(K.Wheel));
+	if (Handled == 0)
+	{
+		// nothing took it: no window under the cursor for Slate, or nothing there (UI or viewport) handles a wheel
+		Missed(K, TEXT("wheel"), Target, TEXT("Slate handled none of its notches at the cursor"));
+	}
+}
+
+void UTaskProbe::MoveMouse(FMoving& M)
+{
+	// a player's mouse moving: each tick the part due by then, as one Slate mouse move. While the game viewport holds the
+	// mouse captured (mouse look) the cursor stays put, as the OS holds a captured one, and the viewport turns the move's
+	// delta into the engine's MouseX and MouseY (and Mouse2D, their pair); otherwise the cursor moves over the game, kept
+	// inside the viewport, and no mouse axes are sent: a miss for a play that asks for mouse movement
+	const FScriptedKey& K = Inputs[M.Input];
+	const double Frac = K.Over > 0.0 ? FMath::Clamp((Elapsed - M.Start) / K.Over, 0.0, 1.0) : 1.0;
+	M.bFinished = Frac >= 1.0;
+	const FVector2D Step = K.Move * Frac - M.Sent;
+	if (Step.IsNearlyZero(1e-4))
+	{
+		return;
+	}
+	M.Sent += Step;
+	const FString Target = FString::Printf(TEXT("%.0f, %.0f"), K.Move.X, K.Move.Y);
+	const TSharedPtr<SViewport> Viewport = GameViewportWidget();
+	FVector2D From = CursorAbsolute, Min, Max;
+	if (!FSlateApplication::IsInitialized() || !Viewport.IsValid() || (!bCursorSet && !TaskProbe::ViewportPoint(0.5, 0.5, From))
+		|| !TaskProbe::ViewportPoint(0.0, 0.0, Min) || !TaskProbe::ViewportPoint(1.0, 1.0, Max))
+	{
+		if (!M.bMissed)
+		{
+			M.bMissed = true;
+			Missed(K, TEXT("move"), Target, TEXT("no game viewport"));
+		}
+		return;
+	}
+	const bool bCaptured = Viewport->HasMouseCapture();
+	FVector2D To = From + Step;
+	if (!bCaptured)
+	{
+		To = FVector2D(FMath::Clamp(To.X, Min.X, Max.X - 1.0), FMath::Clamp(To.Y, Min.Y, Max.Y - 1.0));
+	}
+	const TSet<FKey> NoButtons;
+	FSlateApplication::Get().ProcessMouseMoveEvent(FPointerEvent(FSlateApplication::CursorPointerIndex, To, From, NoButtons, EKeys::Invalid, 0.f, FModifierKeysState()));
+	if (!bCaptured)
+	{
+		CursorAbsolute = To;
+		bCursorSet = true;
+		if (!M.bMissed)
+		{
+			M.bMissed = true;
+			Missed(K, TEXT("move"), Target, TEXT("the game viewport doesn't hold the mouse captured: the cursor moved, no mouse axes were sent"));
+		}
+	}
 }
 
 bool UTaskProbe::Tick(float DeltaTime)
@@ -423,6 +863,15 @@ bool UTaskProbe::Tick(float DeltaTime)
 	{
 		return false;
 	}
+#if PLATFORM_LINUX && WITH_EDITOR
+	// A game run's Linux VM plays in the editor's -game on a fresh shader cache (Lab's docs/planning/2026-10-29_game-runs-linux/
+	// spec.md section 3.4): shader compiles still pending are finished each tick, which 5.7.4's synchronous mode
+	// would otherwise assert on
+	if (GShaderCompilingManager && GShaderCompilingManager->IsCompiling())
+	{
+		GShaderCompilingManager->FinishAllCompilation();
+	}
+#endif
 	// The world and the player controller are fetched every tick: a map travel replaces both, and the play's clock keeps
 	// counting through it once the first world has begun play.
 	UGameInstance* GI = GetGameInstance();
@@ -434,6 +883,19 @@ bool UTaskProbe::Tick(float DeltaTime)
 			return true;
 		}
 		bStarted = true;
+	}
+	ShotTaken();
+	if (bEnding)
+	{
+		// the play's time is up: the clock and the samples stand still while the screenshots asked for are taken and
+		// written (the engine may write a file after the frame it took it on), a few seconds of real time at most
+		if (!ShotsWritten() && FPlatformTime::Seconds() - ShotsWaitStart < 5.0)
+		{
+			return true;
+		}
+		Finish(TEXT("time"));
+		FPlatformMisc::RequestExit(false);
+		return false;
 	}
 	if (bWaiting)
 	{
@@ -447,7 +909,8 @@ bool UTaskProbe::Tick(float DeltaTime)
 		}
 		if (Queries)
 		{
-			Queries->Frame(DeltaTime);
+			Queries->Frame(DeltaTime, World);
+			Queries->Listen(World, Elapsed);
 		}
 		if (WaitGame >= WaitFor && FPlatformTime::Seconds() - WaitStart >= WaitFor)
 		{
@@ -459,16 +922,28 @@ bool UTaskProbe::Tick(float DeltaTime)
 	Elapsed += DeltaTime;
 	if (Queries)
 	{
-		Queries->Frame(DeltaTime);
+		Queries->Frame(DeltaTime, World);
+		Queries->Listen(World, Elapsed);
 	}
 	APlayerController* PC = World && World->HasBegunPlay() ? World->GetFirstPlayerController() : nullptr;
 
 	// inputs wait for a player controller (e.g. during a map travel)
-	// (a wait holds the inputs after it until it is over)
-	while (PC && !bWaiting && NextInput < Inputs.Num() && Inputs[NextInput].Time <= Elapsed)
+	// (a wait holds the inputs after it until it is over; a named shot holds them until its frame is drawn, but for
+	// another named shot, which is the same frame)
+	while (PC && !bWaiting && NextInput < Inputs.Num() && Inputs[NextInput].Time <= Elapsed
+		&& (Inputs[NextInput].Kind == EScriptedKind::Shot || !NamedShotWaiting()))
 	{
 		SendInput(Inputs[NextInput++], World, PC);
 	}
+	// mouse movements spread over time: the part due by now
+	for (FMoving& M : Moving)
+	{
+		if (!M.bFinished)
+		{
+			MoveMouse(M);
+		}
+	}
+	Moving.RemoveAll([](const FMoving& M) { return M.bFinished; });
 
 	if (Elapsed >= NextTrack)
 	{
@@ -505,10 +980,7 @@ bool UTaskProbe::Tick(float DeltaTime)
 	// Screenshots evenly over the run, the first a little after the start (the first frames are often still loading).
 	if (Shots > 0 && ShotsTaken < Shots && Elapsed >= Seconds * (ShotsTaken + 0.5) / Shots)
 	{
-		const FString Name = FString::Printf(TEXT("shot_%02d.png"), ShotsTaken);
-		// with the UI (the HUD, menus): what the player sees, so a HUD change shows in the screenshots
-		FScreenshotRequest::RequestScreenshot(FPaths::Combine(OutDir, Name), true, false);
-		ShotNames.Add(MakeShared<FJsonValueString>(Name));
+		AskShot(FString::Printf(TEXT("shot_%02d.png"), ShotsTaken), INDEX_NONE);
 		++ShotsTaken;
 	}
 
@@ -517,6 +989,12 @@ bool UTaskProbe::Tick(float DeltaTime)
 		// a screen sample reads the frame drawn after it: the last one waits for that frame (a few frames at most)
 		if (Queries && Queries->WaitsForFrame() && FramesWaited++ < 5)
 		{
+			return true;
+		}
+		if (!ShotsWritten())
+		{
+			bEnding = true;
+			ShotsWaitStart = FPlatformTime::Seconds();
 			return true;
 		}
 		Finish(TEXT("time"));
@@ -537,7 +1015,38 @@ void UTaskProbe::Finish(const FString& Reason)
 	Out->SetNumberField(TEXT("seconds"), Elapsed);
 	Out->SetStringField(TEXT("map"), World ? World->GetMapName() : FString());
 	Out->SetNumberField(TEXT("inputs_sent"), InputsSent);
-	Out->SetArrayField(TEXT("screenshots"), ShotNames);
+	// only the screenshots on disk, in the order asked for: a judge is never told of a picture that doesn't exist. A
+	// copy of a frame's capture is written now; a `shot` input's picture that isn't on disk is listed as an input that
+	// didn't land, an evenly spaced one's only logged
+	TArray<TSharedPtr<FJsonValue>> Written;
+	ShotTaken();
+	for (const FShotAsked& S : ShotsAsked)
+	{
+		if (S.File != S.Source && ShotWritten(S.Source) && !ShotWritten(S.File))
+		{
+			IFileManager::Get().Copy(*FPaths::Combine(OutDir, S.File), *FPaths::Combine(OutDir, S.Source));
+		}
+		if (ShotWritten(S.File))
+		{
+			Written.Add(MakeShared<FJsonValueString>(S.File));
+			continue;
+		}
+		const TCHAR* Why = S.Source == ShotFrame ? TEXT("the play ended before the engine took it")
+			: ShotWritten(S.Source) ? TEXT("its copy of the frame's capture could not be written")
+			: TEXT("the engine took it, but wrote no file");
+		if (S.Input != INDEX_NONE)
+		{
+			Missed(Inputs[S.Input], TEXT("shot"), S.File, Why);
+		}
+		else
+		{
+			UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: screenshot %s left out: %s"), *S.File, Why);
+		}
+	}
+	// every input that didn't land (a click no button took, a wheel step or mouse movement no game viewport received):
+	// always written, so a grader tells "none missed" from a plugin that didn't say
+	Out->SetArrayField(TEXT("inputs_missed"), InputsMissed);
+	Out->SetArrayField(TEXT("screenshots"), Written);
 	Out->SetArrayField(TEXT("track"), Track);
 	Out->SetArrayField(TEXT("camera"), Camera);
 	if (Queries)

@@ -663,6 +663,17 @@ def task_play_errors(n, play, plays):
         if isinstance(view, list) and len(view) == 2 and all(isinstance(v, (int, float)) for v in view) and not (
                 -89 <= view[0] <= 89 and -360 <= view[1] <= 360):
             errs.append(f'check {n}: play {pname} has a view {view}: [pitch, yaw], pitch -89 to 89, yaw -360 to 360')
+    for i in play.get('inputs') or []:
+        if not isinstance(i, dict):
+            continue
+        if isinstance(i.get('pin'), dict) and i['pin'].get('player') is True:
+            errs.append(f'check {n}: play {pname} pins the player: a pin holds another actor (a teleport holds the player)')
+        if 'pin' in i and i.get('front') is not None and i.get('at') is not None:
+            errs.append(f'check {n}: play {pname} pins an actor `front` of the player or `at` a point, not both')
+        over, t = i.get('over'), i.get('t')
+        if 'move' in i and isinstance(over, (int, float)) and isinstance(t, (int, float)) and isinstance(secs, (int, float)) \
+                and t + over > secs:
+            errs.append(f'check {n}: play {pname} has a mouse movement that ends after the play ({secs} s)')
     whole = dict(TASK_PLAY_DEFAULTS, **play)
     if plays.setdefault(pname, whole) != whole:
         errs.append(f'check {n}: task play {pname} differs from another play of that name')
@@ -1517,7 +1528,9 @@ def check_sound(rep, repo, files):
 def check_contract(rep, repo, files):
     """Spec 11.1 D and K on the game's Source/: a game with combat receives damage in TakeDamage (or an OnTake*Damage
     handler) and deals it through the engine's damage calls; every key state member is a UPROPERTY of a UCLASS or
-    USTRUCT. For new games (the owner's decision of 2026-11-11); its findings are errors."""
+    USTRUCT. For new games (the owner's decision of 2026-11-11); its findings are errors. Not checked statically, the
+    skill states it: TakeDamage returns the damage actually applied (0 when the hit did nothing), which a staged hit's
+    damage_taken reads."""
     # the factory's own AutoPlay recorder, copied into every game, is harness code, not the game's
     sources = [f for f in files if f.startswith('Source/') and f.endswith(('.h', '.cpp')) and '/AutoPlay/' not in f]
     keys, hit_functions, receives, deals = [], [], [], []

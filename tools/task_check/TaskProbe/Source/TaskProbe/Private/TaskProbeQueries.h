@@ -2,7 +2,7 @@
 // the track (every -TaskProbeEvery seconds, default 0.5) and written to probe.json "measures" as {"<id>": [{"t": t, "rows": [...]} | {"t": t,
 // "value": ...}, ...]}. The contract is game-factory's docs/task-probes.md
 // (the measures) and docs/task-check.md (how the checker plays and reduces them).
-// Query kinds: actors, widgets, light, grading, spawns, camera, components, pieces, screen, audio, ground, ui, drawn. Anything unknown (a class, a
+// Query kinds: actors, widgets, light, grading, spawns, camera, components, pieces, screen, audio, ground, ui, drawn, world. Anything unknown (a class, a
 // property, a widget, a kind) gives empty rows or null values and never stops the play.
 //
 // A select's near ({"point", "radius"}) may also give a height band, "z_min" and/or "z_max" (cm; world heights, or offsets
@@ -42,7 +42,16 @@
 //   ("graph", "render", "bound"). A particle system component (Niagara, Cascade) is a source too: dark unless active and
 //   drawn, then rendered alone as such a mesh is (lit by its brightest pixel, glow by the same formula over its local
 //   bounds; "effect" in glow_sources), or without a renderer its materials' emissive bound. spin (deg/s): the fastest
-//   of its mesh parts' (or, with none, its root's) angular speed in the world (components' spin).
+//   of its mesh parts' (or, with none, its root's) angular speed in the world (components' spin). frozen (s): the
+//   longest stop that ended since the previous sample: frames in which it moved under 0.1 cm and no bone of its
+//   skinned meshes (in component space) moved 0.1 cm, between two frames of motion, 0.5 s at most (a hit stop however
+//   made; an idle, a rest or a static actor reads 0), null the first sample it is seen in; montage (1 while
+//   an anim montage plays on one of its skeletal meshes); damage_taken (what its TakeDamage returned for the play's
+//   staged damage, summed; null before any); focus_player (1 when its AI controller's focus is the player pawn; null
+//   without an AI controller). A select's "where": [{"prop", "op", "value"}] keeps only actors whose reflected property
+//   (read as prop: reads it) compares so, and "player": false every actor but the player pawn.
+// - world: "value": {"time_dilation" (the lowest effective global time dilation over the frames since the previous
+//   sample, null before any frame), "paused" (1 when the game was paused in any of them)}.
 // - widgets: "rows": [{"name", "class", <field>: value}] over the UMG trees in the viewport. select.class alone matches
 //   the widget's own class; with select.name it also matches an enclosing user widget's class. visible = visible,
 //   render opacity > 0, and every parent (through enclosing user widgets) the same. x, y, w, h: the cached geometry in
@@ -105,7 +114,14 @@
 //   its owner is in), each at its volume at the listener: its wave instances' volume (its own, its class's and mixes',
 //   multipliers) times their distance and occlusion attenuation and dynamic volume, summed, the output's primary
 //   volume left out. count: how many; audible: how many at 0.001 (-60 dB) or more; volume: their sum; max_volume and
-//   loudest (its sound's name): the loudest one.
+//   loudest (its sound's name): the loudest one. select.near (a select's near) keeps sounds with a place (played at a
+//   location, spatialized) near the point as it is at the sample. And the sounds that started (Listen: the active
+//   sounds looked at once a frame, so every start is seen, however short the sound): started (how many started since
+//   the play began, to this sample), started_audible (how many of them have reached 0.001 at the listener),
+//   "starts": [{"t", "sound", "named", "class", "x", "y", "z", "peak"}] for at most 64 that started since the
+//   previous sample (t: the play time it was first seen; named: a saved asset, not a sound made at run time; x y z
+//   null for a sound with no place; peak: its loudest at the listener so far), "starts_total" how many did, and
+//   "starts_capped": true once more than 8192 started in the play (the later ones aren't counted).
 // - ground: "value": {"height", "hit"} for query.xy = [x, y], or {"min", "max", "mean", "range", "hits", "points"}
 //   for query.box = [x0, y0, x1, y1] on a query.grid x grid lattice (2-32, default 8; corners and edges included):
 //   the z (cm) where a trace straight down from 2 km up meets the ground first (the visibility channel, complex
@@ -175,15 +191,36 @@ namespace TaskProbe
 {
 class FGlowRender;
 class FDrawnRender;
+struct FSoundStarts;
 
 /** A point of the game viewport, in viewport fractions 0-1, in Slate's absolute (desktop) space. */
 bool ViewportPoint(double Fx, double Fy, FVector2D& OutAbsolute);
 /** The first enabled, visible UMG button in the viewport whose name (wildcard) or class matches. */
 UButton* FindButton(UWorld* World, const FString& Want);
+/** A click's Slate fallback (no UMG button matches): the first enabled, visible Slate button under the game viewport (a
+ *  widget whose type ends in "Button": SButton, SComboButton, a game's own S...Button) that Want names by its text (a
+ *  text block inside it, or all of them in order), its tag or its type (with or without its S), each compared as
+ *  LabelKey makes them, so "New_expedition" names the button whose text reads "New expedition". Null when none.
+ *  OutCentre: its centre in Slate's absolute space; OutLabel: what matched, for the log. */
+TSharedPtr<SWidget> FindSlateButton(const FString& Want, FVector2D& OutCentre, FString& OutLabel);
+/** A name or a caption as a click compares them: lower case, each run of anything but letters and digits one "_",
+ *  none at either end ("New expedition", "new_expedition" and "NEW  EXPEDITION!" alike). */
+FString LabelKey(const FString& Text);
 /** Where teleport_to puts the pawn: Distance cm from the nearest actor Select matches (nearest to the pawn), on the
  *  pawn's side of it (level, plus Offset), and the yaw that faces Face (a point, as a query's) or else that actor. */
 bool TeleportSpot(UWorld* World, APlayerController* PC, const TSharedPtr<FJsonObject>& Select, double Distance, const FVector& Offset,
 	const TSharedPtr<FJsonObject>& Face, FVector& OutLocation, double& OutYaw, FString& OutName);
+
+/** The stages of a contact (docs/task-probes.md, section 1.3). The actor Select matches nearest to the
+ *  player pawn, never the pawn itself unless the select is {"player": true}; null when none. OutAll: every match. */
+AActor* NearestMatch(UWorld* World, APlayerController* PC, const TSharedPtr<FJsonObject>& Select, TArray<AActor*>* OutAll = nullptr);
+/** pin's `at`: a point as a query's (xyz, pawn, camera, actor), resolved now; false when it doesn't resolve. */
+bool PointOf(UWorld* World, APlayerController* PC, const TSharedPtr<FJsonObject>& Point, FVector& OutPoint);
+/** set: writes a reflected property (prop: path, no index) of an actor or one of its components from a JSON number,
+ *  boolean or string (an enum by its name, a name, a string, a text); false with why when it can't. */
+bool WriteProp(UObject* Root, const FString& Path, const TSharedPtr<FJsonValue>& Value, FString& OutWhy);
+/** damage: what an actor's TakeDamage returned for a staged hit, added to its damage_taken. */
+void NoteDamage(const AActor* A, double Taken);
 
 /** One element of the UI on screen (ui): its source (umg, slate, canvas), kind (text, box, image), name and class (for
  *  the logs), text, and its rectangle in viewport fractions. */
@@ -217,6 +254,20 @@ struct FSpinTrack
 	double Time = 0.0;
 };
 
+/** An actor frozen follows frame by frame: its place and its skinned meshes' bones (component space) at the last frame,
+ *  how long (s) it has held still so far, and the longest it held still since the last sample. */
+struct FStillTrack
+{
+	TWeakObjectPtr<const AActor> Actor;
+	FVector Place = FVector::ZeroVector;
+	TArray<FVector> Bones;
+	bool bSeen = false;
+	bool bMovedBefore = false;  // it moved in a frame before the stop under way
+	double Run = 0.0;
+	double Longest = 0.0;
+	double Time = 0.0;  // seconds followed since the last sample
+};
+
 /** A drawn part (a primitive component) as changed compares it: drawn or not, its world bounds and, of a skinned
  *  mesh, its local bounds and its bones' places in its own space. */
 struct FPartState
@@ -244,8 +295,12 @@ public:
 	const TArray<FString>& Errors() const { return ErrorList; }
 	/** A screen or ui sample waits for the next frame the game viewport draws. */
 	bool WaitsForFrame() const { return bWantFrame || bWantUi; }
-	/** Every frame of the play (the clock running or held): spin's components turn by so much since the last frame. */
-	void Frame(float DeltaTime);
+	/** Every frame of the play (the clock running or held): spin's components turn by so much since the last frame,
+	 *  frozen's actors hold still or not, the world's time dilation and pause are noted. */
+	void Frame(float DeltaTime, UWorld* World);
+	/** Every frame of the play, before the world ticks (only with an audio query): the sounds that started since the
+	 *  last frame, at play time T (audio's started fields). */
+	void Listen(UWorld* World, double T);
 
 private:
 	struct FQuery
@@ -265,6 +320,7 @@ private:
 		TMap<FObjectKey, TaskProbe::FPartState> Firsts;  // changed: each part as the first sample it was seen in had it
 		TMap<FObjectKey, TArray<FObjectKey>> FirstParts;  // changed (actors): each actor's parts at its first sample
 		double LastT = 0.0;
+		double HeardT = -1.0;  // audio: the previous sample's time (its starts are those after it)
 		TArray<TSharedPtr<FJsonObject>> Pending;  // screen, ui: samples waiting for the next drawn frame
 		bool bOcr = false;  // ui: a select of text in a rect, read from the frame as drawn too (UiOcr)
 		TArray<FLinearColor> DrawnColour;  // drawn: the previous sample's views, pixel by pixel (motion)
@@ -291,12 +347,14 @@ private:
 	void SampleGrading(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out);
 	void SampleComponents(FQuery& Q, UWorld* World, APlayerController* PC, double T, FJsonObject& Out);
 	void SamplePieces(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out);
-	void SampleAudio(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out);
+	void SampleAudio(FQuery& Q, UWorld* World, APlayerController* PC, double T, FJsonObject& Out);
 	void SampleGround(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out);
 	void SampleCamera(UWorld* World, APlayerController* PC, FJsonObject& Out);
 	void SampleDrawn(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out);
 	TSharedPtr<FJsonValue> SpinOf(const USceneComponent* C);
 	TSharedPtr<FJsonValue> ActorSpin(const AActor* A);
+	TSharedPtr<FJsonValue> ActorStill(const AActor* A);
+	void SampleWorld(FJsonObject& Out);
 	void OnPaintBeginWindow(const FSlateWindowElementList& List);
 	void OnPaintEndWindow(const FSlateWindowElementList& List);
 	void OnPaintBeginWidget(const SWidget* Widget, const FPaintArgs& Args, const FGeometry& Geometry, const FSlateRect& Culling, const FSlateWindowElementList& List, int32 Layer);
@@ -317,10 +375,16 @@ private:
 	TArray<TaskProbe::FUiElement> CanvasNow;  // ui: what the HUD canvas held when the HUD had drawn
 	uint64 CanvasFrame = 0;  // ui: the frame (GFrameCounter) CanvasNow is of
 	TSharedPtr<FTaskProbeViewExtension, ESPMode::ThreadSafe> ViewExtension;
+	TSharedPtr<TaskProbe::FSoundStarts, ESPMode::ThreadSafe> SoundStarts;  // audio: every sound started (only with an audio query)
 	TUniquePtr<TaskProbe::FGlowRender> GlowRender;  // lit, glow: meshes whose emissive is read as rendered
 	TUniquePtr<TaskProbe::FDrawnRender> DrawnRender;  // drawn: what is drawn in a place, rendered
 	TMap<FObjectKey, TaskProbe::FSpinTrack> Spins;  // spin: the components read last sample, their turning since
 	TSet<FObjectKey> SpinRead;  // spin: the components read this sample
+	TMap<FObjectKey, TaskProbe::FStillTrack> Stills;  // frozen: the actors read last sample, their stillness since
+	TSet<FObjectKey> StillRead;  // frozen: the actors read this sample
+	double MinDilation = -1.0;  // world: the lowest global time dilation since the previous sample (-1: no frame yet)
+	bool bPausedSince = false;  // world: the game was paused in a frame since the previous sample
+	bool bHasWorld = false;  // a world query is asked for: only then is the world read every frame
 	// ui: the elements widgets paint themselves, from the game window's Slate draw elements (only with a ui query)
 	FDelegateHandle PaintHandles[5];
 	const FSlateWindowElementList* PaintList = nullptr;  // the game window's element list while it is painted

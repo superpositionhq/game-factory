@@ -2,6 +2,7 @@
 
 #include "ActiveSound.h"
 #include "AIController.h"
+#include "Animation/AnimInstance.h"
 #include "Audio.h"
 #include "AudioDevice.h"
 #include "AudioThread.h"
@@ -63,11 +64,14 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Fonts/FontCache.h"
 #include "Fonts/FontMeasure.h"
+#include "GameFramework/DamageType.h"
 #include "GameFramework/HUD.h"
+#include "GameFramework/WorldSettings.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "GlobalRenderResources.h"
 #include "Interfaces/Interface_PostProcessVolume.h"
+#include "Kismet/GameplayStatics.h"
 #include "Internationalization/Regex.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionAbs.h"
@@ -147,6 +151,9 @@ static constexpr int32 MaxRows = 200;     // rows per sample of one query
 static constexpr int32 MaxQueries = 256;  // queries per play
 static constexpr double TraceLength = 200000.0;  // cm, toward a directional light or the sky
 static constexpr double AudibleVolume = 0.001;  // audio: a sound at least this loud at the listener (-60 dB) is audible
+static constexpr int32 MaxSoundStarts = 8192;  // audio: sounds followed from their start, per play
+static constexpr int32 MaxStartRows = 64;  // audio: starts listed per sample (its starts_total counts them all)
+static constexpr float FreshPlayback = 0.5f;  // audio: a sound first seen this far into its playback (s) was playing already
 
 static TSharedPtr<FJsonValue> Null() { return MakeShared<FJsonValueNull>(); }
 static TSharedPtr<FJsonValue> Num(double V)
@@ -313,12 +320,22 @@ struct FHasSel
 	FNearSel Near;
 };
 
+/** An actor select's `where`: a reflected property (a prop: path) compared with a number, boolean or string. */
+struct FWhereSel
+{
+	FString Prop;
+	FString Op;
+	TSharedPtr<FJsonValue> Value;
+};
+
 struct FSel
 {
 	FString Class, Tag, Name;
 	bool bPlayer = false;
 	FNearSel Near;
 	TSharedPtr<FHasSel> Has;  // only with `has`
+	TArray<FWhereSel> Where;  // only with `where`
+	bool bNotPlayer = false;  // player: false, anything but the player pawn
 };
 
 /** has: the renderer its `lit` reads a mesh with when the material graph can't say (FGlowRender): the query set's while
@@ -371,7 +388,12 @@ static FSel ParseSel(const TSharedPtr<FJsonObject>& O)
 	O->TryGetStringField(TEXT("class"), S.Class);
 	O->TryGetStringField(TEXT("tag"), S.Tag);
 	O->TryGetStringField(TEXT("name"), S.Name);
-	O->TryGetBoolField(TEXT("player"), S.bPlayer);
+	bool bPlayerField = false;
+	if (O->TryGetBoolField(TEXT("player"), bPlayerField))
+	{
+		S.bPlayer = bPlayerField;
+		S.bNotPlayer = !bPlayerField;
+	}
 	S.Near = ParseNear(O);
 	const TSharedPtr<FJsonObject>* Has = nullptr;
 	if (O->TryGetObjectField(TEXT("has"), Has) && Has->IsValid())
@@ -384,6 +406,23 @@ static FSel ParseSel(const TSharedPtr<FJsonObject>& O)
 		(*Has)->TryGetBoolField(TEXT("movable"), S.Has->bMovable);
 		S.Has->Near = ParseNear(*Has);
 	}
+	const TArray<TSharedPtr<FJsonValue>>* Where = nullptr;
+	if (O->TryGetArrayField(TEXT("where"), Where))
+	{
+		for (const TSharedPtr<FJsonValue>& W : *Where)
+		{
+			const TSharedPtr<FJsonObject>* WO = nullptr;
+			if (!W.IsValid() || !W->TryGetObject(WO) || !WO->IsValid())
+			{
+				continue;
+			}
+			FWhereSel C;
+			(*WO)->TryGetStringField(TEXT("prop"), C.Prop);
+			(*WO)->TryGetStringField(TEXT("op"), C.Op);
+			C.Value = (*WO)->TryGetField(TEXT("value"));
+			S.Where.Add(C);
+		}
+	}
 	return S;
 }
 
@@ -391,6 +430,49 @@ static APawn* PlayerPawn(APlayerController* PC) { return PC ? PC->GetPawn() : nu
 
 static bool ResolvePoint(const TSharedPtr<FJsonObject>& P, UWorld* World, APlayerController* PC, int32 Depth, FVector& Out);
 static bool CarriesComponent(const AActor* A, const FHasSel& Has, UWorld* World, const FVector& NearP);
+static TSharedPtr<FJsonValue> ReadProp(UObject* Root, const FString& Path);
+
+/** A where holds for the actor: its property read as a prop: field reads it (numbers, booleans as 1 or 0, an enum as its
+ *  index, strings) compared with the value (a boolean as 1 or 0); a property that doesn't resolve, or a string compared
+ *  by order, never holds. */
+static bool WhereHolds(AActor* A, const FWhereSel& W)
+{
+	const TSharedPtr<FJsonValue> Have = ReadProp(A, W.Prop);
+	if (!Have.IsValid() || !W.Value.IsValid() || Have->IsNull())
+	{
+		return false;
+	}
+	if (W.Value->Type == EJson::String || Have->Type == EJson::String)
+	{
+		FString L, R;
+		if (!Have->TryGetString(L) || !W.Value->TryGetString(R))
+		{
+			return false;
+		}
+		return W.Op == TEXT("==") ? L == R : W.Op == TEXT("!=") ? L != R : false;
+	}
+	double L = 0.0, R = 0.0;
+	bool bR = false;
+	if (!Have->TryGetNumber(L))
+	{
+		return false;
+	}
+	if (W.Value->TryGetBool(bR))
+	{
+		R = bR ? 1.0 : 0.0;
+	}
+	else if (!W.Value->TryGetNumber(R))
+	{
+		return false;
+	}
+	if (W.Op == TEXT(">")) return L > R;
+	if (W.Op == TEXT(">=")) return L >= R;
+	if (W.Op == TEXT("<")) return L < R;
+	if (W.Op == TEXT("<=")) return L <= R;
+	if (W.Op == TEXT("==")) return FMath::IsNearlyEqual(L, R, 1e-6);
+	if (W.Op == TEXT("!=")) return !FMath::IsNearlyEqual(L, R, 1e-6);
+	return false;
+}
 
 /** The actors a selection matches (Out holds at most Limit; Total counts them all). */
 static void FindActors(UWorld* World, APlayerController* PC, const FSel& S, int32 Depth, int32 Limit, TArray<AActor*>& Out, int32& Total)
@@ -435,6 +517,17 @@ static void FindActors(UWorld* World, APlayerController* PC, const FSel& S, int3
 			return false;
 		}
 		if (S.Has.IsValid() && !CarriesComponent(A, *S.Has, World, HasNearP))
+		{
+			return false;
+		}
+		for (const FWhereSel& W : S.Where)
+		{
+			if (!WhereHolds(A, W))
+			{
+				return false;
+			}
+		}
+		if (S.bNotPlayer && A == PlayerPawn(PC))
 		{
 			return false;
 		}
@@ -1163,6 +1256,17 @@ static FChangeReading ActorChange(AActor* A, TMap<FObjectKey, FPartState>& First
 	return Out;
 }
 
+/** damage_taken: what each actor's TakeDamage returned for the play's staged hits, summed (the probe notes them). */
+static TMap<FObjectKey, double> DamageTaken;
+
+void NoteDamage(const AActor* A, double Taken)
+{
+	if (A)
+	{
+		DamageTaken.FindOrAdd(FObjectKey(A)) += Taken;
+	}
+}
+
 static TSharedPtr<FJsonValue> ActorField(AActor* A, const FString& F)
 {
 	if (F.StartsWith(TEXT("prop:")))
@@ -1296,7 +1400,45 @@ static TSharedPtr<FJsonValue> ActorField(AActor* A, const FString& F)
 	{
 		return Spread(A);
 	}
+	if (F == TEXT("montage"))
+	{
+		// an animation montage plays on one of its skeletal meshes (a stagger, a flinch, a parry, an attack)
+		TInlineComponentArray<USkeletalMeshComponent*> Meshes(A);
+		for (const USkeletalMeshComponent* M : Meshes)
+		{
+			const UAnimInstance* Anim = M && M->IsRegistered() ? M->GetAnimInstance() : nullptr;
+			if (Anim && Anim->IsAnyMontagePlaying())
+			{
+				return Num(1.0);
+			}
+		}
+		return Num(0.0);
+	}
+	if (F == TEXT("damage_taken"))
+	{
+		const double* Taken = DamageTaken.Find(FObjectKey(A));
+		return Taken ? Num(*Taken) : Null();
+	}
 	return Null();
+}
+
+/** focus_player: 1 when the actor's AI controller (its own, or the actor itself as one) has the player pawn as its focus. */
+static TSharedPtr<FJsonValue> FocusField(AActor* A, APlayerController* PC)
+{
+	const AAIController* AI = Cast<AAIController>(A);
+	if (!AI)
+	{
+		if (const APawn* Pawn = Cast<APawn>(A))
+		{
+			AI = Cast<AAIController>(Pawn->GetController());
+		}
+	}
+	if (!AI)
+	{
+		return Null();
+	}
+	const APawn* Player = PlayerPawn(PC);
+	return Num(Player && AI->GetFocusActor() == Player ? 1.0 : 0.0);
 }
 
 // ---------------------------------------------------------------- widgets
@@ -1579,6 +1721,223 @@ bool TeleportSpot(UWorld* World, APlayerController* PC, const TSharedPtr<FJsonOb
 	return bFound;
 }
 
+// ---------------------------------------------------------------- the stages of a contact (game-contact-checks spec)
+
+AActor* NearestMatch(UWorld* World, APlayerController* PC, const TSharedPtr<FJsonObject>& Select, TArray<AActor*>* OutAll)
+{
+	if (!World || !Select.IsValid())
+	{
+		return nullptr;
+	}
+	const FSel S = ParseSel(Select);
+	TArray<AActor*> Found;
+	int32 Total = 0;
+	WithSelectRender([&] { FindActors(World, PC, S, 0, MAX_int32, Found, Total); });
+	const APawn* Pawn = PlayerPawn(PC);
+	if (!S.bPlayer)
+	{
+		Found.Remove(const_cast<APawn*>(Pawn));  // a stage acts on something other than the player unless it names the player
+	}
+	const FVector From = Pawn ? Pawn->GetActorLocation() : FVector::ZeroVector;
+	Found.Sort([&From](const AActor& A, const AActor& B) { return FVector::DistSquared(A.GetActorLocation(), From) < FVector::DistSquared(B.GetActorLocation(), From); });
+	if (OutAll)
+	{
+		*OutAll = Found;
+	}
+	return Found.IsEmpty() ? nullptr : Found[0];
+}
+
+bool PointOf(UWorld* World, APlayerController* PC, const TSharedPtr<FJsonObject>& Point, FVector& OutPoint)
+{
+	bool bFound = false;
+	WithSelectRender([&] { bFound = Point.IsValid() && ResolvePoint(Point, World, PC, 0, OutPoint); });
+	return bFound;
+}
+
+/** set: the property Path names on Root (an actor's own, else one of its components' as prop: reads it), and where its
+ *  value is; false with why when a part of the path doesn't resolve. */
+static bool ResolveWritable(UObject* Root, const FString& Path, FProperty*& OutProp, void*& OutPtr, FString& OutWhy)
+{
+	TArray<FString> Toks;
+	Path.ParseIntoArray(Toks, TEXT("."), true);
+	if (!Root || Toks.Num() == 0 || Toks.Num() > 6)
+	{
+		OutWhy = TEXT("no property path");
+		return false;
+	}
+	void* Container = Root;
+	const UStruct* Type = Root->GetClass();
+	int32 i = 0;
+	if (AActor* A = Cast<AActor>(Root); A && !FindFProperty<FProperty>(A->GetClass(), *Toks[0]))
+	{
+		UActorComponent* C = Toks.Num() > 1 ? FindComponent(A, Toks[0]) : nullptr;
+		if (!C)
+		{
+			OutWhy = FString::Printf(TEXT("%s has no property or component %s"), *A->GetClass()->GetName(), *Toks[0]);
+			return false;
+		}
+		Container = C;
+		Type = C->GetClass();
+		i = 1;
+	}
+	for (; i < Toks.Num(); ++i)
+	{
+		FProperty* P = FindFProperty<FProperty>(Type, *Toks[i]);
+		if (!P)
+		{
+			OutWhy = FString::Printf(TEXT("%s has no property %s"), *Type->GetName(), *Toks[i]);
+			return false;
+		}
+		void* Ptr = P->ContainerPtrToValuePtr<void>(Container);
+		if (i == Toks.Num() - 1)
+		{
+			OutProp = P;
+			OutPtr = Ptr;
+			return true;
+		}
+		if (const FStructProperty* SP = CastField<FStructProperty>(P))
+		{
+			Container = Ptr;
+			Type = SP->Struct;
+		}
+		else if (const FObjectPropertyBase* OP = CastField<FObjectPropertyBase>(P))
+		{
+			UObject* Next = OP->GetObjectPropertyValue(Ptr);
+			if (!IsValid(Next))
+			{
+				OutWhy = FString::Printf(TEXT("%s is not set"), *Toks[i]);
+				return false;
+			}
+			Container = Next;
+			Type = Next->GetClass();
+		}
+		else
+		{
+			OutWhy = FString::Printf(TEXT("%s holds no properties"), *Toks[i]);
+			return false;
+		}
+	}
+	OutWhy = TEXT("no property path");
+	return false;
+}
+
+/** A JSON number, boolean or string written into a property's value: numbers, booleans, enums (by their name, or a
+ *  number as their index), names, strings and texts; false with why for any other kind. */
+static bool AssignJson(const FProperty* P, void* Ptr, const TSharedPtr<FJsonValue>& Value, FString& OutWhy)
+{
+	double Number = 0.0;
+	bool bBool = false;
+	FString Text;
+	const bool bIsNumber = Value.IsValid() && Value->Type == EJson::Number && Value->TryGetNumber(Number);
+	const bool bIsBool = Value.IsValid() && Value->Type == EJson::Boolean && Value->TryGetBool(bBool);
+	const bool bIsString = Value.IsValid() && Value->Type == EJson::String && Value->TryGetString(Text);
+	auto EnumValue = [&](const UEnum* En, int64& Out)
+	{
+		if (bIsString && En)
+		{
+			int64 V = En->GetValueByNameString(Text);
+			if (V == INDEX_NONE)
+			{
+				V = En->GetValueByNameString(En->GenerateFullEnumName(*Text));
+			}
+			Out = V;
+			return V != INDEX_NONE;
+		}
+		if (bIsNumber && En)
+		{
+			const int32 Index = (int32)Number;
+			if (Number != (double)Index || Index < 0 || Index >= En->NumEnums())
+			{
+				return false;
+			}
+			Out = En->GetValueByIndex(Index);
+			return En->IsValidEnumValue(Out);
+		}
+		return false;
+	};
+	if (const FBoolProperty* B = CastField<FBoolProperty>(P))
+	{
+		if (!bIsBool && !bIsNumber)
+		{
+			OutWhy = TEXT("a boolean property takes true, false or a number");
+			return false;
+		}
+		B->SetPropertyValue(Ptr, bIsBool ? bBool : Number != 0.0);
+		return true;
+	}
+	if (const FEnumProperty* E = CastField<FEnumProperty>(P))
+	{
+		int64 V = 0;
+		if (!E->GetUnderlyingProperty() || !EnumValue(E->GetEnum(), V))
+		{
+			OutWhy = TEXT("not one of the enum's values");
+			return false;
+		}
+		E->GetUnderlyingProperty()->SetIntPropertyValue(Ptr, V);
+		return true;
+	}
+	if (const FNumericProperty* N = CastField<FNumericProperty>(P))
+	{
+		if (const UEnum* En = N->GetIntPropertyEnum())
+		{
+			int64 V = 0;
+			if (!EnumValue(En, V))
+			{
+				OutWhy = TEXT("not one of the enum's values");
+				return false;
+			}
+			N->SetIntPropertyValue(Ptr, V);
+			return true;
+		}
+		if (!bIsNumber && !bIsBool)
+		{
+			OutWhy = TEXT("a number property takes a number");
+			return false;
+		}
+		const double V = bIsBool ? (bBool ? 1.0 : 0.0) : Number;
+		if (N->IsFloatingPoint())
+		{
+			N->SetFloatingPointPropertyValue(Ptr, V);
+		}
+		else
+		{
+			N->SetIntPropertyValue(Ptr, (int64)FMath::RoundToDouble(V));
+		}
+		return true;
+	}
+	if (!bIsString)
+	{
+		OutWhy = TEXT("a name, string or text property takes a string");
+	}
+	else if (const FStrProperty* S = CastField<FStrProperty>(P))
+	{
+		S->SetPropertyValue(Ptr, Text);
+		return true;
+	}
+	else if (const FNameProperty* Nm = CastField<FNameProperty>(P))
+	{
+		Nm->SetPropertyValue(Ptr, FName(*Text));
+		return true;
+	}
+	else if (const FTextProperty* T = CastField<FTextProperty>(P))
+	{
+		T->SetPropertyValue(Ptr, FText::FromString(Text));
+		return true;
+	}
+	else
+	{
+		OutWhy = FString::Printf(TEXT("a %s property can't be set"), *P->GetClass()->GetName());
+	}
+	return false;
+}
+
+bool WriteProp(UObject* Root, const FString& Path, const TSharedPtr<FJsonValue>& Value, FString& OutWhy)
+{
+	FProperty* P = nullptr;
+	void* Ptr = nullptr;
+	return ResolveWritable(Root, Path, P, Ptr, OutWhy) && AssignJson(P, Ptr, Value, OutWhy);
+}
+
 // ---------------------------------------------------------------- Slate widgets under the game viewport
 
 /** SImage's brush is behind a protected accessor: call it through a member pointer taken in a derived scope. */
@@ -1643,6 +2002,91 @@ static TSharedPtr<FJsonValue> SlateField(const TSharedRef<SWidget>& W, const FSt
 		return Type == TEXT("SImage") ? BrushFields(FTaskProbeImagePeek::Brush(StaticCastSharedRef<SImage>(W).Get()), F) : Null();
 	}
 	return Null();
+}
+
+FString LabelKey(const FString& Text)
+{
+	FString Out;
+	bool bGap = false;
+	for (int32 i = 0; i < Text.Len(); ++i)
+	{
+		const TCHAR C = Text[i];
+		if (!FChar::IsAlnum(C))
+		{
+			bGap = true;
+			continue;
+		}
+		if (bGap && !Out.IsEmpty())
+		{
+			Out.AppendChar(TEXT('_'));
+		}
+		Out.AppendChar(FChar::ToLower(C));
+		bGap = false;
+	}
+	return Out;
+}
+
+TSharedPtr<SWidget> FindSlateButton(const FString& Want, FVector2D& OutCentre, FString& OutLabel)
+{
+	const UGameViewportClient* GVC = GEngine ? GEngine->GameViewport.Get() : nullptr;
+	const TSharedPtr<SViewport> Root = GVC ? GVC->GetGameViewportWidget() : nullptr;
+	const FString Key = LabelKey(Want);
+	TSharedPtr<SWidget> Found;
+	if (!Root.IsValid() || Key.IsEmpty())
+	{
+		return Found;
+	}
+	WalkSlate(Root.ToSharedRef(), [&](const TSharedRef<SWidget>& W)
+	{
+		const FString Type = W->GetTypeAsString();
+		if (Found.IsValid() || !Type.EndsWith(TEXT("Button")) || !W->IsEnabled() || !SlateVisible(W))
+		{
+			return;
+		}
+		const FGeometry& G = W->GetTickSpaceGeometry();
+		const FVector2D Size(G.GetAbsoluteSize());
+		if (Size.X <= 0.0 || Size.Y <= 0.0)
+		{
+			return;  // never laid out: nothing a player could click
+		}
+		// its captions: every text block inside it, each alone and all of them in order
+		TArray<FString> Texts;
+		WalkSlate(W, [&](const TSharedRef<SWidget>& In)
+		{
+			if (In->GetType() == TEXT("STextBlock"))
+			{
+				Texts.Add(StaticCastSharedRef<STextBlock>(In)->GetText().ToString());
+			}
+		});
+		FString Label;
+		for (const FString& T : Texts)
+		{
+			if (Label.IsEmpty() && LabelKey(T) == Key)
+			{
+				Label = FString::Printf(TEXT("text \"%s\""), *T);
+			}
+		}
+		if (Label.IsEmpty() && Texts.Num() > 1 && LabelKey(FString::Join(Texts, TEXT(" "))) == Key)
+		{
+			Label = FString::Printf(TEXT("text \"%s\""), *FString::Join(Texts, TEXT(" ")));
+		}
+		const FName Tag = W->GetTag();
+		if (Label.IsEmpty() && !Tag.IsNone() && LabelKey(Tag.ToString()) == Key)
+		{
+			Label = FString::Printf(TEXT("tag %s"), *Tag.ToString());
+		}
+		if (Label.IsEmpty() && (LabelKey(Type) == Key || (Type.StartsWith(TEXT("S"), ESearchCase::CaseSensitive) && LabelKey(Type.Mid(1)) == Key)))
+		{
+			Label = FString::Printf(TEXT("type %s"), *Type);
+		}
+		if (!Label.IsEmpty())
+		{
+			Found = W;
+			OutCentre = FVector2D(G.GetAbsolutePosition()) + Size * 0.5;
+			OutLabel = FString::Printf(TEXT("%s, %s"), *Type, *Label);
+		}
+	});
+	return Found;
 }
 
 // ---------------------------------------------------------------- grading
@@ -5686,6 +6130,136 @@ struct FDrawnFrame
 
 static double Compressed(double C) { return C > 0.0 ? C / (1.0 + C) : 0.0; }
 
+/** A sound that started during the play (audio's started fields): what it is, where it started (a sound with a place:
+ *  its location defined, not a UI sound), the play time it was first seen at, and the first time it was loud enough at
+ *  the listener to hear. */
+struct FSoundStart
+{
+	FString Sound;
+	bool bNamed = false;  // a saved asset, not a sound made at run time (a procedural wave): its name tells it apart
+	TArray<FString> Classes;  // its sound class and the parents of it
+	bool bPlaced = false;
+	FVector Location = FVector::ZeroVector;
+	double T = 0.0;
+	double AudibleT = -1.0;  // -1: never yet
+	double Peak = 0.0;  // its loudest at the listener so far
+};
+
+/** Every sound that starts in the play (FTaskProbeQueries::Listen), followed on the audio thread and read on the game
+ *  thread after a fence, both under Lock. */
+struct FSoundStarts
+{
+	struct FSeen
+	{
+		int32 Index = INDEX_NONE;  // its start in Starts; none: a sound that was playing already (not a start)
+		float Playback = 0.f;  // its playback time when last seen (-1: the engine doesn't say)
+		const USoundBase* Sound = nullptr;
+		uint64 Component = 0;  // its audio component's id (0: none)
+	};
+	FCriticalSection Lock;
+	TArray<FSoundStart> Starts;
+	TMap<const FActiveSound*, FSeen> Live;  // the active sounds seen at the last look
+	TSet<TPair<uint64, const USoundBase*>> Loops;  // a looping sound's component and sound, once seen
+	bool bLooked = false;  // the first look is done: what played then started at the play's start
+	bool bCapped = false;  // more than MaxSoundStarts started: the later ones aren't followed
+};
+
+// FActiveSound's members the started fields read, each only where this engine lets the plugin read it (a member that
+// is private or gone reads as unknown, so the plugin still compiles into every game: 2026-11-11_game-grader-audio
+// spec.md 3.6)
+template <typename T>
+static float PlaybackOf(const T& A)
+{
+	if constexpr (requires(const T& X) { X.PlaybackTime; })
+	{
+		return A.PlaybackTime;
+	}
+	else
+	{
+		return -1.f;
+	}
+}
+
+template <typename T>
+static uint64 ComponentOf(const T& A)
+{
+	if constexpr (requires(const T& X) { X.GetAudioComponentID(); })
+	{
+		return (uint64)A.GetAudioComponentID();
+	}
+	else
+	{
+		return 0;
+	}
+}
+
+template <typename T>
+static bool LoopsOf(const T* S)
+{
+	if constexpr (requires(const T* X) { (bool)X->IsLooping(); })
+	{
+		return S && S->IsLooping();
+	}
+	else
+	{
+		return false;
+	}
+}
+
+/** Whether a sound has a place (its location defined, else spatialized; never a UI sound), and where; no place when the
+ *  engine doesn't say. */
+template <typename T>
+static bool PlaceOf(const T& A, FVector& Out)
+{
+	bool bPlaced = false;
+	if constexpr (requires(const T& X) { (bool)X.bLocationDefined; })
+	{
+		bPlaced = A.bLocationDefined;
+	}
+	else if constexpr (requires(const T& X) { (bool)X.bAllowSpatialization; })
+	{
+		bPlaced = A.bAllowSpatialization;
+	}
+	if constexpr (requires(const T& X) { (bool)X.bIsUISound; })
+	{
+		bPlaced = bPlaced && !A.bIsUISound;
+	}
+	if constexpr (requires(const T& X) { X.Transform.GetTranslation(); })
+	{
+		Out = A.Transform.GetTranslation();
+		return bPlaced;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+/** An active sound's volume at the listener: its wave instances' volume (its own, its class's and mixes', the game's
+ *  multipliers) times their distance and occlusion attenuation and dynamic volume, summed. The audio thread's. */
+static double HeardVolume(const FActiveSound& Active)
+{
+	double Volume = 0.0;
+	for (const TPair<UPTRINT, FWaveInstance*>& W : Active.GetWaveInstances())
+	{
+		if (W.Value)
+		{
+			Volume += W.Value->GetVolumeWithDistanceAndOcclusionAttenuation() * W.Value->GetDynamicVolume();
+		}
+	}
+	return Volume;
+}
+
+/** A sound's sound class and its parents, by name. */
+static TArray<FString> SoundClasses(const FActiveSound& Active)
+{
+	TArray<FString> Out;
+	for (const USoundClass* K = Active.GetSoundClass(); K && Out.Num() < 16; K = K->ParentClass)
+	{
+		Out.Add(K->GetName());
+	}
+	return Out;
+}
 }  // namespace TaskProbe
 
 using namespace TaskProbe;
@@ -5856,7 +6430,7 @@ void FTaskProbeQueries::Load(const FString& Path)
 		return;
 	}
 	static const TSet<FString> Kinds = {TEXT("actors"), TEXT("widgets"), TEXT("light"), TEXT("grading"), TEXT("spawns"), TEXT("camera"), TEXT("components"),
-		TEXT("pieces"), TEXT("screen"), TEXT("audio"), TEXT("ground"), TEXT("ui"), TEXT("drawn")};
+		TEXT("pieces"), TEXT("screen"), TEXT("audio"), TEXT("ground"), TEXT("ui"), TEXT("drawn"), TEXT("world")};
 	TSet<FString> Ids;
 	for (const TSharedPtr<FJsonValue>& Item : *List)
 	{
@@ -5899,10 +6473,15 @@ void FTaskProbeQueries::Load(const FString& Path)
 		{
 			Q.Fields.Add(TEXT("count"));
 		}
+		bHasWorld = bHasWorld || Q.Kind == TEXT("world");
 		if (Q.Kind == TEXT("spawns"))
 		{
 			Q.Def->TryGetStringField(TEXT("class"), Q.SpawnClass);
 			bHasSpawns = true;
+		}
+		if (Q.Kind == TEXT("audio") && !SoundStarts.IsValid())
+		{
+			SoundStarts = MakeShared<FSoundStarts, ESPMode::ThreadSafe>();
 		}
 		if (Q.Kind == TEXT("screen"))
 		{
@@ -6111,7 +6690,7 @@ void FTaskProbeQueries::Sample(UWorld* World, APlayerController* PC, double T)
 		}
 		else if (Q.Kind == TEXT("audio"))
 		{
-			SampleAudio(Q, World, PC, *S);
+			SampleAudio(Q, World, PC, T, *S);
 		}
 		else if (Q.Kind == TEXT("ground"))
 		{
@@ -6134,6 +6713,10 @@ void FTaskProbeQueries::Sample(UWorld* World, APlayerController* PC, double T)
 		{
 			SampleDrawn(Q, World, PC, *S);
 		}
+		else if (Q.Kind == TEXT("world"))
+		{
+			SampleWorld(*S);
+		}
 		else if (Q.Kind == TEXT("spawns"))
 		{
 			const TSharedRef<FJsonObject> V = MakeShared<FJsonObject>();
@@ -6147,6 +6730,32 @@ void FTaskProbeQueries::Sample(UWorld* World, APlayerController* PC, double T)
 		}
 		Q.Samples.Add(MakeShared<FJsonValueObject>(S));
 	}
+	// world: the lowest time dilation and any pause are noted afresh from this sample on
+	MinDilation = -1.0;
+	bPausedSince = false;
+	// frozen: the actors read this sample are followed frame by frame until the next one, and only those; a stillness
+	// under way goes on into the next interval
+	for (auto It = Stills.CreateIterator(); It; ++It)
+	{
+		if (!StillRead.Contains(It.Key()))
+		{
+			It.RemoveCurrent();
+			continue;
+		}
+		It.Value().Longest = 0.0;  // a stop still under way is told in the interval it ends in
+		It.Value().Time = 0.0;
+	}
+	for (const FObjectKey& Key : StillRead)
+	{
+		if (!Stills.Contains(Key))
+		{
+			if (const AActor* A = Cast<AActor>(Key.ResolveObjectPtr()))
+			{
+				Stills.Add(Key).Actor = A;
+			}
+		}
+	}
+	StillRead.Reset();
 	// spin: the components read this sample are followed frame by frame until the next one, and only those
 	for (auto It = Spins.CreateIterator(); It; ++It)
 	{
@@ -6205,7 +6814,8 @@ void FTaskProbeQueries::SampleActors(FQuery& Q, UWorld* World, APlayerController
 		const FGlowReading Glow = bGlow ? ActorGlow(A, World, GlowRender.Get()) : FGlowReading();
 		for (const FString& F : Q.Fields)
 		{
-			const TSharedPtr<FJsonValue> V = IsChangeField(F) ? ChangeField(Change, F) : IsGlowField(F) ? GlowField(Glow, F) : F == TEXT("spin") ? ActorSpin(A) : ActorField(A, F);
+			const TSharedPtr<FJsonValue> V = IsChangeField(F) ? ChangeField(Change, F) : IsGlowField(F) ? GlowField(Glow, F)
+				: F == TEXT("spin") ? ActorSpin(A) : F == TEXT("frozen") ? ActorStill(A) : F == TEXT("focus_player") ? FocusField(A, PC) : ActorField(A, F);
 			if (bFull)
 			{
 				Full.FindOrAdd(F).Add(V);
@@ -6943,12 +7553,98 @@ void FTaskProbeQueries::FillUi()
 	}
 }
 
-void FTaskProbeQueries::SampleAudio(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out)
+void FTaskProbeQueries::Listen(UWorld* World, double T)
+{
+	// audio's started fields: once a frame, before the world ticks, the audio thread looks at every active sound. A sound
+	// stays active from its start until its source has played out, at least one audio update, so none slips between two
+	// looks however short it is; one the engine never starts (out of voices, too far to hear and not virtualized) is
+	// never active, and never heard. A start is stamped with this look's play time, a frame after the game asked for it
+	// at most.
+	FAudioDevice* Device = World ? World->GetAudioDeviceRaw() : nullptr;
+	if (!SoundStarts.IsValid() || !Device)
+	{
+		return;
+	}
+	const TSharedPtr<FSoundStarts, ESPMode::ThreadSafe> Followed = SoundStarts;
+	FAudioThread::RunCommandOnAudioThread([Device, Followed, T]()
+	{
+		FScopeLock Guard(&Followed->Lock);
+		TMap<const FActiveSound*, FSoundStarts::FSeen> Seen;
+		for (const FActiveSound* Active : Device->GetActiveSounds())
+		{
+			if (!Active)
+			{
+				continue;
+			}
+			const USoundBase* S = Active->GetSound();
+			const float Playback = PlaybackOf(*Active);
+			const uint64 Component = ComponentOf(*Active);
+			const FSoundStarts::FSeen* Before = Followed->Live.Find(Active);
+			FSoundStarts::FSeen Now;
+			Now.Playback = Playback;
+			Now.Sound = S;
+			Now.Component = Component;
+			// the same sound as at the last look: the same active sound, its playback not gone back
+			const bool bSame = Before && Before->Sound == S && Before->Component == Component &&
+				(Playback < 0.f || Playback + 0.001f >= Before->Playback);
+			const bool bLoops = LoopsOf(S);
+			if (bSame)
+			{
+				Now.Index = Before->Index;
+			}
+			else if (Followed->bLooked && ((Playback >= 0.f && Playback > FreshPlayback) ||
+				(bLoops && Component != 0 && Followed->Loops.Contains(TPair<uint64, const USoundBase*>(Component, S)))))
+			{
+				// not a start: a sound already playing that the engine made active again (a looping sound virtualized
+				// while out of hearing and realized on approach, its playback on, or its component's loop seen before)
+				Now.Index = INDEX_NONE;
+			}
+			else if (Followed->Starts.Num() < MaxSoundStarts)
+			{
+				FSoundStart& Start = Followed->Starts.AddDefaulted_GetRef();
+				Start.Sound = S ? S->GetName() : FString();
+				Start.bNamed = S && !S->HasAnyFlags(RF_Transient) && S->GetPackage() != GetTransientPackage();
+				Start.Classes = SoundClasses(*Active);
+				Start.bPlaced = PlaceOf(*Active, Start.Location);
+				Start.T = T;
+				Now.Index = Followed->Starts.Num() - 1;
+			}
+			else
+			{
+				Followed->bCapped = true;
+			}
+			if (bLoops && Component != 0)
+			{
+				Followed->Loops.Add(TPair<uint64, const USoundBase*>(Component, S));
+			}
+			if (Now.Index != INDEX_NONE)
+			{
+				FSoundStart& Start = Followed->Starts[Now.Index];
+				const double Volume = HeardVolume(*Active);
+				Start.Peak = FMath::Max(Start.Peak, Volume);
+				if (Start.AudibleT < 0.0 && Volume >= AudibleVolume)
+				{
+					Start.AudibleT = T;
+				}
+			}
+			Seen.Add(Active, Now);
+		}
+		Followed->Live = MoveTemp(Seen);
+		Followed->bLooked = true;
+	});
+}
+
+void FTaskProbeQueries::SampleAudio(FQuery& Q, UWorld* World, APlayerController* PC, double T, FJsonObject& Out)
 {
 	// what the player hears: the audio device's active sounds, each at its volume at the listener (the player's camera,
 	// or whatever the game listens from): its wave instances' volume (the sound's own, its class's and mixes', the
 	// game's multipliers) times their distance and occlusion attenuation and dynamic volume, summed. The output's
-	// primary volume (the play's -muteaudio, an unfocused window) is left out.
+	// primary volume (the play's -muteaudio, an unfocused window) is left out. And the sounds that started since the
+	// play began (Listen), counted to this sample, with those since the last sample listed.
+	// this sample's starts are those after the previous sample's, whatever this sample reads (a sample that reads
+	// nothing loses its interval's starts, never moves them into the next)
+	const double Since = Q.HeardT;
+	Q.HeardT = T;
 	FAudioDevice* Device = World ? World->GetAudioDeviceRaw() : nullptr;
 	if (!Device)
 	{
@@ -6958,6 +7654,7 @@ void FTaskProbeQueries::SampleAudio(FQuery& Q, UWorld* World, APlayerController*
 	FString Sound, SoundClass;
 	TSet<FObjectKey> Owners;
 	bool bOwner = false;
+	FNearSel Near;
 	const TSharedPtr<FJsonObject>* SelObj = nullptr;
 	if (Q.Def->TryGetObjectField(TEXT("select"), SelObj) && SelObj->IsValid())
 	{
@@ -6975,12 +7672,28 @@ void FTaskProbeQueries::SampleAudio(FQuery& Q, UWorld* World, APlayerController*
 				Owners.Add(FObjectKey(A));
 			}
 		}
+		Near = ParseNear(*SelObj);
 	}
+	// near: where the point is at this sample; a sound with no place (2D, unspatialized) is near nothing
+	FVector NearP = FVector::ZeroVector;
+	if (Near.IsSet() && !ResolvePoint(Near.Point, World, PC, 1, NearP))
+	{
+		Out.SetField(TEXT("value"), Null());
+		return;
+	}
+	auto Selected = [&](const FString& Name, const TArray<FString>& Classes, const FObjectKey& Owner, bool bPlaced, const FVector& Location)
+	{
+		return !((!Sound.IsEmpty() && !Name.MatchesWildcard(Sound)) || (bOwner && !Owners.Contains(Owner)) ||
+			(!SoundClass.IsEmpty() && !Classes.ContainsByPredicate([&](const FString& K) { return K.MatchesWildcard(SoundClass); })) ||
+			(Near.IsSet() && !(bPlaced && Near.Holds(NearP, Location))));
+	};
 	struct FHeard
 	{
 		FString Sound;
 		TArray<FString> Classes;  // its sound class and the parents of it
 		FObjectKey Owner;
+		bool bPlaced = false;
+		FVector Location = FVector::ZeroVector;
 		double Volume = 0.0;
 	};
 	const TSharedRef<TArray<FHeard>, ESPMode::ThreadSafe> Heard = MakeShared<TArray<FHeard>, ESPMode::ThreadSafe>();
@@ -6995,18 +7708,10 @@ void FTaskProbeQueries::SampleAudio(FQuery& Q, UWorld* World, APlayerController*
 			FHeard H;
 			const USoundBase* S = Active->GetSound();
 			H.Sound = S ? S->GetName() : FString();
-			for (const USoundClass* K = Active->GetSoundClass(); K && H.Classes.Num() < 16; K = K->ParentClass)
-			{
-				H.Classes.Add(K->GetName());
-			}
+			H.Classes = SoundClasses(*Active);
 			H.Owner = Active->GetOwnerKey();
-			for (const TPair<UPTRINT, FWaveInstance*>& W : Active->GetWaveInstances())
-			{
-				if (W.Value)
-				{
-					H.Volume += W.Value->GetVolumeWithDistanceAndOcclusionAttenuation() * W.Value->GetDynamicVolume();
-				}
-			}
+			H.bPlaced = PlaceOf(*Active, H.Location);
+			H.Volume = HeardVolume(*Active);
 			Heard->Add(MoveTemp(H));
 		}
 	});
@@ -7018,8 +7723,7 @@ void FTaskProbeQueries::SampleAudio(FQuery& Q, UWorld* World, APlayerController*
 	FString Loudest;
 	for (const FHeard& H : *Heard)
 	{
-		if ((!Sound.IsEmpty() && !H.Sound.MatchesWildcard(Sound)) || (bOwner && !Owners.Contains(H.Owner)) ||
-			(!SoundClass.IsEmpty() && !H.Classes.ContainsByPredicate([&](const FString& K) { return K.MatchesWildcard(SoundClass); })))
+		if (!Selected(H.Sound, H.Classes, H.Owner, H.bPlaced, H.Location))
 		{
 			continue;
 		}
@@ -7038,6 +7742,52 @@ void FTaskProbeQueries::SampleAudio(FQuery& Q, UWorld* World, APlayerController*
 	V->SetField(TEXT("volume"), Num(Volume));
 	V->SetField(TEXT("max_volume"), Num(Max));
 	V->SetField(TEXT("loudest"), Count ? Str(Loudest) : Null());
+	if (SoundStarts.IsValid())
+	{
+		// the starts since the previous sample, each counted once, here, by this sample's select (the fence above has
+		// run every look Listen asked for until now); started_audible counts a start where it first reached 0.001. A
+		// started field is never read with an owner (checks.AudioMeasure: an owner gone by the sample would lose its
+		// sound), so a start keeps no owner.
+		int32 Started = 0, StartedAudible = 0, Listed = 0;
+		TArray<TSharedPtr<FJsonValue>> Rows;
+		FScopeLock Guard(&SoundStarts->Lock);
+		for (const FSoundStart& St : SoundStarts->Starts)
+		{
+			const bool bNew = St.T > Since + 1e-6 && St.T <= T + 1e-6;
+			const bool bHeard = St.AudibleT > Since + 1e-6 && St.AudibleT <= T + 1e-6;
+			if ((!bNew && !bHeard) || !Selected(St.Sound, St.Classes, FObjectKey(), St.bPlaced, St.Location))
+			{
+				continue;
+			}
+			StartedAudible += bHeard ? 1 : 0;
+			if (!bNew)
+			{
+				continue;
+			}
+			++Started;
+			if (Listed++ < MaxStartRows)
+			{
+				const TSharedRef<FJsonObject> R = MakeShared<FJsonObject>();
+				R->SetNumberField(TEXT("t"), St.T);
+				R->SetStringField(TEXT("sound"), St.Sound);
+				R->SetBoolField(TEXT("named"), St.bNamed);
+				R->SetField(TEXT("class"), St.Classes.Num() ? Str(St.Classes[0]) : Null());
+				R->SetField(TEXT("x"), St.bPlaced ? Num(St.Location.X) : Null());
+				R->SetField(TEXT("y"), St.bPlaced ? Num(St.Location.Y) : Null());
+				R->SetField(TEXT("z"), St.bPlaced ? Num(St.Location.Z) : Null());
+				R->SetField(TEXT("peak"), Num(St.Peak));
+				Rows.Add(MakeShared<FJsonValueObject>(R));
+			}
+		}
+		V->SetNumberField(TEXT("started"), Started);
+		V->SetNumberField(TEXT("started_audible"), StartedAudible);
+		V->SetArrayField(TEXT("starts"), Rows);
+		V->SetNumberField(TEXT("starts_total"), Started);
+		if (SoundStarts->bCapped)
+		{
+			V->SetBoolField(TEXT("starts_capped"), true);
+		}
+	}
 	Out.SetObjectField(TEXT("value"), V);
 }
 
@@ -7518,8 +8268,85 @@ void FTaskProbeQueries::SampleCamera(UWorld* World, APlayerController* PC, FJson
 
 // ---------------------------------------------------------------- spin: how fast a component turns
 
-void FTaskProbeQueries::Frame(float DeltaTime)
+/** frozen: an actor holds still in a frame when it moved under this (cm) and none of its skinned meshes' bones moved
+ *  this far (cm, in its component's space: the largest single bone's move, whatever the skeleton's size); a stop
+ *  counts only between two frames of motion and only up to StillLongest (s): a hit stop, never an idle or a rest. */
+static constexpr double StillPlace = 0.1;
+static constexpr double StillPose = 0.1;
+static constexpr double StillLongest = 0.5;
+
+/** The bones of an actor's skinned meshes in their component's space, in order (frozen compares them frame to frame). */
+static void PoseOf(const AActor* A, TArray<FVector>& Out)
 {
+	Out.Reset();
+	TInlineComponentArray<USkinnedMeshComponent*> Meshes(A);
+	for (const USkinnedMeshComponent* M : Meshes)
+	{
+		if (!M || !M->IsRegistered())
+		{
+			continue;
+		}
+		for (const FTransform& Bone : M->GetComponentSpaceTransforms())
+		{
+			Out.Add(Bone.GetLocation());
+		}
+	}
+}
+
+void FTaskProbeQueries::Frame(float DeltaTime, UWorld* World)
+{
+	if (World && bHasWorld)
+	{
+		// world: a hit pause slows or stops the world for a few frames, which a sample every 0.1 s can fall between (only
+		// in a play that reads it: every other play runs as before)
+		const AWorldSettings* Settings = World->GetWorldSettings(false, false);
+		const double Dilation = Settings ? Settings->GetEffectiveTimeDilation() : 1.0;
+		MinDilation = MinDilation < 0.0 ? Dilation : FMath::Min(MinDilation, Dilation);
+		bPausedSince = bPausedSince || World->IsPaused();
+	}
+	for (auto It = Stills.CreateIterator(); It; ++It)
+	{
+		FStillTrack& T = It.Value();
+		const AActor* A = T.Actor.Get();
+		if (!A)
+		{
+			It.RemoveCurrent();
+			continue;
+		}
+		// still: neither its place nor its pose changed since the last frame (a hit stop however made: the world or
+		// the actor slowed, a montage paused, the game skipping its tick)
+		const FVector Place = A->GetActorLocation();
+		TArray<FVector> Bones;
+		PoseOf(A, Bones);
+		bool bStill = false;
+		if (T.bSeen && Bones.Num() == T.Bones.Num())
+		{
+			double Moved = 0.0;
+			for (int32 i = 0; i < Bones.Num(); ++i)
+			{
+				Moved = FMath::Max(Moved, FVector::Dist(Bones[i], T.Bones[i]));
+			}
+			bStill = FVector::Dist(Place, T.Place) < StillPlace && Moved < StillPose;
+		}
+		if (bStill)
+		{
+			T.Run += T.bMovedBefore ? DeltaTime : 0.0;  // a stop that follows motion
+		}
+		else if (T.bSeen)
+		{
+			// motion again: the stop just ended counts when it was short, a pause inside a movement
+			if (T.Run > 0.0 && T.Run <= StillLongest)
+			{
+				T.Longest = FMath::Max(T.Longest, T.Run);
+			}
+			T.Run = 0.0;
+			T.bMovedBefore = true;
+		}
+		T.Time += DeltaTime;
+		T.Place = Place;
+		T.Bones = MoveTemp(Bones);
+		T.bSeen = true;
+	}
 	for (auto It = Spins.CreateIterator(); It; ++It)
 	{
 		FSpinTrack& T = It.Value();
@@ -7552,6 +8379,31 @@ TSharedPtr<FJsonValue> FTaskProbeQueries::SpinOf(const USceneComponent* C)
 		return Num(P->GetPhysicsAngularVelocityInDegrees().Size());
 	}
 	return Null();
+}
+
+TSharedPtr<FJsonValue> FTaskProbeQueries::ActorStill(const AActor* A)
+{
+	// s: the longest short stop (moving, still, moving again) that ended since the previous sample; null the first
+	// sample it is seen in
+	const FObjectKey Key(A);
+	StillRead.Add(Key);
+	const FStillTrack* T = Stills.Find(Key);
+	return T && T->Time > 0.0 ? Num(T->Longest) : Null();
+}
+
+void FTaskProbeQueries::SampleWorld(FJsonObject& Out)
+{
+	const TSharedRef<FJsonObject> V = MakeShared<FJsonObject>();
+	if (MinDilation < 0.0)
+	{
+		V->SetField(TEXT("time_dilation"), Null());  // no frame since the previous sample
+	}
+	else
+	{
+		V->SetNumberField(TEXT("time_dilation"), MinDilation);
+	}
+	V->SetNumberField(TEXT("paused"), bPausedSince ? 1.0 : 0.0);
+	Out.SetObjectField(TEXT("value"), V);
 }
 
 TSharedPtr<FJsonValue> FTaskProbeQueries::ActorSpin(const AActor* A)

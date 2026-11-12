@@ -131,6 +131,58 @@ When the start can't be measured (its play ended before the window), a calibrate
 `r - 0.25 * |r|` for `>`/`>=`, `r + 0.25 * |r|` for `<`/`<=`. When the fix can't be measured, or the start of a
 `start_times`/`start_plus` check can't, the task is invalid for that check.
 
+### 1.3 Staging a contact, and reading it
+
+An ask that only shows after a blow, a shot, a hit taken or a foe falling is checked by making the contact happen at a
+time the play knows, then reading what changed. Names come from the task's start commit, never from the instruction.
+
+**Stage it** (each a miss in `inputs_missed` when nothing takes it: the check fails, or it is a task error when the
+reference misses too):
+
+- `{"t", "pin": <actor select>, "hold": s, "front": cm | "at": <point>, "offset": [x, y, z]}`: the nearest match
+  (never the player) held at its place for `hold` s while its own AI, animation and attacks run on; first set `front`
+  cm ahead of the player (at its own height above the ground) or `at` a point, facing the player. The player's own
+  blow or shot, by the task's keys, lands on it. A target the build invents: `{"player": false, "has": {"class":
+  "PrimitiveComponent", "movable": true, "visible": true}, "near": {"point": {"pawn": true}, "radius": cm}}`, the
+  nearest movable drawn thing near the player; where that is not surely the target, the ask is not testable.
+- `{"t", "damage": points, "to": <select>, "from": <select>}`: `UGameplayStatics::ApplyPointDamage` on the nearest
+  match (`{"player": true}`: the player), in a game that takes damage through the engine (every game under the combat
+  contract, docs/game-format.md).
+- `{"t", "set": "<property path>", "on": <select>, "value": v, "all": bool}`: a start-named property written to set a
+  fight up (a foe's health at 1, the player's high), never to decide what the check reads.
+- `where` in any actor select: `[{"prop": "<path>", "op": "==", "value": v}]` (only foes not dead, a bay's group);
+  `"player": false`: anything but the player. `set` and `where` only on members the task does not ask to change.
+
+**Read it deterministically**, in a probe one sentence explains:
+
+- a thing gone or drawn (`drawn`, a count), a start-named state or property (`prop:`);
+- a sound started (`audio` `started_audible` near the place it lands, section 2.16);
+- **a hit stop** (0.05 to 0.1 s: no screenshot shows it): `world` `time_dilation` (section 2.20) where the stop slows
+  the world, actors `frozen` where it is the actor's own (the longest short stop that ended since the previous sample:
+  frames in which the actor moved under 0.1 cm and no bone of its skinned meshes moved 0.1 cm, between two frames of
+  motion, 0.5 s at most), in a tight window right after the contact, never on an actor a pin or teleport holds,
+  paired with `world` `paused` == 0; the start's play must read 0;
+- **a stagger, a knock-back or an interrupted action** (behaviour, not looks): actors `montage` 1 in a short window
+  after the hit and 0 before it; the actor can't act (the move key held through the window: its `speed` or `moved`
+  near 0, then moving again after it); a start-named staggered state; a knock-back as its place moving away from the
+  attacker (`dist` rising);
+- actors `damage_taken` (what its TakeDamage returned for the play's `damage` stages, summed): in a game under the
+  combat contract, where TakeDamage returns the damage actually applied, what a hit did; actors `focus_player` (1 when
+  its AI controller watches the player).
+
+**What it looks like** (sparks, colours, glow, readability) goes to the required `looks_as_asked` judge with its own
+play staged the same way and named `shot` frames a few hundredths of a second apart across the contact. A pose may be
+an extra rubric item, never the only check of a behaviour.
+
+### 1.4 Mouse wheel, mouse movement, and an input that didn't land
+
+`{"t", "wheel": n}` (notches, -20 to 20, not 0; positive scrolls up) and `{"t", "move": [dx, dy], "over": s}` (pixels
+right and down, spread over `over` seconds) reach the game through Slate as a device's do (the engine's
+`MouseWheelAxis`, `MouseX`/`MouseY` while the game holds the mouse). A click no UMG button takes finds a Slate button by
+its text, tag or type. Every input that didn't land (a click no button took, a wheel or move no game viewport
+received, a stage nothing took, a named shot whose file wasn't written) is listed in probe.json `inputs_missed`, and
+`screenshots` lists only files written; two named shots asked in one frame are one capture, the second a copy.
+
 ## 2. Measures
 
 ### 2.1 Common fields
@@ -510,7 +562,15 @@ music; so ambience a game drives from code reads as well as an `AmbientSound` ac
   instances' volume (its own, its class's and mixes', the game's multipliers) times their distance and occlusion
   attenuation, summed; the output's master volume is left out.
 - `field`: `count` (how many sounds), `audible` (how many at 0.001, -60 dB, or louder), `volume` (their volumes'
-  sum), `max_volume` (the loudest).
+  sum), `max_volume` (the loudest); and the sounds that **start**, every one however short, seen once a frame:
+  `started` and `started_audible` (how many started, and how many became audible, in each sample's interval; summed by
+  default), `sounds` (how many differently named sounds started) and `repeats` (how often a sound started right after
+  itself; "never the same take twice"). `sounds` and `repeats` read sound asset names: a sound made at run time has
+  none, and the read is missing.
+- `select.near` (a point and radius): only sounds played at a place within it (where it plays, or for the started
+  fields where it started); a 2D sound is near nothing. A sound ask reads "a sound starts when the event happens":
+  `started_audible` near the source, in a window right after the event; what the sound is, how it sounds, is never
+  checked.
 - **A `volume` or `max_volume` threshold is calibrated or relative to the start, never a literal value**: how loud
   depends on the sounds a build chose. `count` and `audible` take a literal. Compare places by their own plays or
   windows: teleport into each zone (section 1.1) and read the zone's sound there.
@@ -673,6 +733,12 @@ opaque behind it (translucent particles).
   translucent particle shows as lit by direct and sky light only; a surface that writes no base colour (unlit,
   translucent) has none; a primitive hidden from scene captures reads nothing. Keep the place tight around what the
   task is about: a floor or a wall inside it counts too.
+
+### 2.20 `world`: the game world as a whole
+
+`{"probe": "world", "field": "time_dilation" | "paused"}`: `time_dilation` the lowest global time dilation over the
+frames since the previous sample (a hit stop that slows the world shows even between samples); `paused` 1 when the game
+was paused in any of them ("Escape pauses the game").
 
 ## 3. What gates, and how a probe fails
 

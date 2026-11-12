@@ -515,6 +515,61 @@ class MoreFairReadings(unittest.TestCase):
         self.assertIsNone(probes.reduce(jungle, {"measures": {qid: sampled([None])}}),
                           "a play with no audio device measures nothing, never 0")
 
+    def test_the_sounds_that_start_are_counted_per_interval_and_by_name(self):
+        hit = m(probe="audio", select={"near": {"point": {"xyz": [120, 0, 100]}, "radius": 80}}, field="started_audible",
+                window=[2, 3])
+        (query,) = probes.needs(hit)
+        qid = probes.query_id(query)
+        play = {"measures": {qid: sampled([{"started": 0, "started_audible": 0}, {"started": 1, "started_audible": 1},
+                                           {"started": 2, "started_audible": 1}, {"started": 0, "started_audible": 0}],
+                                          )}}
+        play["measures"][qid] = [{**r, "t": 2.0 + i * 0.5} for i, r in enumerate(play["measures"][qid])]
+        self.assertEqual(probes.reduce(hit, play), 2, "summed by default")
+        names = m(probe="audio", field="sounds")
+        nid = probes.query_id(probes.needs(names)[0])
+        starts = [{"t": 1.0, "sound": "Gun_A", "named": True}, {"t": 1.2, "sound": "Gun_B", "named": True},
+                  {"t": 1.4, "sound": "Gun_B", "named": True}]
+        heard = {"measures": {nid: sampled([{"starts": starts, "starts_total": 3}])}}
+        self.assertEqual(probes.reduce(names, heard), 2)
+        self.assertEqual(probes.reduce(m(probe="audio", field="repeats"), heard), 1)
+        made = {"measures": {nid: sampled([{"starts": [{"t": 1.0, "sound": "Gen", "named": False}]}])}}
+        self.assertIsNone(probes.reduce(names, made), "a sound made at run time has no name")
+
+    def test_the_world_and_an_actor_read_what_a_contact_leaves(self):
+        slowed = m(probe="world", field="time_dilation", window=[2, 4], agg="min")
+        (query,) = probes.needs(slowed)
+        self.assertEqual(query, {"kind": "world", "fields": ["time_dilation"]})
+        qid = probes.query_id(query)
+        values = [{"time_dilation": 1.0, "paused": 0}] * 5 + [{"time_dilation": 0.05, "paused": 0}]
+        self.assertEqual(probes.reduce(slowed, {"measures": {qid: sampled(values)}}), 0.05)
+        paused = m(probe="world", field="paused", agg="max")
+        self.assertEqual(probes.query_id(probes.needs(paused)[0]), qid, "one world query a play")
+        frozen = m(probe="actors", select={"player": True}, field="frozen", of="first", agg="max")
+        self.assertEqual(probes.needs(frozen)[0]["fields"], ["frozen"])
+        others = m(probe="actors", select={"class": "Pawn", "player": False, "where": [
+            {"prop": "bDead", "op": "==", "value": False}]}, field="count")
+        self.assertEqual(probes.needs(others)[0]["select"]["where"][0]["prop"], "bDead")
+
+    def test_a_task_play_stages_a_contact(self):
+        play = {"name": "duel", "seconds": 12, "inputs": [
+            {"t": 1, "set": "Health", "on": {"class": "CKEnemy"}, "value": 1, "all": True},
+            {"t": 2, "pin": {"class": "CKEnemy"}, "hold": 3, "front": 130},
+            {"t": 2, "pin": {"class": "BDMaintBot"}, "hold": 1, "at": {"actor": {"class": "BDFlare"}}},
+            {"t": 2.3, "key": "J", "press": True},
+            {"t": 3, "damage": 20, "to": {"player": True}},
+            {"t": 4, "wheel": 2}, {"t": 5, "move": [40, 0], "over": 1}]}
+        rows = first_check(task_with(probe(play=play, measure={"probe": "pawn", "field": "z"})))["play"]["inputs"]
+        self.assertEqual(rows[1], {"t": 2.0, "pin": {"class": "CKEnemy"}, "hold": 3.0, "offset": [0.0, 0.0, 0.0],
+                                   "front": 130.0})
+        self.assertEqual(rows[2]["at"], {"actor": {"class": "BDFlare"}, "offset": [0.0, 0.0, 0.0]})
+        self.assertEqual(rows[4], {"t": 3.0, "damage": 20.0, "to": {"player": True}})
+        self.assertEqual(rows[0]["all"], True)
+        self.assertEqual((rows[5], rows[6]), ({"t": 4.0, "wheel": 2}, {"t": 5.0, "move": [40.0, 0.0], "over": 1.0}))
+        for bad in ({"t": 1, "pin": {"player": True}, "hold": 3}, {"t": 1, "pin": {"tag": "A"}, "hold": 3, "front": 1,
+                                                                    "at": {"pawn": True}}):
+            with self.assertRaises(ValueError):
+                task_with(probe(play={**play, "inputs": [bad]}, measure={"probe": "pawn", "field": "z"}))
+
     def test_the_ground_reads_a_height_and_a_relief(self):
         hill = m(probe="ground", xy=[1200, -300], field="height")
         self.assertEqual(probes.needs(hill), [{"kind": "ground", "xy": [1200.0, -300.0]}])

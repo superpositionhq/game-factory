@@ -1,5 +1,5 @@
 {
-  "$comment": "game-factory's task format, GameTask (game-task/1): one task a game ships with, on its orphan tasks branch (Tasks/<name>.json) and, split into the agent's and the grader's parts, in its dataset. The deterministic `probe` check kind is described for task authors in docs/task-probes.md, and every task is seeded; a build check's `fails_at_start` marks a start that doesn't compile. tools/validate-game.py checks every task in a game repo's tasks branch and in a dataset against this schema and the rules it cannot express.",
+  "$comment": "game-factory's task format, GameTask (game-task/1): one task a game ships with, on its orphan tasks branch (Tasks/<name>.json) and, split into the agent's and the grader's parts, in its dataset. The deterministic `probe` check kind is described for task authors in docs/task-probes.md, and every task is seeded; a build check's `fails_at_start` marks a start that doesn't compile. tools/validate-game.py checks every task in a game repo's tasks branch and in a dataset against this schema and the rules it cannot express. Since 2026-11-11 (Lab game grader 1.5.0) a task play may turn the mouse wheel (`wheel`), move the mouse (`move`) and stage a contact (`pin`, `damage`, `set`); an actor select may filter by a reflected property (`where`) or leave the player out (`player` false); a probe may read the world's lowest time dilation and pause (`world`), an actor's short stops, montage, damage taken and AI focus (`frozen`, `montage`, `damage_taken`, `focus_player`), and the sounds that start (`started`, `started_audible`, `sounds`, `repeats`, a select `near` a point).",
   "$defs": {
     "ActionsJudge": {
       "additionalProperties": false,
@@ -116,7 +116,7 @@
           "title": "At"
         },
         "field": {
-          "pattern": "^(count|x|y|z|yaw|pitch|roll|scale|extent_x|extent_y|extent_z|hidden|collision|speed|spin|simulating|spread|changed|bounds_change|pose_change|lit|glow|prop:[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?(\\.[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?){0,5}|facing_vs_velocity|bone:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz]|rel_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|bb:[A-Za-z_][A-Za-z0-9_]{0,63}|world_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|world_pitch:[A-Za-z_][A-Za-z0-9_]{0,63}|world_roll:[A-Za-z_][A-Za-z0-9_]{0,63}|forward:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz])$",
+          "pattern": "^(count|x|y|z|yaw|pitch|roll|scale|extent_x|extent_y|extent_z|hidden|collision|speed|spin|simulating|spread|changed|bounds_change|pose_change|lit|glow|prop:[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?(\\.[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?){0,5}|facing_vs_velocity|bone:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz]|rel_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|bb:[A-Za-z_][A-Za-z0-9_]{0,63}|world_yaw:[A-Za-z_][A-Za-z0-9_]{0,63}|world_pitch:[A-Za-z_][A-Za-z0-9_]{0,63}|world_roll:[A-Za-z_][A-Za-z0-9_]{0,63}|forward:[A-Za-z_][A-Za-z0-9_]{0,63}\\.[xyz]|frozen|montage|damage_taken|focus_player)$",
           "title": "Field",
           "type": "string"
         },
@@ -420,7 +420,7 @@
     },
     "AudioMeasure": {
       "additionalProperties": false,
-      "description": "What the player hears (docs/task-probes.md, section 2.16): the sounds playing that `select` matches, each at its volume at the\nlistener (its own volume, its class's and mixes', times its distance and occlusion attenuation; the output's\nmaster volume left out): `count` (how many), `audible` (how many at 0.001, -60 dB, or louder), `volume` (their sum),\n`max_volume` (the loudest). A play with an audio measure runs with sound (muted). The volumes' threshold is\ncalibrated or relative to the start, never a literal (tools/validate-game.py).",
+      "description": "What the player hears (probes.md 2d): the sounds playing that `select` matches, each at its volume at the\nlistener (its own volume, its class's and mixes', times its distance and occlusion attenuation; the output's\nmaster volume left out): `count` (how many), `audible` (how many at 0.001, -60 dB, or louder), `volume` (their sum),\n`max_volume` (the loudest). A play with an audio measure runs with sound (muted). The volumes' threshold is\ncalibrated or relative to the start, never a literal (_probe).\n\nThe sounds that start (docs/planning/2026-11-11_game-grader-audio/spec.md), every one however short, seen once a\nframe: `started` (how many started in each sample's interval, summed over the samples picked by default),\n`started_audible` (how many became audible at the listener, counted in the interval where they first did), each\nstart selected once, at the sample after it (so never by `owner`), and from the starts'\nown names in the order they started, over the samples picked: `sounds` (how many different sound assets),\n`repeats` (how many started with the same sound as the start just before them). `sounds` and `repeats` read\nnothing when a start's sound was made at run time (a procedural wave has no name to tell it by); they take no\n`agg`.",
       "properties": {
         "agg": {
           "anyOf": [
@@ -480,7 +480,11 @@
             "count",
             "audible",
             "volume",
-            "max_volume"
+            "max_volume",
+            "started",
+            "started_audible",
+            "sounds",
+            "repeats"
           ],
           "title": "Field",
           "type": "string"
@@ -548,8 +552,19 @@
     },
     "AudioSelect": {
       "additionalProperties": false,
-      "description": "The sounds playing (docs/task-probes.md, section 2.16): by the sound asset's name (`sound`, a wildcard), its sound class's or a parent\nclass's name (`sound_class`, a wildcard), and an owner actor the `owner` select matches; none: every sound.",
+      "description": "The sounds playing (probes.md 2d): by the sound asset's name (`sound`, a wildcard), its sound class's or a parent\nclass's name (`sound_class`, a wildcard), an owner actor the `owner` select matches, and `near` a point (a sound\nplayed at a place: where it plays, or for the started fields where it started; a sound with no place, 2D or\nunspatialized, is near nothing); none: every sound (2026-11-11_game-grader-audio/spec.md).",
       "properties": {
+        "near": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Near"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "owner": {
           "anyOf": [
             {
@@ -874,7 +889,7 @@
     },
     "Click": {
       "additionalProperties": false,
-      "description": "A click on the first visible button widget of that name or class, as a player would.",
+      "description": "A click on the first visible button widget of that name or class, as a player would: a UMG button by its name or\nclass, else a Slate button (a game's own `SNew(SButton)` UI) by its text, tag or type, names and captions compared\nalike in lower case with every run of other characters one `_` (\"New_expedition\" clicks a button reading \"New\nexpedition\"), pressed at its centre through Slate (probes.md 2m). A click no button takes is a miss the play\nreports.",
       "properties": {
         "click": {
           "const": true,
@@ -1240,6 +1255,45 @@
         "cursor"
       ],
       "title": "Cursor",
+      "type": "object"
+    },
+    "Damage": {
+      "additionalProperties": false,
+      "description": "`damage` points dealt through the engine's own damage call (UGameplayStatics::ApplyPointDamage, which calls the\nactor's TakeDamage and its OnTakeAnyDamage and OnTakePointDamage events) to the actor `to` selects nearest to the\nplayer pawn (`{\"player\": true}`: the pawn), struck from the actor `from` selects nearest to it (default: the pawn,\nor, when the pawn is struck, the nearest other pawn), whose controller is the instigator. For a game that takes\ndamage through the engine (a game with its own hit function is staged by its own controls and `pin`). What the\ntarget's TakeDamage returned is its `damage_taken`: in a game made under the factories' contract, where TakeDamage\nreturns the damage actually applied, the read for what a hit did; in an older game a convention of its override,\nnever a check's only read (read a start-named `prop:` there). No target is a miss the play reports.",
+      "properties": {
+        "damage": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "title": "Damage",
+          "type": "number"
+        },
+        "from": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Select"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "t": {
+          "maximum": 120,
+          "minimum": 0,
+          "title": "T",
+          "type": "number"
+        },
+        "to": {
+          "$ref": "#/$defs/Select"
+        }
+      },
+      "required": [
+        "t",
+        "damage",
+        "to"
+      ],
+      "title": "Damage",
       "type": "object"
     },
     "DrawnMeasure": {
@@ -2344,6 +2398,49 @@
       "title": "Milestone",
       "type": "object"
     },
+    "Move": {
+      "additionalProperties": false,
+      "description": "The mouse moved by `move` [dx, dy] pixels (right, down), spread evenly over `over` seconds (at once without it),\nthrough Slate as a mouse's moves are: while the game viewport holds the mouse captured (mouse look, a game-only\ninput mode) the engine gets MouseX = dx, MouseY = -dy and Mouse2D; otherwise only the cursor moves, which the play\nreports as a miss (probes.md 2m). To put the cursor on a point, use a cursor input.",
+      "properties": {
+        "move": {
+          "items": {
+            "maximum": 5000,
+            "minimum": -5000,
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "title": "Move",
+          "type": "array"
+        },
+        "over": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 120,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Over"
+        },
+        "t": {
+          "maximum": 120,
+          "minimum": 0,
+          "title": "T",
+          "type": "number"
+        }
+      },
+      "required": [
+        "t",
+        "move"
+      ],
+      "title": "Move",
+      "type": "object"
+    },
     "Near": {
       "additionalProperties": false,
       "description": "Within `radius` cm of `point`; `z_min`/`z_max` (cm) also keep it within a height band: world z, or offsets from\nthe point's z with `z_relative` (docs/task-probes.md, section 2.13).",
@@ -2807,6 +2904,78 @@
       "title": "PiecesMeasure",
       "type": "object"
     },
+    "Pin": {
+      "additionalProperties": false,
+      "description": "The actor `pin` selects nearest to the player pawn (never the pawn itself) held at its place for `hold` seconds\nof play, put back after every tick of the world with its movement stopped while its own logic runs on (it still\nturns, swings, blocks, opens its shutters); with `front`, first set that many cm ahead of the pawn along the pawn's\nfacing (plus `offset`, cm), at the height above the ground it had, turned to face the pawn: a target or an opponent\nwhere the player's blow or shot lands, whatever place a build gave it; with `at`, first set at that point (plus\n`offset`), facing the pawn: next to what the player threw or dropped (a flare that landed). A pin no actor matches,\nor whose point doesn't resolve, is a miss the play reports.",
+      "properties": {
+        "at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AtXYZ"
+            },
+            {
+              "$ref": "#/$defs/AtPawn"
+            },
+            {
+              "$ref": "#/$defs/AtCamera"
+            },
+            {
+              "$ref": "#/$defs/AtActor"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "front": {
+          "anyOf": [
+            {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Front"
+        },
+        "hold": {
+          "exclusiveMinimum": 0,
+          "maximum": 120,
+          "title": "Hold",
+          "type": "number"
+        },
+        "offset": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "title": "Offset",
+          "type": "array"
+        },
+        "pin": {
+          "$ref": "#/$defs/Select"
+        },
+        "t": {
+          "maximum": 120,
+          "minimum": 0,
+          "title": "T",
+          "type": "number"
+        }
+      },
+      "required": [
+        "t",
+        "pin",
+        "hold"
+      ],
+      "title": "Pin",
+      "type": "object"
+    },
     "Probe": {
       "additionalProperties": false,
       "description": "A deterministic check (docs/task-probes.md): `measure` taken where `play` says, reduced to one number, compared with\n`expect`. `describe` is the assertion in plain English, shown in the grade.",
@@ -2859,7 +3028,8 @@
               "spawns": "#/$defs/SpawnsMeasure",
               "trace": "#/$defs/TraceMeasure",
               "ui": "#/$defs/UiMeasure",
-              "widgets": "#/$defs/WidgetsMeasure"
+              "widgets": "#/$defs/WidgetsMeasure",
+              "world": "#/$defs/WorldMeasure"
             },
             "propertyName": "probe"
           },
@@ -2914,6 +3084,9 @@
             },
             {
               "$ref": "#/$defs/DrawnMeasure"
+            },
+            {
+              "$ref": "#/$defs/WorldMeasure"
             }
           ],
           "title": "Measure"
@@ -3248,7 +3421,6 @@
         "player": {
           "anyOf": [
             {
-              "const": true,
               "type": "boolean"
             },
             {
@@ -3270,9 +3442,74 @@
           ],
           "default": null,
           "title": "Tag"
+        },
+        "where": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Where"
+              },
+              "maxItems": 4,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Where"
         }
       },
       "title": "Select",
+      "type": "object"
+    },
+    "SetProp": {
+      "additionalProperties": false,
+      "description": "A reflected property (the path a prop: field reads, no array index) written on the actor `on` selects nearest to\nthe player pawn, or on every match with `all`: a number, a boolean, or an enum, name or string by its text; for a\nproperty the task's start already has (a revenant's Health at 1, so one blow fells it through the game's own death;\nthe player's own high, so a staged fight can't end the play). A set no actor or no property takes is a miss the\nplay reports.",
+      "properties": {
+        "all": {
+          "default": false,
+          "title": "All",
+          "type": "boolean"
+        },
+        "on": {
+          "$ref": "#/$defs/Select"
+        },
+        "set": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}(\\.[A-Za-z_][A-Za-z0-9_]{0,63}){0,5}$",
+          "title": "Set",
+          "type": "string"
+        },
+        "t": {
+          "maximum": 120,
+          "minimum": 0,
+          "title": "T",
+          "type": "number"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "maxLength": 120,
+              "type": "string"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "t",
+        "set",
+        "on",
+        "value"
+      ],
+      "title": "SetProp",
       "type": "object"
     },
     "Shot": {
@@ -3543,6 +3780,21 @@
               },
               {
                 "$ref": "#/$defs/View"
+              },
+              {
+                "$ref": "#/$defs/Wheel"
+              },
+              {
+                "$ref": "#/$defs/Move"
+              },
+              {
+                "$ref": "#/$defs/Pin"
+              },
+              {
+                "$ref": "#/$defs/Damage"
+              },
+              {
+                "$ref": "#/$defs/SetProp"
               }
             ]
           },
@@ -4055,6 +4307,74 @@
       "title": "Wait",
       "type": "object"
     },
+    "Wheel": {
+      "additionalProperties": false,
+      "description": "Mouse wheel notches at the cursor (the viewport's centre before any cursor move), positive away from the player\n(scroll up), sent through Slate as a wheel's are: the UI under the cursor or the game viewport takes them, which\ngives the engine's MouseWheelAxis and MouseScrollUp/MouseScrollDown, to legacy mappings and Enhanced Input alike\n(probes.md 2m). A wheel no game viewport receives is a miss the play reports.",
+      "properties": {
+        "t": {
+          "maximum": 120,
+          "minimum": 0,
+          "title": "T",
+          "type": "number"
+        },
+        "wheel": {
+          "maximum": 20,
+          "minimum": -20,
+          "title": "Wheel",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "t",
+        "wheel"
+      ],
+      "title": "Wheel",
+      "type": "object"
+    },
+    "Where": {
+      "additionalProperties": false,
+      "description": "A reflected property of the actor (the path a prop: field reads) compared with a value: a number, a boolean (1\nor 0) or a string (docs/planning/2026-11-11_game-contact-checks/spec.md); an actor whose property doesn't resolve\ndoesn't match.",
+      "properties": {
+        "op": {
+          "enum": [
+            ">",
+            ">=",
+            "<",
+            "<=",
+            "==",
+            "!="
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "prop": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?(\\.[A-Za-z_][A-Za-z0-9_]{0,63}(\\[\\d{1,3}\\])?){0,5}$",
+          "title": "Prop",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "prop",
+        "op",
+        "value"
+      ],
+      "title": "Where",
+      "type": "object"
+    },
     "WidgetSelect": {
       "additionalProperties": false,
       "description": "Widgets on screen: UMG widgets in the viewport by their class (WBP_HUD_C, TextBlock) and/or name, or Slate\nwidgets under the game viewport by their type (`slate`: STextBlock, SImage, a game's own S... type); `text`: a\nregular expression the widget's text must match; `visible`: only the widgets drawn (as the `visible` field reads\nthem: never a collapsed or hidden one, nor one under such a parent), so a select counts what is on screen.",
@@ -4290,6 +4610,129 @@
         "field"
       ],
       "title": "WidgetsMeasure",
+      "type": "object"
+    },
+    "WorldMeasure": {
+      "additionalProperties": false,
+      "description": "The game world as a whole (game-contact-checks spec): `time_dilation`, the lowest global time dilation over the\nframes since the previous sample (a hit pause made by slowing the world, however short: 1 when the world ran at\nits pace); `paused`, 1 when the game was paused in any of those frames (\"Escape pauses the game\").",
+      "properties": {
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "delta",
+                "any",
+                "all",
+                "count",
+                "sum",
+                "range",
+                "std",
+                "changes",
+                "rises",
+                "falls",
+                "step"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 120,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "const": "end",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "field": {
+          "enum": [
+            "time_dilation",
+            "paused"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "probe": {
+          "const": "world",
+          "title": "Probe",
+          "type": "string"
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        }
+      },
+      "required": [
+        "probe",
+        "field"
+      ],
+      "title": "WorldMeasure",
       "type": "object"
     }
   },

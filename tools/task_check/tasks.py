@@ -16,9 +16,11 @@ TOOLS = os.path.dirname(HERE)
 REFS = ("tasks", "origin/tasks")  # where a game's tasks live (validate-game.py TASKS_REFS)
 STILL_WORKS = "still_works"  # the milestone of what a task must leave working (write-tasks section 5)
 RUNTIME = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns", "log",
-           "audio", "ground", "ui", "drawn")
+           "audio", "ground", "ui", "drawn", "world")
 SAMPLED = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns",
-           "audio", "ground", "ui", "drawn")
+           "audio", "ground", "ui", "drawn", "world")
+AUDIO_STARTED = ("started", "started_audible")  # counted per sample's interval, summed by default (as spawns)
+AUDIO_NAMED = ("sounds", "repeats")  # read from the names of the sounds that started (probes._heard_names)
 WHOLE_SCREEN = [0.0, 0.0, 1.0, 1.0]
 ANGLE_PREFIXES = ("rel_yaw:", "world_yaw:", "world_pitch:", "world_roll:")
 ZERO = [0.0, 0.0, 0.0]
@@ -185,8 +187,9 @@ def measure(m):
 def inputs(rows):
     """A task play's inputs as the plugin reads them: keys, axes, clicks, cursor moves, teleports (`yaw` 0 when
     unset: a teleport always turns the pawn), teleports next to an actor (`distance` 200 and `offset` 0 when unset,
-    `face` only when set), either with `hold` only when set, waits in real time, named shots, map travels and view
-    turns."""
+    `face` only when set), either with `hold` only when set, waits in real time, named shots, map travels, view
+    turns, wheel notches, mouse movement, and the stages of a contact (docs/task-probes.md, section 1.3): an actor
+    pinned (`front` and `at` only when set), the engine's damage call, a start-named property set."""
     out = []
     for r in rows or []:
         row = {"t": float(r["t"])}
@@ -205,6 +208,24 @@ def inputs(rows):
             row.update(map=r["map"])
         elif "view" in r:
             row.update(view=_floats(r["view"]))
+        elif "pin" in r:
+            row.update(pin=select(r["pin"]), hold=float(r["hold"]), offset=_floats(r.get("offset", ZERO)))
+            if r.get("front") is not None:
+                row["front"] = float(r["front"])
+            if r.get("at") is not None:
+                row["at"] = point(r["at"])
+        elif "damage" in r:
+            row.update(damage=float(r["damage"]), to=select(r["to"]))
+            if r.get("from") is not None:
+                row["from"] = select(r["from"])
+        elif "set" in r:
+            row.update(set=r["set"], on=select(r["on"]), value=r["value"], all=bool(r.get("all", False)))
+        elif "wheel" in r:
+            row.update(wheel=int(r["wheel"]))
+        elif "move" in r:
+            row.update(move=_floats(r["move"]))
+            if r.get("over") is not None:
+                row["over"] = float(r["over"])
         elif "cursor" in r:
             row.update(cursor=_floats(r["cursor"]))
         elif "widget" in r:
