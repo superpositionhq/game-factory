@@ -58,6 +58,7 @@ try {
 
   # ---- Claude Code ---------------------------------------------------------------------------------------------------
   Write-Host 'Claude Code'
+  $t0 = [DateTime]::UtcNow   # rows older than their transcript file are a fork's copied context: stamp them after it
   $sid = [Guid]::NewGuid().ToString()
   $tr = Join-Path $fakeHome ".claude\projects\p\$sid.jsonl"
   $big = ('line of build output' + "`n") * 1000 + 'END-OF-OUTPUT'   # 21,013 characters: rows held 8,000 before
@@ -121,6 +122,7 @@ try {
 
   # ---- Codex -----------------------------------------------------------------------------------------------------------
   Write-Host 'Codex'
+  $t0 = [DateTime]::UtcNow   # rows older than their transcript file are a fork's copied context: stamp them after it
   $sid2 = [Guid]::NewGuid().ToString()
   $roll = Join-Path $fakeHome ".codex\sessions\2026\11\11\rollout-2026-11-11T10-00-00-$sid2.jsonl"
   function Item($i, $item) { return (Line ([ordered]@{ timestamp = (T $i); type = 'event_msg'; payload = [ordered]@{ type = 'item_completed'; thread_id = $sid2; turn_id = 'turn-1'; item = $item } })) }
