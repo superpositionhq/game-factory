@@ -1,5 +1,5 @@
 {
-  "$comment": "game-factory's task format, GameTask (game-task/1): one task a game ships with, on its orphan tasks branch (Tasks/<name>.json) and, split into the agent's and the grader's parts, in its dataset. The deterministic `probe` check kind is described for task authors in docs/task-probes.md, and every task is seeded; a build check's `fails_at_start` marks a start that doesn't compile. tools/validate-game.py checks every task in a game repo's tasks branch and in a dataset against this schema and the rules it cannot express. Since 2026-11-11 (Lab game grader 1.5.0) a task play may turn the mouse wheel (`wheel`), move the mouse (`move`) and stage a contact (`pin`, `damage`, `set`); an actor select may filter by a reflected property (`where`) or leave the player out (`player` false); a probe may read the world's lowest time dilation and pause (`world`), an actor's short stops, montage, damage taken and AI focus (`frozen`, `montage`, `damage_taken`, `focus_player`), and the sounds that start (`started`, `started_audible`, `sounds`, `repeats`, a select `near` a point).",
+  "$comment": "game-factory's task format, GameTask (game-task/1): one task a game ships with, on its orphan tasks branch (Tasks/<name>.json) and, split into the agent's and the grader's parts, in its dataset. The deterministic `probe` check kind is described for task authors in docs/task-probes.md, and every task is seeded; a build check's `fails_at_start` marks a start that doesn't compile. tools/validate-game.py checks every task in a game repo's tasks branch and in a dataset against this schema and the rules it cannot express. Since 2026-11-11 (Lab game grader 1.5.0) a task play may turn the mouse wheel (`wheel`), move the mouse (`move`) and stage a contact (`pin`, `damage`, `set`); an actor select may filter by a reflected property (`where`) or leave the player out (`player` false); a probe may read the world's lowest time dilation and pause (`world`), an actor's short stops, montage, damage taken and AI focus (`frozen`, `montage`, `damage_taken`, `focus_player`), and the sounds that start (`started`, `started_audible`, `sounds`, `repeats`, a select `near` a point). Since 2026-11-12 (Lab game grader 1.7.0) a task play may name the task plays that run before it on the same side (`after`), for a play that reads what another writes.",
   "$defs": {
     "ActionsJudge": {
       "additionalProperties": false,
@@ -3723,8 +3723,26 @@
     },
     "TaskPlay": {
       "additionalProperties": false,
-      "description": "A task-defined scripted play: `inputs` (keys, axes, widget clicks) sent at their times during `seconds`; its\nown `map` (with URL options) instead of the task's play_map, `args` on its command line (game flags, -Name or\n-Name=value, but never the grader's own: the engine flags in docs/task-probes.md section 1.1, -TaskProbe*), and samples every `every` seconds (default\n0.5).",
+      "description": "A task-defined scripted play: `inputs` (keys, axes, widget clicks, wheel notches, mouse movement, ...; and the\ngrader's stages of a contact: pin, damage, set) sent at their times during `seconds` (a move spread over time\nends by then too); its\nown `map` (with URL options) instead of the task's play_map, `args` on its command line (game flags, -Name or\n-Name=value, but never the grader's own: DENIED_ARGS, -GameEnv*), and samples every `every` seconds (default\n0.5). `after`: the task plays (probe or judge plays of the task) that run and end on the same side before it\nstarts, for a play that reads what another writes (a save: a side's plays share the game's Saved folder); one that\nfailed still counts as run.",
       "properties": {
+        "after": {
+          "anyOf": [
+            {
+              "items": {
+                "pattern": "^[a-z0-9_]{1,32}$",
+                "type": "string"
+              },
+              "maxItems": 8,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "After"
+        },
         "args": {
           "items": {
             "pattern": "^-([A-Za-z][A-Za-z0-9]{0,40})(=[A-Za-z0-9_.:=,-]{1,60})?$",

@@ -94,6 +94,12 @@ kept; docs/task-probes.md, section 2.16).
 | `"editor"` | one headless editor pass per side over every `asset` measure (the project as saved) |
 | a boot check | `seconds` of play, no input; `log_absent` reads a 60 s boot's log |
 
+Plays run in the order the task's checks first ask for them, except that a task play with `after` runs once every play
+it names has run on the same side, a failed one too (docs/task-probes.md, section 1.1), as on the Lab. Every play of a
+side runs on the same scratch copy, and between launches only the probe's folder (`Saved/TaskProbe/play`) and its log
+are cleared, so what a play saves in the project's `Saved/` folder is there for every later play. A run of several tasks
+shares a commit's copy, so that includes plays of earlier tasks on the same commit.
+
 A boot is the same idle game as `"look"`, only longer, so on the side that boots (the reference; a start is never
 booted) one 60 s idle play with look's queries serves both: the boot check reads all of it and `"look"` reads only its
 first 20 s, exactly what a 20 s play would have measured. That saves a game launch per task, and each launch costs

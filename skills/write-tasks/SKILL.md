@@ -298,6 +298,11 @@ A probe names one measurement and its threshold:
 - `play`: `look` (20 s idle), `drive` (22 s: W 1-6 s, D 6-8 s, W 8-13 s with a jump at 9 s, A 13-15 s, W 15-21 s),
   a task play `{"name": ..., "seconds": ..., "inputs": [{"t", "key", "press"}]}` when the outcome needs other keys
   (F2, a fire button, a menu key), or `editor` for asset facts.
+- **A play that reads what another play writes names it in `after`. Never rely on the grader's order.** A task play
+  that reads a save (a level reached, a profile filled in) lists the plays that write it:
+  `"after": ["<writer's name>"]`. On each side they run, and end, first; the plays of a side share the game's
+  `Saved/` folder, so the save is there. A writer that failed still counts as run, so the failure shows in the
+  reader's checks. Without `after`, plays run in the order checks first ask for them (docs/task-probes.md, 1.1).
 - `measure.probe`: `pawn` (track: x/y/z/speed/moved/dist), `camera` (distance/height/pitch/fov/occluded/
   pawn_on_screen), `actors` (select by class, tag, name, near; count, transform, extent, hidden, collision, speed,
   `prop:<Component>.<Property>` by reflection), `widgets` (visible, text, percent, has_brush), `ui` (what the HUD
@@ -488,6 +493,7 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 | tasks solved in minutes: one cause, one place, the brief named the system | only long threads of multiple edits, compound probes, observation-only briefs (section 1) |
 | a chain split into two short tasks | one task from before the first attempt to the fix that held |
 | a bug that never shows in the grader's plays | a scenario or a task play that triggers the moment |
+| a play that reads a save ran before the play that writes it and read nothing (a later level not yet unlocked, an empty profile) | the reading play names its writers in `after`; never rely on the grader's order (docs/task-probes.md, 1.1) |
 | a brief rejected by a content filter (injury wording) | neutral technical words: mesh, bones, pose, hit, reaction |
 
 ## 9. Examples

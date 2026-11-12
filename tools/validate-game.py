@@ -571,7 +571,7 @@ GRADER_KEYS = ('milestones',)          # the grader's half of a task, with seed.
 PLAY_ARG = re.compile(r'^-([A-Za-z][A-Za-z0-9]{0,40})(=[A-Za-z0-9_.:=,-]{1,60})?$')
 DENIED_PLAY_ARGS = {'execcmds', 'run', 'nullrhi', 'log', 'unattended', 'renderoffscreen', 'resx', 'resy', 'benchmark',
                     'fps', 'game', 'windowed'}
-TASK_PLAY_DEFAULTS = {'inputs': [], 'map': None, 'args': [], 'every': None}
+TASK_PLAY_DEFAULTS = {'inputs': [], 'map': None, 'args': [], 'every': None, 'after': None}
 
 
 PIECE_TRIANGLES = ('triangles', 'visible_triangles')  # pieces fields whose threshold is never a literal
@@ -773,7 +773,8 @@ def task_semantic_errors(t):
     own `plays` each named once in the check and under a task play's rules (task_play_errors), its `shots` only with
     plays of its own and its plays times its shots 20 at most, and the
     probe rules (probe_errors); and a task whose start doesn't build (a build check's `fails_at_start`) has nothing
-    that needs the start played: no start-relative threshold, no before/after judge (docs/task-probes.md, 3.1)."""
+    that needs the start played: no start-relative threshold, no before/after judge (docs/task-probes.md, 3.1); and a
+    task play's `after` names task plays of the task, never itself, in no cycle (play_after_errors)."""
     errs, seen, plays = [], set(), {}
     seed = t.get('seed') if isinstance(t.get('seed'), dict) else None
     ref = seed.get('reference') if seed else None
@@ -821,7 +822,36 @@ def task_semantic_errors(t):
             if missing:
                 errs.append(f'check {n} needs {missing}, which come later or do not exist')
             seen.add(n)
-    return errs
+    return errs + play_after_errors(checks)
+
+
+def play_after_errors(checks):
+    """A task play's `after` (docs/task-probes.md 1.1; the Lab grader's checks.play_order): every name it lists is a task
+    play of the task (a probe's play or a judge's own plays; never look, drive, editor or trace), never the play
+    itself, and the plays never wait on each other in a cycle."""
+    after = {}
+    for c in checks:
+        named = [c.get('play')] if c.get('kind') == 'probe' else (c.get('plays') or [] if c.get('kind') == 'judge' else [])
+        for p in named:
+            if isinstance(p, dict) and isinstance(p.get('name'), str):
+                found = p.get('after')
+                after.setdefault(p['name'], [x for x in found if isinstance(x, str)] if isinstance(found, list) else [])
+    errs = []
+    for name, before in after.items():
+        if name in before:
+            errs.append(f'task play {name} names itself in its after')
+        errs += [f'task play {name} runs after {other}, which is no task play of the task' for other in before
+                 if other not in after]
+    if errs:
+        return errs
+    done = set()
+    while len(done) < len(after):
+        free = next((x for x in after if x not in done and all(b in done for b in after[x])), None)
+        if free is None:
+            return [f"task plays {', '.join(x for x in after if x not in done)} can never start: their after names a "
+                    'cycle']
+        done.add(free)
+    return []
 
 
 # The bar every task meets (owner, 2026-11-02): only long threads of multiple edits qualify (write-tasks sections 1, 6)

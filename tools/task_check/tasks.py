@@ -247,11 +247,24 @@ def waited(p):
 
 def play(p):
     """A check's play: "look", "drive", "editor", "trace", or a task play with its defaults (inputs, map, args,
-    every)."""
+    every, after)."""
     if isinstance(p, str):
         return p
     return {"name": p["name"], "seconds": int(p["seconds"]), "inputs": inputs(p.get("inputs")), "map": p.get("map"),
-            "args": list(p.get("args") or []), "every": float(p["every"]) if p.get("every") is not None else None}
+            "args": list(p.get("args") or []), "every": float(p["every"]) if p.get("every") is not None else None,
+            "after": list(p.get("after") or [])}
+
+
+def task_plays(task):
+    """{name: task play, with its defaults} of every task play the task's checks name (a probe's play, a judge's own
+    plays), in the order first named."""
+    found = {}
+    for c in (c for m in task["milestones"] for c in m["checks"]):
+        named = [c["play"]] if c.get("kind") == "probe" else (c.get("plays") or [] if c.get("kind") == "judge" else [])
+        for p in named:
+            if isinstance(p, dict):
+                found.setdefault(p["name"], play(p))
+    return found
 
 
 def check(c):

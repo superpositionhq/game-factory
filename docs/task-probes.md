@@ -108,6 +108,19 @@ Words used here:
   views kept in the game itself.
   - A play that measures audio (an `audio` measure, section 2.16) runs with sound, muted; every other play runs
     without (section 2.16).
+  - `after` (optional): the task plays that run, and end, before this one on each side:
+    `{"name": "reads_save", ..., "after": ["writes_save"]}`. Names are task plays of the same task (a probe's play or
+    a judge's own `plays`), never `look`, `drive`, `editor` or `trace`, never the play itself, never a cycle;
+    `tools/validate-game.py` refuses each. **A play that reads what another play writes names it in `after`. Never
+    rely on the grader's order:** without `after`, the checker and the Lab's grader play a side's plays in the order
+    its checks first ask for them, which is not the order the task lists them in and can change. A play that failed or
+    was cut short still counts as run: the plays after it run anyway and read whatever it left, so the failure shows
+    in their own checks. Plays without `after` keep the order they always had.
+  - **Saves.** A side's plays all run on one copy of the game (the start's, the reference's, the agent's), and between
+    launches only the probe's own folder is cleared: the rest of the project's `Saved/` folder stays, `SaveGames/`
+    among it. So a save one play writes is there for every later play of that side, and every earlier play (the
+    boot, `look`, `drive`, other task plays) may have written there too. `after` orders a play after its writer; it
+    never gives it a clean `Saved/` folder. The two sides never share one.
 - `"editor"`: a headless editor pass over the project as saved; takes only `asset` measures, and `asset` measures
   are taken only there.
 - `"trace"`: the agent's own trace; takes only `trace` measures, and `trace` measures are read only there. Trace

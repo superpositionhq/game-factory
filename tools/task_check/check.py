@@ -17,7 +17,8 @@ The copy is the commit exactly as committed either way, so sharing it changes no
 The plays a probe names: "look", the idle play (20 s, no input, 6 screenshots); "drive", the scripted drive (22 s: W
 1-6 s, D 6-8 s, W 8-13 s with a jump at 9 s, A 13-15 s, W 15-21 s; 8 screenshots); a task play (its own seconds, inputs,
 map, args and sampling; 2 screenshots, or the most a judge check showing it asks); "editor", one headless editor pass per side over every asset measure. Each is
-played once per side, with the plugin's queries for every probe it serves. A boot check plays boot_<seconds>s (2
+played once per side, with the plugin's queries for every probe it serves; a task play whose `after` names other task
+plays is played after them on the same side (they run first, a failed one too), as the Lab's grader plays it. A boot check plays boot_<seconds>s (2
 screenshots, no queries). Every task's boot is a 60 s idle play and "look" is the first 20 s of the same idle game, so
 when no look probe reads the log, a side that boots (the reference; a start is never booted) plays one 60 s idle play
 with look's queries for both (Side.idle): the boot check reads it whole, and look reads its first 20 s only
@@ -253,6 +254,11 @@ class Side:
                 return unreal.Played(p.exit_code, p.timed_out, p.output, p.seconds, first_seconds(p.probe, seconds),
                                      p.log, p.files)
             return self._play(name, seconds, shots, inputs, queries=queries)
+        # every play it names in `after` played on this copy first, and ended, a failed one too (docs/task-probes.md
+        # 1.1): a side's plays share the copy's Saved folder, so a play that reads a save another writes finds it
+        named = tasks.task_plays(self.task)
+        for before in play.get("after") or ():
+            self.probe_play(named[before])
         shots = judges.play_shots(self.task).get(name, 2)  # as the grader plays it: a judge showing it asks more
         return self._play(f"play_{name}", play["seconds"], shots, play["inputs"] or None, map=play["map"],
                           queries=queries, args=play["args"], every=every, waits=tasks.waited(play))
