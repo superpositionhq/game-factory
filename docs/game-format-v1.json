@@ -140,7 +140,7 @@
       "Tasks/<game>-<kind>-<slug>.json, one GameTask each (game-task/1), on the repo's orphan branch `tasks` (no shared history with main; a short README.md, optionally tasks-workflow.jsonl), never on main; the name field equals the file stem",
       "the tasks branch is checked out as a git worktree outside the game folder (e.g. <root>/tasks/<slug>) and committed and pushed there; task work never enters the game's history: main tracks nothing under Tasks/ and never references the tasks branch, the recording and live-replay hooks ignore commits on it, and the delivered history (History/) leaves it out",
       "the validator and the packager read the tasks from `tasks`, else `origin/tasks`; a missing tasks branch is an error",
-      "at least 5 tasks (fewer is an error); about 10 recommended; every task is hard, at most one may be medium (what a task that names no difficulty is) and none easier",
+      "at least 5 tasks (fewer is an error); about 10 recommended; at least 4 of them hard (fewer is an error); the others may be medium (what a task that names no difficulty is), none easier",
       "seed.game is the repo's slug; seed.commit and seed.reference are commits of main's history (ancestors of main's head)",
       "written with the write-tasks skill (skills/write-tasks)",
       "An agent given a task starts from a history-less snapshot of the game at seed.commit with Tasks/, History/ and Dataset/ removed (they hold every task's rubrics and references): only the brief and that snapshot. The grader's half (milestones: rubrics, judge and code-judge questions, log_absent patterns; and seed.reference) never reaches the agent."
@@ -201,7 +201,7 @@
       "v1.3 full variant: Tasks/README.md and, per task, Tasks/<name>/task.json (the agent's part) and Tasks/<name>/grader.json (milestones, seed.reference); manifest.tasks lists the names",
       "task.json holds no milestones and no seed.reference; task.json merged with grader.json is valid against docs/schemas/game-task.schema.json",
       "each task's name equals its folder; seed.game is the dataset's game; seed.commit and seed.reference are commits of History/<game>.bundle",
-      "at least 5 tasks; about 10 recommended; every task is hard, at most one may be medium and none easier",
+      "at least 5 tasks; about 10 recommended; at least 4 of them hard; the others may be medium (what a task that names no difficulty is), none easier",
       "repo-dataset: no Tasks/ (the repo's tasks branch is the source)",
       "An agent given a task starts from a history-less snapshot of the game at seed.commit with Tasks/, History/ and Dataset/ removed (they hold every task's rubrics and references): only the brief and that snapshot. The grader's half (milestones: rubrics, judge and code-judge questions, log_absent patterns; and seed.reference) never reaches the agent."
     ]

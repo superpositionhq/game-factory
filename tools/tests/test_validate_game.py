@@ -22,6 +22,27 @@ class Units(unittest.TestCase):
             {'name': 'still_works', 'checks': [judge('hud_unchanged'), judge('code', 'code_judge')]}]}
         self.assertEqual(vg.required_quality_judges(t), ['reads_well', 'looks_as_asked', 'worked_well', 'code'])
 
+    def test_task_bar(self):
+        """A game's bar: at least 5 tasks, at least 4 of them hard; the others may be medium (what a task that names
+        none is), none easier."""
+        hard = {f't{i}': 'hard' for i in range(5)}
+        self.assertEqual(vg.task_bar_errors(hard), [])
+        self.assertEqual(vg.task_bar_errors(dict(hard, t0='medium')), [])   # 4 hard + 1 medium
+        self.assertEqual(vg.task_bar_errors(dict(hard, t0=None)), [])       # no difficulty: medium
+        self.assertEqual(vg.task_bar_errors(dict({f'm{i}': 'medium' for i in range(6)}, t0='hard', t1='hard', t2='hard',
+                                                 t3='hard')), [])           # 10 tasks: 4 hard + 6 medium
+        self.assertEqual(vg.task_bar_errors(dict(hard, t4='medium', t1=None)),   # 3 hard + 2 medium
+                         ['3 hard task(s): a game needs at least 4 hard tasks (medium: t1, t4); the others may be medium'])
+        self.assertEqual(vg.task_bar_errors({f't{i}': 'hard' for i in range(4)}), ['4 task(s): a game ships at least 5'])
+        self.assertEqual(vg.task_bar_errors({'t0': 'hard', 't1': 'hard'}),
+                         ['2 task(s): a game ships at least 5',
+                          '2 hard task(s): a game needs at least 4 hard tasks; the others may be medium'])
+        self.assertEqual(vg.task_bar_errors(dict(hard, t0='easy')), ['t0: difficulty \'easy\': a task is "hard"'])
+        self.assertEqual(vg.task_bar_errors(dict(hard, t0='calibration')),
+                         ['t0: difficulty \'calibration\': a task is "hard"'])
+        self.assertEqual(vg.thread_errors({'difficulty': 'easy'}, 3)[0],
+                         'difficulty \'easy\': a task is "hard" or "medium" (a game needs at least 4 "hard")')
+
 
 class Sessions(unittest.TestCase):
     """History/sessions/ as the recording hooks write it since 2026-11-11 (reasoning summaries as role "thinking" rows,

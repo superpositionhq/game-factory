@@ -1,6 +1,6 @@
 ---
 name: write-tasks
-description: How to write the tasks a game ships with (Tasks/ on the repo's orphan tasks branch, never on main, one GameTask JSON per task, at least 5 and up to about 10 per game, all hard but for at most one medium) so an agent can be given them in the game-creation environment: the tasks branch and its worktree, the one bar every task meets (a long thread of multiple edits from the game's real history: many commits, many files, several systems, every task medium or hard, never easy or a single fix), the four kinds as where a thread comes from, picking seed.commit (the parent of the thread's first attempt) and seed.reference (its final accepted fix), observation-only briefs, play_map, milestones and deterministic probe checks (pass/fail never by pixels; judges only for asked looks; one required probe per issue), limits, and what keeps a task gradable and unleaked. Use when a game session writes, moves or reviews tasks, and before calling a game complete.
+description: How to write the tasks a game ships with (Tasks/ on the repo's orphan tasks branch, never on main, one GameTask JSON per task, at least 5 and up to about 10 per game, at least 4 of them hard and the others medium) so an agent can be given them in the game-creation environment: the tasks branch and its worktree, the one bar every task meets (a long thread of multiple edits from the game's real history: many commits, many files, several systems, every task medium or hard, never easy or a single fix), the four kinds as where a thread comes from, picking seed.commit (the parent of the thread's first attempt) and seed.reference (its final accepted fix), observation-only briefs, play_map, milestones and deterministic probe checks (pass/fail never by pixels; judges only for asked looks; one required probe per issue), limits, and what keeps a task gradable and unleaked. Use when a game session writes, moves or reviews tasks, and before calling a game complete.
 ---
 
 # Writing a game's tasks
@@ -72,8 +72,10 @@ judge this in the session from the thread itself (section 6); we measure it on e
 real history where its own sessions needed many commits, several attempts or several rounds of directions, touching
 many files across several systems, before the outcome held. Strong agents finish a single fix, one cause in one
 place, in minutes, however long the original took; such a task is worthless to us and never ships, not even as an
-"easy" one. A task is `"difficulty": "hard"`, with the tag `long-thread`. At most one of a game's tasks may be
-`"medium"` (a task that names no difficulty counts as medium); with two or more the game is rejected.
+"easy" one. A task is `"difficulty": "hard"`, with the tag `long-thread`. A game needs at least 4 hard tasks; the others may be
+`"medium"` (a task that names no difficulty counts as medium), none easier; with fewer than 4 hard ones the game is
+rejected. Four is the floor, not a target: pick threads that make every task hard, and call a task medium only when
+its thread is.
 
 A thread qualifies only when all of these hold (the validator enforces the numbers, section 6):
 
@@ -406,7 +408,8 @@ no check at all, naming the task and the sentence. Fix what you find in the task
 
 ## 6. Difficulty, limits and what the validator enforces
 
-- `difficulty` is `hard` (at most one of the game's tasks may be `medium`, never `easy`), and `tags` hold `long-thread`.
+- `difficulty` is `hard` (a game needs at least 4 `hard` tasks; the others may be `medium`, never `easy`; four is the
+  floor, so aim every task at hard), and `tags` hold `long-thread`.
 - `limits`: 400 turns, 480 min, 150 USD, 1800 s tool timeout unless the task needs more; a long thread needs room.
 - `tools/validate-game.py` fails a task that is `easy`, has no `seed.reference`, has fewer than 3 required probes
   outside `still_works`, or whose reference changes fewer than 5 game files, fewer than 100 code lines or fewer than 2

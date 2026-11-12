@@ -80,6 +80,6 @@ ue-heavy.ps1, committing each working step; 4) AutoPlay once scenario 1 plays en
 tools/ue-pipeline/validate-run.ps1, tag milestone/autoplay-<n>, framing screenshots, then tell me; 5) content, art,
 UI, sound (sound skill), packaged Win64 Shipping build; 6) playtest checklist, status section in the design doc, and before calling
 it content-complete: 5-7 real gameplay stills in Docs/screenshots/ (JPG, LFS) shown in the README as a hero image
-plus a captioned gallery, checked on github.com after I say push; Tasks/ with at least 5 and up to about 10 tasks on the game, all hard (one may be medium), every one a long thread of
+plus a captioned gallery, checked on github.com after I say push; Tasks/ with at least 5 and up to about 10 tasks on the game, at least 4 of them hard (the others may be medium, none easier), every one a long thread of
 multiple edits, on the tasks branch, never on main (write-tasks skill); tools/validate-game.py VALID. Report each milestone here with the commit sha.
 ```

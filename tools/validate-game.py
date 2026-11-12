@@ -870,7 +870,7 @@ def thread_errors(t, outcomes):
     """Why task `t` (with `outcomes` required probes outside still_works) is not a long thread, from the task alone."""
     errs = []
     if t.get('difficulty') == 'easy':
-        errs.append('difficulty \'easy\': a task is "hard" (one of a game\'s may be "medium")')
+        errs.append('difficulty \'easy\': a task is "hard" or "medium" (a game needs at least 4 "hard")')
     if 'long-thread' not in (t.get('tags') or []):
         errs.append('no long-thread tag')
     if not (isinstance(t.get('seed'), dict) and t['seed'].get('reference')):
@@ -938,22 +938,24 @@ def thread_size(numstat):
 
 
 MIN_TASKS = 5          # a game with fewer tasks is rejected (user rule 2026-11-10)
-MAX_MEDIUM_TASKS = 1   # every task is hard; this many may be medium, none easier (user rule 2026-11-10)
+MIN_HARD_TASKS = 4     # at least this many are hard; the others may be medium, none easier (owner, 2026-11-12,
+                       # replacing the 2026-11-10 "max 1 medium")
 
 
 def task_bar_errors(levels):
     """Why a game's tasks ({name: its difficulty or None}) miss the bar a game is accepted at: at least MIN_TASKS tasks,
-    all hard but for at most MAX_MEDIUM_TASKS medium ones. A task that names no difficulty is medium, the format's
-    default."""
+    at least MIN_HARD_TASKS of them hard; the others may be medium. A task that names no difficulty is medium, the
+    format's default."""
     errs = []
     if len(levels) < MIN_TASKS:
         errs.append(f'{len(levels)} task(s): a game ships at least {MIN_TASKS}')
     level = {n: d or 'medium' for n, d in levels.items()}
     errs += [f'{n}: difficulty {d!r}: a task is "hard"' for n, d in sorted(level.items()) if d not in ('medium', 'hard')]
-    medium = sorted(n for n, d in level.items() if d == 'medium')
-    if len(medium) > MAX_MEDIUM_TASKS:
-        errs.append(f'{len(medium)} medium tasks ({", ".join(medium)}): at most {MAX_MEDIUM_TASKS} of a game\'s tasks may be '
-                    'medium, the rest are hard')
+    hard = sum(d == 'hard' for d in level.values())
+    if hard < MIN_HARD_TASKS:
+        medium = sorted(n for n, d in level.items() if d == 'medium')
+        errs.append(f'{hard} hard task(s): a game needs at least {MIN_HARD_TASKS} hard tasks'
+                    + (f' (medium: {", ".join(medium)})' if medium else '') + '; the others may be medium')
     return errs
 
 
