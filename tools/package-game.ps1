@@ -1173,6 +1173,9 @@ function Get-IdentityScanRx([string]$t) {
 function Get-IdentityRules($Ids) {
     @($Ids.Trailers | ForEach-Object { @{ id = 'git-identity'; scope = 'all'; replace = ('${1}' + $_[1])
             match = '(?im)((?:^|(?<=\\n))[ \t]*[A-Za-z][A-Za-z-]*-by:[ \t]*)(?-i:' + [regex]::Escape($_[0]) + ')(?=[ \t]*(?:<|\\u003[cC]))' } }) +
+    # anyone else a trailer names (a co-author who never committed): dev
+    @(@{ id = 'git-identity'; scope = 'all'; replace = '${1}dev'
+            match = '(?im)((?:^|(?<=\\n))[ \t]*[A-Za-z][A-Za-z-]*-by:[ \t]*)(?![ \t]*dev_\d+[ \t]*(?:<|\\u003[cC]))[^<\r\n\\]*?[^<\s\\](?=[ \t]*(?:<|\\u003[cC]))' }) +
     @($Ids.Terms | ForEach-Object { @{ id = 'git-identity'; scope = 'all'; match = (Get-IdentityRx $_[0]); replace = $_[1] } })
 }
 $Account = Get-AccountRules $UserName $MachineName
@@ -1439,12 +1442,19 @@ if ($SelfCheck) {
         $utf8 = New-Object System.Text.UTF8Encoding $false
         [IO.File]::WriteAllText((Join-Path $gr 'Source/Game/GameTests.cpp'), $code, $utf8); [IO.File]::WriteAllText((Join-Path $gr 'Config/DefaultEngine.ini'), $ini, $utf8)
         & $gitIn $gr @('add', '-A') | Out-Null
-        & $gitIn $gr @('-c', 'user.name=DEV', '-c', 'user.email=dev@home.lan', 'commit', '-q', '-m', "Add the game's tests`n`nCo-authored-by: Dev <dev@home.lan>") | Out-Null
+        # commits as the given person whatever this machine sets (GIT_AUTHOR_* in the environment), no hooks, no signing
+        $commitAs = { param([string]$Who, [string]$Mail, [string]$Msg)
+            $keep = @{}; foreach ($k in 'GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL') { $keep[$k] = [Environment]::GetEnvironmentVariable($k) }
+            try {
+                $env:GIT_AUTHOR_NAME = $Who; $env:GIT_COMMITTER_NAME = $Who; $env:GIT_AUTHOR_EMAIL = $Mail; $env:GIT_COMMITTER_EMAIL = $Mail
+                & $gitIn $gr @('-c', "core.hooksPath=$(Join-Path $dir 'no-hooks')", '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', $Msg) | Out-Null
+            } finally { foreach ($k in $keep.Keys) { [Environment]::SetEnvironmentVariable($k, $keep[$k]) } }
+        }
+        & $commitAs 'DEV' 'dev@home.lan' "Add the game's tests`n`nCo-authored-by: Dev <dev@home.lan>"
         [IO.File]::WriteAllText((Join-Path $gr 'Docs/Notes.md'), $notes, $utf8); & $gitIn $gr @('add', '-A') | Out-Null
-        & $gitIn $gr @('-c', 'user.name=Jordan Pike', '-c', 'user.email=jpike@home.lan', 'commit', '-q', '-m', "Notes`n`nSigned-off-by: Jordan Pike <jpike@home.lan>`nCo-authored-by: Dev <dev@home.lan>") | Out-Null
+        & $commitAs 'Jordan Pike' 'jpike@home.lan' "Notes`n`nSigned-off-by: Jordan Pike <jpike@home.lan>`nCo-authored-by: Dev <dev@home.lan>"
         $map = New-Object 'System.Collections.Generic.Dictionary[string,string]'
-        $map['DEV'] = 'dev_01'; $map['Jordan Pike'] = 'dev_02'; $map['Dev'] = 'dev_03'   # git.log numbers names as written
-        $gids = Get-IdentityTerms @(@('DEV', 'dev@home.lan'), @('Jordan Pike', 'jpike@home.lan'), @('Dev', 'dev@home.lan')) $map
+        $gids = Get-IdentityTerms @(@('DEV', 'dev@home.lan'), @('DEV', 'dev@home.lan'), @('Jordan Pike', 'jpike@home.lan'), @('Jordan Pike', 'jpike@home.lan')) $map -Number
         $acct = Get-AccountRules 'Dev' 'DEV'
         $grules = @($RulesHead) + @(Get-IdentityRules $gids) + @($RulesTail | Where-Object { $_.id -ne 'username' }) + @($acct.Rules)
         $gprob = New-Object 'System.Collections.Generic.List[string]'
@@ -1460,7 +1470,7 @@ if ($SelfCheck) {
         $who = @(& $gitIn $gb @('log', '--all', '--format=%an|%ae|%cn|%ce'))
         $ok['dev-history-authors-anonymised'] = $who.Count -eq 2 -and -not @($who | Where-Object { $_ -notmatch '^(dev_\d\d)\|\1@example\.invalid\|(dev_\d\d)\|\2@example\.invalid$' })
         $msgs = (& $gitIn $gb @('log', '--all', '--format=%B')) -join "`n"
-        $ok['dev-history-trailers-anonymised'] = $msgs -cmatch 'Co-authored-by: dev_03 <<redacted-email>>' -and $msgs -cmatch 'Signed-off-by: dev_02 <<redacted-email>>' -and $msgs -notmatch '(?i)\b(Dev|Jordan|Pike) <'
+        $ok['dev-history-trailers-anonymised'] = $msgs -cmatch 'Co-authored-by: dev <<redacted-email>>' -and $msgs -cmatch 'Signed-off-by: dev_02 <<redacted-email>>' -and $msgs -cnotmatch '\b(Dev|DEV|Jordan|Pike) <'
         $ok['dev-history-name-in-text'] = ((& $gitIn $gb @('show', 'main:Docs/Notes.md')) -join "`n") -ceq 'Reviewed by dev_02.'
         & $gitIn $gb @('--work-tree', $gt, 'checkout', '-q', '-f', 'main', '--', '.') | Out-Null
         $ok['dev-history-scan-passes'] = (@(& $scanDir $gt)).Count -eq 0
