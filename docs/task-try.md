@@ -52,6 +52,10 @@ argument for the harness, repeatable), `--keep` (keep the workspaces and the bui
 4. When the agent stops (or its time runs out), removes `Binaries/` and `Intermediate/`, adds the probe plugin, builds
    and plays the agent's game and runs every check but judges, trace probes and packaging, against the thresholds of
    step 1.
+5. Plays each `judge` check's plays on the agent's game and saves the screenshots the cloud's judge would be shown
+   under `<task>\run<N>\judge-shots\<check>\agent\`, with `ask.md` ([task-check.md](task-check.md), VALID and
+   INVALID). No model is asked: the run's number leaves judges out, and the result lists them in `judges_pending`.
+   `--no-judge-shots` skips this.
 
 Results: `<repo>\.task-tries\<task>.json` (format `task-try/1`): per run `solved` (every required check passed),
 `required_passed` of `required`, `milestones` reached, `seconds`, `timed_out`, `turns` and `usd` when the harness
@@ -63,6 +67,8 @@ beside it, and the brief the agent read `<task>\brief.md`.
 - **Longest run under 25 minutes:** shorter than the guide (about 25 minutes or more). It's a guide, not a requirement: a task
   the agent doesn't solve is a good task at any length. The printed line notes it. A run that hit its own
   time limit or crashed says nothing about length.
+- **`judges_pending` lists a check:** look at its pictures and answer `ask.md` before you call the task too easy or
+  held. A run that passes every probe but fails a required judge isn't solved.
 - **Solved in any run, quickly:** too easy. Extend the thread back to an earlier attempt, merge it with its
   neighbouring issues, or drop it (write-tasks section 6).
 - **Never solved, but some required checks pass:** what a hard task looks like. Read the transcript: the agent should

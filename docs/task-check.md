@@ -125,11 +125,25 @@ A task is **VALID** when all of this holds:
 - a no-op scores zero: no check the start passes carries weight, so build, boot and `still_works` checks take
   `"weight": 0`. Judges aren't measured here, so a judge's weight isn't covered by this rule.
 
-Never part of the check: judges (`judge`, `code_judge`, `actions_judge`: quality scores, never pass/fail; a judge's
-own `plays` and `shots`, [task-probes.md](task-probes.md) section 3.2, are validated, and a play is played only where
-a probe names the same one), trace probes
+Never decided by the check: judges (`judge`, `code_judge`, `actions_judge`: no model is asked), trace probes
 (they read an agent's own tool calls), and `package` checks. The reference's other failures (`log_absent`,
 `file_exists`, probes with `"required": false`) are reported as notes and never make a task INVALID.
+
+A `judge` check is looked at by you instead. The check plays its plays on the start and on the reference (its own
+`plays`, else `look` and `drive`; a play a probe names is the same play, played once) and saves the screenshots the
+cloud's judge would be shown ([task-probes.md](task-probes.md) section 3.2) under
+`<task>\judge-shots\<check>\`: `start\` and `reference\` (`<play>_<nn>.png`, in the order taken), `ask.md` (the
+brief, the question, the rubric and what each picture is) and a blind copy, `blind\A\` and `blind\B\`, whose sides
+are in `blind\key.json`. The task's line in the result and in `progress.txt` says
+`judge <check>: shots saved for start/reference, answer needed`. Before you call a task with a required judge VALID:
+
+1. Open `ask.md`, then look at `blind\A\` and `blind\B\` and score every rubric item of each from 0 to 1, as if
+   each were the developer's game, before opening `blind\key.json`.
+2. The start must fail every required rubric item (below 0.5) and the reference must pass every one. If not, fix the
+   rubric or the plays (never by easing what the task asks), and check again.
+3. Write both sides' scores in the task's notes (its `tasks-workflow.jsonl` row on the tasks branch).
+
+`--no-judge-shots` skips the judge plays.
 
 A task with no reference is checked on its start alone: it must build, fail every required probe outside
 `still_works` (thresholds relative to the start, or literals), and pass its still-works probes. Every shipped task has
@@ -145,6 +159,8 @@ a reference (write-tasks section 1; `tools/validate-game.py` rejects one without
   `... | measured 118, threshold >= 119.274 (start 118, fix 120.547)`), and the task file's `task_sha256`.
 - `<repo>\.task-checks\<task>\<side>\<play>\`: each play's `probe.json` (the track, the camera rows, every measure's
   samples), its screenshots and its log; `build\build.log` when a build failed. Read these when a value surprises you.
+- `<repo>\.task-checks\<task>\judge-shots\<check>\`: each judge check's pictures to answer (VALID and INVALID
+  above); the result's `judges` lists them, each `answer needed`.
 - `.task-checks\` is git-ignored: new games have it in `.gitignore` (templates/ue-game); for an older game the checker
   adds it to the repo's own `.git\info\exclude`. Never commit results.
 

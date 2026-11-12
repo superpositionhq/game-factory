@@ -345,6 +345,16 @@ committed yet ([docs/task-check.md](../../docs/task-check.md)). The check builds
 probe plugin, plays them and writes VALID or INVALID per task with the reasons and the measured values. **A task ships only when the task check says VALID**; for INVALID, fix the task (the
 docs' "Common reasons and fixes"), never the threshold toward what the start happens to measure.
 
+**The check asks no model, so you answer the judges.** For every `judge` check it plays the check's plays on the start
+and on the reference and saves the screenshots the cloud's judge would be shown under
+`.task-checks\<task>\judge-shots\<check>\` (`start\`, `reference\`, and a blind copy in `blind\A\` and `blind\B\`
+whose sides are in `blind\key.json`), with `ask.md` holding the brief, the question and the rubric; `progress.txt` says
+`judge <check>: shots saved for start/reference, answer needed`. Before you call a task with a required judge VALID,
+look at the pictures yourself, blind: score every rubric item for A and for B from 0 to 1 first, then open the key.
+The start must fail every required rubric item (below 0.5) and the reference must pass every one; if either doesn't,
+reword the item or fix the plays so the pictures show the state, never by asking less of the solution. Write both
+sides' scores in the task's notes (its `tasks-workflow.jsonl` row).
+
 ### Every ask has a check
 
 Before the game is packaged, read each task you wrote, its instruction against its checks, yourself; no tool or

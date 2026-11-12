@@ -16,12 +16,14 @@ The copy is the commit exactly as committed either way, so sharing it changes no
 
 The plays a probe names: "look", the idle play (20 s, no input, 6 screenshots); "drive", the scripted drive (22 s: W
 1-6 s, D 6-8 s, W 8-13 s with a jump at 9 s, A 13-15 s, W 15-21 s; 8 screenshots); a task play (its own seconds, inputs,
-map, args and sampling; 2 screenshots); "editor", one headless editor pass per side over every asset measure. Each is
+map, args and sampling; 2 screenshots, or the most a judge check showing it asks); "editor", one headless editor pass per side over every asset measure. Each is
 played once per side, with the plugin's queries for every probe it serves. A boot check plays boot_<seconds>s (2
 screenshots, no queries). Every task's boot is a 60 s idle play and "look" is the first 20 s of the same idle game, so
 when no look probe reads the log, a side that boots (the reference; a start is never booted) plays one 60 s idle play
 with look's queries for both (Side.idle): the boot check reads it whole, and look reads its first 20 s only
-(first_seconds), one game launch instead of two. Judges, trace probes and packaging are never part of a task check."""
+(first_seconds), one game launch instead of two. Judges, trace probes and packaging never decide a task check: a
+`judge` check's plays are played on both sides and the screenshots its judge would see are saved under
+<name>/judge-shots/<check>/ (judges.py) for whoever runs the check to look at and answer (`judge_shots`)."""
 
 import json
 import math
@@ -30,7 +32,7 @@ import secrets
 import time
 from pathlib import Path
 
-from . import FORMAT, probes, seeds, tasks, unreal, verdict
+from . import FORMAT, judges, probes, seeds, tasks, unreal, verdict
 
 DRIVE = [{"t": 1.0, "key": "W", "press": True}, {"t": 6.0, "key": "W", "press": False},
          {"t": 6.0, "key": "D", "press": True}, {"t": 8.0, "key": "D", "press": False},
@@ -204,6 +206,20 @@ class Side:
                                   "output.txt": found.output.encode("utf-8")})
         return self.played[name]
 
+    def judge_plays(self, check):
+        """{play name: (probe dict or None, {file: bytes})} of every play judge check `check` is shown on this side:
+        its own task plays (the probes' own when they name the same play, which is the same play), else the idle play
+        and the drive, each played whole (never the boot cut to look's seconds, whose screenshots span the boot)."""
+        out = {}
+        for play, _, _ in judges.plays(check):
+            if isinstance(play, str):
+                seconds, shots, inputs = PLAYS[play]
+                p = self._play(play, seconds, shots, inputs, queries=probes.query_file(self.plan.get(play, [])))
+            else:
+                p = self.probe_play(play)
+            out[play if isinstance(play, str) else play["name"]] = (p.probe, p.files)
+        return out
+
     def idle(self, seconds):
         """Whether the boot play of `seconds` also serves "look": look is the first part of the same idle game, so one
         play does when the boot is at least as long and no look probe reads the play's log (a log covers the whole
@@ -237,7 +253,8 @@ class Side:
                 return unreal.Played(p.exit_code, p.timed_out, p.output, p.seconds, first_seconds(p.probe, seconds),
                                      p.log, p.files)
             return self._play(name, seconds, shots, inputs, queries=queries)
-        return self._play(f"play_{name}", play["seconds"], 2, play["inputs"] or None, map=play["map"],
+        shots = judges.play_shots(self.task).get(name, 2)  # as the grader plays it: a judge showing it asks more
+        return self._play(f"play_{name}", play["seconds"], shots, play["inputs"] or None, map=play["map"],
                           queries=queries, args=play["args"], every=every, waits=tasks.waited(play))
 
     def boots(self):
@@ -384,6 +401,29 @@ def start_unbuilt(task, why):
                         "weight": build["weight"], "detail": str(why)[:700], "group": group}], "probes": {}}
 
 
+def save_judge_shots(task, sides, folder, where="", blind=False, log=print, rng=None):
+    """Play every `judge` check's plays on `sides` ({folder name: Side}, a side that didn't build left out with a note)
+    and save the screenshots its judge would see under <folder>/<check>/ (judges.save), with the blind copy when
+    `blind`. Nothing is asked of a model: {check: record}, each "answer needed", its `folder` named as `where` (the
+    folder's place in the results) and the check's name."""
+    out = {}
+    for found in judges.judges(task):
+        played, notes = {}, []
+        for label, side in sides.items():
+            if not side.built():
+                notes.append(f"{label}: no screenshots, {side.why_unbuilt()}")
+                continue
+            try:
+                played[label] = side.judge_plays(found)
+            except (OSError, RuntimeError, ValueError) as exc:
+                notes.append(f"{label}: the plays failed ({type(exc).__name__}: {str(exc)[:200]})")
+        record = judges.save(task, found, played, folder, blind=blind, notes=notes, rng=rng)
+        record["folder"] = f"{where}{found['name']}/"
+        log(f"  {judges.line(found['name'], record)}")
+        out[found["name"]] = record
+    return out
+
+
 def probe_values(task, reference, start):
     """{probe: {group, required, op, expect, start, reference, threshold, start_passed, reference_passed}} from the two
     grades' measures (trace probes left out)."""
@@ -437,15 +477,17 @@ def gap_notes(result):
 
 
 def check_task(repo, task, raw, scratch, out_dir, keep=False, direct=False, timeout=1800, build_timeout=3600,
-               log=print, clock=time.time, builds=None):
+               log=print, clock=time.time, builds=None, judge_shots=True):
     """Check one task (a dict read from `repo`'s tasks branch, its file's bytes `raw`): its result (written to
     <out_dir>/<name>.json, its plays' files under <out_dir>/<name>/). `builds`: a run's shared copies (Builds), which
-    the run deletes; without it the task gets its own under `scratch`, deleted when it is done unless `keep`."""
+    the run deletes; without it the task gets its own under `scratch`, deleted when it is done unless `keep`.
+    `judge_shots`: each `judge` check's screenshots of the start and the reference saved under
+    <out_dir>/<name>/judge-shots/ for a person to answer (the verdict never waits on them)."""
     started = clock()
     name = task.get("name", "?")
     result = {"format": FORMAT, "task": name, "game": (task.get("seed") or {}).get("game"),
               "task_sha256": tasks.digest(raw), "verdict": None, "reasons": [], "notes": [], "start": None,
-              "reference": None, "probes": {}, "start_checks": [], "reference_checks": [],
+              "reference": None, "probes": {}, "start_checks": [], "reference_checks": [], "judges": {},
               "evidence": f"{name}/", "at": None, "seconds": None}
 
     def finish(state, reasons, notes=()):
@@ -501,6 +543,11 @@ def check_task(repo, task, raw, scratch, out_dir, keep=False, direct=False, time
             start_grade = Grade(task, "start", start, reference, thresholds).run()
         valid, why, notes = verdict.verdict(task, ref_grade, start_grade)
         notes += gap_notes(result)
+        if judge_shots and judges.judges(task):
+            shown = {label: s for label, s in (("start", start), ("reference", reference)) if s is not None}
+            result["judges"] = save_judge_shots(task, shown, evidence / "judge-shots", f"{name}/judge-shots/",
+                                                blind=True, log=log)
+            notes += [judges.line(n, r) for n, r in result["judges"].items()]
         result.update(probes=probe_values(task, ref_grade, start_grade), start_checks=start_grade["checks"],
                       reference_checks=ref_grade["checks"] if ref_grade else [])
         return finish("VALID" if valid else "INVALID", why, notes)

@@ -1,4 +1,5 @@
-"""python tools/task-check.py <game repo> [--task NAME|FILE.json ...] [--all] [--keep] [--out DIR] (docs/task-check.md)."""
+"""python tools/task-check.py <game repo> [--task NAME|FILE.json ...] [--all] [--keep] [--out DIR] [--no-judge-shots]
+(docs/task-check.md)."""
 
 import argparse
 import hashlib
@@ -9,7 +10,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import check, seeds, tasks, unreal
+from . import check, judges, seeds, tasks, unreal
 
 USAGE = __doc__
 
@@ -76,15 +77,19 @@ def write_progress(out, started, names, results, now=None):
     done = len(results)
     lines = [f"task check: {done} of {len(names)} task(s) done, started {time.strftime('%H:%M', time.localtime(started))}, "
              f"{round((now - started) / 60)} min so far" + ("" if done < len(names) else ", finished")]
-    lines += [f"  {line(r)}" + (f"  ({round(r['seconds'] / 60)} min)" if r.get("seconds") else "") for r in results]
+    for r in results:
+        lines.append(f"  {line(r)}" + (f"  ({round(r['seconds'] / 60)} min)" if r.get("seconds") else ""))
+        lines += [f"    {judges.line(n, j)}: {r['task']}/judge-shots/{n}/ask.md"
+                  for n, j in (r.get("judges") or {}).items()]
     if done < len(names):
         lines.append(f"  checking {names[done]}" + (f", then {len(names) - done - 1} more" if done + 1 < len(names) else ""))
     Path(out).mkdir(parents=True, exist_ok=True)
     (Path(out) / "progress.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
     (Path(out) / "progress.json").write_text(json.dumps(
         {"format": "task-check-progress/1", "started": started, "updated": now, "tasks": names,
-         "done": [{"task": r["task"], "verdict": r["verdict"], "reasons": r["reasons"], "seconds": r.get("seconds")}
-                  for r in results], "finished": done == len(names)}, indent=2), encoding="utf-8")
+         "done": [{"task": r["task"], "verdict": r["verdict"], "reasons": r["reasons"], "seconds": r.get("seconds"),
+                   "judges_pending": sorted(r.get("judges") or {})} for r in results],
+         "finished": done == len(names)}, indent=2), encoding="utf-8")
 
 
 def main(argv=None):
@@ -103,6 +108,10 @@ def main(argv=None):
                         help="run Unreal directly, not through the machine's ue-heavy.ps1 slots")
     parser.add_argument("--timeout", type=int, default=1800, help="seconds a play or the editor pass may run")
     parser.add_argument("--build-timeout", type=int, default=3600, help="seconds a build may run")
+    parser.add_argument("--no-judge-shots", dest="judge_shots", action="store_false",
+                        help="don't play judge checks' plays or save their screenshots (by default each judge check's "
+                             "screenshots of the start and the reference are saved under <task>/judge-shots/ to be "
+                             "looked at)")
     args = parser.parse_args(argv)
 
     repo = Path(args.repo).resolve()
@@ -161,7 +170,7 @@ def main(argv=None):
             else:
                 result = check.check_task(repo, task, raw, scratch_root / tag, out, keep=args.keep,
                                           direct=args.direct, timeout=args.timeout, build_timeout=args.build_timeout,
-                                          log=log, builds=builds)
+                                          log=log, builds=builds, judge_shots=args.judge_shots)
                 if not args.keep:
                     later = set().union(*(needs[n] for n in names[i + 1:]))
                     for sha in needs[name] - later:

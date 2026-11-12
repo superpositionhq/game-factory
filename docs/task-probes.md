@@ -799,8 +799,19 @@ check names up to 4 task plays (section 1.1) in `plays`, and its screenshots are
   evenly spaced ones; the check's plays times its `shots`, plus their named shots, are 20 at most.
 - A check without `plays` is shown `look` and `drive`, as before.
 
-The task check asks no judge, so it never plays a judge's own plays or takes its `shots`; `tools/validate-game.py`
-checks their rules.
+The task check asks no model. It plays each `judge` check's plays on the start and on the reference and saves the
+screenshots the judge would be shown: its `shots` evenly spaced ones of each play and every named one, 20 at most, or
+the 6 of `look` and the 8 of `drive` for a check without `plays` (the developer's `route` isn't played locally). They go
+under `<task>\judge-shots\<check>\start\` and `reference\`, named `<play>_<nn>.png` in the order taken, with
+`ask.md` (the brief, the question, the rubric, what each picture is) and a blind copy: `blind\A\` and `blind\B\` hold
+the same pictures, and `blind\key.json` says which side each is. A play a probe names is the same play and is played
+once.
+
+Look at them yourself before calling a task with a required judge VALID, blind: score every rubric item for A and for
+B first, then open the key. The start must fail every required rubric item and the reference must pass every one.
+Write both sides' answers in the task's notes (its `tasks-workflow.jsonl` row). A task try saves the same for the
+agent's game (`agent\`) under `<task>\run<N>\judge-shots\`: answer its judges the same way before calling the task
+too easy or held. `tools/validate-game.py` checks the rules of a judge's plays.
 
 ## 4. The task check
 
@@ -812,7 +823,9 @@ Before any agent is given a task, the checker grades the start and the fix with 
 - a no-op scores zero: no check the start passes carries weight, so build, boot and `still_works` checks take
   `"weight": 0` (the score is the weighted share of checks passed);
 - every required `still_works` probe passes at the start;
-- every calibrated probe measures differently on the start and the fix.
+- every calibrated probe measures differently on the start and the fix;
+- every required `judge` check, answered by the task's writer from the screenshots the check saves (section 3.2),
+  fails on the start and passes on the fix, item by item.
 
 A task with no fix (a feature or a change) is checked on its start alone: the start builds and fails at least one
 required probe, whose thresholds are literal or relative to the start. A task that fails the task check is not run;
