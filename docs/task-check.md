@@ -206,7 +206,8 @@ sample's `total` is how many matched and `full` sums up every match's numeric va
 `full`, so neither stops at 200. Only `"of": "first"` and values read through `match`, `to_angle` or `to_axis` read the
 200 rows alone. Before 2026-11-06 the checker counted the rows, so a selection of 389 read 200.
 
-**Angles.** `yaw`, `pitch`, `roll`, `rel_yaw:` and `world_yaw:`/`world_pitch:`/`world_roll:` are normalised to
+**Angles.** `yaw`, `pitch`, `roll`, `rel_yaw:`, `world_yaw:`/`world_pitch:`/`world_roll:` and `components`'
+`world_yaw`/`world_pitch` are normalised to
 (-180, 180], so a raw yaw jumps from 180 to -180
 and `mean` or `delta` across the wrap mean nothing. Use `"to_angle": 90` (the shortest distance to 90 degrees, 0-180)
 or `"to_axis": 90` (the distance to that axis, 0-90: a direction and its opposite are one axis), with the threshold on

@@ -321,8 +321,10 @@ A probe names one measurement and its threshold:
 Write probes from the game's own code at `seed.commit`: the real class names, actor tags, map paths, widget names and
 components. **Never a name only the reference has** (a class, tag, widget, map or asset the thread itself created):
 another fair build names it otherwise and reads as absent. Select what the thread creates by what it does or where it
-is (`has`, `near`, `ui` with a `rect` or text, `drawn`, `lit`, `changed`); `validate-game.py` refuses a required probe
-that names something the start lacks and the reference has. **Test the outcome a player sees, never the implementation**: another valid fix
+is (`has`, `near`, `ui` with a `rect` or text, `drawn`, `lit`, `changed`; a part's direction by `components`
+`world_yaw`/`world_pitch` with `near`, not `world_yaw:<Component>`); `validate-game.py` refuses a required probe
+that names something the start lacks and the reference has, a component in a field such as `world_yaw:<Component>`
+included. **Test the outcome a player sees, never the implementation**: another valid fix
 must pass ("the hero stands on ground", "the stone breaks the wall piece it hits", "the light reaching the tunnel
 floor times the camera's exposure is brighter", not "SpawnZ is 92" or "the function was changed"). Lighting and
 colour are measured from the engine (`light`, `grading`), never from screenshots. `describe` says the assertion in
@@ -458,6 +460,7 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 | a dense forest merged into 3 procedural sections read 108 pieces against a threshold of 423 | count the drawn geometry (`pieces` `visible_triangles`), calibrated or relative to the start, never a literal |
 | a count stopped at 200 rows and a threshold was set on it | counts and `of` read every match (since 2026-11-06); recalibrate a threshold set before |
 | a light's turn read relative to its own actor | `world_yaw:`/`world_pitch:`/`forward:` read the component in the world |
+| a part's direction read by a component name only the reference had | `components` `world_yaw`/`world_pitch` of the part picked by `near`, `class` or `owner`, with `to_angle` |
 | a lamp hidden in game (or at intensity 0) read as lit | the `light` probe counts only lights the renderer draws; a lamp's `on` and `intensity` are `components` fields |
 | a collapsed warning still counted as shown | `"visible": true` in a widget select counts only what is on screen |
 | every audio component read inactive (plays ran with `-nosound`) | `audio` reads what the player hears; a play with it runs with sound, muted; volumes calibrated or relative to the start |

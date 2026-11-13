@@ -22,6 +22,7 @@ SAMPLED = ("pawn", "camera", "actors", "widgets", "components", "pieces", "scree
 AUDIO_STARTED = ("started", "started_audible")  # counted per sample's interval, summed by default (as spawns)
 AUDIO_NAMED = ("sounds", "repeats")  # read from the names of the sounds that started (probes._heard_names)
 WHOLE_SCREEN = [0.0, 0.0, 1.0, 1.0]
+ANGLES = ("yaw", "pitch", "roll", "world_yaw", "world_pitch")  # world_yaw, world_pitch: components fields
 ANGLE_PREFIXES = ("rel_yaw:", "world_yaw:", "world_pitch:", "world_roll:")
 ZERO = [0.0, 0.0, 0.0]
 _validator = None
@@ -305,8 +306,9 @@ def relative(c):
 
 def is_angle(field, turn=None):
     """Whether a measure's field is an angle (degrees, normalised to (-180, 180]): yaw, pitch, roll, rel_yaw:,
-    world_yaw:, world_pitch:, world_roll:, and a reflected property (prop:) a probe compares with to_angle / to_axis."""
-    return field in ("yaw", "pitch", "roll") or field.startswith(ANGLE_PREFIXES) or \
+    world_yaw:, world_pitch:, world_roll:, components' world_yaw and world_pitch, and a reflected property (prop:) a
+    probe compares with to_angle / to_axis."""
+    return field in ANGLES or field.startswith(ANGLE_PREFIXES) or \
         (turn is not None and field.startswith("prop:"))
 
 

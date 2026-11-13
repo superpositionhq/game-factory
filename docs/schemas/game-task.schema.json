@@ -1071,7 +1071,7 @@
     },
     "ComponentsMeasure": {
       "additionalProperties": false,
-      "description": "Registered components (docs/task-probes.md, section 2.5): `x`, `y`, `z` and `speed` (cm/s: its physics\nbody's while it simulates, else its own velocity, else how far it moved since the previous sample) of a scene\ncomponent; `extent_x|y|z` (its world bounds' half-size) and `simulating` (its physics, a skeletal mesh's any body)\nof a primitive; `intensity` and `on` (it lights the scene: visible, not hidden in game, its owner not hidden, an\nintensity above 0) of a light; `changed` (1 when the primitive differs from the first sample it was seen in: hidden\nor shown, its world bounds moved, a skinned mesh's pose moved), `bounds_change` and `pose_change` (cm, the amounts\nbehind it); `lit` (1 when it gives off light: a light that lights the scene, or a drawn mesh whose material is\nemissive or unlit and bright, read from its material graph where that evaluates whole and else as rendered) and\n`glow` (how much, one amount over every kind of source, particle systems among them; docs/task-probes.md, sections 2.4 and 2.5), the\nway to check for light whatever a build made it with; `spin` (deg/s: how fast it turns in the world, from its\nrotation every frame; docs/task-probes.md, section 2.5). `intensity`, `extent_*`, `bounds_change`, `pose_change`, `glow` and `spin`\ndepend on what a build chose, so their threshold is calibrated or relative to the start, never a literal\n(tools/validate-game.py).",
+      "description": "Registered components (docs/task-probes.md, section 2.5): `x`, `y`, `z` and `speed` (cm/s: its physics\nbody's while it simulates, else its own velocity, else how far it moved since the previous sample) of a scene\ncomponent; `extent_x|y|z` (its world bounds' half-size) and `simulating` (its physics, a skeletal mesh's any body)\nof a primitive; `intensity` and `on` (it lights the scene: visible, not hidden in game, its owner not hidden, an\nintensity above 0) of a light; `changed` (1 when the primitive differs from the first sample it was seen in: hidden\nor shown, its world bounds moved, a skinned mesh's pose moved), `bounds_change` and `pose_change` (cm, the amounts\nbehind it); `lit` (1 when it gives off light: a light that lights the scene, or a drawn mesh whose material is\nemissive or unlit and bright, read from its material graph where that evaluates whole and else as rendered) and\n`glow` (how much, one amount over every kind of source, particle systems among them; docs/task-probes.md, sections 2.4 and 2.5), the\nway to check for light whatever a build made it with; `spin` (deg/s: how fast it turns in the world, from its\nrotation every frame; docs/task-probes.md, section 2.5); `world_yaw` and `world_pitch` (degrees in (-180, 180]: a scene\ncomponent's own rotation in the world, angles like `yaw`, so `to_angle` and `to_axis` apply; actors'\n`world_yaw:<Component>` for a component selected by where or what it is rather than by a name). `intensity`, `extent_*`, `bounds_change`, `pose_change`, `glow` and `spin`\ndepend on what a build chose, so their threshold is calibrated or relative to the start, never a literal\n(tools/validate-game.py).",
       "properties": {
         "agg": {
           "anyOf": [
@@ -1146,7 +1146,9 @@
             "pose_change",
             "lit",
             "glow",
-            "spin"
+            "spin",
+            "world_yaw",
+            "world_pitch"
           ],
           "title": "Field",
           "type": "string"

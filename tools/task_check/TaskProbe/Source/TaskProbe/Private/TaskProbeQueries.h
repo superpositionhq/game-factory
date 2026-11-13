@@ -90,7 +90,9 @@
 //   pose_change null unless skinned), lit and glow (a light component's, a mesh component's or a particle system's, as
 //   actors' for one source; null for any other component; "glow_sources" with them), spin (deg/s: how far the component
 //   turned in the world, accumulated every frame since the previous sample, over that time; null the first sample it is
-//   seen in unless it simulates physics: then its body's angular velocity). select.effect: true keeps only live effects
+//   seen in unless it simulates physics: then its body's angular velocity), world_yaw and world_pitch (a scene
+//   component's own rotation in the world, degrees in (-180, 180], as actors' world_yaw:<Component> without a name).
+//   select.effect: true keeps only live effects
 //   (an active particle system component, Niagara or Cascade; a drawn decal component), select.class then optional.
 // - pieces: "value": {"count", "visible", "components", "actors", "triangles", "visible_triangles"}: the placed mesh
 //   pieces of the registered mesh components select.class matches (default every mesh component; also select.name,

@@ -1105,11 +1105,15 @@ def check_repo_tasks(rep, repo, files=None):
     rep.note(a, f'{len(paths)} task(s) on {ref} (at least {MIN_TASKS}, up to about 10, every one a long thread)')
 
 
-# What a probe names: the class, tag, name, mesh and asset path keys of its selects (owner selects and `has` included)
-# and the asset/map paths of its measure and play. A name that exists in the reference and not at the start can only be
+# What a probe names: the class, tag, name, mesh and asset path keys of its selects (owner selects and `has` included),
+# the component a measure's field names (rel_yaw:, world_yaw:, world_pitch:, world_roll:, forward:, bone:) and the
+# asset/map paths of its measure and play. A name that exists in the reference and not at the start can only be
 # matched by a build that chose the reference's names; another fair build reads as absent (write-tasks section 5).
 NAMED_KEYS = ('class', 'tag', 'name', 'mesh', 'slate')
 PATH_KEYS = ('asset', 'map')
+# a field that names a component: world_yaw:<Component>, forward:<Component>.x, bone:<Component>.<Bone>.z
+FIELD_COMPONENT = re.compile(r'(?:rel_yaw|world_yaw|world_pitch|world_roll):([^.]+)$|forward:([^.]+)\.[xyz]$'
+                             r'|bone:([^.]+)\..+\.[xyz]$')
 
 
 def probe_names(c):
@@ -1132,6 +1136,11 @@ def probe_names(c):
                 names.add(re.sub(r'_C$', '', v))   # a Blueprint's generated class names its asset
 
     walk(c.get('measure'))
+    field = c['measure'].get('field') if isinstance(c.get('measure'), dict) else None
+    found = FIELD_COMPONENT.match(field) if isinstance(field, str) else None
+    part = next((g for g in found.groups() if g), None) if found else None
+    if part and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{2,120}', part):
+        names.add(part)
     play = c.get('play')
     if isinstance(play, dict):
         walk({'map': play.get('map')})

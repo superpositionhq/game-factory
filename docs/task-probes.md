@@ -222,7 +222,8 @@ received, a stage nothing took, a named shot whose file wasn't written) is liste
   values read through `match`, `to_angle` or `to_axis` read the first 200 rows alone. Before 2026-11-06 counts stopped
   at 200 (a selection of 389 read 200): a threshold set on such a count then is set again.
 - `to_angle` / `to_axis` (angle fields only: `yaw`, `pitch`, `roll`, `rel_yaw:<Component>`,
-  `world_yaw:`/`world_pitch:`/`world_roll:<Component>`, and a `prop:` that holds an angle): angles are normalised to (-180, 180]. `"to_angle": -90` turns the field into its shortest absolute angular
+  `world_yaw:`/`world_pitch:`/`world_roll:<Component>`, `components`' `world_yaw` and `world_pitch`, and a `prop:` that
+  holds an angle): angles are normalised to (-180, 180]. `"to_angle": -90` turns the field into its shortest absolute angular
   distance to that angle, 0-180 (so 270 and -90 are the same). `"to_axis": 90` turns it into the distance to that axis,
   0-90: a direction and its opposite are one axis (a straight road piece turned 90 or -90). One or the other, not both.
 - `match` (string values: text, names, enum-like strings, brush paths): a regular expression; the value is 1 when it
@@ -355,6 +356,13 @@ An instanced mesh component is one component however many instances it draws: co
   first time it is seen while it simulates, else no value then. Any part near a point: select `PrimitiveComponent`
   with `near`; each part of one actor: select by `owner`. No component name is needed. A turn drawn by bones (a
   skinned rotor) or by a material reads 0 here: `drawn`'s `motion` (section 2.19) sees it;
+- `world_yaw`, `world_pitch` (degrees, normalised to (-180, 180]): a scene component's own rotation in the world,
+  whether its actor or the component itself turned, as an actor's `world_yaw:<Component>` reads it, but for a
+  component picked by where or what it is rather than by its name. Angles: `to_angle` / `to_axis` turn each
+  component's value into its distance to a bearing before `of` combines them, so `"of": "max"` is the one furthest off.
+  A part near a point turned to face -90: `{"probe": "components", "select": {"class": "StaticMeshComponent", "near":
+  {"point": {"xyz": [x, y, z]}, "radius": r}}, "field": "world_yaw", "to_angle": -90, "of": "max"}` with `<=` a
+  tolerance. A turn drawn by bones reads the component, not the bone (`bone:` on actors);
 - `extent_x`, `extent_y`, `extent_z` (a primitive's world bounds half-size, cm) and `simulating` (it simulates
   physics; a skeletal mesh when any of its bodies does);
 - `changed`, `bounds_change`, `pose_change`: a primitive against the first sample it was seen in, as an actor's

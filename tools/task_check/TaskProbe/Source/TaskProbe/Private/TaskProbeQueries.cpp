@@ -7145,6 +7145,13 @@ void FTaskProbeQueries::SampleComponents(FQuery& Q, UWorld* World, APlayerContro
 			{
 				V = SpinOf(SC);
 			}
+			else if (SC && (F == TEXT("world_yaw") || F == TEXT("world_pitch")))
+			{
+				// its own rotation in the world, degrees in (-180, 180], whether its actor or the component itself turned
+				// (actors' world_yaw:<Component> for a component selected by where or what it is, not by its name)
+				const FRotator R = SC->GetComponentRotation();
+				V = Num(Angle(F == TEXT("world_yaw") ? R.Yaw : R.Pitch));
+			}
 			else if (Prim && IsChangeField(F))
 			{
 				V = ChangeField(Change, F);
