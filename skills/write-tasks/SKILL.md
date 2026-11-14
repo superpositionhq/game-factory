@@ -229,8 +229,10 @@ Every grader play opens it (boots, idle and drive, the route, the before and ref
 and **`probe`** checks, and nothing is graded from pixel statistics of the game's frames except the frame's mean
 luminance (`screen`, the owner, 2026-11-06), whose threshold is always calibrated or relative to the start. Two judges
 are required (the owner, 2026-11-11): `looks_as_asked`, whose rubric items are the brief's own look-and-feel asks, and
-one in `still_works` of what must still look as it did (below). Every other judge (`judge`, `code_judge`,
-`actions_judge`: taste, readability, code review, how the agent worked) stays a `"required": false` quality check. A
+one in `still_works` of what must still look as it did (below). Every other judge (`judge`, `code_judge`:
+taste, readability, code review) stays a `"required": false` quality check. No check reviews how the agent worked: the
+`actions_judge` kind and its standard `worked_well` check are retired (the owner, 2026-11-13); never add one, and take
+it out of a task you edit (a task that still carries one stays valid; the Lab drops the check with a warning). A
 task still needs required probes the grader decides without a judge (section 6). The probe language, every play,
 measure and threshold with the rules that gate a task, is the task author's contract
 [docs/task-probes.md](../../docs/task-probes.md), checked by the schema
@@ -251,8 +253,8 @@ task a no-op would earn anything on. The usual order:
 4. `still_works`: probes that what must keep working still does (the player still moves, the HUD still shows, the
    level still loads its scenario), and a required judge with `"before": true` for what must still look as it did.
 5. `quality` (optional, never required): a `judge` for taste items no probe can capture ("reads as a castle",
-   readability of text over the scene), a `code_judge` for code quality, and the standard `actions_judge`
-   `worked_well` (or `trace` probes, `"required": false`).
+   readability of text over the scene), and a `code_judge` for code quality (or `trace` probes,
+   `"required": false`).
 
 **Every look-and-feel ask in the brief gets a required `looks_as_asked` rubric item** (a review of delivered tasks
 found the checks thinner than the briefs, look-and-feel asks most of all; the owner, 2026-11-11: such an ask gates the
@@ -379,7 +381,7 @@ no check at all, naming the task and the sentence. Fix what you find in the task
   first; motion as a probe sampled every 0.1 s with `agg` `step`, or a required judge with a run of `shots`.
 - **A keep that names a thing** ("the boss bar still starts full") has a required `still_works` check reading that
   thing; a bare "everything else keeps working" is covered by any required `still_works` check.
-- **Never cover an ask with an optional probe, a `build` or `boot` check, or the `worked_well` actions judge alone.**
+- **Never cover an ask with an optional probe, a `build` or `boot` check, or a `"required": false` quality check alone.**
 - **An ask that shows only after a contact** (a blow landing, getting hit, a stun, the last foe of a group falling) is
   staged, never left out because "no fixed play guarantees the contact": `pin` the foe or target ahead of the player
   (a target the build invents: the nearest movable drawn thing near the player) and press the task's own attack key;

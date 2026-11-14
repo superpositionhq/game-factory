@@ -9,8 +9,9 @@ that can be checked without running the game.
 from the running game or from the project: `build`, `boot`, `log_absent` and `probe`. A model judge never decides
 pass/fail, and nothing is graded from pixel statistics of the game's frames except one: the frame's mean luminance
 (`screen`, section 2.15; the owner, 2026-11-06), whose threshold is always calibrated or relative to the start, so the
-same machine measures both sides. Judges (`judge`, `code_judge`, `actions_judge`) stay as **non-gating** quality checks
-(`"required": false`).
+same machine measures both sides. Judges (`judge`, `code_judge`) stay as **non-gating** quality checks
+(`"required": false`). The `actions_judge` kind is retired (the owner, 2026-11-13): no new task carries one, and one
+left in an older task is dropped by the Lab with a warning.
 
 Words used here:
 - **the start**: the game at the task's `seed.commit`, as the agent receives it;

@@ -20,7 +20,23 @@ class Units(unittest.TestCase):
             {'name': 'done', 'checks': [judge('looks_as_asked'), judge('reads_well'), judge('optional', required=False),
                                         judge('looks_as_asked', 'code_judge'), judge('worked_well', 'actions_judge')]},
             {'name': 'still_works', 'checks': [judge('hud_unchanged'), judge('code', 'code_judge')]}]}
-        self.assertEqual(vg.required_quality_judges(t), ['reads_well', 'looks_as_asked', 'worked_well', 'code'])
+        self.assertEqual(vg.required_quality_judges(t), ['reads_well', 'looks_as_asked', 'code'])
+
+    def test_retired_checks(self):
+        """An `actions_judge` check is retired: a task that still carries one matches the schema and is only warned
+        about, required or not; a task without one has nothing to warn of."""
+        def check(name, kind, **over):
+            return {'name': name, 'kind': kind, 'question': 'q', 'rubric': [{'key': 'k', 'criterion': 'c'}], **over}
+        old = {'milestones': [{'name': 'done', 'checks': [check('looks_as_asked', 'judge')]},
+                              {'name': 'quality', 'checks': [check('worked_well', 'actions_judge', required=False),
+                                                             check('worked', 'actions_judge')]}]}
+        self.assertEqual(vg.retired_checks(old), ['worked_well', 'worked'])
+        self.assertEqual(vg.required_quality_judges(old), [])
+        schema = vg.SCHEMAS['game-task']
+        for c in old['milestones'][1]['checks']:
+            self.assertEqual(list(vg.check_schema(c, schema['$defs']['ActionsJudge'], schema)), [])
+        new = {'milestones': [{'name': 'done', 'checks': [check('looks_as_asked', 'judge')]}]}
+        self.assertEqual(vg.retired_checks(new), [])
 
     def test_task_bar(self):
         """A game's bar: at least 5 tasks, at least 4 of them hard; the others may be medium (what a task that names

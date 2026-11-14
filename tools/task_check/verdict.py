@@ -23,13 +23,14 @@ A task is VALID when
   nothing; a task may hold more guards than still_works' 32);
 - a no-op scores zero (owner, 2026-11-04): no check the start passes carries weight. The cloud's score is the weighted
   share of checks passed, so build, boot and still-works checks and anything else true of the start take `"weight": 0`.
-Judges (judge, code_judge, actions_judge) never take part, and neither do trace probes or packaging."""
+Judges (judge, code_judge, and the retired actions_judge of an older task) never take part, and neither do trace
+probes or packaging."""
 
 import math
 
 from . import probes, tasks
 
-JUDGES = ("judge", "code_judge", "actions_judge")
+JUDGES = ("judge", "code_judge", "actions_judge")   # actions_judge: retired, still skipped in older tasks
 MARGIN = 0.25  # a calibrated threshold whose start measured nothing: the reference's value, this share toward the start
 
 

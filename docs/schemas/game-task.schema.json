@@ -3,7 +3,7 @@
   "$defs": {
     "ActionsJudge": {
       "additionalProperties": false,
-      "description": "A reviewer's question over what the agent did, from its own trace: each tool call in order (the tool, its\narguments and what it returned, cut), whether it worked, and which made a checkpoint; never the agent's reasoning\nor messages. How the game was made counts beside the game itself (the owner, 2026-10-14: grade \"based on agent\nactions, and the final build\").",
+      "description": "Retired (the owner, 2026-11-13): no new task carries this check. A task that still has one stays valid: the Lab\ndrops the check with a warning when it reads the upload and nothing is graded from it; `validate-game.py` warns\n\"retired: remove it\". It was a reviewer's question over the agent's own tool calls.",
       "properties": {
         "kind": {
           "const": "actions_judge",

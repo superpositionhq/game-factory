@@ -132,7 +132,8 @@ A task is **VALID** when all of this holds:
 - a no-op scores zero: no check the start passes carries weight, so build, boot and `still_works` checks take
   `"weight": 0`. Judges aren't measured here, so a judge's weight isn't covered by this rule.
 
-Never decided by the check: judges (`judge`, `code_judge`, `actions_judge`: no model is asked), trace probes
+Never decided by the check: judges (`judge`, `code_judge`, and a retired `actions_judge` an older task still
+carries: no model is asked), trace probes
 (they read an agent's own tool calls), and `package` checks. The reference's other failures (`log_absent`,
 `file_exists`, probes with `"required": false`) are reported as notes and never make a task INVALID.
 

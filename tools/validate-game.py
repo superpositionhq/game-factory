@@ -983,13 +983,23 @@ def thread_span_errors(repo, seed, on_main):
     return errs
 
 
+RETIRED_KINDS = ('actions_judge',)   # check kinds no new task carries
+
+
 def required_quality_judges(t):
     """The required judge checks that should be optional quality checks: every required judge but the ones covering
     the brief's looks, a `judge` named `looks_as_asked` and a `judge` in the `still_works` milestone."""
     return [c.get('name') for m in t.get('milestones') or [] if isinstance(m, dict) for c in m.get('checks') or []
-            if isinstance(c, dict) and c.get('kind') in ('judge', 'code_judge', 'actions_judge')
+            if isinstance(c, dict) and c.get('kind') in ('judge', 'code_judge')
             and c.get('required', True) and not (c.get('kind') == 'judge' and (
                 c.get('name') == 'looks_as_asked' or m.get('name') == 'still_works'))]
+
+
+def retired_checks(t):
+    """The task's checks of a retired kind (`actions_judge`, the owner, 2026-11-13): still valid, so games made with
+    one keep passing, and warned about; the Lab drops them when it reads an upload."""
+    return [c.get('name') for m in t.get('milestones') or [] if isinstance(m, dict) for c in m.get('checks') or []
+            if isinstance(c, dict) and c.get('kind') in RETIRED_KINDS]
 
 
 def check_task(rep, a, label, t, game, has_commit):
@@ -1001,6 +1011,10 @@ def check_task(rep, a, label, t, game, has_commit):
     gated = [c for m in t.get('milestones') or [] if isinstance(m, dict) for c in m.get('checks') or []
              if isinstance(c, dict) and c.get('kind') == 'probe' and c.get('required', True)]
     judged = required_quality_judges(t)
+    retired = retired_checks(t)
+    if retired:
+        rep.warn(a, f'{label}: check(s) {retired} of kind `actions_judge`: retired: remove it (nothing is graded '
+                    f'from it; the Lab drops it when it reads the upload) (write-tasks section 5)')
     if not gated:
         rep.error(a, f'{label}: no required probe check: pass/fail must be deterministic (write-tasks section 5)')
     outcomes = [c for m in t.get('milestones') or [] if isinstance(m, dict) and m.get('name') != 'still_works'
