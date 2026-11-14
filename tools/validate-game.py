@@ -983,7 +983,7 @@ def thread_span_errors(repo, seed, on_main):
     return errs
 
 
-RETIRED_KINDS = ('actions_judge',)   # check kinds no new task carries
+RETIRED_KINDS = ('actions_judge',)   # check kinds no new task carries, and with them the `trace` probe
 
 
 def required_quality_judges(t):
@@ -996,10 +996,11 @@ def required_quality_judges(t):
 
 
 def retired_checks(t):
-    """The task's checks of a retired kind (`actions_judge`, the owner, 2026-11-13): still valid, so games made with
-    one keep passing, and warned about; the Lab drops them when it reads an upload."""
+    """The task's retired checks, `actions_judge` checks and `trace` probes (the owner, 2026-11-13: nothing in a task
+    reads the agent's tool calls): still valid, so games made with one keep passing, and warned about."""
     return [c.get('name') for m in t.get('milestones') or [] if isinstance(m, dict) for c in m.get('checks') or []
-            if isinstance(c, dict) and c.get('kind') in RETIRED_KINDS]
+            if isinstance(c, dict) and (c.get('kind') in RETIRED_KINDS or c.get('kind') == 'probe'
+                                        and isinstance(c.get('measure'), dict) and c['measure'].get('probe') == 'trace')]
 
 
 def check_task(rep, a, label, t, game, has_commit):
@@ -1013,8 +1014,8 @@ def check_task(rep, a, label, t, game, has_commit):
     judged = required_quality_judges(t)
     retired = retired_checks(t)
     if retired:
-        rep.warn(a, f'{label}: check(s) {retired} of kind `actions_judge`: retired: remove it (nothing is graded '
-                    f'from it; the Lab drops it when it reads the upload) (write-tasks section 5)')
+        rep.warn(a, f'{label}: check(s) {retired}: `actions_judge` checks and `trace` probes are retired: remove it '
+                    f'(nothing in a task reads the agent\'s tool calls) (write-tasks section 5)')
     if not gated:
         rep.error(a, f'{label}: no required probe check: pass/fail must be deterministic (write-tasks section 5)')
     outcomes = [c for m in t.get('milestones') or [] if isinstance(m, dict) and m.get('name') != 'still_works'

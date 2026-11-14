@@ -345,7 +345,7 @@ class Grade:
         if kind in JUDGES:
             return True, NOT_JUDGED
         if kind == "probe" and check["measure"]["probe"] == "trace":
-            return True, "not asked: a trace probe reads an agent's own calls"
+            return True, "not asked: trace probes are retired: remove it"
         if self.mode == "start":
             if kind == "build" and check["fails_at_start"]:
                 return (True, "the start built") if self.start.built() else (False, self.start.why_unbuilt())

@@ -3,7 +3,7 @@
   "$defs": {
     "ActionsJudge": {
       "additionalProperties": false,
-      "description": "Retired (the owner, 2026-11-13): no new task carries this check. A task that still has one stays valid: the Lab\ndrops the check with a warning when it reads the upload and nothing is graded from it; `validate-game.py` warns\n\"retired: remove it\". It was a reviewer's question over the agent's own tool calls.",
+      "description": "Retired (the owner, 2026-11-13): never add one; a task that still carries one stays valid and is warned about.",
       "properties": {
         "kind": {
           "const": "actions_judge",
@@ -3977,7 +3977,7 @@
     },
     "TraceMeasure": {
       "additionalProperties": false,
-      "description": "A fact of the agent's own trace (never gating).",
+      "description": "Retired (the owner, 2026-11-13): never add one; a task that still carries one stays valid and is warned about.",
       "properties": {
         "fact": {
           "enum": [

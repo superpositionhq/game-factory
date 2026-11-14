@@ -10,8 +10,9 @@ from the running game or from the project: `build`, `boot`, `log_absent` and `pr
 pass/fail, and nothing is graded from pixel statistics of the game's frames except one: the frame's mean luminance
 (`screen`, section 2.15; the owner, 2026-11-06), whose threshold is always calibrated or relative to the start, so the
 same machine measures both sides. Judges (`judge`, `code_judge`) stay as **non-gating** quality checks
-(`"required": false`). The `actions_judge` kind is retired (the owner, 2026-11-13): no new task carries one, and one
-left in an older task is dropped by the Lab with a warning.
+(`"required": false`). Nothing in a task reads the agent's tool calls: a task is graded on the game's outcome
+alone. Retired (the owner, 2026-11-13): `actions_judge` checks and `trace` probes; never add one, take them out of a
+task you edit.
 
 Words used here:
 - **the start**: the game at the task's `seed.commit`, as the agent receives it;
@@ -124,8 +125,7 @@ Words used here:
     never gives it a clean `Saved/` folder. The two sides never share one.
 - `"editor"`: a headless editor pass over the project as saved; takes only `asset` measures, and `asset` measures
   are taken only there.
-- `"trace"`: the agent's own trace; takes only `trace` measures, and `trace` measures are read only there. Trace
-  probes never gate (section 3).
+- `"trace"`: retired with the `trace` probe (section 2.12); never use it.
 
 ### 1.2 Thresholds (`expect`)
 
@@ -488,11 +488,11 @@ disappeared in each sample's interval; the default `agg` is `sum` (the count in 
   uses complex as simple; `prop:<path>`; `count`.
 - A project that doesn't build fails its editor probes.
 
-### 2.12 `trace`: the agent's own trace (`play: "trace"`, never gating)
+### 2.12 `trace`: retired
 
-`{"probe": "trace", "fact": "built_after_last_change|played_after_last_change|read_before_first_edit|build_ok_at_end|edits_outside_project"}`:
-a successful build / game run after the last change; a read before the first edit; the last build succeeded; edits
-refused for a path outside the project. Only as `"required": false` quality notes with a literal threshold.
+Retired (the owner, 2026-11-13): never add a `trace` probe, and take it out of a task you edit. A task that still
+carries one stays valid (`"required": false`, play `"trace"`, a literal threshold) and `validate-game.py` warns
+"retired: remove it".
 
 ### 2.13 Points
 
@@ -771,7 +771,6 @@ was paused in any of them ("Escape pauses the game").
   still moves, the HUD still shows, the level still loads its scenario) must pass on the start: what still works must
   already work there, or the probe itself is broken and would fail every correct solution. (A still-works probe the
   start measured nothing for, because its play crashed on the very bug the task fixes, doesn't count against it.)
-- **Trace probes never gate**: `"required": false`, with a literal threshold.
 - **No samples, no pass.** When a play ends early or a measure has no samples in its window (the game quit, crashed or
   never reached that time), the probe fails with "no samples in the window (the play ended at X s)"; when samples exist
   but nothing selected has a value, it fails with "no value in the window".

@@ -23,8 +23,8 @@ A task is VALID when
   nothing; a task may hold more guards than still_works' 32);
 - a no-op scores zero (owner, 2026-11-04): no check the start passes carries weight. The cloud's score is the weighted
   share of checks passed, so build, boot and still-works checks and anything else true of the start take `"weight": 0`.
-Judges (judge, code_judge, and the retired actions_judge of an older task) never take part, and neither do trace
-probes or packaging."""
+Judges (judge, code_judge) and packaging never take part, and neither do the retired actions_judge checks and
+trace probes an older task still carries."""
 
 import math
 
@@ -101,7 +101,7 @@ def describe(check, value, limit, start, fix, why=None):
 
 def noop_score(task, start):
     """(score, names): what doing nothing earns, the weighted share of the deterministic checks the start passes, and
-    the passed checks that carry weight. Judges and trace probes aren't measured here (`detail` "not asked")."""
+    the passed checks that carry weight. Judges and the retired trace probes aren't measured here (`detail` "not asked")."""
     weights = {c["name"]: c["weight"] for _, c in tasks.checks(task)
                if c["kind"] not in JUDGES and not (c["kind"] == "probe" and c["measure"]["probe"] == "trace")}
     total = sum(weights.values())

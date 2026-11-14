@@ -318,7 +318,7 @@ def fails_at_start(task):
 
 
 def gating(task):
-    """The names of the task's required probes (trace probes never gate)."""
+    """The names of the task's required probes (a retired trace probe never gated)."""
     return {c["name"] for _, c in checks(task) if c["kind"] == "probe" and c["required"]
             and c["measure"]["probe"] != "trace"}
 

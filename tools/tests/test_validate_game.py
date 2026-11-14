@@ -23,17 +23,24 @@ class Units(unittest.TestCase):
         self.assertEqual(vg.required_quality_judges(t), ['reads_well', 'looks_as_asked', 'code'])
 
     def test_retired_checks(self):
-        """An `actions_judge` check is retired: a task that still carries one matches the schema and is only warned
-        about, required or not; a task without one has nothing to warn of."""
+        """`actions_judge` checks and `trace` probes are retired: a task that still carries one matches the schema and
+        is only warned about; a task without one has nothing to warn of. A trace probe never counted as a required
+        or an outcome probe, so no floor moves."""
         def check(name, kind, **over):
             return {'name': name, 'kind': kind, 'question': 'q', 'rubric': [{'key': 'k', 'criterion': 'c'}], **over}
         old = {'milestones': [{'name': 'done', 'checks': [check('looks_as_asked', 'judge')]},
                               {'name': 'quality', 'checks': [check('worked_well', 'actions_judge', required=False),
                                                              check('worked', 'actions_judge')]}]}
-        self.assertEqual(vg.retired_checks(old), ['worked_well', 'worked'])
+        trace = {'name': 'built', 'kind': 'probe', 'required': False, 'describe': 'The last build worked.',
+                 'play': 'trace', 'measure': {'probe': 'trace', 'fact': 'build_ok_at_end'},
+                 'expect': {'op': '>=', 'value': 1}}
+        old['milestones'][1]['checks'].append(trace)
+        self.assertEqual(vg.retired_checks(old), ['worked_well', 'worked', 'built'])
+        self.assertEqual(list(vg.check_schema(trace, vg.SCHEMAS['game-task']['$defs']['Probe'], vg.SCHEMAS['game-task'])), [])
+        self.assertEqual(vg.probe_errors(trace, {'commit': 'a', 'reference': 'b'}, 'b', {}), [])
         self.assertEqual(vg.required_quality_judges(old), [])
         schema = vg.SCHEMAS['game-task']
-        for c in old['milestones'][1]['checks']:
+        for c in old['milestones'][1]['checks'][:2]:
             self.assertEqual(list(vg.check_schema(c, schema['$defs']['ActionsJudge'], schema)), [])
         new = {'milestones': [{'name': 'done', 'checks': [check('looks_as_asked', 'judge')]}]}
         self.assertEqual(vg.retired_checks(new), [])
