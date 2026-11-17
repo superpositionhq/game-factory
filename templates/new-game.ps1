@@ -17,6 +17,11 @@
   powershell -ExecutionPolicy Bypass -File <root>\game-factory\templates\new-game.ps1 -Slug <game> `
       -Path <root>\games\<game> -Title "<Title>" -Description "<one line>" -Reason "<why>"
   (<root> written out, e.g. C:\Users\<you>\Work)
+.EXAMPLE
+  ... -Slug <game> -Path <root>\games\<game> -Platform mobile -Orientation portrait
+  An Android phone game: the same skeleton with templates\ue-game-mobile laid over it (the Android target settings,
+  the game's orientation, no desktop renderer or mouse settings) and Platform.json at its root. -Platform desktop (the
+  default) creates a desktop game exactly as before; -Orientation goes with mobile only and is the game's for good.
 #>
 param(
     [Parameter(Mandatory = $true)][ValidatePattern('^[a-z0-9][a-z0-9-]*[a-z0-9]$')][string]$Slug,
@@ -29,6 +34,8 @@ param(
     [string]$Root,
     [string]$HooksDir,                  # default: the config's hooks_dir (machine/lib/gf-root.ps1 Get-GFHooksDir)
     [string]$Org,                       # default: the config's github_org (GF_ORG)
+    [ValidateSet('desktop', 'mobile')][string]$Platform = 'desktop',   # mobile: an Android phone game (Platform.json, the mobile config)
+    [ValidateSet('landscape', 'portrait')][string]$Orientation,        # with -Platform mobile: how the phone is held, for good
     [switch]$NoGitHub                   # skip creating the GitHub repo (tests, offline)
 )
 $ErrorActionPreference = 'Stop'
@@ -47,6 +54,8 @@ if (-not [IO.Path]::IsPathRooted($Path) -or [IO.Path]::GetFullPath($Path).TrimEn
     throw "-Path must be the absolute folder $want (got '$Path')"
 }
 Write-Host "project folder: $Path (this call maps the session to $Slug for recording)"
+if ($Platform -eq 'mobile' -and -not $Orientation) { throw 'a mobile game is held one way: pass -Orientation landscape or -Orientation portrait' }
+if ($Platform -ne 'mobile' -and $Orientation) { throw '-Orientation goes with -Platform mobile (a desktop game has none)' }
 $words = $Slug -split '-'
 if (-not $Project) { $Project = ($words | ForEach-Object { $_.Substring(0, 1).ToUpper() + $_.Substring(1) }) -join '' }
 if (-not $Title) { $Title = ($words | ForEach-Object { $_.Substring(0, 1).ToUpper() + $_.Substring(1) }) -join ' ' }
@@ -77,6 +86,23 @@ foreach ($f in Get-ChildItem -LiteralPath $template -Recurse -File -Force) {
     [IO.File]::WriteAllText($dst, (Expand ([IO.File]::ReadAllText($f.FullName))), $utf8)
     $count++
 }
+if ($Platform -eq 'mobile') {
+    # A mobile (Android) game: the mobile config laid over the skeleton's, and Platform.json at the root, which says
+    # what the game is to every tool after this one (validate-game.py, the task check, the packager). A desktop game
+    # has neither: it is created exactly as before.
+    $map['__ANDROID_NAME__'] = $Project.ToLowerInvariant()
+    $map['__ANDROID_ORIENTATION__'] = if ($Orientation -eq 'portrait') { 'Portrait' } else { 'SensorLandscape' }
+    $overlay = Join-Path $PSScriptRoot 'ue-game-mobile'
+    foreach ($f in Get-ChildItem -LiteralPath $overlay -Recurse -File -Force) {
+        $rel = Expand ($f.FullName.Substring($overlay.Length + 1))
+        $dst = Join-Path $Path $rel
+        if (-not (Test-Path -LiteralPath $dst)) { $count++ }
+        New-Item -ItemType Directory -Force (Split-Path $dst) | Out-Null
+        [IO.File]::WriteAllText($dst, (Expand ([IO.File]::ReadAllText($f.FullName))), $utf8)
+    }
+    [IO.File]::WriteAllText((Join-Path $Path 'Platform.json'), (([ordered]@{ platform = 'mobile'; orientation = $Orientation } | ConvertTo-Json -Compress) + "`n"), $utf8)
+    $count++
+}
 $apDir = Join-Path $Path "Source\$Project\AutoPlay"
 New-Item -ItemType Directory -Force $apDir | Out-Null
 foreach ($n in 'AutoPlaySubsystem.h', 'AutoPlaySubsystem.cpp') {
@@ -96,6 +122,7 @@ $row = [ordered]@{
     reason = $Reason; reason_source = 'agent_note'; status = 'observed'
     source = [ordered]@{ script = 'new-game.ps1'; sha256 = $scriptSha; commit = $null }
 }
+if ($Platform -eq 'mobile') { $row.params['platform'] = 'mobile'; $row.params['orientation'] = $Orientation }
 [IO.File]::WriteAllText((Join-Path $Path 'workflow.jsonl'), ($row | ConvertTo-Json -Compress -Depth 6) + "`n", $utf8)
 
 # git + LFS + recorder, then the first commit (the post-commit hook records it).
@@ -106,7 +133,8 @@ $ErrorActionPreference = $old
 & (Join-Path $repo 'machine\install-git-hook.ps1') -Repo $Path -HooksDir $HooksDir | Out-Null
 $ErrorActionPreference = 'Continue'
 & git -C $Path add -A 2>&1 | Out-Null
-$msg = "Create the $Title project (UE $engineVer skeleton)`n`nLive Coding off, Shipping + HiDPI config, AutoPlay drop-in v$contract,`nroot-anchored .gitignore, LFS for every binary type.`n`nworkflow: $rowId"
+$kind = if ($Platform -eq 'mobile') { "`nAn Android phone game, held in $Orientation (Platform.json, the mobile config)." } else { '' }
+$msg = "Create the $Title project (UE $engineVer skeleton)`n`nLive Coding off, Shipping + HiDPI config, AutoPlay drop-in v$contract,`nroot-anchored .gitignore, LFS for every binary type.$kind`n`nworkflow: $rowId"
 $msgFile = Join-Path $env:TEMP "new-game-$PID.txt"
 [IO.File]::WriteAllText($msgFile, $msg, $utf8)
 & git -C $Path commit -q -F $msgFile 2>&1 | Out-Null
@@ -131,6 +159,7 @@ if (-not $NoGitHub) {
 }
 
 Write-Host "created $Title ($Project) at $Path"
+if ($Platform -eq 'mobile') { Write-Host "  platform: mobile (Android), held in $Orientation; read the mobile-game skill before building" }
 Write-Host "  files: $count, AutoPlay contract v$contract, first row $rowId, commit $sha"
 Write-Host "  remote: $(if ($remote) { $remote } else { 'none (-NoGitHub)' })"
 Write-Host "  next: write the design doc, build the editor target through ue-heavy.ps1, log every operation in workflow.jsonl"

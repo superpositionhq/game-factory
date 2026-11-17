@@ -16,6 +16,13 @@ commit recorder to `post-commit` (`machine/install-git-hook.ps1`); makes the fir
 GitHub repo `<org>/game-<slug>` (`github_org` in the machine config, or `-Org`) as `origin` without pushing (`-NoGitHub` skips that). It refuses names
 containing Superposition, game-factory, Claude or Anthropic.
 
+`-Platform mobile -Orientation landscape|portrait` makes an Android phone game instead: the files of `ue-game-mobile/`
+are laid over the skeleton (`Config/DefaultEngine.ini` with the Android target settings, the game's orientation and the
+Linux mobile shader format, and without the desktop renderer settings; `Config/DefaultInput.ini` without the mouse
+settings) and `Platform.json` (`{"platform": "mobile", "orientation": ...}`) is written at the root. That file is how
+every later tool knows the game is a mobile game; a game without it is a desktop game. The default, `-Platform
+desktop`, creates a desktop game exactly as before.
+
 What the skeleton carries, and why:
 
 | File | Why |
