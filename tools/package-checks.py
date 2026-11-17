@@ -20,7 +20,7 @@ from task_check.digest import canonical_digest, merged
 from writer_checks import check_errors, score_errors
 
 SLUG = re.compile(r"[a-z0-9][a-z0-9-]{1,62}\Z")
-CHECK_NAME = re.compile(r"[a-z][a-z0-9_-]{0,63}\Z")
+CHECK_NAME = re.compile(r"[a-z0-9_]{1,48}\Z")
 SHA = re.compile(r"(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])")
 
 
