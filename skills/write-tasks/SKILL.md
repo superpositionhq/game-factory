@@ -89,7 +89,8 @@ A thread qualifies only when all of these hold (the validator enforces the numbe
    short task in disguise.
 3. **Several outcomes.** At least 3 required outcome probes, one per issue the thread settled, so partial work earns
    partial credit (a compound ticket). A thread that settled only one observable thing is rarely long enough. A
-   required probe of weight 0 is a guard, not an outcome: it doesn't count toward the 3.
+   required probe of weight 0 is a guard, not an outcome: it doesn't count toward the 3. Neither does a `seen`
+   probe: a model reads it, as a judge's pictures.
 4. **The first attempt didn't hold, or the cause is far from the symptom.** The thread had a fix that was undone,
    complained about again ("still too low") or broke something else; or the symptom shows in one system and the cause
    sits in another (a HUD symptom from a data asset, a camera symptom from collision channels, a crash only in the

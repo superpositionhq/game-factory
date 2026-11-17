@@ -176,16 +176,16 @@ class Seen(unittest.TestCase):
                          ['check combo_shows: a seen measure of one shot takes no `agg`'])
         self.assertEqual(said({'shot': 'combo', 'read': 'number'}), [])
 
-    def test_a_task_with_one_validates_and_counts_it_as_an_outcome(self):
-        """A required, weighted seen probe outside still_works is a required probe the task check gates on, so it
-        counts toward the outcomes; it is no literal-refused field, names nothing the reference may add, and takes no
+    def test_a_task_with_one_validates_and_it_is_no_outcome(self):
+        """A seen probe is a visual check, read by a model like a judge's: it gates in the task check but is no
+        outcome the grader decides itself; it is no literal-refused field, names nothing the reference may add, and takes no
         capture of the probe's own, so a render measure may share its play."""
         render = {'name': 'budget', 'kind': 'probe', 'describe': 'Draw calls stay in budget', 'play': self.PLAY,
                   'measure': {'probe': 'render', 'field': 'draw_calls', 'agg': 'max'}, 'expect': {'op': '<=', 'value': 700}}
         t = {'milestones': [{'name': 'fix', 'checks': [self.check({'shot': 'combo', 'read': 'number'}), render]}]}
         self.assertEqual(vg.task_semantic_errors(t), [])
         self.assertEqual(vg.render_errors(t['milestones'][0]['checks']), [])
-        self.assertEqual([c['name'] for c in vg.outcome_probes(t)], ['combo_shows', 'budget'])
+        self.assertEqual([c['name'] for c in vg.outcome_probes(t)], ['budget'])
         self.assertEqual(vg.probe_names(t['milestones'][0]['checks'][0]), (set(), set()))
 
     def test_a_seen_probe_alone_is_no_required_probe(self):

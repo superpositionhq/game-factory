@@ -1180,10 +1180,11 @@ GAME_PATHS = ('Source', 'Content', 'Config', 'Plugins', '*.uproject')   # the ga
 
 def outcome_probes(t):
     """Task `t`'s outcomes: its required probes outside still_works that carry weight. A required probe of weight 0 is
-    a guard, not an outcome: it gates and pays nothing, and the start may pass it."""
+    a guard, not an outcome: it gates and pays nothing, and the start may pass it. A `seen` probe is a visual check,
+    read by a model like a judge's, so it is no outcome either: the outcomes are what the grader decides itself."""
     return [c for m in t.get('milestones') or [] if isinstance(m, dict) and m.get('name') != 'still_works'
             for c in m.get('checks') or [] if isinstance(c, dict) and c.get('kind') == 'probe'
-            and c.get('required', True) and c.get('weight', 1) > 0]
+            and c.get('required', True) and c.get('weight', 1) > 0 and not is_seen(c)]
 
 
 def thread_errors(t, outcomes):
@@ -1215,7 +1216,8 @@ def noop_errors(t):
                 or m.get('name') == 'still_works'
             if passes_at_start and weight != 0:
                 errs.append(f'check {c.get("name")}: a no-op passes it, so a no-op would score; give it "weight": 0')
-            elif not passes_at_start and c.get('required', True) and kind in ('probe', 'build') and weight > 0:
+            elif not passes_at_start and c.get('required', True) and kind in ('probe', 'build') and weight > 0 \
+                    and not is_seen(c):
                 earning += 1
     if not earning:
         errs.append('no required outcome check carries weight, so no run can score')
