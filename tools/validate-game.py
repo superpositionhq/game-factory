@@ -916,6 +916,50 @@ def render_errors(checks):
             for name in sorted(x for x in reads & set(capturing) if x)]
 
 
+SEEN_RECT = 0.02   # a seen rect's least width and height, in frame fractions
+
+
+def is_seen(c):
+    """Whether check `c` is a `seen` probe: text a model reads from a screenshot, a visual check that goes with the
+    judges wherever checks are counted or switched (the Lab grader's checks.visual), never a deterministic probe."""
+    return c.get('kind') == 'probe' and isinstance(c.get('measure'), dict) and c['measure'].get('probe') == 'seen'
+
+
+def seen_errors(n, measure, play):
+    """A seen measure's rules beyond the schema, for check `n` (docs/task-probes.md, section 2.22; the Lab's dataset
+    format probe_rules and grader checks.SeenMeasure, with their messages): it reads named shots (`shot` inputs) of its
+    own task play, never of look, drive or editor; a rect is at least SEEN_RECT of the frame each way; `match` is
+    given exactly when it reads text, and compiles; a list of shots reads a number or a clock, with an `agg`, and
+    names each shot once; one shot takes no `agg`."""
+    errs = []
+    if not isinstance(play, dict):
+        errs.append(f'check {n}: a seen measure reads a named shot of a task play of its own, never of {play}')
+    else:
+        named = set(named_shots(play))
+        shots = measure.get('shot') if isinstance(measure.get('shot'), list) else [measure.get('shot')]
+        for shot in (s for s in shots if s not in named):
+            errs.append(f"check {n}: its play {play.get('name')} takes no shot named {shot} (a `shot` input)")
+    rect = measure.get('rect')
+    if isinstance(rect, list) and len(rect) == 4 and all(_is(v, 'number') for v in rect) and not (
+            rect[2] - rect[0] >= SEEN_RECT - 1e-9 and rect[3] - rect[1] >= SEEN_RECT - 1e-9):
+        errs.append(f'check {n}: a seen rect is [x0, y0, x1, y1], at least {SEEN_RECT} of the frame each way')
+    if (measure.get('read') == 'text') != (measure.get('match') is not None):
+        errs.append(f'check {n}: a seen measure takes `match` exactly when it reads text')
+    if isinstance(measure.get('match'), str):
+        try:
+            re.compile(measure['match'])
+        except re.error as e:
+            errs.append(f"check {n}: {measure['match']!r} isn't a regular expression ({e})")
+    listed = isinstance(measure.get('shot'), list)
+    if listed and (measure.get('read') == 'text' or measure.get('agg') is None):
+        errs.append(f'check {n}: a seen measure reads a list of shots as a number or a clock, with an `agg`')
+    if listed and len(set(map(str, measure['shot']))) != len(measure['shot']):
+        errs.append(f'check {n}: a seen measure names a shot twice')
+    if not listed and measure.get('agg') is not None:
+        errs.append(f'check {n}: a seen measure of one shot takes no `agg`')
+    return errs
+
+
 def probe_errors(c, seed, ref, plays):
     """A probe check's rules beyond the schema (docs/task-probes.md):
     asset measures only with play "editor" and trace measures only with play "trace"; an asset measure's select takes
@@ -928,8 +972,8 @@ def probe_errors(c, seed, ref, plays):
     a components select names its class or `effect`; a near's height band has z_min < z_max and `z_relative` only
     with one of them; a task play's waits add at most 300 s; a ui measure takes `match` exactly when it reads text,
     `agg` changes, any, all or count when it reads its signature, regular
-    expressions that compile and a select rect [x0, y0, x1, y1] with x0 < x1 and y0 < y1; a calibrated threshold needs
-    seed.reference and a start-relative one a seed."""
+    expressions that compile and a select rect [x0, y0, x1, y1] with x0 < x1 and y0 < y1; a seen measure's rules
+    (seen_errors); a calibrated threshold needs seed.reference and a start-relative one a seed."""
     errs, n = [], c.get('name')
     play = c.get('play')
     measure = c.get('measure') if isinstance(c.get('measure'), dict) else {}
@@ -994,6 +1038,8 @@ def probe_errors(c, seed, ref, plays):
             errs.append(f'check {n}: a ui select rect is [x0, y0, x1, y1] with x0 < x1 and y0 < y1')
         if sel.get('text') is not None and sel.get('kind') not in (None, 'text'):
             errs.append(f"check {n}: a ui select's `text` picks text elements: its kind is text or unset")
+    if probe == 'seen':
+        errs.extend(seen_errors(n, measure, play))
     if rel and expect.get('op') in ('==', '!='):
         errs.append(f'check {n}: == and != take a literal value, never a calibrated threshold')
     if rel == 'calibrate' and not ref:
@@ -1286,14 +1332,15 @@ def check_task(rep, a, label, t, game, has_commit):
     for e in task_semantic_errors(t)[:5]:
         rep.error(a, f'{label}: {e}')
     gated = [c for m in t.get('milestones') or [] if isinstance(m, dict) for c in m.get('checks') or []
-             if isinstance(c, dict) and c.get('kind') == 'probe' and c.get('required', True)]
+             if isinstance(c, dict) and c.get('kind') == 'probe' and c.get('required', True) and not is_seen(c)]
     judged = required_quality_judges(t)
     retired = retired_checks(t)
     if retired:
         rep.warn(a, f'{label}: check(s) {retired}: `actions_judge` checks and `trace` probes are retired: remove it '
                     f'(nothing in a task reads the agent\'s tool calls) (write-tasks section 5)')
     if not gated:
-        rep.error(a, f'{label}: no required probe check: pass/fail must be deterministic (write-tasks section 5)')
+        rep.error(a, f'{label}: no required probe check: pass/fail must be deterministic (a seen probe is a model\'s '
+                     'reading, a visual check) (write-tasks section 5)')
     for e in thread_errors(t, len(outcome_probes(t))):
         rep.error(a, f'{label}: {e} (write-tasks section 1: only long threads of multiple edits)')
     if judged:

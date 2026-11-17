@@ -121,6 +121,26 @@ def blind_key(sides, rng=None):
     return dict(zip("AB", order))
 
 
+def blind_copy(base, sides, rng=None, key=None):
+    """The blind copy of two side folders under `base` (<base>/<side>/): blind/A and blind/B, whose sides are in
+    blind/key.json; `key` ({"A": side, "B": side}) keeps an earlier copy's letters, else they are drawn (blind_key).
+    (key, notes)."""
+    key, notes = key or blind_key(sides, rng), []
+    # Only pictures both sides have go in: a side with fewer (a play cut short) would be told apart by its count.
+    both = set.intersection(*({p.name for p in (base / side).iterdir()} for side in sides))
+    for side in sides:
+        only = sorted({p.name for p in (base / side).iterdir()} - both)
+        if only:
+            notes.append(f"{side}: {len(only)} picture(s) the other side lacks, left out of the blind copy "
+                         f"({', '.join(only)})")
+    for letter, side in key.items():
+        (base / "blind" / letter).mkdir(parents=True)
+        for name in sorted(both):
+            shutil.copy2(base / side / name, base / "blind" / letter / name)
+    (base / "blind" / "key.json").write_text(json.dumps(key, indent=2) + "\n", encoding="utf-8")
+    return key, notes
+
+
 def ask_text(task, check, sides, notes=(), blind=False, saved=None):
     """ask.md: the brief, the question, the rubric, the plays and their pictures, how to answer."""
     rubric = "\n".join(f"| {i['key']} | {'yes' if i['required'] else 'no'} | {i['weight']} | "
@@ -207,19 +227,8 @@ def save(task, check, played, folder, blind=False, notes=(), rng=None):
                 notes.append(f"{side}: {name} took no screenshots")
     key = None
     if blind and len(saved) == 2:
-        key = blind_key(saved, rng)
-        # Only pictures both sides have go in: a side with fewer (a play cut short) would be told apart by its count.
-        both = set.intersection(*({p.name for p in (base / side).iterdir()} for side in saved))
-        for side in saved:
-            only = sorted({p.name for p in (base / side).iterdir()} - both)
-            if only:
-                notes.append(f"{side}: {len(only)} picture(s) the other side lacks, left out of the blind copy "
-                             f"({', '.join(only)})")
-        for letter, side in key.items():
-            (base / "blind" / letter).mkdir(parents=True)
-            for name in sorted(both):
-                shutil.copy2(base / side / name, base / "blind" / letter / name)
-        (base / "blind" / "key.json").write_text(json.dumps(key, indent=2) + "\n", encoding="utf-8")
+        key, more = blind_copy(base, list(saved), rng)
+        notes += more
     (base / "ask.md").write_text(ask_text(task, check, list(saved), notes, key is not None, saved), encoding="utf-8")
     if key is not None:  # what would unblind the scorer, kept beside the key
         (base / "sides.md").write_text("\n".join(["# Each side's pictures", ""] + side_lines(saved)

@@ -345,6 +345,10 @@ A probe names one measurement and its threshold:
   colour, a beam's reach), `light` (illuminance,
   exposure, brightness at a point), `grading` (the colour pipeline: cast, warmth, tint, saturation, contrast, grey),
   `spawns`, `log`, `asset` (editor: material_default, material:<prop>, mesh_collision, asset properties).
+- **Read text from the game's UI first** (`ui`, `widgets`). `seen` (the visual model reads a named shot of the check's
+  own task play; docs/task-probes.md 2.22) only for text nothing else gives: drawn by a shader, a material or a
+  texture. Give it a loose `rect` or none, and take the shot at a still moment (a clock ticks). It is a visual check:
+  the task still needs a required probe besides it, and the task check saves its crops for you to read blind.
 - `expect`: a literal (`{"op": ">=", "value": 1}`) for facts (counts, booleans, "not the default material"), or
   `{"op": ">=", "calibrate": 0.5}` for continuous quantities: the grader measures the start and the reference in the
   grading environment and puts the threshold that fraction of the way from start to fix; `op` points to the fix's side.
@@ -569,6 +573,7 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 | a spinning part had no speed, or needed its component's name | `spin` of `components` near a point or by `owner`, or an actor's `spin`; calibrated or relative to the start |
 | duplicate effects after a restart went unseen | `components` with `"effect": true` and `near`: `count` of live effects, read after the restart |
 | a score or a timer had to be read as a number, not a string | `ui` `number` or `clock` on a `select` of `"kind": "text"` with a `rect`; `rises`, `falls`, `range` over the window |
+| text drawn by a shader or baked into a texture read nothing to `ui`, even from the frame | `seen` on a `shot` of the check's own task play, taken while the text holds still; a loose `rect` or none (a tight one fails a build that draws it elsewhere) |
 | a lamp lit only by particles read dark | `lit` and `glow` as they are: particle systems are sources |
 | a beam's length had no reading | `drawn` along a `line` from its source: `reach` or `length`, calibrated or relative to the start |
 | a surface's tint change (not emissive) had no reading | `drawn` `near` it: `base_r`/`base_g`/`base_b` or `base_change`, calibrated or relative to the start |

@@ -8,8 +8,8 @@ For one task and each run:
 2. The contractor's harness (Claude Code or Codex, their own subscription and login) runs headless in the workspace
    with the brief as its prompt, within the task's limits (turns where the harness has a flag, minutes always), with
    the machine's recording hooks off (GF_NO_RECORDING). Its transcript is kept.
-3. The workspace is graded as a solution: TaskProbe added, built fresh, played, every check but judges, trace probes
-   and packaging run against the thresholds the start and the reference give (both built and measured once for all
+3. The workspace is graded as a solution: TaskProbe added, built fresh, played, every check but judges, seen probes
+   (a model's reading in the Lab: not asked, and left out of the number), trace probes and packaging run against the thresholds the start and the reference give (both built and measured once for all
    runs). Each `judge` check's plays are then played on the agent's game and the screenshots its judge would see are
    saved under <name>/run<N>/judge-shots/<check>/agent/ with ask.md (judges.py): no model is asked, so whoever runs
    the try looks at them and answers; the run's number leaves judges out, and the result lists them as pending.
@@ -25,7 +25,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import check, judges, seeds, tasks, unreal, verdict
+from . import check, judges, seeds, seen, tasks, unreal, verdict
 
 FORMAT = "task-try/1"
 LONG_MINUTES = 25  # a guide for a long task, not a requirement: what counts is that the agent can't solve it easily (owner, 2026-11-09)
@@ -218,9 +218,10 @@ def outside(path, folders):
 
 def score(task, grade):
     """What a run reached: solved (every required check passed), its score (the weighted share of checks passed, as the
-    cloud scores it, judges left out since a try doesn't run them), required checks passed, milestones reached."""
+    cloud scores it, judges and seen probes left out since a try asks no model), required checks passed, milestones
+    reached."""
     rows = grade["checks"]
-    weighed = [r for r in rows if r.get("kind") not in verdict.JUDGES]
+    weighed = [r for r in rows if r.get("kind") not in verdict.JUDGES and r.get("detail") != seen.NOT_READ]
     total = sum(r.get("weight", 1) for r in weighed)
     earned = sum(r.get("weight", 1) for r in weighed if r["passed"])
     required = [r for r in rows if r["required"]]

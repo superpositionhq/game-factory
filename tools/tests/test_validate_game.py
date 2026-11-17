@@ -106,6 +106,102 @@ class Units(unittest.TestCase):
                          'difficulty \'easy\': a task is "hard" or "medium" (a game needs at least 4 "hard")')
 
 
+class Seen(unittest.TestCase):
+    """A `seen` measure (text a model reads from a named shot; docs/task-probes.md 2.22) and the Lab's rules for it."""
+    SCHEMA = vg.SCHEMAS['game-task']
+    PLAY = {'name': 'three_hits', 'seconds': 10,
+            'inputs': [{'t': 1.0, 'key': 'J', 'press': True}, {'t': 1.1, 'key': 'J', 'press': False},
+                       {'t': 3.6, 'shot': 'combo'}, {'t': 6.0, 'shot': 'later'}, {'t': 8.0, 'shot': 'last'}]}
+
+    def check(self, measure, play=None, expect=None, **over):
+        return dict({'name': 'combo_shows', 'kind': 'probe', 'describe': 'The combo counter drawn on the HUD reads 3',
+                     'play': self.PLAY if play is None else play, 'measure': dict({'probe': 'seen'}, **measure),
+                     'expect': expect or {'op': '>=', 'value': 3}}, **over)
+
+    def errors(self, measure, play=None, expect=None):
+        c = self.check(measure, play, expect)
+        return (list(vg.check_schema(c, self.SCHEMA['$defs']['Probe'], self.SCHEMA))
+                + vg.probe_errors(c, {'commit': 'a', 'reference': 'b'}, 'b', {}))
+
+    def test_the_shapes_the_lab_takes(self):
+        for measure in ({'shot': 'combo', 'rect': [0.70, 0.04, 0.98, 0.16], 'read': 'number'},
+                        {'shot': 'combo', 'read': 'number'},                        # no rect: the whole frame
+                        {'shot': 'combo', 'read': 'text', 'match': r'COMBO\s*x?3'},
+                        {'shot': 'combo', 'read': 'clock', 'rect': [0.4, 0.0, 0.6, 0.02]},
+                        {'shot': ['combo', 'later'], 'read': 'number', 'agg': 'rises'},
+                        {'shot': ['combo', 'later', 'last'], 'read': 'clock', 'agg': 'delta'}):
+            self.assertEqual(self.errors(measure), [], measure)
+        for expect in ({'op': '>=', 'calibrate': 0.5}, {'op': '>=', 'start_plus': 1}, {'op': '==', 'value': 1}):
+            self.assertEqual(self.errors({'shot': 'combo', 'read': 'number'}, expect=expect), [], expect)
+
+    def test_the_schema_refuses_what_the_lab_refuses(self):
+        for measure in ({'shot': 'Combo', 'read': 'number'}, {'shot': ['combo'], 'read': 'number', 'agg': 'max'},
+                        {'shot': ['a', 'b', 'c', 'd', 'e'], 'read': 'number', 'agg': 'max'},
+                        {'shot': 'combo', 'read': 'number', 'rect': [0, 0, 1.2, 1]},
+                        {'shot': 'combo', 'read': 'number', 'rect': [0, 0, 1]},
+                        {'shot': 'combo', 'read': 'words'}, {'read': 'number'}, {'shot': 'combo'},
+                        {'shot': 'combo', 'read': 'text', 'match': ''},
+                        {'shot': 'combo', 'read': 'text', 'match': 'x' * 201},
+                        {'shot': ['combo', 'later'], 'read': 'number', 'agg': 'mean'},
+                        {'shot': 'combo', 'read': 'number', 'window': [1, 2]},          # no other key
+                        {'shot': 'combo', 'read': 'number', 'field': 'number'}):
+            c = self.check(measure)
+            self.assertTrue(list(vg.check_schema(c, self.SCHEMA['$defs']['Probe'], self.SCHEMA)), measure)
+
+    def test_the_rules_the_schema_cannot_say(self):
+        def said(measure, play=None):
+            return vg.seen_errors('combo_shows', measure, self.PLAY if play is None else play)
+        for play in ('look', 'drive', 'editor'):
+            self.assertEqual(said({'shot': 'combo', 'read': 'number'}, play),
+                             [f'check combo_shows: a seen measure reads a named shot of a task play of its own, never of {play}'])
+        self.assertEqual(said({'shot': 'menu', 'read': 'number'}),
+                         ['check combo_shows: its play three_hits takes no shot named menu (a `shot` input)'])
+        self.assertEqual(said({'shot': ['combo', 'menu'], 'read': 'number', 'agg': 'max'}),
+                         ['check combo_shows: its play three_hits takes no shot named menu (a `shot` input)'])
+        tight = 'check combo_shows: a seen rect is [x0, y0, x1, y1], at least 0.02 of the frame each way'
+        self.assertEqual(said({'shot': 'combo', 'read': 'number', 'rect': [0.5, 0.5, 0.51, 0.9]}), [tight])
+        self.assertEqual(said({'shot': 'combo', 'read': 'number', 'rect': [0.5, 0.5, 0.9, 0.515]}), [tight])
+        self.assertEqual(said({'shot': 'combo', 'read': 'number', 'rect': [0.9, 0.5, 0.5, 0.9]}), [tight])
+        self.assertEqual(said({'shot': 'combo', 'read': 'number', 'rect': [0.5, 0.5, 0.52, 0.52]}), [])
+        match = 'check combo_shows: a seen measure takes `match` exactly when it reads text'
+        self.assertEqual(said({'shot': 'combo', 'read': 'text'}), [match])
+        self.assertEqual(said({'shot': 'combo', 'read': 'number', 'match': '3'}), [match])
+        self.assertIn("isn't a regular expression", said({'shot': 'combo', 'read': 'text', 'match': '(3'})[0])
+        listed = 'check combo_shows: a seen measure reads a list of shots as a number or a clock, with an `agg`'
+        self.assertEqual(said({'shot': ['combo', 'later'], 'read': 'number'}), [listed])
+        self.assertEqual(said({'shot': ['combo', 'later'], 'read': 'text', 'match': '3', 'agg': 'max'}), [listed])
+        self.assertEqual(said({'shot': ['combo', 'combo'], 'read': 'number', 'agg': 'max'}),
+                         ['check combo_shows: a seen measure names a shot twice'])
+        self.assertEqual(said({'shot': 'combo', 'read': 'number', 'agg': 'max'}),
+                         ['check combo_shows: a seen measure of one shot takes no `agg`'])
+        self.assertEqual(said({'shot': 'combo', 'read': 'number'}), [])
+
+    def test_a_task_with_one_validates_and_counts_it_as_an_outcome(self):
+        """A required, weighted seen probe outside still_works is a required probe the task check gates on, so it
+        counts toward the outcomes; it is no literal-refused field, names nothing the reference may add, and takes no
+        capture of the probe's own, so a render measure may share its play."""
+        render = {'name': 'budget', 'kind': 'probe', 'describe': 'Draw calls stay in budget', 'play': self.PLAY,
+                  'measure': {'probe': 'render', 'field': 'draw_calls', 'agg': 'max'}, 'expect': {'op': '<=', 'value': 700}}
+        t = {'milestones': [{'name': 'fix', 'checks': [self.check({'shot': 'combo', 'read': 'number'}), render]}]}
+        self.assertEqual(vg.task_semantic_errors(t), [])
+        self.assertEqual(vg.render_errors(t['milestones'][0]['checks']), [])
+        self.assertEqual([c['name'] for c in vg.outcome_probes(t)], ['combo_shows', 'budget'])
+        self.assertEqual(vg.probe_names(t['milestones'][0]['checks'][0]), (set(), set()))
+
+    def test_a_seen_probe_alone_is_no_required_probe(self):
+        """As the Lab's dataset format: a task needs a required probe besides its visual checks (a seen probe is a
+        model's reading)."""
+        def said(*checks):
+            rep = vg.Report()
+            vg.check_task(rep, 'tasks', 't', {'milestones': [{'name': 'fix', 'checks': list(checks)}]}, 'g', None)
+            return [m for sev, _a, m in rep.items if sev == 'error' and 'no required probe check' in m]
+        seen = self.check({'shot': 'combo', 'read': 'number'})
+        self.assertEqual(len(said(seen)), 1)
+        self.assertEqual(len(said(seen, dict(seen, name='hud', measure={'probe': 'ui', 'field': 'number'}))), 0)
+        self.assertTrue(vg.is_seen(seen))
+        self.assertFalse(vg.is_seen(dict(seen, measure={'probe': 'ui', 'field': 'number'})))
+
+
 class Sessions(unittest.TestCase):
     """History/sessions/ as the recording hooks write it since 2026-11-11 (reasoning summaries as role "thinking" rows,
     a tool call's whole output) and as they wrote it before: both pass without a warning."""

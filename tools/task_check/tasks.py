@@ -142,7 +142,8 @@ def measure(m):
     ("count") for selections, `field` ("count") for the log, `to` and `point` with their defaults, a pieces measure's
     `select` ({} when unset), a screen measure's `rect` (the whole frame when unset), an audio measure's `select` ({}
     when unset), a ground measure's `xy`, `box`, `select` (None when unset) and `grid` (8), and a ui measure's `select`
-    ({} when unset), `of` ("count") and `match` (None), and a drawn measure's `near` and `line` (None when unset)."""
+    ({} when unset), `of` ("count") and `match` (None), a drawn measure's `near` and `line` (None when unset), and a
+    seen measure's `rect`, `match` and `agg` (None when unset)."""
     out = dict(m)
     kind = out["probe"]
     if kind in SAMPLED:
@@ -182,6 +183,9 @@ def measure(m):
             out["select"] = select(out["select"])
     elif kind == "log":
         out.setdefault("field", "count")
+    elif kind == "seen":  # read from a named shot (seen.py), not by the plugin
+        for k in ("rect", "match", "agg"):
+            out.setdefault(k, None)
     return out
 
 

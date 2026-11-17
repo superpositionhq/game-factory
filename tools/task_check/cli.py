@@ -10,7 +10,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import check, judges, seeds, tasks, unreal
+from . import check, judges, seeds, seen, tasks, unreal
 
 USAGE = __doc__
 
@@ -81,6 +81,8 @@ def write_progress(out, started, names, results, now=None):
         lines.append(f"  {line(r)}" + (f"  ({round(r['seconds'] / 60)} min)" if r.get("seconds") else ""))
         lines += [f"    {judges.line(n, j)}: {r['task']}/judge-shots/{n}/ask.md"
                   for n, j in (r.get("judges") or {}).items()]
+        lines += [f"    {seen.line(n, j)}: {r['task']}/seen-shots/{n}/ask.md"
+                  for n, j in (r.get("seen") or {}).items() if j.get("status") != seen.ANSWERED]
     if done < len(names):
         lines.append(f"  checking {names[done]}" + (f", then {len(names) - done - 1} more" if done + 1 < len(names) else ""))
     Path(out).mkdir(parents=True, exist_ok=True)
@@ -88,7 +90,9 @@ def write_progress(out, started, names, results, now=None):
     (Path(out) / "progress.json").write_text(json.dumps(
         {"format": "task-check-progress/1", "started": started, "updated": now, "tasks": names,
          "done": [{"task": r["task"], "verdict": r["verdict"], "reasons": r["reasons"], "seconds": r.get("seconds"),
-                   "judges_pending": sorted(r.get("judges") or {})} for r in results],
+                   "judges_pending": sorted(r.get("judges") or {}),
+                   "seen_pending": sorted(n for n, j in (r.get("seen") or {}).items()
+                                          if j.get("status") != seen.ANSWERED)} for r in results],
          "finished": done == len(names)}, indent=2), encoding="utf-8")
 
 
