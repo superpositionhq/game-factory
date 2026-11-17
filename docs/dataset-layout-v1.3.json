@@ -1,8 +1,8 @@
 {
   "schema": "dataset-layout/v1.3",
   "approved": "2026-10-15",
-  "changes": "2026-11-10 (owner, no new layout version: nothing required changes): the bundle holds main's history and the tasks' start branches only, as the Lab's check already required. History/sessions/ may hold the creation sessions as recorded, messages.jsonl (every prompt the person typed and every reply the model wrote) and actions.jsonl (every tool call); the user.direction rows stay, and no longer stand in for the conversation. v1.3 (2026-10-15, user): Tasks/ with the game's tasks (from Tasks/ on the game repo's orphan tasks branch, never on main; about 10 recommended, at least one), each split into the agent's part and the grader's part, plus a generated Tasks/README.md. v1.2 (2026-10-15, user): the dataset carries the full git history (History/: a git bundle of every commit and every Git LFS object) and the original brief and design doc (Brief/); workflow.jsonl is the record of the person's directions (user.direction rows), no conversation transcripts. v1.1 (2026-10-12): no replay video; ReplayScripts/ only; Dataset.zip next to Dataset/.",
-  "description": "Our standard delivery layout for every game: the creation record (git.log, workflow.jsonl, ReplayScripts/, the full git history in History/, the brief and design doc in Brief/), the game's tasks in Tasks/, the project, per-scenario gameplay videos, README screenshots and the packaged build. docs/game-format.md is the prose version of this file (v1.1: docs/game-deliverable.md); tools/validate-dataset.ps1 checks against this file.",
+  "changes": "2026-11-17: new deliveries carry Checks/ with task-check/2 results bound to each delivered task and writer-task-scores/1; validation warns by default until --checks-mode reject is selected. 2026-11-10 (owner, no new layout version: nothing required changes): the bundle holds main's history and the tasks' start branches only, as the Lab's check already required. History/sessions/ may hold the creation sessions as recorded, messages.jsonl (every prompt the person typed and every reply the model wrote) and actions.jsonl (every tool call); the user.direction rows stay, and no longer stand in for the conversation. v1.3 (2026-10-15, user): Tasks/ with the game's tasks (from Tasks/ on the game repo's orphan tasks branch, never on main; about 10 recommended, at least one), each split into the agent's part and the grader's part, plus a generated Tasks/README.md. v1.2 (2026-10-15, user): the dataset carries the full git history (History/: a git bundle of every commit and every Git LFS object) and the original brief and design doc (Brief/); workflow.jsonl is the record of the person's directions (user.direction rows), no conversation transcripts. v1.1 (2026-10-12): no replay video; ReplayScripts/ only; Dataset.zip next to Dataset/.",
+  "description": "Our standard delivery layout for every game: the creation record (git.log, workflow.jsonl, ReplayScripts/, the full git history in History/, the brief and design doc in Brief/), the game's tasks in Tasks/ and their writer checks and scores in Checks/, the project, per-scenario gameplay videos, README screenshots and the packaged build. docs/game-format.md is the prose version of this file (v1.1: docs/game-deliverable.md); tools/validate-dataset.ps1 checks against this file.",
   "names": {
     "zip": "Dataset.zip",
     "zip_place": "the game repo's own folder, next to Dataset/ (git-ignored, with the packager's scratch in .dataset/)",
@@ -63,6 +63,13 @@
       "must_contain": [
         "README.md"
       ]
+    },
+    {
+      "name": "Checks",
+      "kind": "dir",
+      "required": false,
+      "in_repo_dataset": false,
+      "what": "Writer check results and scores: <task>.json (task-check/2, VALID, fresh and bound by task_digest to the merged delivered task) for every shipped task, writer-scores.json (writer-task-scores/1, one row per task), and <task>/{judge-shots|seen-shots}/<check>/blind/answers.json only. No probe.json, screenshots, logs or blind keys. New packaging requires all results and scores; validate-game.py reports missing or invalid Checks/ as warnings until --checks-mode reject is selected."
     },
     {
       "name": "UEProject",
@@ -190,7 +197,7 @@
     ],
     "history_rule": "full variant: history is an object (head = commit, the bundle holds every commit, every LFS object of every commit is under History/lfs/objects); repo-dataset: history is null (the repo is its own history)",
     "brief_rule": "brief lists the Brief/ files: {\"brief\": \"Brief/brief.md\", \"design\": \"Brief/design.md\"}",
-    "tasks_rule": "tasks: {\"count\": n >= 1, \"names\": [the task names], \"schema\": \"game-task/1\"}",
+    "tasks_rule": "tasks: {\"count\": n >= 1, \"names\": [the task names], \"schema\": \"game-task/1\", \"last_commit_at\": {taskName: ISO 8601 UTC timestamp of that task file last commit on the original tasks branch}}; last_commit_at required with writer checks, legacy deliveries warn until reject mode",
     "platform_rule": "platform is optional: absent is a desktop game; {\"kind\": \"mobile\", \"orientation\": \"landscape\" | \"portrait\"} is an Android phone game, whose gameplay videos are 1920x1080 (landscape) or 1080x1920 (portrait), recorded from the Windows build running the engine's mobile renderer, and whose full dataset's build names its apk (Build/Android/<name>.apk, arm64-v8a; required, never null); UEProject/Platform.json says the same platform and orientation"
   },
   "readme": {
@@ -250,6 +257,13 @@
       "grader.json": "name, seed {reference} when the task has one, milestones"
     },
     "seed_rules": "seed.game = the dataset's game; seed.commit and seed.reference are commits of History/<game>.bundle",
-    "harness_rule": "An agent given a task starts from a history-less snapshot of the game at seed.commit with Tasks/, History/ and Dataset/ removed (they hold every task's rubrics and references): only the brief and that snapshot. The grader's half (milestones: rubrics, judge and code-judge questions, log_absent patterns; and seed.reference) never reaches the agent."
+    "harness_rule": "An agent given a task starts from a history-less snapshot of the game at seed.commit with Tasks/, Checks/, History/ and Dataset/ removed (they hold every task's rubrics and references): only the brief and that snapshot. The grader's half (milestones: rubrics, judge and code-judge questions, log_absent patterns; and seed.reference) never reaches the agent."
+  },
+  "writer_checks": {
+    "result": "Checks/<task>.json: task-check/2 (docs/schemas/task-check.schema.json), the newest .task-checks/<task>.json, VALID; at >= the task file last commit on the tasks branch; task_digest equals the canonical SHA-256 of the merged delivered task; manifest.tasks.last_commit_at records those source task commit times (ISO 8601 UTC)",
+    "canonicalisation": "json.dumps(merged_task, sort_keys=True, separators=(\",\", \":\"), ensure_ascii=False), encoded UTF-8; grader milestones over task, grader seed merged into task seed; packaging verifies the source binding, allows only full commit-ID substitutions via the package commit map, refuses any other task scrub change, then rebinds task_digest to the delivered task",
+    "scores": "Checks/writer-scores.json: writer-task-scores/1 (docs/schemas/writer-task-scores.schema.json), tasks keyed by every shipped task name; difficulty_estimate hard|medium matching the task, quality integer 1-5, positive minutes_to_solve_estimate, judges by check name with start/reference rubric-key 0-1 scores from blind answers in task notes, notes plain text on one line <=300 characters",
+    "answers": "Only Checks/<task>/{judge-shots|seen-shots}/<check>/blind/answers.json; probe.json, screenshots, logs and blind keys stay out",
+    "validation": "New packaging always refuses missing, malformed, stale, unbound or non-VALID checks and incomplete scores or required answers. validate-game.py --checks-mode warn (default) warns; --checks-mode reject makes these findings errors."
   }
 }

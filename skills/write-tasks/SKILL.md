@@ -472,12 +472,27 @@ of the task. Step by step:
    `start` and `reference` measures, its `threshold`, and `start_passed` / `reference_passed`); `start_checks` and
    `reference_checks` (every check's row on each side, with its `detail`). Each play's `probe.json`, screenshots and
    log are under `.task-checks\<name>\start\<play>\` and `reference\<play>\`.
-5. **Answer what the check can't**: every required `judge` (`judge-shots\`, above) and every `seen` probe
-   (`seen-shots\`, [docs/task-check.md](../../docs/task-check.md)), blind first. A required judge passes on the
-   oracle only when the reference scores every required item; a required `seen` probe decides nothing until both sides
-   are answered.
+5. **Answer what the check can't, then ask the person for each task's scores**: every required `judge`
+   (`judge-shots\`, above) and every `seen` probe (`seen-shots\`,
+   [docs/task-check.md](../../docs/task-check.md)), blind first. A required judge passes on the oracle only when the
+   reference scores every required item; a required `seen` probe decides nothing until both sides are answered.
+   Keep each judge's blind 0-1 rubric scores in the task's notes (`tasks-workflow.jsonl`), then copy them by judge
+   name, side (`start`, `reference`) and rubric key into `judges` in
+   `<GF_ROOT>\games\<slug>\.task-checks\writer-scores.json`. Before packaging, **ask the person** for every task's
+   `difficulty_estimate` (`hard` or `medium`, matching its `difficulty`; omitted difficulty means medium), `quality`
+   (integer 1-5: a long thread, every ask checked, fair to an agent), `minutes_to_solve_estimate` (positive number,
+   their estimate for a strong agent; section 6's 25-minute guide), and `notes` (one line of plain text, at most 300
+   characters, data only). Record their answers; never guess the person's scores or missing blind judge answers.
+   The file is `{"schema":"writer-task-scores/1","tasks":{"<name>":{"difficulty_estimate":"hard","quality":4,
+   "minutes_to_solve_estimate":45,"judges":{},"notes":"Several interacting changes; every ask checked."}}}` with
+   exactly one row per shipped task; `{}` is for a task with no judges. The schema and full judge example are in
+   [docs/task-check.md](../../docs/task-check.md), "Writer scores and delivery".
 6. **Fix and run again** each task that isn't VALID (`--task <name>`), and run again every task you changed after its
-   last VALID check, however small the change.
+   last VALID check, however small the change. Commit task edits before the check: the newest
+   `.task-checks\<name>.json` must be `task-check/2`, VALID, at least as new as that task file's last commit on the
+   tasks branch, and bound to the exact task by `task_digest`. Packaging refuses anything else, and refuses missing
+   scores or required answers. It ships `Checks/<name>.json`, `Checks/writer-scores.json` and only the small blind
+   answer JSON files; `probe.json`, screenshots and logs stay out.
 
 What each verdict means:
 
@@ -634,7 +649,7 @@ filter rejects such briefs and rubrics.
 ## 7. What must never reach the agent
 
 The agent sees only the brief and the game at `seed.commit` (a commit of main, so without the tasks branch) as a fresh
-repository without history, `Tasks/`, `History/` or `Dataset/` (the harness rule: those hold every task's checks and the reference fixes). The grader's
+repository without history, `Tasks/`, `Checks/`, `History/` or `Dataset/` (the harness rule: those hold every task's checks and the reference fixes). The grader's
 half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed.reference`) never reaches it. So:
 
 - the instruction holds nothing of the grader's half and does not describe the fix;
