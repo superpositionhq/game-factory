@@ -533,6 +533,7 @@ class Cli(unittest.TestCase):
             self.assertIn("VALID   g-fix-one  (1 min)", final)
             self.assertTrue(json.loads((out / "progress.json").read_text(encoding="utf-8"))["finished"])
 
+    @unittest.skipUnless(os.name == "nt", "Windows drive semantics")
     def test_the_default_scratch_is_on_the_repos_own_drive(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp) / "repos" / "metro-runner"
