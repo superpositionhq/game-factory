@@ -16,7 +16,8 @@ grader's own reduction on those lines (`read`) and uses the values as the two si
 An answer stands while the crop it was given for is the same (crops.json: each crop's sha256): the folder is kept
 across task checks, and a crop that changed (another commit, another play) needs a new answer.
 
-The crop is the shot's own pixels: the checker has no image library to scale it as the Lab does (Lanczos, the
+The crop is the shot's own pixels (a mobile play's shot first kept within 960x540, or 540x960 held upright, as the Lab
+keeps every play's shots: shrink): the checker has no image library to scale it up as the Lab does (Lanczos, the
 smallest whole factor up to MAX_SCALE that makes its shorter side MIN_SIDE px), so it is saved unscaled and ask.md
 says how the Lab scales it. A PNG this module can't read (interlaced, under 8 bits a sample) is saved whole, with its
 rect in ask.md."""
@@ -182,10 +183,46 @@ def lab_scale(width, height):
     return next((k for k in range(1, MAX_SCALE + 1) if short * k >= MIN_SIDE), MAX_SCALE)
 
 
-def crop(png, rect=None):
+def fitted(width, height, within):
+    """The size a width x height shot is kept at within `within` (w, h), as the Lab keeps a play's screenshots: its
+    aspect kept, never enlarged."""
+    scale = min(within[0] / width, within[1] / height)
+    return (width, height) if scale >= 1 else (max(1, round(width * scale)), max(1, round(height * scale)))
+
+
+def shrink(png, within):
+    """`png` made to fit `within` (fitted) by averaging the pixels each new one covers, as RGB; the shot as it is when
+    it already fits. A mobile play's shots are taken at the phone's size, and the Lab reads them only after keeping
+    them within 960x540 (540x960 held upright), so a crop of the shot as taken would show more than the Lab's model
+    sees."""
+    width, height = size(png)
+    w, h = fitted(width, height, within)
+    if (w, h) == (width, height):
+        return png
+    rows = _rgb(png, (0, 0, width, height))
+    xs = [(x * width // w, max(x * width // w + 1, (x + 1) * width // w)) for x in range(w)]
+    out = []
+    for y in range(h):
+        y0, y1 = y * height // h, max(y * height // h + 1, (y + 1) * height // h)
+        line = bytearray()
+        for x0, x1 in xs:
+            n = (x1 - x0) * (y1 - y0)
+            for c in range(3):
+                line.append(round(sum(rows[yy][3 * xx + c] for yy in range(y0, y1) for xx in range(x0, x1)) / n))
+        out.append(bytes(line))
+    return _png(w, out)
+
+
+def crop(png, rect=None, within=None):
     """(PNG bytes, whole): screenshot `png` cropped to `rect` as the Lab crops it, unscaled, as RGB; the shot as taken
-    when there is no rect, and when its PNG is of a kind this module doesn't read (`whole` True then). ValueError when
-    `png` is no PNG or the crop is empty."""
+    when there is no rect, and when its PNG is of a kind this module doesn't read (`whole` True then). `within`: the
+    size the Lab keeps the play's shots within (a mobile play's: shrink), first. ValueError when `png` is no PNG or the
+    crop is empty."""
+    if within is not None:
+        try:
+            png = shrink(png, within)
+        except (ValueError, zlib.error, struct.error, IndexError):
+            return png, True
     width, height = size(png)
     found = box(width, height, rect)
     if rect is None:
@@ -197,9 +234,10 @@ def crop(png, rect=None):
     return _png(found[2] - found[0], rows), False
 
 
-def crops(measure, files, why_missing):
+def crops(measure, files, why_missing, within=None):
     """{shot: (crop or None, why none)} of a seen measure from a play's files (shot_<name>.png); each crop is
-    {"png", "whole", "sha256"}. `why_missing(name)`: why a shot isn't there."""
+    {"png", "whole", "sha256"}. `why_missing(name)`: why a shot isn't there. `within`: the size the Lab keeps the
+    play's shots within (a mobile play's), None for a desktop play's, whose shots are already that size."""
     out = {}
     for name in shots(measure):
         png = files.get(f"shot_{name}.png")
@@ -207,7 +245,7 @@ def crops(measure, files, why_missing):
             out[name] = (None, why_missing(name))
             continue
         try:
-            found, whole = crop(png, measure.get("rect"))
+            found, whole = crop(png, measure.get("rect"), within)
         except ValueError as exc:
             out[name] = (None, f"shot {name}: {exc}")
             continue

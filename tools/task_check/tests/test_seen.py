@@ -93,6 +93,30 @@ class Crop(unittest.TestCase):
         self.assertEqual(seen.lab_scale(960, 540), 1)
 
 
+class Shrink(unittest.TestCase):
+    """A mobile play's shot is kept within 960x540 (540x960 upright) before it is cropped, as the Lab keeps it: each
+    new pixel the mean of the ones it covers."""
+
+    def test_a_shot_twice_the_size_is_halved_by_averaging(self):
+        shot = png(8, 4, colour)
+        half = seen.shrink(shot, (4, 2))
+        self.assertEqual(seen.size(half), (4, 2))
+        full = rgb(shot)
+        for y, row in enumerate(rgb(half)):
+            for x, got in enumerate(row):
+                cover = [full[2 * y + j][2 * x + i] for j in (0, 1) for i in (0, 1)]
+                self.assertEqual(got, tuple(round(sum(p[c] for p in cover) / 4) for c in range(3)))
+
+    def test_a_shot_that_fits_is_kept_and_the_crop_is_of_the_kept_size(self):
+        shot = png(8, 4, colour)
+        self.assertIs(seen.shrink(shot, (8, 4)), shot)
+        self.assertEqual(seen.fitted(1920, 1080, (960, 540)), (960, 540))
+        self.assertEqual(seen.fitted(1080, 1920, (540, 960)), (540, 960))
+        found, whole = seen.crop(shot, [0.0, 0.0, 0.5, 1.0], (4, 2))
+        self.assertFalse(whole)
+        self.assertEqual(seen.size(found), (2, 2))
+
+
 class Read(unittest.TestCase):
     def found(self, *names):
         return {n: ({"png": b"", "whole": False, "sha256": f"sha-{n}"}, None) for n in names}

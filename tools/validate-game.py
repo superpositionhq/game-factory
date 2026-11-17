@@ -815,6 +815,142 @@ def near_errors(n, o):
     return errs
 
 
+SELECT_KEYS = ('class', 'tag', 'name', 'near', 'has')  # what an actor select picks by (`player`: only when true)
+WHERE_VALUE = 120  # characters a `where` value holds at most
+
+
+def actor_selects(o, measure=None):
+    """Every actor select inside `o` (a measure, a play's inputs): a measure's own select when it picks actors
+    (actors, ground, a map's asset measure), the `owner` of a components, audio or pieces select, an actor point's
+    `actor`, and an input's `pin`, `teleport_to`, `on` and a damage input's `to` and `from`."""
+    if isinstance(measure, dict):
+        sel = measure.get('select')
+        if measure.get('probe') in ('actors', 'ground', 'asset') and isinstance(sel, dict):
+            yield sel
+        if measure.get('probe') in ('components', 'audio', 'pieces') and isinstance(sel, dict) \
+                and isinstance(sel.get('owner'), dict):
+            yield sel['owner']
+    if isinstance(o, dict):
+        if isinstance(o.get('actor'), dict):
+            yield o['actor']
+        for k in ('pin', 'teleport_to', 'on'):
+            if isinstance(o.get(k), dict):
+                yield o[k]
+        if 'damage' in o:
+            for k in ('to', 'from'):
+                if isinstance(o.get(k), dict):
+                    yield o[k]
+        for v in o.values():
+            yield from actor_selects(v)
+    elif isinstance(o, list):
+        for v in o:
+            yield from actor_selects(v)
+
+
+def select_errors(n, o, measure=None):
+    """The rules of every actor select in `o` (actor_selects), for check `n`: it picks by at least one of class, tag,
+    name, near, player (true) or has, so it never matches every actor by accident, and a `where` value is at most
+    WHERE_VALUE characters."""
+    errs = []
+    for sel in actor_selects(o, measure):
+        if not any(sel.get(k) is not None for k in SELECT_KEYS) and sel.get('player') is not True:
+            errs.append(f'check {n}: a select names at least one of class, tag, name, near, player, has')
+        for w in sel.get('where') or []:
+            if isinstance(w, dict) and isinstance(w.get('value'), str) and len(w['value']) > WHERE_VALUE:
+                errs.append(f'check {n}: a where value is at most {WHERE_VALUE} characters')
+    return errs
+
+
+def regex_errors(n, patterns):
+    """`n`'s regular expressions that don't compile, one error each."""
+    errs = []
+    for pattern in patterns:
+        try:
+            re.compile(pattern) if isinstance(pattern, str) else None
+        except re.error as e:
+            errs.append(f"check {n}: {pattern!r} isn't a regular expression ({e})")
+    return errs
+
+
+ANGLE_FIELDS = ('yaw', 'pitch', 'roll', 'world_yaw', 'world_pitch')
+ANGLE_FIELD_PREFIXES = ('rel_yaw:', 'world_yaw:', 'world_pitch:', 'world_roll:')
+AUDIO_STARTS = ('started', 'started_audible', 'sounds', 'repeats')  # read over the sounds that started
+AUDIO_NAMES = ('sounds', 'repeats')
+
+
+def measure_errors(n, measure):
+    """A measure's own rules beyond the schema, for check `n` (the shapes the cloud grader refuses): a `window` is
+    [t0, t1] with 0 <= t0 < t1 <= 120 and never beside `at`; `to_angle` or `to_axis`, not both, and only on an angle
+    field (a `prop:` too; on an asset measure only a `prop:`); a pawn measure takes `to` exactly when it reads `dist`;
+    an actors measure's `match` reads a prop: or bb: field; a widgets measure takes `match` exactly when it reads text
+    or brush, and its select names a class, a name or a Slate type (a UMG class or a Slate type, not both); audio's
+    sounds and repeats take no `agg`, and a started field no `owner`; an asset measure names an `asset` or a `map`:
+    an asset reads a prop: and takes no select, a map selects its actors by class, tag, name or near a fixed point,
+    never by `where` or `player`, and its `match` reads a prop: or material: field; every regular expression
+    compiles; and every actor select's rules (select_errors)."""
+    errs, probe, field = [], measure.get('probe'), measure.get('field')
+    field = field if isinstance(field, str) else ''
+    window = measure.get('window')
+    if window is not None and measure.get('at') is not None:
+        errs.append(f'check {n}: a measure takes `window` or `at`, not both')
+    if isinstance(window, list) and len(window) == 2 and all(_is(v, 'number') for v in window) \
+            and not 0 <= window[0] < window[1] <= 120:
+        errs.append(f'check {n}: a window is [t0, t1] with 0 <= t0 < t1 <= 120')
+    to_angle, to_axis = measure.get('to_angle'), measure.get('to_axis')
+    if to_angle is not None and to_axis is not None:
+        errs.append(f'check {n}: a measure takes `to_angle` or `to_axis`, not both')
+    elif to_angle is not None or to_axis is not None:
+        if probe == 'asset' and not field.startswith('prop:'):
+            errs.append(f'check {n}: `to_angle`/`to_axis` on an asset measure go with a prop:<angle> field')
+        elif probe != 'asset' and not (field in ANGLE_FIELDS or field.startswith(ANGLE_FIELD_PREFIXES + ('prop:',))):
+            errs.append(f"check {n}: `to_angle`/`to_axis` go with an angle field (yaw, pitch, roll, rel_yaw:<Component>, "
+                        "world_yaw:/world_pitch:/world_roll:<Component>, components' world_yaw/world_pitch, "
+                        'prop:<angle>)')
+    if probe == 'pawn' and (field == 'dist') != (measure.get('to') is not None):
+        errs.append(f'check {n}: a pawn measure takes `to` (a point) exactly when its field is dist')
+    if probe == 'actors' and measure.get('match') is not None and not field.startswith(('prop:', 'bb:')):
+        errs.append(f'check {n}: `match` goes with a prop: or bb: field')
+    if probe == 'widgets':
+        if (field in ('text', 'brush')) != (measure.get('match') is not None):
+            errs.append(f'check {n}: a widgets measure takes `match` exactly when its field is text or brush')
+        sel = measure.get('select') if isinstance(measure.get('select'), dict) else {}
+        if sel.get('class') is None and sel.get('name') is None and sel.get('slate') is None:
+            errs.append(f'check {n}: a widget select names its class, its name or its Slate type')
+        if sel.get('class') is not None and sel.get('slate') is not None:
+            errs.append(f'check {n}: a widget select names a UMG class or a Slate type, not both')
+        errs.extend(regex_errors(n, [sel.get('text')]))
+    if probe == 'audio':
+        sel = measure.get('select') if isinstance(measure.get('select'), dict) else {}
+        if field in AUDIO_NAMES and measure.get('agg') is not None:
+            errs.append(f'check {n}: audio `{field}` is read over the starts of every sample picked, so it takes no agg')
+        if field in AUDIO_STARTS and sel.get('owner') is not None:
+            errs.append(f'check {n}: audio `{field}` takes no `owner`: a start is selected at the sample after it, when '
+                        'an owner that died with its sound is gone; select by sound, sound_class or near')
+    if probe == 'asset':
+        asset, map_, sel = measure.get('asset'), measure.get('map'), measure.get('select')
+        if (asset is None) == (map_ is None):
+            errs.append(f'check {n}: an asset measure names an `asset` or a `map`, one of them')
+        elif asset is not None and (sel is not None or not field.startswith('prop:')):
+            errs.append(f'check {n}: an `asset` measure reads a prop:<property> and takes no select')
+        elif map_ is not None and sel is None:
+            errs.append(f'check {n}: a `map` measure selects its actors (`select`)')
+        if isinstance(sel, dict):
+            near = sel.get('near') if isinstance(sel.get('near'), dict) else {}
+            point = near.get('point') if isinstance(near.get('point'), dict) else {}
+            if sel.get('player') is True or (near and 'xyz' not in point):
+                errs.append(f'check {n}: a map as saved has no player or camera: select by class, tag, name or near a '
+                            'fixed point')
+            if sel.get('where') is not None or sel.get('player') is not None:
+                errs.append(f'check {n}: a map as saved is selected by class, tag, name or near, never by `where` or '
+                            '`player`')
+        if measure.get('match') is not None and not field.startswith(('prop:', 'material:')):
+            errs.append(f'check {n}: `match` goes with a prop: or material: field')
+    if probe in ('actors', 'widgets', 'components', 'asset', 'log'):
+        errs.extend(regex_errors(n, [measure.get('match'), measure.get('pattern')]))
+    errs.extend(select_errors(n, None, measure))
+    return errs
+
+
 def named_shots(play):
     """The names of the screenshots a task play's `shot` inputs take."""
     return [i['shot'] for i in play.get('inputs') or [] if isinstance(i, dict) and isinstance(i.get('shot'), str)]
@@ -838,8 +974,18 @@ def task_play_errors(n, play, plays):
         # the engine reads `Name=` anywhere on its command line, so a `Name=` inside a value sets a flag too
         names = ([mm.group(1)] + re.findall(r'([A-Za-z][A-Za-z0-9]*)=', arg.split('=', 1)[1] if '=' in arg else '')
                  if mm else [])
-        for name in (x for x in names if x.lower() in DENIED_PLAY_ARGS or x.lower().startswith('taskprobe')):
+        # the probe plugin's own flags, this repo's and the cloud grader's (named GameEnv there)
+        for name in (x for x in names if x.lower() in DENIED_PLAY_ARGS or x.lower().startswith(('taskprobe', 'gameenv'))):
             errs.append(f"check {n}: a task play can't set -{name}")
+    after = play.get('after') if isinstance(play.get('after'), list) else []
+    if len(set(map(str, after))) != len(after):
+        errs.append(f'check {n}: play {pname} names a play twice in its after')
+    for i in play.get('inputs') or []:
+        if isinstance(i, dict) and i.get('wheel') == 0 and not isinstance(i.get('wheel'), bool):
+            errs.append(f'check {n}: play {pname}: a wheel input turns at least one notch')
+        if isinstance(i, dict) and isinstance(i.get('move'), list) and i['move'] and not any(i['move']):
+            errs.append(f'check {n}: play {pname}: a move input moves the mouse')
+    errs.extend(select_errors(n, play.get('inputs')))
     waits = sum(i['wait'] for i in play.get('inputs') or []
                 if isinstance(i, dict) and isinstance(i.get('wait'), (int, float)))
     if waits > WAITS:
@@ -1040,6 +1186,7 @@ def probe_errors(c, seed, ref, plays):
             errs.append(f"check {n}: a ui select's `text` picks text elements: its kind is text or unset")
     if probe == 'seen':
         errs.extend(seen_errors(n, measure, play))
+    errs.extend(measure_errors(n, measure))
     if rel and expect.get('op') in ('==', '!='):
         errs.append(f'check {n}: == and != take a literal value, never a calibrated threshold')
     if rel == 'calibrate' and not ref:

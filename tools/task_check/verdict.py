@@ -22,6 +22,10 @@ A task is VALID when
   measured nothing for (its play crashed: the task's own bug) is no sign of a broken probe;
 - a required check of weight 0 outside still_works that the start passes is a guard, not refused (it rewards
   nothing; a task may hold more guards than still_works' 32);
+- no check holds a task error on either side: a probe whose selector reads nothing in the reference's play, or a
+  task play whose inputs don't land on the reference (or whose first session there doesn't end cleanly or saves
+  nothing), can be passed by no version of the game, so the cloud's grade of every run fails while it is there,
+  `required` or not;
 - a no-op scores zero (owner, 2026-11-04): no check the start passes carries weight. The cloud's score is the weighted
   share of checks passed, so build, boot and still-works checks and anything else true of the start take `"weight": 0`.
 Judges (judge, code_judge) and packaging never take part, and neither do the retired actions_judge checks and
@@ -31,6 +35,7 @@ import math
 
 from . import probes, tasks
 
+TASK_ERROR = "task error"  # a check's detail when no version of the game can pass it (check.Grade.task_error)
 JUDGES = ("judge", "code_judge", "actions_judge")   # actions_judge: retired, still skipped in older tasks
 MARGIN = 0.25  # a calibrated threshold whose start measured nothing: the reference's value, this share toward the start
 
@@ -132,9 +137,17 @@ def verdict(task, reference, start):
         if c["name"] in still and not c["passed"] and not detail.startswith("not asked") \
                 and "measured nothing" not in detail:  # a crash the task fixes leaves nothing to measure
             why.append(f"start fails still-works {c['name']}: {detail[:160]}")
+    # a task error (the reference's play reads nothing the check selects, or can't be driven by its inputs): in the
+    # cloud no grade of the task passes while it holds one, whatever the check's `required`
+    errors = {}
+    for grade in (reference, start):
+        errors.update({n: w for n, w in ((grade or {}).get("task_errors") or {}).items() if n not in errors})
+    why.extend(f"{TASK_ERROR} in {n}: {str(w)[:200]}" for n, w in errors.items())
     if reference is not None:
         for c in reference["checks"]:
             if c["passed"]:
+                continue
+            if c["name"] in errors:
                 continue
             if c["kind"] in ("build", "boot") or c["name"] in required:
                 why.append(f"reference fails {c['name']}: {str(c['detail'])[:160]}")

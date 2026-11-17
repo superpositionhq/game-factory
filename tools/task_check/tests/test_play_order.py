@@ -7,7 +7,7 @@ import unittest
 
 from helpers import FakeProject, measuring, probe, side, task_with
 
-from task_check import judges, tasks
+from task_check import check, judges, tasks
 
 MEASURE = {"probe": "pawn", "field": "z", "agg": "max"}
 
@@ -86,17 +86,30 @@ class Sessions(unittest.TestCase):
         self.assertEqual(tasks.task_plays(task)["earns"]["continues"], None)
 
     def test_a_first_session_that_crashed_gives_no_value(self):
+        """On the reference a first session that crashed gives no value (the task's own fix carries nothing over); on
+        the start the play is read as it measured, as the cloud grader reads it for a threshold, and its check fails
+        on the session instead (Grade.landing)."""
         crashes, fine = measuring(0, crash=True), measuring(0)
         answer = lambda seconds, shots, queries: (crashes if seconds == 10 else fine)(seconds, shots, queries)  # noqa: E731
         task = self.task()
-        for name, said in (("start", "the play's first session (play earns) did not end cleanly (crashed), so the game "
-                                     "never quit as a player's game does and nothing it should have saved can be "
-                                     "trusted"),
-                           ("reference", "in the reference's play restarted, its first session (play earns) did not "
-                                         "end cleanly (crashed), so the game never quit as a player's game does and "
-                                         "nothing it should have saved can be trusted: the task's own fix carries "
-                                         "nothing over to the next session")):
-            self.assertEqual(side(name, FakeProject(answer), task).value(tasks.checks(task)[0][1]), (None, said))
+        said = ("in the reference's play restarted, its first session (play earns) did not end cleanly (crashed), so "
+                "the game never quit as a player's game does and nothing it should have saved can be trusted: the "
+                "task's own fix carries nothing over to the next session")
+        self.assertEqual(side("reference", FakeProject(answer), task).value(tasks.checks(task)[0][1]), (None, said))
+        self.assertEqual(side("start", FakeProject(answer), task).value(tasks.checks(task)[0][1]), (0.0, None))
+
+    def test_the_session_decides_the_check_as_the_cloud_grader_does(self):
+        crashes, fine = measuring(0, crash=True), measuring(0)
+        answer = lambda seconds, shots, queries: (crashes if seconds == 10 else fine)(seconds, shots, queries)  # noqa: E731
+        task = self.task()
+        start, reference = side("start", FakeProject(answer), task), side("reference", FakeProject(measuring(0)), task)
+        row = check.Grade(task, "start", start, reference, {}).run()["checks"][0]
+        self.assertFalse(row["passed"])
+        self.assertIn("the play's first session (play earns) did not end cleanly (crashed)", row["detail"])
+        broken = side("reference", FakeProject(answer), task)
+        graded = check.Grade(task, "reference", side("start", FakeProject(measuring(0)), task), broken, {}).run()
+        self.assertIn("kept", graded["task_errors"])
+        self.assertTrue(graded["checks"][0]["detail"].startswith("task error: "))
 
     def test_a_game_that_quit_by_itself_ended_cleanly(self):
         def quits(seconds, shots, queries):

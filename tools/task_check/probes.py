@@ -564,7 +564,113 @@ def map_unloaded(probe, requested, travels=False):
     return f"map {requested.split('?', 1)[0]} could not be loaded ({ran}; the play ended at {fmt(ended(probe))} s)"
 
 
+def plugin_said(probe):
+    """"; the plugin said: <its first query error>", or "" when it reported none."""
+    errors = [str(e) for e in ((probe or {}).get("query_errors") or []) if isinstance(e, str)]
+    return f"; the plugin said: {errors[0][:300]}" if errors else ""
+
+
+SELECTING = ("actors", "widgets", "components")  # the runtime measures that read what their selector matches
+
+
+def zero_when_none(measure):
+    """Whether a selecting measure reads 0 when its selector matches nothing (an answer, like a `count`'s): a `count`,
+    and a widgets measure combined by count, any, all or sum (a widget the game hides is matched by nothing, as a
+    "not shown" check expects)."""
+    return measure.get("field") == "count" or (measure["probe"] == "widgets"
+                                               and measure.get("of") in ("count", "any", "all", "sum"))
+
+
+def reads_nothing(measure, probe):
+    """Why a selecting measure (actors, widgets, components) read nothing in a whole play, its window aside: the plugin
+    sampled its query, but its selector matched no row in any sample, or no row it matched had a value for its field
+    (for `count`, any row is one). None when it read something; also when the play didn't sample it (no probe file,
+    the query never answered: the play's own failure), for a malformed probe file and for every other measure. In the
+    reference's play this makes the check a task error (docs/task-check.md): no version of the game can pass it."""
+    if measure["probe"] not in SELECTING or not isinstance(probe, dict):
+        return None
+    try:
+        samples = _samples(probe, query_id(needs(measure)[0]))
+        if not samples:
+            return None
+        rows = [r for s in samples for r in s.get("rows") or [] if isinstance(r, dict)]
+        field, match = measure.get("field"), measure.get("match")
+        if rows and (field == "count" or any(number(r.get(field), match) is not None for r in rows)):
+            return None
+        asked = json.dumps(selector(measure), sort_keys=True)
+    except MALFORMED:
+        return None
+    what = (f"its selector {asked} matched nothing" if not rows else
+            f"nothing its selector {asked} matched had a value for {field}")
+    return f"{what} in {len(samples)} samples{plugin_said(probe)}"
+
+
+def well_formed(probe):
+    """A play's probe.json as the probe plugin writes it, else None: the game wrote it, so one of another shape reads as
+    no probe (as the cloud grader reads it), never an error of the check's own."""
+    if not isinstance(probe, dict):
+        return None
+
+    def num(value):  # json reads NaN and Infinity too, and integers past a float's range: none is a reading
+        try:
+            return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+        except OverflowError:
+            return False
+
+    def rows(name):  # the track's and the camera's: lists of numbers
+        found = probe.get(name) or []
+        return isinstance(found, list) and all(isinstance(row, list) and all(map(num, row)) for row in found)
+
+    def misses():  # inputs_missed: absent (a plugin before it reported misses), else rows of {t, kind, target, why}
+        found = probe.get("inputs_missed", [])
+        return isinstance(found, list) and all(
+            isinstance(row, dict) and num(row.get("t")) and all(isinstance(row.get(k), str) for k in MISSED_TEXT)
+            for row in found)
+
+    shots = probe.get("screenshots", [])
+    if not (rows("track") and rows("camera") and isinstance(shots, list) and num(probe.get("seconds", 0))
+            and num(probe.get("inputs_sent", 0)) and misses()):
+        return None
+    return probe
+
+
+MISSED_TEXT = ("kind", "target", "why")  # an inputs_missed row's words, beside its time `t`
+
+
+def missed(probe):
+    """The inputs a play sent that didn't land (probe.json `inputs_missed`: a click no button took, a wheel or mouse
+    movement no game viewport received, a touch or a stage nothing took), [{t, kind, target, why}]; [] when every one
+    landed; None when it can't say (no probe file, or one written before the plugin reported misses). A named
+    screenshot the plugin couldn't write is not one of them: it changed nothing the game did."""
+    if not isinstance(probe, dict) or not isinstance(probe.get("inputs_missed"), list):
+        return None
+    return [r for r in probe["inputs_missed"] if isinstance(r, dict) and r.get("kind") != "shot"]
+
+
+def missed_text(rows, limit=3):
+    """Missed inputs in a line: "click New_expedition at 1 s (no visible button matches it, UMG or Slate); ..."."""
+    said = []
+    for r in rows[:limit]:
+        t = r.get("t")
+        said.append(f"{r.get('kind')} {r.get('target')} at {fmt(t) if isinstance(t, int | float) else t} s "
+                    f"({str(r.get('why'))[:200]})")
+    return "; ".join(said) + (f"; and {len(rows) - limit} more" if len(rows) > limit else "")
+
+
+# What a play or the editor pass wrote is the game's own: a file of the wrong shape reads as nothing, as the cloud
+# grader reads it, never as an error that ends the check
+MALFORMED = (TypeError, ValueError, KeyError, AttributeError, IndexError, ZeroDivisionError, OverflowError)
+
+
 def measured(measure, probe, log=""):
+    """(a runtime measure of one play as one number, or None; why none): _measured, a malformed probe file none."""
+    try:
+        return _measured(measure, probe, log)
+    except MALFORMED:
+        return None, "its probe file was malformed"
+
+
+def _measured(measure, probe, log=""):
     """(a runtime measure of one play as one number, or None; why none). A play that ended early (quit, crashed,
     never reached the window) has no samples there: "no samples in the window (the play ended at X s)"."""
     if measure["probe"] == "log":
@@ -963,7 +1069,14 @@ def editor_results(output, file=None, nonce=None):
 
 
 def reduce_asset(measure, result):
-    """(number or None, why none) of an asset measure from its editor result."""
+    """(number or None, why none) of an asset measure from its editor result; a malformed one none."""
+    try:
+        return _reduce_asset(measure, result)
+    except MALFORMED:
+        return None, "the editor pass's result was malformed"
+
+
+def _reduce_asset(measure, result):
     if not isinstance(result, dict):
         return None, "the editor pass gave nothing for it"
     if "error" in result:

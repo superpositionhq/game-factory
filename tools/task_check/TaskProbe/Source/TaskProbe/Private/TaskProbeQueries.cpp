@@ -3769,6 +3769,7 @@ struct FUiGlyph
 	float HorizontalOffset = 0.f;
 	float Advance = 0.f;
 	float Space = 0.f;  // the font's space advance (0: unknown)
+	float Height = 0.f;  // the font's tallest glyph (0: unknown)
 	float USize = 1.f;
 	float RenderScale = 1.f;
 };
@@ -3776,8 +3777,9 @@ struct FUiGlyph
 using FUiGlyphKey = TPair<const FTexture*, uint32>;  // a font texture and a glyph's top-left texel (u << 16 | v)
 
 /** Every glyph the fonts in memory have placed in their textures: the game thread's runtime font cache (every character
- *  list it holds) and the offline fonts (UFont characters on their own texture pages). OutFontTextures: every texture
- *  a glyph is on. */
+ *  list it holds) and the offline fonts (UFont characters on their own texture pages). Character lists that hold the
+ *  same glyph (one face at one rendered size, under two font keys) are one font: a string drawn with it reads whole,
+ *  whichever list each of its glyphs was found in. OutFontTextures: every texture a glyph is on. */
 static void UiGlyphs(TMap<FUiGlyphKey, FUiGlyph>& Out, TSet<const FTexture*>& OutFontTextures)
 {
 	const TSharedPtr<FSlateFontCache> Cache = FEngineFontServices::IsInitialized() ? FEngineFontServices::Get().GetFontCache() : nullptr;
@@ -3786,16 +3788,30 @@ static void UiGlyphs(TMap<FUiGlyphKey, FUiGlyph>& Out, TSet<const FTexture*>& Ou
 		const int32 Pages = Cache->GetNumAtlasPages();
 		TArray<const FCharacterList*> Lists;
 		ReadFontLists(FUiFontListsTag(), *Cache, Lists);
+		TMap<const void*, const void*> Same;  // a list -> a list it shares a glyph with
+		auto First = [&Same](const void* Font)
+		{
+			while (const void* const* Up = Same.Find(Font))
+			{
+				Font = *Up;
+			}
+			return Font;
+		};
 		for (const FCharacterList* List : Lists)
 		{
 			TArray<const FCharacterEntry*> Entries;
 			ReadCharacters(FUiCharsTag(), *List, Entries);
 			float Space = 0.f;
+			float Height = 0.f;
 			for (const FCharacterEntry* E : Entries)
 			{
 				if (E->Character == TEXT(' ') && E->Valid)
 				{
 					Space = E->XAdvance;
+				}
+				if (E->Valid)
+				{
+					Height = FMath::Max(Height, (float)E->VSize * (E->BitmapRenderScale > 0.f ? E->BitmapRenderScale : 1.f));
 				}
 			}
 			for (const FCharacterEntry* E : Entries)
@@ -3816,11 +3832,26 @@ static void UiGlyphs(TMap<FUiGlyphKey, FUiGlyph>& Out, TSet<const FTexture*>& Ou
 				G.HorizontalOffset = E->HorizontalOffset;
 				G.Advance = E->XAdvance;
 				G.Space = Space;
+				G.Height = Height;
 				G.USize = E->USize;
 				G.RenderScale = E->BitmapRenderScale > 0.f ? E->BitmapRenderScale : 1.f;
-				Out.Add(FUiGlyphKey(Texture, ((uint32)E->StartU << 16) | E->StartV), G);
+				const FUiGlyphKey Key(Texture, ((uint32)E->StartU << 16) | E->StartV);
+				if (const FUiGlyph* Held = Out.Find(Key))
+				{
+					const void* A = First(Held->Font);
+					const void* B = First(List);
+					if (A != B)
+					{
+						Same.Add(B, A);
+					}
+				}
+				Out.Add(Key, G);
 				OutFontTextures.Add(Texture);
 			}
+		}
+		for (TPair<FUiGlyphKey, FUiGlyph>& Pair : Out)
+		{
+			Pair.Value.Font = First(Pair.Value.Font);
 		}
 	}
 	for (TObjectIterator<UFont> It; It; ++It)
@@ -3854,6 +3885,7 @@ static void UiGlyphs(TMap<FUiGlyphKey, FUiGlyph>& Out, TSet<const FTexture*>& Ou
 			G.Font = Font;
 			G.Advance = (float)(C.USize + Font->Kerning);
 			G.Space = Space;
+			G.Height = Font->GetMaxCharHeight();
 			G.USize = (float)C.USize;
 			Out.Add(FUiGlyphKey(Texture, ((uint32)C.StartU << 16) | (uint32)C.StartV), G);
 			OutFontTextures.Add(Texture);
@@ -3870,25 +3902,33 @@ struct FUiGlyphQuad
 };
 
 /** Strings back from the glyph quads a frame's canvas holds, in the order drawn: a text effect (a shadow, an outline)
- *  is the same glyph drawn just before it a few pixels off, so it gives way to the glyph after it (a letter repeated
- *  in a word sits on the same line a whole advance on); a glyph joins the string
+ *  is the same glyph drawn just before it a few pixels off, so it gives way to the glyph after it. The same letter
+ *  again is not one: in a word its first quad (the letter, or its own first effect) sits at the height of the first
+ *  quad of the letter before, half an advance on or more, and on another line half the font's height away or more.
+ *  A glyph joins the string
  *  before it when it is of the same font, on the same line (their heights overlap by a third) and where that string's
  *  pen left off, the gap read as spaces of the font's space advance; anything else starts a new string. */
 static void UiStrings(const TArray<FUiGlyphQuad>& Quads, TArray<FUiElement>& Out, const FVector2D& Pixels)
 {
 	TArray<FUiGlyphQuad> Glyphs;
+	FVector2D First(ForceInitToZero);  // where the last glyph's first quad was drawn
 	for (const FUiGlyphQuad& Q : Quads)
 	{
 		if (Glyphs.Num() > 0 && Glyphs.Last().Key == Q.Key)
 		{
-			const FVector2D D = Q.Box.Min - Glyphs.Last().Box.Min;
-			if (FMath::Abs(D.Y) > 0.25 || FMath::Abs(D.X) <= 2.5)
+			const FVector2D D = (Q.Box.Min - First).GetAbs();
+			const FVector2D Size = Q.Box.GetSize();
+			const double S = Q.Glyph ? Size.X / FMath::Max(1.0, (double)Q.Glyph->USize * Q.Glyph->RenderScale) : 1.0;
+			const double Advance = Q.Glyph ? Q.Glyph->Advance * S : Size.X;
+			const double Near = FMath::Max(2.5, 0.5 * (Q.Glyph && Q.Glyph->Height > 0.f ? Q.Glyph->Height * S : Size.Y));
+			if (D.Y > 0.25 ? D.X <= Near && D.Y <= Near : D.X <= FMath::Max(2.5, 0.5 * Advance))
 			{
 				Glyphs.Last() = Q;  // the glyph drawn over its effect
 				continue;
 			}
 		}
 		Glyphs.Add(Q);
+		First = Q.Box.Min;
 	}
 	FString Text;
 	FBox2D Box(ForceInit);

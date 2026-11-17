@@ -202,6 +202,127 @@ class Seen(unittest.TestCase):
         self.assertFalse(vg.is_seen(dict(seen, measure={'probe': 'ui', 'field': 'number'})))
 
 
+class Shapes(unittest.TestCase):
+    """The shapes of a measure, a select and a play's inputs that the cloud grader's own task model refuses and the
+    schema can't say (measure_errors, select_errors, task_play_errors): each is refused here too, so a task that
+    validates here is read the same way there."""
+    SCHEMA = vg.SCHEMAS['game-task']
+    NEAR = {'point': {'xyz': [0, 0, 0]}, 'radius': 100}
+
+    def errors(self, measure=None, play='look', **over):
+        c = dict({'name': 'c', 'kind': 'probe', 'describe': 'd', 'play': play,
+                  'measure': measure or {'probe': 'pawn', 'field': 'z', 'window': [3, 18], 'agg': 'min'},
+                  'expect': {'op': '>=', 'value': 0}}, **over)
+        return (list(vg.check_schema(c, self.SCHEMA['$defs']['Probe'], self.SCHEMA))
+                + vg.probe_errors(c, {'commit': 'a', 'reference': 'b'}, 'b', {}))
+
+    def refused(self, said, measure=None, play='look'):
+        found = self.errors(measure, play)
+        self.assertTrue(any(said in e for e in found), (said, found))
+
+    def test_valid_shapes_still_pass(self):
+        for measure in ({'probe': 'actors', 'select': {'class': 'Door'}, 'field': 'prop:bOpen', 'match': 'true', 'of': 'any'},
+                        {'probe': 'actors', 'select': {'player': True}, 'field': 'yaw', 'to_angle': 90, 'of': 'first'},
+                        {'probe': 'actors', 'select': {'class': 'X', 'where': [{'prop': 'Hp', 'op': '>', 'value': 0}]},
+                         'field': 'count'},
+                        {'probe': 'actors', 'select': {'class': 'X'}, 'field': 'prop:Heading', 'to_axis': 0, 'of': 'max'},
+                        {'probe': 'camera', 'field': 'yaw', 'window': [3, 18], 'agg': 'min', 'to_angle': 90},
+                        {'probe': 'pawn', 'field': 'dist', 'to': {'xyz': [0, 0, 0]}, 'window': [0, 120], 'agg': 'min'},
+                        {'probe': 'widgets', 'select': {'class': 'WBP_HUD_C'}, 'field': 'text', 'match': r'\d+',
+                         'of': 'any'},
+                        {'probe': 'widgets', 'select': {'slate': 'STextBlock', 'text': 'Score'}, 'field': 'visible',
+                         'of': 'any'},
+                        {'probe': 'audio', 'field': 'sounds', 'select': {'sound': 'Shot*'}},
+                        {'probe': 'audio', 'field': 'count', 'select': {'owner': {'class': 'Radio'}}, 'agg': 'max'}):
+            self.assertEqual(self.errors(measure), [], measure)
+        for measure in ({'probe': 'asset', 'asset': '/Game/Data/DA_Hero', 'field': 'prop:Speed'},
+                        {'probe': 'asset', 'map': '/Game/Maps/L_Arena', 'select': {'class': 'Spawner'},
+                         'field': 'count'},
+                        {'probe': 'asset', 'map': '/Game/Maps/L_Arena', 'select': {'near': self.NEAR}, 'field': 'count'}):
+            self.assertEqual(self.errors(measure, 'editor'), [], measure)
+        play = {'name': 'p', 'seconds': 10, 'inputs': [{'t': 1, 'wheel': -2}, {'t': 2, 'move': [3, 0]},
+                                                         {'t': 3, 'teleport_to': {'tag': 'Gate'}}]}
+        self.assertEqual(self.errors(play=play), [])
+
+    def test_selects(self):
+        self.refused('a select names at least one of class, tag, name, near, player, has',
+                     {'probe': 'actors', 'select': {}, 'field': 'count'})
+        self.refused('a select names at least one of',
+                     {'probe': 'actors', 'select': {'player': False}, 'field': 'count'})
+        self.refused('a select names at least one of',
+                     {'probe': 'actors', 'select': {'where': [{'prop': 'A', 'op': '==', 'value': 1}]}, 'field': 'count'})
+        self.refused('a where value is at most 120 characters',
+                     {'probe': 'actors', 'select': {'class': 'X', 'where': [{'prop': 'A', 'op': '==', 'value': 'x' * 121}]},
+                      'field': 'count'})
+        self.refused('a select names at least one of',
+                     {'probe': 'components', 'select': {'class': 'C', 'owner': {}}, 'field': 'count'})
+        self.refused('a select names at least one of',
+                     play={'name': 'p', 'seconds': 10, 'inputs': [{'t': 1, 'teleport_to': {}}]})
+        self.refused('a widget select names its class, its name or its Slate type',
+                     {'probe': 'widgets', 'select': {}, 'field': 'visible', 'of': 'any'})
+        self.refused('a widget select names a UMG class or a Slate type, not both',
+                     {'probe': 'widgets', 'select': {'class': 'W', 'slate': 'STextBlock'}, 'field': 'visible', 'of': 'any'})
+
+    def test_times_and_angles(self):
+        self.refused('a window is [t0, t1] with 0 <= t0 < t1 <= 120',
+                     {'probe': 'pawn', 'field': 'z', 'window': [3, 130], 'agg': 'min'})
+        self.refused('a window is [t0, t1]', {'probe': 'camera', 'field': 'yaw', 'window': [5, 5], 'agg': 'min'})
+        self.refused('a measure takes `to_angle` or `to_axis`, not both',
+                     {'probe': 'camera', 'field': 'yaw', 'window': [3, 18], 'agg': 'min', 'to_angle': 1, 'to_axis': 1})
+        self.refused('`to_angle`/`to_axis` go with an angle field',
+                     {'probe': 'pawn', 'field': 'z', 'window': [3, 18], 'agg': 'min', 'to_angle': 90})
+
+    def test_fields(self):
+        self.refused('a pawn measure takes `to` (a point) exactly when its field is dist',
+                     {'probe': 'pawn', 'field': 'dist', 'window': [3, 18], 'agg': 'min'})
+        self.refused('`match` goes with a prop: or bb: field',
+                     {'probe': 'actors', 'select': {'class': 'X'}, 'field': 'z', 'match': 'a', 'of': 'max'})
+        for measure in ({'probe': 'widgets', 'select': {'class': 'W'}, 'field': 'text', 'of': 'any'},
+                        {'probe': 'widgets', 'select': {'class': 'W'}, 'field': 'brush', 'of': 'any'},
+                        {'probe': 'widgets', 'select': {'class': 'W'}, 'field': 'visible', 'match': 'x', 'of': 'any'}):
+            self.refused('a widgets measure takes `match` exactly when its field is text or brush', measure)
+        self.refused("isn't a regular expression",
+                     {'probe': 'widgets', 'select': {'class': 'W'}, 'field': 'text', 'match': '(', 'of': 'any'})
+        self.refused("isn't a regular expression",
+                     {'probe': 'actors', 'select': {'class': 'W'}, 'field': 'prop:Name', 'match': '[', 'of': 'any'})
+        for field in ('sounds', 'repeats'):
+            self.refused(f'audio `{field}` is read over the starts of every sample picked, so it takes no agg',
+                         {'probe': 'audio', 'field': field, 'agg': 'max'})
+        self.refused('audio `started` takes no `owner`',
+                     {'probe': 'audio', 'field': 'started', 'select': {'owner': {'class': 'X'}}})
+
+    def test_asset_measures(self):
+        cases = [("an asset measure names an `asset` or a `map`, one of them",
+                  {'probe': 'asset', 'map': '/Game/M', 'asset': '/Game/A', 'select': {'class': 'A'}, 'field': 'count'}),
+                 ('an `asset` measure reads a prop:<property> and takes no select',
+                  {'probe': 'asset', 'asset': '/Game/A', 'field': 'prop:X', 'select': {'class': 'A'}}),
+                 ('an `asset` measure reads a prop:<property> and takes no select',
+                  {'probe': 'asset', 'asset': '/Game/A', 'field': 'count'}),
+                 ('a `map` measure selects its actors (`select`)',
+                  {'probe': 'asset', 'map': '/Game/M', 'field': 'count'}),
+                 ('a map as saved has no player or camera',
+                  {'probe': 'asset', 'map': '/Game/M', 'select': {'player': True}, 'field': 'count'}),
+                 ('a map as saved has no player or camera',
+                  {'probe': 'asset', 'map': '/Game/M', 'select': {'near': {'point': {'pawn': True}, 'radius': 100}},
+                   'field': 'count'}),
+                 ('never by `where` or `player`',
+                  {'probe': 'asset', 'map': '/Game/M', 'select': {'class': 'A', 'where': [{'prop': 'A', 'op': '==',
+                                                                                           'value': 1}]},
+                   'field': 'count'}),
+                 ('a measure takes `to_angle` or `to_axis`, not both',
+                  {'probe': 'asset', 'asset': '/Game/A', 'field': 'prop:Yaw', 'to_angle': 9, 'to_axis': 9})]
+        for said, measure in cases:
+            self.refused(said, measure, 'editor')
+
+    def test_inputs(self):
+        def play(*inputs, **over):
+            return dict({'name': 'p', 'seconds': 10, 'inputs': list(inputs)}, **over)
+        self.refused('a wheel input turns at least one notch', play=play({'t': 1, 'wheel': 0}))
+        self.refused('a move input moves the mouse', play=play({'t': 1, 'move': [0, 0]}))
+        self.refused('names a play twice in its after', play=play(after=['q', 'q']))
+        self.refused("a task play can't set -GameEnvProbeOff", play=play(args=['-GameEnvProbeOff']))
+
+
 class Sessions(unittest.TestCase):
     """History/sessions/ as the recording hooks write it since 2026-11-11 (reasoning summaries as role "thinking" rows,
     a tool call's whole output) and as they wrote it before: both pass without a warning."""

@@ -8,7 +8,10 @@
    `needs` failed isn't run and fails), build, boot, log_absent, file_exists and every probe against its threshold. A
    calibrated or start-relative threshold measures the start (its plays, played once) and, calibrated, the reference.
 4. The start is checked on its probes (and on a `fails_at_start` build check).
-5. verdict.verdict decides VALID or INVALID from the two sides' check rows.
+   On either side a probe of a task play whose inputs didn't land (probe.json `inputs_missed`) fails, and is a task
+   error when the reference's play missed one too; a probe whose selector reads nothing in the reference's play is a
+   task error (Grade.landing, Grade.unreadable), as the cloud grader makes them.
+5. verdict.verdict decides VALID or INVALID from the two sides' check rows and task errors.
 
 A run of several tasks shares one scratch copy per commit (Builds): a commit that is one task's start and another's
 reference, or two tasks' start, is materialized and built once and kept until the last task that needs it is done.
@@ -334,18 +337,21 @@ class Side:
                           queries=queries, args=play["args"], every=every, waits=tasks.waited(play))
 
     def carried(self, play):
-        """Why a continuing task play's readings can't stand on this side, or None: its first session didn't end
-        cleanly (on any side), or, on the reference, wrote nothing under Saved (the task's own fix then carries
-        nothing over; a start that saves nothing is often the task's bug, and its checks fail by their readings)."""
+        """Why a continuing task play's readings can't stand on the reference, or None: its first session didn't end
+        cleanly, or wrote nothing under Saved (the task's own fix then carries nothing over). On any other side the
+        play is read as it measured, as the cloud grader reads it: its threshold made from the start's reading, and its
+        check failed by Grade.landing when the first session didn't end cleanly."""
         found = None if isinstance(play, str) else self.sessions.get(play["name"])
-        if found is None:
+        if found is None or self.name != "reference":
             return None
-        unclean = session_unclean(found)
-        if self.name == "reference":
-            why = unclean or session_empty(found)
-            return why and f"in the reference's play {play['name']}, {why}: the task's own fix carries nothing over " \
-                           "to the next session"
-        return unclean and f"the play's {unclean.removeprefix('its ')}"
+        why = session_unclean(found) or session_empty(found)
+        return why and f"in the reference's play {play['name']}, {why}: the task's own fix carries nothing over " \
+                       "to the next session"
+
+    def unclean(self, play):
+        """Why a continuing task play's first session on this side didn't end cleanly, or None."""
+        found = None if isinstance(play, str) else self.sessions.get(play["name"])
+        return session_unclean(found) if found is not None else None
 
     def boots(self):
         """The boot plays this task's checks run (seconds): its boot checks, and 60 s for a log_absent check."""
@@ -374,6 +380,13 @@ class Side:
                 self._editor = results, why
         return self._editor
 
+    def shot_size(self):
+        """The size the Lab keeps this side's play shots within: a mobile game's (its phone size halved, 960x540 or
+        540x960), else None (a desktop play's are taken at that size already)."""
+        mobile = getattr(self.project, "mobile", None)
+        held = mobile() if callable(mobile) else None
+        return None if held is None else (unreal.SHOT_SIZE if held == "landscape" else unreal.SHOT_SIZE[::-1])
+
     def seen_crops(self, check):
         """{shot: (crop or None, why none)} of seen check `check` on this side (seen.crops): its task play, played once
         (the probes' own), each named shot cropped as the Lab crops it."""
@@ -388,7 +401,7 @@ class Side:
                 carried = self.carried(play)
                 ended = "wrote no probe file" if p.probe is None else f"ended at {probes.fmt(probes.ended(p.probe))} s"
                 self.crops[name] = seen.crops(measure, {} if carried else p.files, lambda s: carried or (
-                    f"play {play['name']} took no shot named {s} (it {ended})"))
+                    f"play {play['name']} took no shot named {s} (it {ended})"), self.shot_size())
         return self.crops[name]
 
     def value(self, check):
@@ -430,6 +443,7 @@ class Grade:
         self.side = side or (reference if mode == "reference" else start)  # `side`: an agent's game graded as a solution
         self.thresholds = thresholds
         self.measured = {}
+        self.task_errors = {}  # check -> why no version of the game can pass it (task_error)
 
     def threshold(self, check):
         if check["name"] not in self.thresholds:
@@ -450,11 +464,95 @@ class Grade:
         except verdict.Uncalibrated as exc:
             value, _ = self.side.value(check)
             self.measured[check["name"]] = {"value": value, "threshold": None, "start": exc.start, "fix": exc.fix}
-            return False, f"uncalibrated: {exc}"
+            broken = self.unreadable(check)
+            return self.task_error(check, broken) if broken else (False, f"uncalibrated: {exc}")
         value, why = self.side.value(check)
         self.measured[check["name"]] = {"value": value, "threshold": limit, "start": start, "fix": fix}
+        landed = self.landing(check["play"])
+        if landed:  # what it measured is of a play that didn't do what the task says
+            broken, said = landed
+            return self.task_error(check, broken) if broken else (False, f"{check['describe']} | {said}")
         passed = value is not None and verdict.passes(value, check["expect"]["op"], limit)
+        # a selector that matched nothing in the graded play: the game's doing, or the task's when the reference's play
+        # matches nothing either (a 0 of nothing that passes is an answer, never checked: probes.zero_when_none)
+        if self.read_nothing(check, self.side) and (not passed or not probes.zero_when_none(check["measure"])):
+            broken = self.unreadable(check, limit)
+            if broken:
+                return self.task_error(check, broken)
         return passed, verdict.describe(check, value, limit, start, fix, why)
+
+    # -- the cloud grader's task errors: a check no version of the game can pass ---------------------------------------
+
+    def task_error(self, check, why):
+        """(False, its detail) of a check no version of the game can pass: the task's fault, kept in task_errors (a
+        task with one is INVALID: verdict.verdict)."""
+        self.task_errors[check["name"]] = why
+        return False, f"{verdict.TASK_ERROR}: {check['describe']} | {why}"
+
+    @staticmethod
+    def finished(p):
+        """Whether a play ran its whole time (no crash, no early end)."""
+        return p.probe is not None and p.probe.get("ended") == "time" and not fatal(p.log)
+
+    def landing(self, play):
+        """None when task play `play`'s inputs all landed on the graded side (or it can't say, or `play` is look, drive
+        or editor); else (why it is a task error, or None; the check's detail when it isn't): a missed input fails the
+        check as the graded game's, unless the reference's play missed one too (reference_unlanded)."""
+        if isinstance(play, str) or not self.side.built():
+            return None
+        found = self.side.probe_play(play)
+        if self.side is self.reference and self.reference.carried(play):  # the task's own fix carries nothing over
+            return self.reference.carried(play), None
+        unclean = self.side.unclean(play)
+        if unclean:
+            broken = self.reference_unlanded(play)
+            return (broken, None) if broken else (None, f"the play's {unclean.removeprefix('its ')}")
+        rows = probes.missed(found.probe)
+        if not rows:
+            return None
+        broken = self.reference_unlanded(play)
+        if broken:
+            return broken, None
+        return None, f"the play's input did not land: {probes.missed_text(rows)}"
+
+    def reference_unlanded(self, play):
+        """Why task play `play` can't be driven even on the task's own fix (its reference play, which finished its run,
+        missed an input), or None."""
+        ref = self.reference
+        if isinstance(play, str) or ref is None or not ref.built():
+            return None
+        found = ref.probe_play(play)
+        carried = ref.carried(play)
+        if carried:
+            return carried
+        rows = probes.missed(found.probe) if self.finished(found) else None
+        if not rows:
+            return None
+        return f"in the reference's play {play['name']}, an input did not land ({probes.missed_text(rows)}): the " \
+               "task's own fix can't be driven by its play"
+
+    def read_nothing(self, check, side):
+        """Why probe `check`'s selector read nothing in its whole play on `side` (probes.reads_nothing), or None."""
+        if check["measure"]["probe"] not in probes.SELECTING or not side.built():
+            return None
+        return probes.reads_nothing(check["measure"], side.probe_play(check["play"]).probe)
+
+    def unreadable(self, check, limit=None):
+        """Why no version of the game can pass probe `check` (a task error), or None: its selector reads nothing in the
+        reference's play of it (a play that finished its run); for a measure that reads 0 of no match
+        (probes.zero_when_none), unless 0 passes its threshold `limit`. None when the task has no reference."""
+        ref = self.reference
+        if ref is None or check["measure"]["probe"] not in probes.SELECTING or not ref.built():
+            return None
+        play = ref.probe_play(check["play"])
+        why = probes.reads_nothing(check["measure"], play.probe) if self.finished(play) else None
+        if why is None or (probes.zero_when_none(check["measure"]) and limit is not None
+                           and verdict.passes(0.0, check["expect"]["op"], limit)):
+            return None
+        name = tasks.play_name(check)
+        said = "the task's own fix fails it" if probes.zero_when_none(check["measure"]) else \
+            "the check reads nothing even on the task's own fix"
+        return f"in the reference's {name if name in ('look', 'drive') else 'play ' + name}, {why}: {said}"
 
     def check(self, check):
         kind = check["kind"]
@@ -515,7 +613,7 @@ class Grade:
             rows.append({"name": check["name"], "kind": check["kind"], "passed": bool(ok),
                          "required": check["required"], "weight": check["weight"], "detail": str(detail)[:700],
                          "group": group})
-        return {"checks": rows, "probes": self.measured}
+        return {"checks": rows, "probes": self.measured, "task_errors": self.task_errors}
 
 
 def start_unbuilt(task, why):

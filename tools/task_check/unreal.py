@@ -312,7 +312,7 @@ class Project:
         log = log_path.read_bytes().decode("utf-8", errors="replace") if log_path.is_file() else ""
         shutil.rmtree(out, ignore_errors=True)
         return Played(found.exit_code, found.timed_out, found.output, found.seconds,
-                      probe if isinstance(probe, dict) else None, log, files, found.waited, saved)
+                      probes.well_formed(probe), log, files, found.waited, saved)
 
     def editor_python(self, script, timeout):
         path = self.folder / "Saved" / "TaskProbe" / "editor_script.py"

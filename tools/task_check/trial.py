@@ -219,8 +219,10 @@ def outside(path, folders):
 def score(task, grade):
     """What a run reached: solved (every required check passed), its score (the weighted share of checks passed, as the
     cloud scores it, judges and seen probes left out since a try asks no model), required checks passed, milestones
-    reached."""
-    rows = grade["checks"]
+    reached. A task error (a check no version of the game can pass: check.Grade.task_error) is left out of the score
+    and no run with one is solved, as the cloud grades it."""
+    errors = grade.get("task_errors") or {}
+    rows = [r for r in grade["checks"] if r["name"] not in errors]
     weighed = [r for r in rows if r.get("kind") not in verdict.JUDGES and r.get("detail") != seen.NOT_READ]
     total = sum(r.get("weight", 1) for r in weighed)
     earned = sum(r.get("weight", 1) for r in weighed if r["passed"])
@@ -228,7 +230,7 @@ def score(task, grade):
     groups = {}
     for r in required:
         groups.setdefault(r["group"], []).append(r["passed"])
-    return {"solved": all(r["passed"] for r in required), "score": round(earned / total, 3) if total else 0.0,
+    return {"solved": bool(required) and all(r["passed"] for r in required) and not errors, "score": round(earned / total, 3) if total else 0.0,
             "required_passed": sum(r["passed"] for r in required),
             "required": len(required), "milestones": {g: all(v) for g, v in groups.items()}}
 
