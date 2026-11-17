@@ -289,6 +289,15 @@ if ($LASTEXITCODE -ne 0) {
     $rulesOut | ForEach-Object { Write-Host $_ }
     throw "the game fails the game contract or the sound rule (above): bring it up to them before packaging (game-session skill, ""Combat through the engine"" and ""Sound"")"
 }
+# What the game is (the packaged project's Platform.json): a desktop game's videos are 1920x1080; a mobile game's have
+# its phone's size, its manifest says platform and orientation, and its dataset carries its APK: a package without one
+# stops here, before anything is built.
+$gamePlatform = Get-GamePlatform (Join-Path $pkg 'UEProject')
+$isMobile = $gamePlatform.platform -eq 'mobile'
+$apk = if ($isMobile) { [string](Get-Prop $man.build 'apk') } else { $null }   # Build/Android/<name>.apk
+if ($isMobile -and (-not $apk -or -not (Test-Path -LiteralPath (Join-Path $pkg "Build\$apk")))) {
+    throw "$Game is a mobile game and the package $pkg has no Android APK in Build/. A mobile game's dataset carries its APK, Build/Android/<name>.apk: make the release on a machine with the Android toolchain (machine\check.ps1; docs\new-machine.md, ""Android""), build there with tools\ue-pipeline\build.ps1 $Game -Package, then package again."
+}
 # Everything lives in the game's own folder (user decision 2026-10-12): the full dataset zip is <game>\Dataset.zip
 # (Dataset.pending.zip while ReplayScripts\ is missing); the unpacked delivery, videos and reports are scratch in
 # <game>\.dataset\. Both are git-ignored (template .gitignore; added to .git/info/exclude below if a repo lacks it).
@@ -411,10 +420,6 @@ if ($other.Count) { throw "the package has runs of other commits ($(@($other | F
 $scen = @($runs | Group-Object scenario | Sort-Object { [int]$_.Name } | ForEach-Object {
         $_.Group | Sort-Object name | Select-Object -First 1 })   # run names start with the scenario and the start time
 $vidDir = Join-Path $outDir '_videos'; New-Item -ItemType Directory -Force $vidDir | Out-Null
-# What the game is (the packaged project's Platform.json): a desktop game's videos are 1920x1080; a mobile game's have
-# its phone's size, and its manifest says platform and orientation.
-$gamePlatform = Get-GamePlatform (Join-Path $pkg 'UEProject')
-$isMobile = $gamePlatform.platform -eq 'mobile'
 $vw = [int]$gamePlatform.width; $vh = [int]$gamePlatform.height
 $ff = Find-FFmpeg
 # Preferred source: the run's own gameplay.mp4 (record.ps1 / gameplay-mp4.ps1: video.mkv's H.264 stream copied + the
@@ -457,7 +462,6 @@ foreach ($r in $scen) {
 $pkgReadme = Get-Content (Join-Path $pkg 'README.md') -Raw -Encoding UTF8
 $title = if ($pkgReadme -match '(?m)^#\s+(.+)$') { $Matches[1].Trim() } else { $info.ProjectName }
 $exe = Get-Prop $man.build 'exe'
-$apk = if ($isMobile) { Get-Prop $man.build 'apk' } else { $null }   # Build/Android/<name>.apk when the build made one
 # Link (or copy) a whole folder and prove it arrived: the destination must hold exactly the source's files (minus
 # $SkipExt). A delivery once came out without UEProject\ and Screenshots\ while Build\ was fine and nothing complained;
 # a missing or short tree now stops the run here.
@@ -526,7 +530,7 @@ function New-Delivery([string]$Src, [string]$Dest, [string]$Variant) {
             replay_verification = $replayVerification
             build = $(if ($repo) { $null } else {
                     $b = [ordered]@{ config = $man.build.config; commit = $buildCommit; exe = $exe; source = $man.build.source }
-                    if ($isMobile) { $b.apk = $(if ($apk) { [string]$apk } else { $null }); if ($apk) { $b.abi = 'arm64-v8a' } }
+                    if ($isMobile) { $b.apk = $apk; $b.abi = 'arm64-v8a' }
                     $b })
             scenarios = @($scen | ForEach-Object { $o = [ordered]@{ file = "Gameplay/$($Game)_S$($_.scenario).mp4"; scenario = $_.scenario; name = $_.scenario_name; result = $_.result
                         seconds = [math]::Round($_.dur, 3); source_run = $_.name; audio_offset_s = [math]::Round($_.offset, 3) }
@@ -571,7 +575,7 @@ function Write-Readme([string]$Dest, [string]$Variant) {
     A $vline; A ''
     A '## Requirements'; A ''
     A '- 64-bit Windows 10/11 and a DirectX 12 GPU.'
-    if ($isMobile -and $apk -and -not $repo) { A '- An Android phone (Android 8.0 or later, arm64, Vulkan) to install the APK on.' }
+    if ($isMobile -and -not $repo) { A '- An Android phone (Android 8.0 or later, arm64, Vulkan) to install the APK on.' }
     A "- Unreal Engine $($man.engine) and Visual Studio 2022 (C++ game development) to open the project$(if (-not $repo) { '; nothing to play the packaged build' })."
     A '- Python 3.11+ for the creation replay.'
     A ''
@@ -609,7 +613,7 @@ function Write-Readme([string]$Dest, [string]$Variant) {
     else { A '- `Gameplay/` — videos of the recorded scenarios (at least one), played through with the game audio. *(pending)*' }
     if (-not $repo -and $isMobile) {
         A ("- ``Build/`` — the game's Windows Shipping build$(if ($exe) { " (``Build/$exe``)" }), which the videos were recorded from running the mobile renderer" +
-           $(if ($apk) { ", and its Android Shipping APK (``Build/$apk``, arm64)." } else { '. This delivery has no Android APK: the machine that built it has no Android toolchain.' }))
+           ", and its Android Shipping APK (``Build/$apk``, arm64).")
     }
     elseif (-not $repo) { A "- ``Build/`` — the packaged Windows Shipping build$(if ($exe) { " (``Build/$exe``)" })." }
     A '- `Screenshots/` — the images in this README.'
@@ -619,7 +623,7 @@ function Write-Readme([string]$Dest, [string]$Variant) {
     if ($isMobile) {
         A "This is an Android phone game, held in $($gamePlatform.orientation) and played by touch; the videos show it at $($vw)x$($vh), drawn by the engine's mobile renderer."
         if (-not $repo) {
-            if ($apk) { A "Install ``Build/$apk`` on a phone (``adb install``), or run the Windows build as a phone draws it:" } else { A 'Run the Windows build as a phone draws it:' }
+            A "Install ``Build/$apk`` on a phone (``adb install``), or run the Windows build as a phone draws it:"
             A "``Build/$exe -FeatureLevelES31 -windowed -ResX=$vw -ResY=$vh``."
         }
         A ''

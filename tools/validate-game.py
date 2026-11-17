@@ -297,8 +297,9 @@ class DatasetView:
 
 def dataset_platform_errors(m, v):
     """A dataset's platform (manifest `m`, view `v`): the manifest's platform and the project's Platform.json say the
-    same (a full dataset holds the project; a desktop game has neither), and a mobile game's build.apk, when it names
-    one, is in Build/. The videos' size is the layout check's (tools/validate-dataset.ps1)."""
+    same (a full dataset holds the project; a desktop game has neither), and a mobile game's full dataset names its
+    APK in build.apk, which is in Build/ (the repo Dataset/ has no Build/). The videos' size is the layout check's
+    (tools/validate-dataset.ps1)."""
     errs = []
     said = m.get('platform')
     build = m.get('build') if isinstance(m.get('build'), dict) else {}
@@ -313,6 +314,10 @@ def dataset_platform_errors(m, v):
         if held != (said or {}).get('orientation'):
             errs.append(f'platform {json.dumps(said)} differs from UEProject/{PLATFORM_FILE} '
                         f'({"a mobile game held in " + held if held else "none: a desktop game"})')
+    if said and m['variant'] == 'full' and build.get('apk') is None:
+        errs.append("build.apk is null or missing on a mobile game. A mobile game's dataset carries its APK, "
+                    "Build/Android/<name>.apk: make the release on a machine with the Android toolchain "
+                    "(machine/check.ps1; docs/new-machine.md, Android)")
     if build.get('apk') is not None:
         if not said:
             errs.append('build.apk on a desktop game (no platform)')

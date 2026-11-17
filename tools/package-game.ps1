@@ -1696,6 +1696,20 @@ if ($buildSel) {
     if ($buildSel.commit -and $buildSel.commit -ne $sha) { [void]$warnings.Add("Build/ was built from $($buildSel.commit.Substring(0,8)), an earlier commit than $short") }
     if (-not $buildSel.commit) { [void]$warnings.Add('Build/ commit unknown (no build_info.json; state it with -BuildCommit)') }
 } elseif (-not $DryRun) { throw $buildMsg }
+# What the game is (its Platform.json; never edited after the project is created): a mobile game's recordings have the
+# phone's size and its bot plays by touch. Its release carries its Android APK, so a build without one stops here.
+$gamePlatform = Get-GamePlatform $repo
+$isMobile = $gamePlatform.platform -eq 'mobile'
+$apkSrc = $null
+if ($isMobile -and $buildSel) {
+    $an = Get-Prop $buildSel.info 'android'
+    $apkSrc = [string](Get-Prop $an 'apk')
+    if ((Get-Prop $an 'status') -ne 'ok' -or -not $apkSrc -or -not (Test-Path -LiteralPath $apkSrc)) {
+        $why = if (Get-Prop $an 'reason') { [string](Get-Prop $an 'reason') } else { 'built without -Package, or not by tools\ue-pipeline\build.ps1' }
+        $msg = "$Game is a mobile game and its build ($($buildSel.source)) has no Android APK ($why). A mobile game's dataset carries its APK, Build/Android/<name>.apk: make the release on a machine with the Android toolchain (machine\check.ps1; docs\new-machine.md, ""Android""), build there with tools\ue-pipeline\build.ps1 $Game -Commit $short -Package, then package again."
+        if ($DryRun) { [void]$warnings.Add($msg) } else { throw $msg }
+    }
+}
 
 # Gameplay: validated bundles (ok|warn, no FAILED marker) played on a build of the lineage.
 $ExcludeRunIds = @($ExcludeRuns | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -1921,10 +1935,7 @@ foreach ($sel in $selectedRuns) {
             })
 }
 $gpMd = New-Object System.Text.StringBuilder
-# What the game is (its Platform.json; never edited after the project is created): a mobile game's recordings have the
-# phone's size and its bot plays by touch; Build/ also gets its APK when the build made one.
-$gamePlatform = Get-GamePlatform $repo
-$isMobile = $gamePlatform.platform -eq 'mobile'
+# ($gamePlatform and $isMobile were read before the build selection was checked)
 if ($isMobile) {
     [void]$gpMd.Append("# Gameplay recordings`n`nEach folder is one AutoPlay run: the game played by its in-game bot by touch, on the Windows build running the`n")
     [void]$gpMd.Append("engine's mobile renderer at the phone's size, recorded with video ($($gamePlatform.width)x$($gamePlatform.height), 60 fps), game audio, every touch and`n")
@@ -1960,20 +1971,13 @@ Write-Step "build: $($buildSel.source), $($buildSel.config), commit $($buildSel.
 $skipExt = if ($IncludePdb) { [string[]]@() } else { [string[]]@('.pdb') }
 $null = [GameDeliverable.Tools]::CopyTree($buildSel.root, $buildDir, '', $skipExt, $true, $false, 'build', $null, $problems)
 $exe = Get-ChildItem $buildDir -Filter *.exe -File | Select-Object -First 1
-# A mobile game's Android APK, when the build made one (build.ps1, on a machine with the Android toolchain): Build\Android\.
-$apkName = $null; $apkNote = $null
+# A mobile game's Android APK (build.ps1, on a machine with the Android toolchain; checked above): Build\Android\.
+$apkName = $null
 if ($isMobile) {
-    $an = Get-Prop $buildSel.info 'android'
-    $apkSrc = [string](Get-Prop $an 'apk')
-    if ((Get-Prop $an 'status') -eq 'ok' -and $apkSrc -and (Test-Path -LiteralPath $apkSrc)) {
-        New-Item -ItemType Directory -Force (Join-Path $buildDir 'Android') | Out-Null
-        Copy-Item -LiteralPath $apkSrc (Join-Path $buildDir "Android\$(Split-Path $apkSrc -Leaf)") -Force
-        $apkName = "Android/$(Split-Path $apkSrc -Leaf)"
-        Write-Step "build: APK $apkName"
-    } else {
-        $apkNote = if (Get-Prop $an 'reason') { [string](Get-Prop $an 'reason') } else { 'the build has no APK (built without -Package, or not by tools\ue-pipeline\build.ps1)' }
-        [void]$warnings.Add("Build/ has no Android APK: $apkNote")
-    }
+    New-Item -ItemType Directory -Force (Join-Path $buildDir 'Android') | Out-Null
+    Copy-Item -LiteralPath $apkSrc (Join-Path $buildDir "Android\$(Split-Path $apkSrc -Leaf)") -Force
+    $apkName = "Android/$(Split-Path $apkSrc -Leaf)"
+    Write-Step "build: APK $apkName"
 }
 $buildInfo = [ordered]@{
     project = $info.ProjectName; config = $buildSel.config; commit = $buildSel.commit
@@ -1984,7 +1988,7 @@ $buildInfo = [ordered]@{
 }
 if ($isMobile) {   # a desktop game's build_info.json is as it always was
     $buildInfo.platform = 'mobile'; $buildInfo.orientation = $gamePlatform.orientation
-    $buildInfo.apk = $apkName; $buildInfo.apk_note = $apkNote
+    $buildInfo.apk = $apkName
 }
 Write-JsonFile (Join-Path $buildDir 'build_info.json') $buildInfo
 # The account name compiled into the build (source paths in the exe) is a blocker; -PendingCleanBuild produces a package
@@ -2154,8 +2158,7 @@ A "Windows 10/11 64-bit, DirectX 12 GPU. Run ``Build/$(if ($exe) { $exe.Name } e
 if ($isMobile) {
     A ''
     A "This is an Android phone game, held in $($gamePlatform.orientation) and played by touch. The Windows build is the one the gameplay videos were recorded from; add ``-FeatureLevelES31 -windowed -ResX=$($gamePlatform.width) -ResY=$($gamePlatform.height)`` to see it as a phone draws it."
-    if ($apkName) { A "``Build/$apkName`` is the Android Shipping APK (arm64): install it on a phone with ``adb install``." }
-    else { A "This package has no Android APK: $apkNote." }
+    A "``Build/$apkName`` is the Android Shipping APK (arm64): install it on a phone with ``adb install``."
 }
 if ($PlayNote) { A ''; A $PlayNote }
 A ''

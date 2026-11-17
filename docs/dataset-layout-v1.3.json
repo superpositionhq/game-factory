@@ -105,7 +105,7 @@
       "kind": "dir",
       "required": true,
       "in_repo_dataset": false,
-      "what": "packaged Windows Shipping build; a mobile game's (manifest platform.kind mobile) is the one its videos were recorded from, with its Android Shipping APK (arm64) in Build/Android/ when the machine that built it has the Android toolchain",
+      "what": "packaged Windows Shipping build; a mobile game's (manifest platform.kind mobile) is the one its videos were recorded from, with its Android Shipping APK (arm64) in Build/Android/ (required: a mobile game is released from a machine with the Android toolchain)",
       "must_contain": [
         "*.exe"
       ],
@@ -191,7 +191,7 @@
     "history_rule": "full variant: history is an object (head = commit, the bundle holds every commit, every LFS object of every commit is under History/lfs/objects); repo-dataset: history is null (the repo is its own history)",
     "brief_rule": "brief lists the Brief/ files: {\"brief\": \"Brief/brief.md\", \"design\": \"Brief/design.md\"}",
     "tasks_rule": "tasks: {\"count\": n >= 1, \"names\": [the task names], \"schema\": \"game-task/1\"}",
-    "platform_rule": "platform is optional: absent is a desktop game; {\"kind\": \"mobile\", \"orientation\": \"landscape\" | \"portrait\"} is an Android phone game, whose gameplay videos are 1920x1080 (landscape) or 1080x1920 (portrait), recorded from the Windows build running the engine's mobile renderer, and whose build names its apk (Build/Android/<name>.apk, arm64-v8a) or null when none was built; UEProject/Platform.json says the same platform and orientation"
+    "platform_rule": "platform is optional: absent is a desktop game; {\"kind\": \"mobile\", \"orientation\": \"landscape\" | \"portrait\"} is an Android phone game, whose gameplay videos are 1920x1080 (landscape) or 1080x1920 (portrait), recorded from the Windows build running the engine's mobile renderer, and whose full dataset's build names its apk (Build/Android/<name>.apk, arm64-v8a; required, never null); UEProject/Platform.json says the same platform and orientation"
   },
   "readme": {
     "sections_in_order": [

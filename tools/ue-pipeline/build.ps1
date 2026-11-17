@@ -15,7 +15,8 @@
   A mobile game (Platform.json at its root) gets the same Windows build, which is what is recorded (running the mobile
   renderer at the phone's size), and with -Package its Android Shipping APK (arm64) in builds\<game>\<short-sha>\Android\
   when the machine has the Android toolchain (machine\check.ps1; docs\new-machine.md, "Android"). Without the toolchain
-  that step is skipped and says so; build_info.json then has android.status "skipped".
+  the working build still completes without the APK and says so (build_info.json android.status "skipped"), but the
+  game's release needs the APK: package-game.ps1 stops on a mobile game's build without one.
 #>
 param(
     [Parameter(Mandatory = $true, Position = 0)][string]$Game,
@@ -251,12 +252,13 @@ try {
 
     # ---- 2b. a mobile game's Android APK (Shipping, arm64, the game's data inside it) ----
     # Only on a machine with the Android toolchain; never the build's failure: the Windows build above is what is
-    # played and recorded, so a missing or failed APK is recorded in build_info.json (android) and said aloud.
+    # played and recorded, so a missing or failed APK is recorded in build_info.json (android) and said aloud. The
+    # game's release (package-game.ps1) needs the APK and stops on a build without one.
     if ($Package -and $platform.platform -eq 'mobile') {
         $toolchain = Get-GFAndroidToolchain $EngineRoot
         if (-not $toolchain.ready) {
             $android = [ordered]@{ status = 'skipped'; reason = "no Android toolchain on this machine: $($toolchain.missing -join '; ')"; apk = $null }
-            Write-Step "APK SKIPPED: $($android.reason). docs\new-machine.md, ""Android"", says how to install it."
+            Write-Step "APK SKIPPED: $($android.reason). This build can be played and recorded, but a release of this mobile game needs its APK: make the release on a machine with the Android toolchain (docs\new-machine.md, ""Android"", says how to install it)."
         } else {
             $apkDir = Join-Path $outDir 'Android'
             $savedEnv = @{}
@@ -276,7 +278,7 @@ try {
             } else {
                 $r['not_fatal'] = $true   # kept in steps[] for the record; not the build's failing step
                 $android = [ordered]@{ status = 'failed'; reason = $(if ($r.exit_code -ne 0) { "package-android exit $($r.exit_code): $($r.error_excerpt)" } else { "no .apk under $apkDir" }); apk = $null }
-                Write-Step "WARNING: the APK was not built ($($android.reason)); log $($r.log_path)"
+                Write-Step "WARNING: the APK was not built ($($android.reason)); log $($r.log_path). A release of this mobile game needs its APK."
             }
         }
     }

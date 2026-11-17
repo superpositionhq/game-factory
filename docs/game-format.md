@@ -111,9 +111,10 @@ landscape, 1080x1920 portrait). A file that says anything else is an error, neve
 
 A mobile game's dataset says so in its manifest: `platform` is `{"kind": "mobile", "orientation": ...}` (a desktop
 game's manifest has no `platform`), its gameplay videos have the phone's size, and `Build/` holds the Windows build
-the videos were recorded from plus, when the machine that built it has the Android toolchain, the Android Shipping
-APK (arm64) as `Build/Android/<name>.apk`, named by `build.apk` (`null` when none was built). The dataset check
-compares `platform` with `UEProject/Platform.json` and the videos with the size.
+the videos were recorded from and the Android Shipping APK (arm64) as `Build/Android/<name>.apk`, named by
+`build.apk`. The APK is required: a mobile game's dataset without it is refused, so a mobile game is released from a
+machine with the Android toolchain ([new-machine.md](new-machine.md), "Android"). The dataset check compares
+`platform` with `UEProject/Platform.json`, the videos with the size, and `build.apk` with `Build/`.
 
 Budgets a mobile game keeps in any view the player can reach: at most 500,000 triangles drawn, 700 draw calls and
 1 GB of textures in memory (a task can measure them: docs/task-probes.md, section 2.21). Nothing here changes for a

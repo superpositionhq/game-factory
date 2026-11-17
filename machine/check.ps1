@@ -141,7 +141,8 @@ Try-Check 'Primary display' {
     else { Add-Result FAIL 'Primary display' "${w}x${h}" 'recording centres a 1920x1080 game client on the primary display: use a display (and scaling) of at least 1920x1080' }
 }
 # Mobile games (templates\new-game.ps1 -Platform mobile): a portrait game is recorded in a 1080x1920 window, and the
-# release builds an Android APK when the toolchain is here (without it that step is skipped; the rest still works).
+# release carries an Android APK, which needs the toolchain (without it desktop games and a mobile game's working
+# builds still work, but a mobile game cannot be released from this machine).
 Try-Check 'Primary display (portrait mobile games)' {
     $w = [GfCheck.Metrics]::GetSystemMetrics(0); $h = [GfCheck.Metrics]::GetSystemMetrics(1)
     if ($w -ge 1080 -and $h -ge 1920) { Add-Result PASS 'Primary display (portrait mobile games)' "${w}x${h} (holds the 1080x1920 recording client)" }
@@ -150,7 +151,7 @@ Try-Check 'Primary display (portrait mobile games)' {
 Try-Check 'Android toolchain (mobile games)' {
     $at = Get-GFAndroidToolchain $cfg.engine
     if ($at.ready) { Add-Result PASS 'Android toolchain (mobile games)' "SDK $($at.sdk) ($($at.platforms)), NDK $($at.ndk), JDK $($at.jdk)" }
-    else { Add-Result WARN 'Android toolchain (mobile games)' "missing: $($at.missing -join '; ')" "needed only for a mobile game's APK (the build skips that step without it): docs\new-machine.md, ""Android""" }
+    else { Add-Result WARN 'Android toolchain (mobile games)' "missing: $($at.missing -join '; ')" "a mobile game cannot be released from this machine without it (its release carries the APK; desktop games are not affected): docs\new-machine.md, ""Android""" }
 }
 Try-Check 'Display refresh rate' {
     $rates = @(Get-CimInstance Win32_VideoController | Where-Object { $_.CurrentRefreshRate } | ForEach-Object { "$($_.Name): $($_.CurrentHorizontalResolution)x$($_.CurrentVerticalResolution) @ $($_.CurrentRefreshRate) Hz" })

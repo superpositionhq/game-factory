@@ -64,7 +64,7 @@ applies.
 
 - **Quality bar:** main menu, settings (volume, touch sensitivity where the game has a look or aim control), pause on
   the back button, save/load where it fits, HUD, sound, clear win/lose, packaged Windows Shipping build that runs the mobile renderer (what is
-  recorded) and the Android Shipping APK (arm64) where the machine can build it.
+  recorded) and the Android Shipping APK (arm64), which the release needs.
   Recorded and TTS voices are allowed.
 - **Room for hard tasks.** A game's tasks come from its own history (write-tasks skill), and strong agents miss what
   only shows when the game runs. So build these in, and work them over several rounds rather than in one commit:
@@ -93,8 +93,9 @@ applies.
   the orientation's size (1920x1080 or 1080x1920), and takes the stills from those videos.
 - **The APK.** The same build step makes the game's Android Shipping APK (arm64) when the machine has the Android
   toolchain (`machine/check.ps1` says whether it has; docs/new-machine.md, "Android", says how to install it). Without
-  the toolchain the step is skipped with a message, and the dataset says it has no APK. Never install the toolchain
-  yourself in a game session: ask the person.
-- The dataset's `Build/` holds the Windows build the videos came from and, when it was built, the APK in
-  `Build/Android/`; its manifest says `platform` (`mobile`) and the orientation.
+  the toolchain the working build skips the APK with a message and can still be played and recorded, but the game
+  cannot be released: the packaging stops on a build without its APK. Never install the toolchain yourself in a game
+  session: ask the person.
+- The dataset's `Build/` holds the Windows build the videos came from and the APK in `Build/Android/`; its manifest
+  says `platform` (`mobile`), the orientation and `build.apk`.
 - `tools/validate-game.py` reads `Platform.json` and holds a mobile game to this skill's project rules.

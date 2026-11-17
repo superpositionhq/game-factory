@@ -125,14 +125,15 @@ A game whose root has a `Platform.json` is a mobile (Android phone) game ([game-
   `builds\<game>\<sha>\Android\` when the machine has the Android toolchain (`Get-GFAndroidToolchain`;
   [new-machine.md](new-machine.md), "Android"). Without the toolchain the step prints `APK SKIPPED: ...` and
   `build_info.json` has `android.status` `skipped`; a failed APK build is `failed` with the reason. Neither fails the
-  build: the Windows build is what is played and recorded.
+  build, which can still be played and recorded, but such a build cannot be released: the release needs the APK.
 - `record.ps1` launches that build with `-FeatureLevelES31` in a window of the phone's size (1920x1080 landscape,
   1080x1920 portrait), refuses to record when the game is not running the mobile renderer or the bot sent no touch
   ([autoplay-contract.md](autoplay-contract.md), "Mobile games"), and writes video, stills and `gameplay.mp4` at that
   size; `metadata.json` gets `platform`.
 - `stills.ps1`, `gameplay-mp4.ps1` and `validate-run.ps1` work on a run's own files and take any size.
-- `tools/package-game.ps1` copies the APK to `Build\Android\` when the build has one, and `tools/package-dataset.ps1`
-  writes `platform` and `build.apk` to the dataset manifest and checks the videos against the phone's size.
+- `tools/package-game.ps1` copies the APK to `Build\Android\` and stops, before copying anything, when the build has
+  none; `tools/package-dataset.ps1` stops the same way on a package without it, writes `platform` and `build.apk` to
+  the dataset manifest and checks the videos against the phone's size.
 
 A desktop game goes through every step exactly as before: none of its files gains a key.
 

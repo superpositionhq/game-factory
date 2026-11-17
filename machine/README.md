@@ -53,7 +53,7 @@ source (config set by hand, config from bootstrap, or computed at run time). The
 |---|---|---|
 | `setup.ps1` | | the one entry point for a clean PC: hardware precheck, winget installs, long paths + no sleep (asked), gh sign-in + git identity, game-factory clone, the coding agent (`-Agent claude\|codex\|both`: the Codex CLI and `codex login` for Codex), then bootstrap.ps1 and check.ps1; manual steps (UE 5.7, NVIDIA driver, Fab, Claude Code sign-in) detected on re-run; PASS/TODO list, log `<root>\.setup\setup.log` |
 | `bootstrap.ps1` | | idempotent setup: config + layout, tools, ffmpeg, hooks + each agent's settings merge (`-Agent claude\|codex\|both`; prints what the hooks record and asks first; `-Yes` skips the question), skills, root CLAUDE.md / AGENTS.md, LFS, gh, game repo hooks (`-CloneGames`) |
-| `check.ps1` | | read-only PASS/WARN/FAIL report (toolchain, GPU/display, disk, agents, setup, asset library; for mobile games: the Android toolchain and a display that holds a portrait recording, WARN when missing) |
+| `check.ps1` | | read-only PASS/WARN/FAIL report (toolchain, GPU/display, disk, agents, setup, asset library; for mobile games: the Android toolchain, without which a mobile game cannot be released, and a display that holds a portrait recording, WARN when missing) |
 | `get-ffmpeg.ps1` | `<root>\tools\ffmpeg-8.1.2\` | downloads gyan.dev ffmpeg 8.1.2 full_build .7z, verifies SHA-256 `0fff1889…7059`, unpacks |
 | `lib/gf-root.ps1` | `<root>\tools\`, the hooks dir | root/config resolver (also `Get-GFHooksDir`, `Get-GFAgents`), dot-sourced by every script |
 | `lib/codex-hooks.ps1` | | Codex hook trust: the `[hooks.state]` entries Codex needs in `config.toml` before it runs a hook (bootstrap writes, check compares) |

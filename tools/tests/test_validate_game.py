@@ -265,7 +265,12 @@ class Mobile(unittest.TestCase):
         mobile = {'variant': 'full', 'platform': {'kind': 'mobile', 'orientation': 'portrait'}, 'build': {'apk': None}}
         errs = vg.dataset_platform_errors
         self.assertEqual(errs({'variant': 'full', 'build': {}}, View({})), [])                       # a desktop game
-        self.assertEqual(errs(mobile, View({'UEProject/Platform.json': port})), [])                  # no APK built
+        self.assertEqual(errs({'variant': 'full', 'build': {'apk': None}}, View({})), [])            # a desktop game
+        for build in ({'apk': None}, {}):                                                            # no APK: refused
+            e = errs(dict(mobile, build=build), View({'UEProject/Platform.json': port}))
+            self.assertEqual(len(e), 1, build)
+            self.assertIn("build.apk is null or missing on a mobile game", e[0])
+            self.assertIn('Android toolchain', e[0])
         self.assertEqual(errs(dict(mobile, build={'apk': 'Android/Tide-arm64.apk'}),
                               View({'UEProject/Platform.json': port, 'Build/Android/Tide-arm64.apk': ''})), [])
         self.assertIn('is not in the dataset', errs(dict(mobile, build={'apk': 'Android/Tide-arm64.apk'}),

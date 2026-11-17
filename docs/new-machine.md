@@ -130,8 +130,9 @@ for Codex, trusted). Details of every file: [../machine/README.md](../machine/RE
 ## Android (mobile games only)
 
 A mobile game (`new-game.ps1 -Platform mobile`) is built, played, recorded and checked on this PC without any of
-this. The Android toolchain is needed for one step only: the game's Android APK, which `tools/ue-pipeline/build.ps1`
-makes with `-Package` and skips with a message on a machine without it. `machine/check.ps1` reports it as
+this. The Android toolchain is needed for the game's Android APK, which `tools/ue-pipeline/build.ps1` makes with
+`-Package`; on a machine without it the build skips that step with a message. The release of a mobile game carries
+its APK, so a mobile game cannot be released from a machine without the toolchain. `machine/check.ps1` reports it as
 `Android toolchain (mobile games)`: PASS, or WARN with what is missing. To install it:
 
 1. **The engine's Android target platform.** Epic Games Launcher > Unreal Engine > Library > the arrow beside the 5.7
