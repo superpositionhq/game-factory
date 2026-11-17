@@ -12,6 +12,8 @@ needs from a game (tasks that start from any commit, the person's directions, th
 | [schemas/workflow-row.schema.json](schemas/workflow-row.schema.json) | one row of `workflow.jsonl` |
 | [schemas/replay-report.schema.json](schemas/replay-report.schema.json) | `ReplayScripts/Verification/report.json` |
 | [schemas/assets-manifest.schema.json](schemas/assets-manifest.schema.json) | the repo's `assets.manifest.json` (one format for every game) |
+| [schemas/task-check.schema.json](schemas/task-check.schema.json) | `Checks/<task>.json` (`task-check/2`) |
+| [schemas/writer-task-scores.schema.json](schemas/writer-task-scores.schema.json) | `Checks/writer-scores.json` (`writer-task-scores/1`) |
 
 ## Validate
 
@@ -25,7 +27,10 @@ python tools/validate-game.py --dataset <path to Dataset.zip>
 The first checks the repo, then its `Dataset/` and `Dataset.zip`; the second checks a dataset alone, the way a
 consumer receives it. Both run `tools/validate-dataset.ps1` (layout, sizes, sha256, videos) on Windows. Verdict
 **VALID** or **INVALID** (exit 0 / 2); warnings never change it. Options: `--quick` (do not unpack the history),
-`--no-hash`, `--no-layout`, `--json <file>`. Standard library Python 3.10+.
+`--no-hash`, `--no-layout`, `--json <file>`. `--checks-mode warn` is the default while writers update their skill
+packs: problems with `Checks/` warn. `--checks-mode reject` makes those problems errors when the Lab project switches
+to reject mode. Packaging requires valid checks and scores by default; the temporary `-NoWriterChecks` compatibility
+switch omits them until Lab reads `Checks/` (see [task-check.md](task-check.md)). Standard library Python 3.10+.
 
 ## The repo
 
@@ -44,7 +49,7 @@ Everything needed to rebuild the game from the repo alone, tracked in git (binar
 | `ReplayConfig.json` | creation replay config ([ue-replay.md](ue-replay.md)) |
 | `Platform.json` | a mobile game only ("Platform", below): `{"platform": "mobile", "orientation": "landscape" or "portrait"}`; a desktop game has no such file |
 | `.gitattributes`, `.gitignore` | LFS for every binary type; `/Dataset.zip`, `/Dataset.pending.zip`, `/.dataset/` ignored; `Content/` never ignored |
-| `Dataset/` | the dataset minus `UEProject/`, `Build/`, `History/` and `Tasks/` (written by the packager) |
+| `Dataset/` | the dataset minus `UEProject/`, `Build/`, `History/`, `Tasks/` and `Checks/` (written by the packager) |
 
 **Tasks live on the orphan `tasks` branch, never on main.** The same repo has a branch `tasks` that shares no history
 with main: `Tasks/<game>-<kind>-<slug>.json` (one task each in the task format `GameTask`,
@@ -133,6 +138,7 @@ desktop game.
 | `Brief/` | yes | `brief.md`, the original brief; `design.md`, the design doc with story bible and status |
 | `History/` | no | `<game>.bundle` (the release commit's history as `refs/heads/main` and each task's start branch as `refs/heads/starts/<task>`, nothing else: no side branch, tag off main or stash, and never the tasks branch) and `lfs/objects/<aa>/<bb>/<sha256>` (every Git LFS object of every commit of the bundle); `sessions/messages.jsonl` (every prompt the person typed and every reply the model wrote) and `sessions/actions.jsonl` (every tool call), when the game's sessions were recorded |
 | `Tasks/` | no | the game's tasks, each split: `Tasks/<name>/task.json` (the agent's part) and `Tasks/<name>/grader.json` (milestones, `seed.reference`), plus a generated `README.md` |
+| `Checks/` | no | every shipped task's latest VALID `task-check/2` result (`<task>.json`), `writer-scores.json` (`writer-task-scores/1`), and small blind judge/`seen` answer JSON files; no screenshots, probes or logs |
 | `UEProject/` | no | the project at the release commit, store content included |
 | `ReplayScripts/` | yes | the creation replayed headless, with `Verification/report.json` (required for complete; its verdict PASS or FAIL is metadata) |
 | `Gameplay/<game>_S<n>.mp4` | yes | at least one scenario video (user rule 2026-10-19: one recorded scenario is enough, the first valid one by scenario order; videos of other scenarios already recorded may be included), 1920x1080 h264 + aac |
@@ -181,8 +187,29 @@ through the history rewrite, scrubs them, and splits each into `Tasks/<name>/tas
 `Tasks/<name>/grader.json` (the grader's half: `milestones` with their probes, rubrics, judge and code-judge questions and
 log patterns, and `seed.reference`); merging the two gives the task. `Tasks/README.md` explains it.
 
+**Writer checks and scores.** By default every newly packaged task ships `Checks/<name>.json` from
+`<repo>/.task-checks/<name>.json`, a `task-check/2` result. Packaging refuses a missing, INVALID or ERROR result, or a
+`task_digest` different from the task. A matching digest establishes freshness despite rebases or amends; only a
+legacy `task-check/1` without a digest uses the task file's last commit time as its freshness fallback. The
+digest is the SHA-256 of the whole task as sorted, compact, Unicode JSON encoded as UTF-8, the same canonicalisation
+Lab uses for the merged halves. The packager validates the original binding and verifies that the delivered task
+differs only by full commit-ID substitutions through the delivery's commit map. Other scrub changes refuse
+packaging and must be fixed and checked in the source. It then binds the shipped result to the delivered merged
+task. `task_sha256` keeps its original meaning. `manifest.tasks.last_commit_at` maps each task name to its tasks-branch
+last commit time (ISO 8601 with Git's timezone offset), for the legacy fallback without the private tasks branch.
+
+`Checks/writer-scores.json` has schema `writer-task-scores/1`, with a `tasks` object keyed by every shipped task's
+name. Each row holds `difficulty_estimate` (`hard` or `medium`, matching the task), integer `quality` (1-5), positive
+`minutes_to_solve_estimate`, `judges` (blind 0-1 rubric scores by judge, then `start` and `reference`, transcribed
+from the task's notes), and `notes` (one line of plain text, at most 300 characters, staff data). The writer's agent
+asks the person for these ratings and estimates before packaging and saves them in
+`<repo>/.task-checks/writer-scores.json`; missing answers are not guessed. Required judges and `seen` probes must
+be answered. Only the small `blind/answers.json` files accompany the results, under
+`Checks/<name>/{judge-shots|seen-shots}/<check>/blind/answers.json`; screenshots, `probe.json`, logs and blind keys
+stay out. [task-check.md](task-check.md), "Writer scores and delivery", gives the complete file example and rules.
+
 **The harness rule.** An agent given a task starts from a history-less snapshot of the game at `seed.commit`, with
-`Tasks/`, `History/` and `Dataset/` removed (every task's answers are in them, and the reference fixes are in the
+`Tasks/`, `Checks/`, `History/` and `Dataset/` removed (every task's answers are in them, and the reference fixes are in the
 history); it sees only the brief and that snapshot. The grader's half never reaches the agent.
 
 **Complete vs pending.** `status` is `complete` when every entry is there, `ReplayScripts/` with its
@@ -202,7 +229,11 @@ Deliver the repo (private, with Git LFS) and run the packager, or deliver the sa
 3. `Brief/brief.md` (the brief you were given) and `Brief/design.md` (your design doc).
 4. Your game's tasks in `Tasks/` on an orphan `tasks` branch of the repo, never on main (at least 5, about 10, at least 4 of them hard, the others may be medium; the
    `write-tasks` skill, or the format and examples it points to), each seeded on commits of main's history.
-5. `python tools/validate-game.py <repo>` VALID, and the same for the `Dataset.zip`.
+5. Run the no-op and oracle after each task's last edit; answer required judges and `seen` probes blind. Ask the
+   person for each task's scores, then save `.task-checks/writer-scores.json`. The packager ships `Checks/` and refuses
+   missing, stale, unbound or non-VALID results and incomplete scores.
+6. `python tools/validate-game.py <repo>` VALID, and the same for the `Dataset.zip` (`--checks-mode reject` checks
+   the writer files as errors).
 
 Your agent sessions use only the game-factory skills (`commit-always`, `game-session`, `write-tasks`, installed by
 `machine/setup.ps1`): never install, enable or invoke any other skill, whether your own personal or project skills,

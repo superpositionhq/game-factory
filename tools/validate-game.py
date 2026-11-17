@@ -3,7 +3,8 @@
 
     python tools/validate-game.py <games>/<slug>                 # the repo, its Dataset/ and Dataset.zip if present
     python tools/validate-game.py --dataset <Dataset.zip|folder>  # a dataset alone (what a consumer receives)
-    options: --no-layout (skip tools/validate-dataset.ps1), --no-zip, --json <file>, --quiet
+    options: --no-layout (skip tools/validate-dataset.ps1), --no-zip, --json <file>, --quiet,
+             --checks-mode warn|reject (writer checks default to warnings during rollout)
 
 Checks the repo (required files, engine, .gitignore, Git LFS for binaries, README images, banned names,
 assets.manifest.json in the one unified format with every listed file committed under Content/ or RawAssets/,
@@ -19,9 +20,11 @@ import argparse, io, json, os, re, shutil, subprocess, sys, zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
 SPEC = json.load(open(os.path.join(REPO, 'docs', 'game-format-v1.json'), encoding='utf-8'))
 SCHEMAS = {n: json.load(open(os.path.join(REPO, 'docs', 'schemas', n + '.schema.json'), encoding='utf-8'))
-           for n in ('workflow-row', 'dataset-manifest', 'replay-report', 'assets-manifest', 'game-task')}
+           for n in ('workflow-row', 'dataset-manifest', 'replay-report', 'assets-manifest', 'game-task', 'task-check', 'writer-task-scores')}
 
 
 class Report:
@@ -37,83 +40,7 @@ class Report:
 
 # ---- a small JSON Schema subset validator (type, required, properties, additionalProperties: false, minProperties,
 # ---- enum, const, pattern, minLength, minimum, items, minItems, $ref "#/$defs/...") --------------------------------
-TYPES = {'object': dict, 'array': list, 'string': str, 'boolean': bool, 'null': type(None)}
-
-
-def _is(v, t):
-    if t == 'integer': return isinstance(v, int) and not isinstance(v, bool)
-    if t == 'number': return isinstance(v, (int, float)) and not isinstance(v, bool)
-    return isinstance(v, TYPES[t])
-
-
-def check_schema(value, schema, root=None, path='$'):
-    """Yield 'path: problem' strings for value against schema."""
-    root = root or schema
-    if '$ref' in schema:
-        ref = schema['$ref']
-        node = root
-        for part in ref.lstrip('#/').split('/'):
-            node = node[part]
-        yield from check_schema(value, node, root, path)
-        return
-    if 'type' in schema:
-        ts = schema['type'] if isinstance(schema['type'], list) else [schema['type']]
-        if not any(_is(value, t) for t in ts):
-            yield f'{path}: expected {"/".join(ts)}, got {type(value).__name__}'
-            return
-    # combinators (the task schema uses them: optional fields, check kinds)
-    if 'allOf' in schema:
-        for sub in schema['allOf']:
-            yield from check_schema(value, sub, root, path)
-    for key in ('anyOf', 'oneOf'):
-        if key in schema:
-            fits = [list(check_schema(value, sub, root, path)) for sub in schema[key]]
-            ok = sum(1 for f in fits if not f)
-            if ok == 0:
-                best = min(fits, key=len)
-                yield f'{path}: matches none of the allowed shapes ({best[0] if best else "?"})'
-            elif key == 'oneOf' and ok > 1 and 'discriminator' not in schema:
-                yield f'{path}: matches more than one of the allowed shapes'
-    if 'const' in schema and value != schema['const']:
-        yield f'{path}: must be {json.dumps(schema["const"])}, got {json.dumps(value)[:80]}'
-    if 'enum' in schema and value not in schema['enum']:
-        yield f'{path}: {json.dumps(value)[:80]} not one of {schema["enum"]}'
-    if isinstance(value, str):
-        if 'minLength' in schema and len(value) < schema['minLength']:
-            yield f'{path}: empty'
-        if 'maxLength' in schema and len(value) > schema['maxLength']:
-            yield f'{path}: longer than {schema["maxLength"]}'
-        if 'pattern' in schema and not re.search(schema['pattern'], value):
-            yield f'{path}: {value[:80]!r} does not match {schema["pattern"]}'
-    if _is(value, 'number'):
-        if 'minimum' in schema and value < schema['minimum']:
-            yield f'{path}: {value} < {schema["minimum"]}'
-        if 'maximum' in schema and value > schema['maximum']:
-            yield f'{path}: {value} > {schema["maximum"]}'
-        if 'exclusiveMinimum' in schema and value <= schema['exclusiveMinimum']:
-            yield f'{path}: {value} <= {schema["exclusiveMinimum"]}'
-        if 'exclusiveMaximum' in schema and value >= schema['exclusiveMaximum']:
-            yield f'{path}: {value} >= {schema["exclusiveMaximum"]}'
-    if isinstance(value, dict):
-        if 'minProperties' in schema and len(value) < schema['minProperties']:
-            yield f'{path}: needs at least {schema["minProperties"]} key(s)'
-        for k in schema.get('required', []):
-            if k not in value:
-                yield f'{path}: missing "{k}"'
-        props = schema.get('properties', {})
-        for k, v in value.items():
-            if k in props:
-                yield from check_schema(v, props[k], root, f'{path}.{k}')
-            elif schema.get('additionalProperties') is False:
-                yield f'{path}: unexpected key "{k}"'
-    if isinstance(value, list):
-        if 'minItems' in schema and len(value) < schema['minItems']:
-            yield f'{path}: needs at least {schema["minItems"]} item(s)'
-        if 'maxItems' in schema and len(value) > schema['maxItems']:
-            yield f'{path}: more than {schema["maxItems"]} item(s)'
-        if 'items' in schema:
-            for i, v in enumerate(value):
-                yield from check_schema(v, schema['items'], root, f'{path}[{i}]')
+from writer_checks import _is, check_schema, check_errors, score_errors, task_checks
 
 
 def schema_errors(rep, area, value, name, limit=20):
@@ -444,7 +371,7 @@ def check_dataset(rep, path, area='dataset'):
 
 
 LFS_PTR = re.compile(rb'^version https://git-lfs\.github\.com/spec/v1\r?\noid sha256:([0-9a-f]{64})\r?\nsize ([0-9]+)')
-OPTS = {'hash': True, 'quick': False}
+OPTS = {'hash': True, 'quick': False, 'checks_mode': 'warn'}
 # account names too generic to check as a word (same rule as package-game.ps1 Test-NameTerm)
 GENERIC_NAMES = ('dev', 'devs', 'developer', 'user', 'users', 'admin', 'administrator', 'root', 'test', 'tester', 'guest', 'owner',
                  'default', 'build', 'builder', 'player', 'unknown', 'noreply', 'github', 'author', 'agent', 'claude', 'codex',
@@ -1708,7 +1635,7 @@ def check_tasks(rep, area, v, m):
     if not folders:
         rep.error(a, 'no tasks (a game ships at least one)')
     commits = getattr(v, 'commits', None)
-    names, levels = [], {}
+    names, levels, whole_tasks = [], {}, {}
     for name in folders:
         tp, gp = f'Tasks/{name}/task.json', f'Tasks/{name}/grader.json'
         if not (v.has(tp) and v.has(gp)):
@@ -1739,6 +1666,7 @@ def check_tasks(rep, area, v, m):
             whole['seed'] = dict(whole['seed'], **grader['seed'])
         check_task(rep, a, f'Tasks/{name}', whole, m['game'], (lambda c: c in commits) if commits is not None else None)
         names.append(name)
+        whole_tasks[name] = whole
         levels[name] = whole.get('difficulty') if isinstance(whole.get('difficulty'), str) else None
     for e in task_bar_errors(levels):
         rep.error(a, f'Tasks/: {e}')
@@ -1750,6 +1678,60 @@ def check_tasks(rep, area, v, m):
     elif sorted(mt.get('names') or []) != names or mt.get('count') != len(names):
         rep.error(a, 'manifest tasks (count, names) differ from Tasks/')
     rep.note(a, f'{len(names)} task(s) (at least {MIN_TASKS}; about 10 recommended)')
+    check_writer_checks(rep, area, v, whole_tasks, m)
+
+
+def check_writer_checks(rep, area, v, tasks, manifest):
+    """Writer claims warn during rollout; the project can make the same findings reject."""
+    report = rep.error if OPTS.get('checks_mode') == 'reject' else rep.warn
+    label = f'{area}: Checks'
+    metadata = manifest.get('tasks') if isinstance(manifest.get('tasks'), dict) else {}
+    at = metadata.get('last_commit_at')
+    at = at if isinstance(at, dict) else {}
+    scores_path = 'Checks/writer-scores.json'
+    scores = None
+    if not v.has(scores_path):
+        report(label, f'{scores_path}: missing')
+    else:
+        try:
+            scores = v.json(scores_path)
+        except (OSError, ValueError) as exc:
+            report(label, f'{scores_path}: not JSON ({type(exc).__name__})')
+        else:
+            for problem in score_errors(tasks, scores):
+                report(label, f'{scores_path}: {problem}')
+    allowed = {scores_path}
+    for name, task in tasks.items():
+        path = f'Checks/{name}.json'
+        allowed.add(path)
+        if not v.has(path):
+            report(label, f'{path}: missing')
+            continue
+        try:
+            result = v.json(path)
+        except (OSError, ValueError) as exc:
+            report(label, f'{path}: not JSON ({type(exc).__name__})')
+            continue
+        for problem in check_errors(task, result, at.get(name)):
+            report(label, f'{path}: {problem}')
+        for check in task_checks(task):
+            kind = check.get('kind')
+            measure = check.get('measure') if isinstance(check.get('measure'), dict) else {}
+            folder = 'judge-shots' if kind == 'judge' else 'seen-shots' if \
+                kind == 'probe' and measure.get('probe') == 'seen' else None
+            if folder and isinstance(check.get('name'), str):
+                allowed.add(f'Checks/{name}/{folder}/{check["name"]}/blind/answers.json')
+    for path in sorted(n for n in v.names if n.startswith('Checks/')):
+        if path not in allowed:
+            report(label, f'{path}: not part of Checks/ (results, scores and blind answers only)')
+        elif path.endswith('/blind/answers.json'):
+            try:
+                answer = v.json(path)
+            except (OSError, ValueError) as exc:
+                report(label, f'{path}: not JSON ({type(exc).__name__})')
+                continue
+            if not isinstance(answer, dict) or not answer or not set(answer) <= {'A', 'B'}:
+                report(label, f'{path}: answers must be an object with blind A/B sides')
 
 
 def run_layout_validator(rep, path, repo_dataset):
@@ -2119,6 +2101,8 @@ def main():
     ap.add_argument('--no-zip', action='store_true', help="skip the repo's Dataset.zip")
     ap.add_argument('--json', help='write the findings as JSON')
     ap.add_argument('--quiet', action='store_true', help='print only errors and warnings')
+    ap.add_argument('--checks-mode', choices=('warn', 'reject'), default='warn',
+                    help='writer Checks/ findings warn until the Lab project switches to reject mode')
     ap.add_argument('--no-hash', action='store_true', help='skip hashing History/ LFS objects')
     ap.add_argument('--quick', action='store_true', help='skip unpacking the History/ bundle')
     ap.add_argument('--rules-only', action='store_true',
@@ -2147,6 +2131,7 @@ def main():
         sys.exit(2 if rep.count('error') else 0)
     OPTS['hash'] = not a.no_hash
     OPTS['quick'] = a.quick
+    OPTS['checks_mode'] = a.checks_mode
     if not a.repo and not a.dataset:
         ap.error('give a game repo or --dataset')
     rep = Report()

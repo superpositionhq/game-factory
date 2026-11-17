@@ -17,4 +17,4 @@ Modules:
 
 Standard library only (Python 3.12)."""
 
-FORMAT = "task-check/1"  # the result file's format
+FORMAT = "task-check/2"  # the result file's format

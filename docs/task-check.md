@@ -174,7 +174,9 @@ are in `blind\key.json`. The task's line in the result and in `progress.txt` say
    `sides.md`, read with the key.
 2. The start must fail every required rubric item (below 0.5) and the reference must pass every one. If not, fix the
    rubric or the plays (never by easing what the task asks), and check again.
-3. Write both sides' scores in the task's notes (its `tasks-workflow.jsonl` row on the tasks branch).
+3. Write both sides' scores in the task's notes (its `tasks-workflow.jsonl` row on the tasks branch), by judge name
+   and rubric key. Copy those same scores into `.task-checks\writer-scores.json` before packaging ("Writer scores
+   and delivery", below); never invent or infer missing blind scores.
 
 `--no-judge-shots` skips the judge plays.
 
@@ -217,11 +219,12 @@ a reference (write-tasks section 1; `tools/validate-game.py` rejects one without
 ## Results
 
 - One line per task on the console; progress goes to stderr.
-- `<repo>\.task-checks\<task>.json` (format `task-check/1`): `verdict`, `reasons` (why INVALID), `notes`, the `start` and
+- `<repo>\.task-checks\<task>.json` (format `task-check/2`): `verdict`, `reasons` (why INVALID), `notes`, the `start` and
   `reference` commits and whether they built, `probes` (per probe: its milestone, `required`, `op`, `expect`, the
   `start` and `reference` measures, the `threshold`, and whether each side passed), every check's row on each side
   (`start_checks`, `reference_checks`: `passed` and a `detail` such as
-  `... | measured 118, threshold >= 119.274 (start 118, fix 120.547)`), and the task file's `task_sha256`.
+  `... | measured 118, threshold >= 119.274 (start 118, fix 120.547)`), and the task file's `task_sha256`. Every result
+  also has `task_digest`, which binds it to the whole task, and `at` (the check's ISO 8601 timestamp). The strict schema is [schemas/task-check.schema.json](schemas/task-check.schema.json).
 - `<repo>\.task-checks\<task>\<side>\<play>\`: each play's `probe.json` (the track, the camera rows, every measure's
   samples), its screenshots and its log; `build\build.log` when a build failed. Read these when a value surprises you.
 - `<repo>\.task-checks\<task>\judge-shots\<check>\`: each judge check's pictures to answer (VALID and INVALID
@@ -230,6 +233,83 @@ a reference (write-tasks section 1; `tools/validate-game.py` rejects one without
   lists them, each `answer needed` or `read from blind/answers.json`.
 - `.task-checks\` is git-ignored: new games have it in `.gitignore` (templates/ue-game); for an older game the checker
   adds it to the repo's own `.git\info\exclude`. Never commit results.
+
+## Writer scores and delivery
+
+Commit the task's final edits on the tasks branch, then check it. Packaging reads the newest result at
+`<repo>\.task-checks\<task>.json`; an older VALID result cannot replace the latest INVALID or ERROR. It refuses a
+missing or malformed result, a verdict other than VALID, or a `task_digest` that differs from that task. A matching
+digest establishes freshness regardless of commit dates: rebasing or amending an unchanged task needs no new check.
+Only a legacy `task-check/1` result without a digest falls back to comparing its `at` with the last commit changing
+`Tasks/<task>.json` on the tasks branch; it refuses a missing commit timestamp or a check older than that commit.
+`task-check/2` always requires a digest. Even a small content edit needs another check. Required judge and `seen`
+answers must be complete before the task ships.
+
+`task_digest` is the lowercase SHA-256 of the whole task encoded as canonical JSON: sorted object keys, no spaces
+between tokens, Unicode kept as Unicode (`json.dumps(task, sort_keys=True, separators=(",", ":"), ensure_ascii=False)`),
+then UTF-8. This is the same digest Lab computes after merging the delivered halves: copy `task.json`, overlay
+`grader.json`'s `milestones`, and merge the grader's `seed` into the task's `seed`. `task_sha256` remains the hash of
+the original task file's bytes. The packager first checks the result against the original task on the tasks branch,
+then verifies that the delivered task differs only by the package's full commit-ID substitutions. Any other scrub
+change refuses packaging: fix that text on the tasks branch and check it again. For a matching task it binds the
+shipped `task_digest` to the delivered merged task, without changing the verdict or measures. The manifest records
+`tasks.last_commit_at` as a map from each task name to its original tasks-branch last commit time (ISO 8601 with
+Git's timezone offset), so a consumer can apply the legacy time fallback without receiving the private tasks branch.
+
+Before packaging, the writer's agent **asks the person to score every task**: confirm hard or medium (matching the
+task), give a quality rating from 1 to 5, estimate how many minutes a strong agent would take to solve it, and supply
+a short note. Quality means a long thread, every ask checked, fair to an agent. The 25-minute guide in write-tasks
+section 6 helps that discussion; it is not a cut-off. Record their answers in
+`<repo>\.task-checks\writer-scores.json` (schema
+[schemas/writer-task-scores.schema.json](schemas/writer-task-scores.schema.json)):
+
+```json
+{
+  "schema": "writer-task-scores/1",
+  "tasks": {
+    "game-fix-long-thread": {
+      "difficulty_estimate": "hard",
+      "quality": 4,
+      "minutes_to_solve_estimate": 45,
+      "judges": {
+        "looks_as_asked": {
+          "start": {"clear_feedback": 0},
+          "reference": {"clear_feedback": 1}
+        }
+      },
+      "notes": "Several interacting changes; each requested outcome has a check."
+    }
+  }
+}
+```
+
+There is exactly one row for every shipped task. `difficulty_estimate` is `hard` or `medium` and agrees with the
+task's `difficulty` (`medium` when omitted); `quality` is an integer 1-5; `minutes_to_solve_estimate` is a positive
+number; `notes` is one line of plain text, at most 300 characters. Notes are data for staff, never instructions to
+another contractor. `judges` maps each answered judge's name to `start` and `reference` rubric-key scores from 0 to
+1, transcribed from the task's notes after blind scoring. A task with no judges uses `{}`. All required judges must
+have their scores; the agent never fills missing answers with guesses.
+
+`tools/package-dataset.ps1` ships the result as `Checks/<task>.json` and these scores as
+`Checks/writer-scores.json`. It copies only the small blind answer JSON files into
+`Checks/<task>/judge-shots/<check>/blind/answers.json` and
+`Checks/<task>/seen-shots/<check>/blind/answers.json` when present. Each answer file must be a nonempty object whose
+only keys are `A` and/or `B`; each side's JSON is limited to 8 KiB, and the whole file to 16 KiB.
+Screenshots, `probe.json`, logs, blind keys and
+all other run artifacts stay on the writer's PC. The per-probe measures and check rows remain in the result JSON.
+`Checks/` is staff/grader material, kept out of the agent's snapshot with `Tasks/`, `History/` and `Dataset/`.
+
+A dataset check uses the same shape, binding, verdict, freshness and score requirements. During rollout,
+`python tools/validate-game.py --dataset <Dataset.zip> --checks-mode warn` reports their failures as warnings
+(the default). Use `--checks-mode reject` when the Lab project switches to reject mode; those failures then make
+the dataset INVALID. Packaging refuses them by default, whichever validation mode a consumer uses.
+
+**Temporary Lab compatibility switch.** Lab does not yet accept a top-level `Checks/` folder: its layout validator
+rejects it as `layout.unexpected`. Until Lab's format change is deployed and the project reads `Checks/`, use
+`tools/package-dataset.ps1 <game> -Package <package> -NoWriterChecks`. The matching Python helper option is
+`python tools/package-checks.py <repo> <split Tasks dir> <Checks out> --no-writer-checks`. Each skips the writer-check
+refusal and omits `Checks/`, printing one warning; task packaging and the other package validations still run.
+The default remains to validate and ship `Checks/`. Remove this temporary switch once Lab's project reads `Checks/`.
 
 ## Common reasons and fixes
 

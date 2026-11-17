@@ -4,7 +4,7 @@
   the Git LFS objects in its local store), written into a scratch folder; each LFS file is a hardlink of its object when
   the folder is on the repo's volume (it costs no disk), else a copy. Nothing in the repo is written or checked out, and
   nothing from another commit is added: a task is built exactly as committed (no port, no patch).
-- what a task's agent never sees is left out (ANSWERS): Tasks/, History/, Dataset/ and Dataset.zip at the root.
+- what a task's agent never sees is left out (ANSWERS): Tasks/, Checks/, History/, Dataset/ and Dataset.zip at the root.
 - add_probe: the TaskProbe plugin as its own folder under Plugins/ (enabled by default: the game's own files, its
   .uproject included, stay exactly as committed). The only thing the checker adds.
 - missing_packages: the /Game packages a map names that the commit doesn't hold (e.g. a store pack committed only
@@ -22,7 +22,7 @@ LFS_POINTER = re.compile(rb"^version https://git-lfs\.github\.com/spec/v1\noid s
 POINTER_MAX = 300  # bytes: a Git LFS pointer is smaller (about 130)
 PLUGIN = "Plugins/TaskProbe"
 PLUGIN_SOURCE = Path(__file__).resolve().parent / "TaskProbe"
-ANSWERS = ("tasks", "history", "dataset", "dataset.zip")  # never materialized (case-insensitive, at the root)
+ANSWERS = ("tasks", "checks", "history", "dataset", "dataset.zip")  # never materialized (case-insensitive, at the root)
 ENGINE = "5.7"
 PACKAGE = re.compile(rb"/Game/[A-Za-z0-9_/\-]+")
 NUMBERED = re.compile(r"^(.+)_\d+$")

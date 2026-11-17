@@ -28,6 +28,7 @@ param(
     [switch]$NoZip,
     [switch]$RebuildVideos,
     [switch]$NoTasks,               # build layout v1.2 (no Tasks/) from a package with a git history
+    [switch]$NoWriterChecks,        # temporary: omit Checks/ and its gate until Lab accepts it; default ships Checks/
     [switch]$GameplayPending        # no gameplay runs: a pending delivery with Gameplay/ listed as pending; the validator and the Lab reject it (a game needs a gameplay video)
 )
 
@@ -324,6 +325,7 @@ catch [System.IO.IOException] { throw "another package-dataset run for $Game is 
 # `tasks` branch, scrubbed, seed commits mapped to the delivered history), each split into the agent's part and the
 # grader's part -------------------------------------------------------------------------------------------------------
 $taskNames = @(); $taskRows = @(); $tasksDir = Join-Path $outDir '_tasks'
+$checksDir = Join-Path $outDir '_checks'; $checkMetadata = $null
 if ($layout -eq 'dataset-layout/v1.3') {
     $pkgTasks = Join-Path $pkg 'Tasks'
     $srcTasks = @(Get-ChildItem -LiteralPath $pkgTasks -Filter *.json -File -ErrorAction SilentlyContinue)
@@ -346,6 +348,30 @@ if ($layout -eq 'dataset-layout/v1.3') {
     if ($LASTEXITCODE -ne 0) { throw "split-tasks.py failed: $($splitOut -join ' ')" }
     $taskRows = @(($splitOut | Where-Object { $_ -match '^\[' } | Select-Object -Last 1) | ConvertFrom-Json)
     $taskNames = @($taskRows | ForEach-Object { $_.name })
+    # Refuse missing, failed, stale or unbound checks before videos, copies or zipping.
+    # The Python helper verifies original Tasks/ on the tasks branch, then binds the
+    # result to the delivered halves after the package's commit-id mapping only.
+    $checkArgs = @((Join-Path $PSScriptRoot 'package-checks.py'), $info.Dir, $tasksDir, $checksDir,
+        '--commit-map', $mapTsv)
+    $tasksCommit = [string](Get-Prop $man 'tasks_commit')
+    if ($tasksCommit) { $checkArgs += @('--tasks-ref', $tasksCommit) }
+    if ($NoWriterChecks) { $checkArgs += '--no-writer-checks' }
+    # stdout is JSON only. A warning on stderr must not corrupt the manifest metadata,
+    # and Windows PowerShell 5.1 must not turn native stderr into an early terminating error.
+    $checksErrPath = [IO.Path]::GetTempFileName()
+    $checksEap = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $checksOut = & $py @checkArgs 2> $checksErrPath | ForEach-Object { "$_" }
+        $checksExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $checksEap
+        $checksStderr = [IO.File]::ReadAllText($checksErrPath)
+        Remove-Item -LiteralPath $checksErrPath -Force
+    }
+    if ($checksExitCode -ne 0) { throw "package-checks.py refused the tasks (exit ${checksExitCode}): $checksStderr" }
+    if ($checksStderr.Trim()) { Write-Host $checksStderr.TrimEnd() -ForegroundColor Yellow }
+    $checkMetadata = ($checksOut -join "`n") | ConvertFrom-Json
     # Tasks/README.md: what a task is, the split, the harness rule, how a seed is checked out of History/
     $tr = New-Object System.Text.StringBuilder; function TA([string]$s = '') { [void]$tr.Append($s + "`n") }
     TA '# Tasks'; TA ''
@@ -357,7 +383,7 @@ if ($layout -eq 'dataset-layout/v1.3') {
     TA ''
     TA 'Merging `grader.json` into `task.json` (its `seed` into the task''s `seed`) gives the whole task.'; TA ''
     TA '**The harness rule.** An agent given a task starts from a snapshot of the game at `seed.commit` with no git history and'
-    TA 'without `Tasks/`, `History/` and `Dataset/` (they hold every task''s rubrics and the reference fixes). It sees the brief'
+    TA 'without `Tasks/`, `Checks/`, `History/` and `Dataset/` (they hold every task''s rubrics and the reference fixes). It sees the brief'
     TA 'and that snapshot only; `grader.json` and `seed.reference` are for grading.'; TA ''
     TA "The seed commits are commits of ``History/$Game.bundle``. Make a task's start:"; TA ''
     TA '```'
@@ -368,7 +394,7 @@ if ($layout -eq 'dataset-layout/v1.3') {
     TA 'git checkout <seed.commit>'
     TA 'git lfs checkout'
     TA '```'; TA ''
-    TA 'then copy the working tree, without `.git`, `Tasks/`, `History/` and `Dataset/`, to where the agent works.'; TA ''
+    TA 'then copy the working tree, without `.git`, `Tasks/`, `Checks/`, `History/` and `Dataset/`, to where the agent works.'; TA ''
     TA '| Task | Kind | Difficulty | Title |'; TA '|---|---|---|---|'
     foreach ($r in $taskRows) { TA "| ``$($r.name)`` | $($r.kind) | $($r.difficulty) | $($r.title) |" }
     Write-Utf8 (Join-Path $tasksDir 'README.md') $tr.ToString()
@@ -504,7 +530,10 @@ function New-Delivery([string]$Src, [string]$Dest, [string]$Variant) {
             if ($sessionRows.Count) { $null = Invoke-ShaRemap $sesDir }
             foreach ($f in 'messages.jsonl', 'actions.jsonl') { if (-not $sessionRows.Contains($f)) { Write-Host "  note: no History/sessions/$f (the package has no History\$f rows)" -ForegroundColor Yellow } }
         }
-        if ($taskNames.Count) { $null = Copy-TreeChecked $tasksDir (Join-Path $Dest 'Tasks') $true '' 'Tasks/' }
+        if ($taskNames.Count) {
+            $null = Copy-TreeChecked $tasksDir (Join-Path $Dest 'Tasks') $true '' 'Tasks/'
+            if (-not $NoWriterChecks) { $null = Copy-TreeChecked $checksDir (Join-Path $Dest 'Checks') $true '' 'Checks/' }
+        }
     }
     if ($haveReplay) {
         $rs = Join-Path $Dest 'ReplayScripts'
@@ -552,6 +581,7 @@ function New-Delivery([string]$Src, [string]$Dest, [string]$Variant) {
     if ($isMobile) { $mj['platform'] = [ordered]@{ kind = 'mobile'; orientation = [string]$gamePlatform.orientation } }   # a desktop game's manifest has none
     if ($layout -eq 'dataset-layout/v1.3') {
         $mj['tasks'] = if ($repo) { $null } else { [ordered]@{ count = $taskNames.Count; names = @($taskNames); schema = 'game-task/1' } }
+        if (-not $repo -and -not $NoWriterChecks) { $mj['tasks']['last_commit_at'] = $checkMetadata.last_commit_at }
     }
     Write-JsonFile (Join-Path $Dest 'manifest.json') $mj
 }
@@ -607,7 +637,10 @@ function Write-Readme([string]$Dest, [string]$Variant) {
                '`actions.jsonl` holds every tool call with its input and its result. `session_id` (session_NN) and `time` tie the two together.')
         }
         A '- `Brief/` — the original brief the game was built from (`Brief/brief.md`) and its design doc with story bible and status (`Brief/design.md`).'
-        if ($layout -eq 'dataset-layout/v1.3' -and -not $repo) { A "- ``Tasks/`` — $($taskNames.Count) tasks on this game for a game-creation environment (``Tasks/README.md``)." }
+        if ($layout -eq 'dataset-layout/v1.3' -and -not $repo) {
+            A "- ``Tasks/`` — $($taskNames.Count) tasks on this game for a game-creation environment (``Tasks/README.md``)."
+            if (-not $NoWriterChecks) { A '- `Checks/` — each task''s writer check bound by digest, blind answers and writer scores; no probe files, logs or screenshots.' }
+        }
     }
     if ($scen.Count) { A "- ``Gameplay/`` — $(if ($scen.Count -eq 1) { 'a video of one scenario' } else { "videos of $($scen.Count) scenarios" }) of this version, played through with the game audio." }
     else { A '- `Gameplay/` — videos of the recorded scenarios (at least one), played through with the game audio. *(pending)*' }
@@ -670,7 +703,7 @@ function Write-Readme([string]$Dest, [string]$Variant) {
             A "``Tasks/`` holds $($taskNames.Count) tasks on this game in a game-creation environment's format, each split into ``<name>/task.json``"
             A '(what the agent sees) and `<name>/grader.json` (milestones with rubrics, and `seed.reference`). A task starts the project at a'
             A 'commit of `History/` (its `seed`); `Tasks/README.md` explains the fields. **An agent starts from a snapshot at `seed.commit`'
-            A 'with no history and without `Tasks/`, `History/` and `Dataset/`, and never sees `grader.json`.**'; A ''
+            A 'with no history and without `Tasks/`, `Checks/`, `History/` and `Dataset/`, and never sees `grader.json`.**'; A ''
             A '| Task | Kind | Difficulty | Title |'; A '|---|---|---|---|'
             foreach ($r in $taskRows) { A "| ``$($r.name)`` | $($r.kind) | $($r.difficulty) | $($r.title) |" }
         }

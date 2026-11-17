@@ -1,0 +1,387 @@
+{
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "task-check/2"
+    },
+    "task": {
+      "type": "string"
+    },
+    "game": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "task_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "task_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "verdict": {
+      "enum": [
+        "VALID",
+        "INVALID",
+        "ERROR"
+      ]
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "start": {
+      "$ref": "#/$defs/side"
+    },
+    "reference": {
+      "$ref": "#/$defs/side"
+    },
+    "probes": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/probe"
+      }
+    },
+    "start_checks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/check"
+      }
+    },
+    "reference_checks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/check"
+      }
+    },
+    "judges": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/judge"
+      }
+    },
+    "seen": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/seen"
+      }
+    },
+    "evidence": {
+      "type": "string"
+    },
+    "at": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    },
+    "seconds": {
+      "type": "number",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "format",
+    "task",
+    "game",
+    "task_sha256",
+    "task_digest",
+    "verdict",
+    "reasons",
+    "notes",
+    "start",
+    "reference",
+    "probes",
+    "start_checks",
+    "reference_checks",
+    "judges",
+    "seen",
+    "evidence",
+    "at",
+    "seconds"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "task-check/2",
+  "title": "Writer no-op and oracle check bound to a canonical task digest",
+  "$defs": {
+    "side": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lfs_linked": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lfs_copied": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "engine": {
+          "type": "string"
+        },
+        "slots": {
+          "enum": [
+            "ue-heavy",
+            "direct"
+          ]
+        },
+        "missing_packages": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "missing": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "names": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "missing",
+              "names"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "built": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "commit"
+      ],
+      "additionalProperties": false
+    },
+    "check": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "weight": {
+          "type": "number",
+          "minimum": 0
+        },
+        "group": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "passed",
+        "detail",
+        "required",
+        "weight",
+        "group"
+      ],
+      "additionalProperties": false
+    },
+    "expect": {
+      "type": "object",
+      "properties": {
+        "op": {
+          "enum": [
+            ">",
+            ">=",
+            "<",
+            "<=",
+            "==",
+            "!="
+          ]
+        },
+        "value": {
+          "type": "number"
+        },
+        "calibrate": {
+          "type": "number"
+        },
+        "start_times": {
+          "type": "number"
+        },
+        "start_plus": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "additionalProperties": false
+    },
+    "probe": {
+      "type": "object",
+      "properties": {
+        "group": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "op": {
+          "enum": [
+            ">",
+            ">=",
+            "<",
+            "<=",
+            "==",
+            "!="
+          ]
+        },
+        "expect": {
+          "$ref": "#/$defs/expect"
+        },
+        "start": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "reference": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "threshold": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "start_passed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "reference_passed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "group",
+        "required",
+        "op",
+        "expect",
+        "start",
+        "reference",
+        "threshold",
+        "start_passed",
+        "reference_passed"
+      ],
+      "additionalProperties": false
+    },
+    "judge": {
+      "type": "object",
+      "properties": {
+        "sides": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "blind": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sides",
+        "blind",
+        "notes",
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "seen": {
+      "type": "object",
+      "properties": {
+        "sides": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "blind": {
+          "type": "boolean"
+        },
+        "answered": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sides",
+        "blind",
+        "answered",
+        "notes",
+        "status"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
