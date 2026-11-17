@@ -83,3 +83,13 @@ it content-complete: 5-7 real gameplay stills in Docs/screenshots/ (JPG, LFS) sh
 plus a captioned gallery, checked on github.com after I say push; Tasks/ with at least 5 and up to about 10 tasks on the game, at least 4 of them hard (the others may be medium, none easier), every one a long thread of
 multiple edits, on the tasks branch, never on main (write-tasks skill); tools/validate-game.py VALID. Report each milestone here with the commit sha.
 ```
+
+## A mobile game
+
+The text above starts a desktop game as it is. For a mobile game (an Android phone game, landscape or portrait,
+chosen with the person before the session starts), change three things in the filled text before sending it:
+
+1. Add ` -Platform mobile -Orientation landscape` (or `portrait`) to the `new-game.ps1` line.
+2. Replace `packaged Win64 Shipping build` with `packaged Android Shipping APK`.
+3. Add this line after the paragraph that names the skills to follow:
+   `This is a mobile game (Android phone, <orientation>, touch only): follow the mobile-game skill with game-session, in place of desktop-game.`

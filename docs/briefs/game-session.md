@@ -113,3 +113,13 @@ Steps:
 Shared notes folder for this group of sessions (outside the repo; read siblings' notes there, leave hand-over notes
 or large findings there instead of pasting them into messages): {{NOTES_DIR}}
 ```
+
+## A mobile game
+
+The text above starts a desktop game as it is. For a mobile game (an Android phone game, landscape or portrait,
+chosen with the person before the session starts), change three things in the filled text before sending it:
+
+1. Add ` -Platform mobile -Orientation landscape` (or `portrait`) to the `new-game.ps1` line.
+2. Replace `packaged Win64 Shipping build` with `packaged Android Shipping APK`.
+3. Add this line after the paragraph that names the skills to follow:
+   `This is a mobile game (Android phone, <orientation>, touch only): follow the mobile-game skill with game-session, in place of desktop-game.`

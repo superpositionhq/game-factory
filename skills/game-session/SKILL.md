@@ -11,7 +11,7 @@ dataset. Your brief (from `docs/briefs/game-session.md`, or `docs/briefs/solo-ga
 apply to every game. `%GF_ROOT%` = the machine root (`machine/README.md`); the coordinator is the session that
 started you. Use the **commit-always** skill for every commit and the **sound** skill for every sound.
 
-**Only the game-factory skills (owner's rule).** Use commit-always, game-session, sound and write-tasks and no other skill:
+**Only the game-factory skills (owner's rule).** Use commit-always, game-session, sound, write-tasks and your game's platform skill (desktop-game or mobile-game) and no other skill:
 never install, enable or invoke a personal, project, plugin, marketplace or agent built-in skill, even when the agent
 offers one (AGENTS.md, "Only these skills"). Do what they don't cover by hand under these rules, or ask.
 
@@ -158,8 +158,6 @@ from `TakeDamage`. Key gameplay state is a
   play.
 - **Camera (user rule):** gentle; the user gets motion sick. Third person: character in the lower third, never filling
   the screen, never at hip height or jammed into the body (spring arm collisions in narrow spaces, crouching).
-- **Quality bar:** main menu, settings (volume, resolution, mouse sensitivity), pause, save/load where it fits, HUD,
-  sound, clear win/lose, packaged Win64 Shipping build. Recorded and TTS voices are allowed.
 - **Gameplay depth (user rule, 2026-11-11):** a game is never only its genre's bare loop. On top of the core loop
   the design doc names several further systems the player uses, each changing how a session goes, of the kind a
   player of that genre expects from a full game: a technique to master, things to pick up or use during play,
@@ -178,12 +176,8 @@ from `TakeDamage`. Key gameplay state is a
   question: when the person is away, go on with your best proposal, say so, and bring it up when they are back.
   _(failure: agents chose every loop themselves, so games came out thin and the record held little of the person's
   judgement)_
-- **Room for hard tasks.** A game's tasks come from its own history (write-tasks skill), and strong agents miss what
-  only shows when the game runs. So build these in, and work them over several rounds rather than in one commit:
-  feedback for every gameplay event (a HUD readout, marker, sound or effect); visible state changes (materials,
-  colours, lights, dressing); a pause menu with settings and back navigation on Escape; tuned numbers a player feels
-  (ranges, detection, damage, timers). Fix each playtest issue in its own commit whose message says what the player
-  saw, so the thread can be found and checked later.
+- **Quality bar and room for hard tasks:** in the skill of your game's platform: **desktop-game**, or **mobile-game**
+  for a game made with `new-game.ps1 -Platform mobile` (its `Platform.json` says so). Read that one, never both.
 - **Review views stay out of the game.** To look at your work from many places in one launch, keep the list of
   stops (maps, places, views) outside the repository (under `Saved/`, which is ignored, or your notes), never committed:
   the grader takes its own pictures from places it chooses by what the build made, and a committed list of views
