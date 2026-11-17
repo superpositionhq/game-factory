@@ -109,6 +109,49 @@ function Get-GFOut {
     return (Join-Path $cfg.root 'deliverables')
 }
 
+# The Android toolchain a mobile game's APK is built with (tools/ue-pipeline/build.ps1; machine/check.ps1 reports it;
+# docs/new-machine.md, "Android", says how to install it): the engine's own Android target platform (installed with the
+# engine in the Epic Games Launcher), and the Android SDK, NDK and JDK that the engine's Extras\Android\SetupAndroid.bat
+# sets up beside Android Studio (ANDROID_HOME, NDKROOT, JAVA_HOME; the versions the engine names in
+# Engine\Config\Android\Android_SDK.json). ready = everything is there; missing = what is not, in words.
+function Get-GFAndroidToolchain([string]$Engine = (Get-GFConfig).engine) {
+    function Get-EnvAny([string]$Name) {   # a variable set since this process started is in the registry, not in $env:
+        foreach ($scope in 'Process', 'User', 'Machine') { $v = [Environment]::GetEnvironmentVariable($Name, $scope); if ($v) { return $v } }
+        return $null
+    }
+    $want = $null
+    $wantFile = Join-Path $Engine 'Engine\Config\Android\Android_SDK.json'
+    if (Test-Path -LiteralPath $wantFile) { try { $want = Get-Content -LiteralPath $wantFile -Raw | ConvertFrom-Json } catch { } }
+    function Get-Wanted([string]$Name) { if ($want -and $want.PSObject.Properties[$Name]) { return [string]$want.PSObject.Properties[$Name].Value }; return $null }
+    $platforms = Get-Wanted 'platforms'; if (-not $platforms) { $platforms = 'android-34' }
+    $buildTools = Get-Wanted 'build-tools'
+    $ndkVersion = Get-Wanted 'ndk'
+    $sdk = Get-EnvAny 'ANDROID_HOME'
+    $ndk = Get-EnvAny 'NDKROOT'; if (-not $ndk) { $ndk = Get-EnvAny 'NDK_ROOT' }
+    if (-not $ndk -and $sdk -and $ndkVersion -and (Test-Path -LiteralPath (Join-Path $sdk "ndk\$ndkVersion"))) { $ndk = Join-Path $sdk "ndk\$ndkVersion" }
+    $jdk = Get-EnvAny 'JAVA_HOME'
+    $missing = New-Object System.Collections.ArrayList
+    if (-not (Test-Path -LiteralPath (Join-Path $Engine 'Engine\Binaries\Android\UnrealGame-Android-Shipping.target'))) {
+        [void]$missing.Add("the engine's Android target platform (Epic Games Launcher > Library > the engine's Options > Target Platforms > Android)")
+    }
+    if (-not $sdk -or -not (Test-Path -LiteralPath $sdk)) { [void]$missing.Add('the Android SDK (ANDROID_HOME)') }
+    else {
+        if (-not (Test-Path -LiteralPath (Join-Path $sdk "platforms\$platforms"))) { [void]$missing.Add("SDK platform $platforms") }
+        $bt = Join-Path $sdk 'build-tools'
+        if (-not (Test-Path -LiteralPath $bt) -or -not @(Get-ChildItem -LiteralPath $bt -Directory -ErrorAction SilentlyContinue).Count) { [void]$missing.Add("SDK build-tools$(if ($buildTools) { " $buildTools" })") }
+    }
+    if (-not $ndk -or -not (Test-Path -LiteralPath $ndk)) { [void]$missing.Add("the Android NDK$(if ($ndkVersion) { " $ndkVersion" }) (NDKROOT)") }
+    if (-not $jdk -or -not (Test-Path -LiteralPath (Join-Path $jdk 'bin\java.exe'))) { [void]$missing.Add('a JDK (JAVA_HOME)') }
+    else {
+        # the engine's Gradle (8.7 in UE 5.7) runs on Java 17 to 21: a newer JDK stops the APK build at its first step
+        $rel = Join-Path $jdk 'release'
+        $ver = if (Test-Path -LiteralPath $rel) { [regex]::Match((Get-Content -LiteralPath $rel -Raw), 'JAVA_VERSION="(\d+)').Groups[1].Value } else { '' }
+        if ($ver -and ([int]$ver -lt 17 -or [int]$ver -gt 21)) { [void]$missing.Add("a JDK 17 to 21 (JAVA_HOME holds Java $ver)") }
+    }
+    return [pscustomobject]@{ ready = ($missing.Count -eq 0); missing = @($missing); sdk = $sdk; ndk = $ndk; jdk = $jdk
+        platforms = $platforms; build_tools = $buildTools; ndk_version = $ndkVersion }
+}
+
 # Refuse to start a disk-heavy job (packaging, creation replay) when the drive holding $Path has less than the floor
 # free: $env:GF_MIN_FREE_GB, else "min_free_gb" in the config file, else 50. A full disk mid-job corrupts the result.
 function Assert-GFFreeSpace([string]$Path, [string]$What = 'this job') {

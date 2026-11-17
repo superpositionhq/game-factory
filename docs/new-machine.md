@@ -127,6 +127,35 @@ for Codex, trusted). Details of every file: [../machine/README.md](../machine/RE
   grows and restart or disable it. Windows Firewall prompts dim the screen and block capture; recording builds are
   Shipping, which does not trigger them.
 
+## Android (mobile games only)
+
+A mobile game (`new-game.ps1 -Platform mobile`) is built, played, recorded and checked on this PC without any of
+this. The Android toolchain is needed for one step only: the game's Android APK, which `tools/ue-pipeline/build.ps1`
+makes with `-Package` and skips with a message on a machine without it. `machine/check.ps1` reports it as
+`Android toolchain (mobile games)`: PASS, or WARN with what is missing. To install it:
+
+1. **The engine's Android target platform.** Epic Games Launcher > Unreal Engine > Library > the arrow beside the 5.7
+   engine's Launch button > Options > Target Platforms > Android, then Apply. This is a download in the Launcher; it
+   cannot be done from a command line.
+2. **Android Studio.** Install it (`winget install Google.AndroidStudio`), start it once and let its first-run wizard
+   install the SDK and the command-line tools (SDK Manager > SDK Tools > Android SDK Command-line Tools).
+3. **The SDK parts the engine names.** Run `<engine>\Engine\Extras\Android\SetupAndroid.bat` and accept the licences.
+   It installs the platform, build-tools, CMake and NDK versions of `<engine>\Engine\Config\Android\Android_SDK.json`
+   (for 5.7: `android-34`, build-tools 35.0.1, NDK 27.2.12479018) and sets `ANDROID_HOME`, `NDKROOT` and `JAVA_HOME`
+   (Android Studio's own JDK) for your user.
+4. **JDK 21.** The 5.7 engine builds the APK with Gradle 8.7, which runs on Java 17 to 21; a current Android Studio
+   brings a newer one. `winget install EclipseAdoptium.Temurin.21.JDK`, then set the user variable `JAVA_HOME` to its
+   folder (`C:\Program Files\Eclipse Adoptium\jdk-21...`).
+5. Sign out and in (new environment variables), then run `machine/check.ps1` again.
+
+Steps 2 and 3 also work without opening Android Studio: unpack Google's "command line tools only" download to
+`%LOCALAPPDATA%\Android\Sdk\cmdline-tools\latest`, run its `bin\sdkmanager.bat --licenses`, install the five packages
+(`platform-tools`, `platforms;android-34`, `build-tools;35.0.1`, `cmake;3.22.1`, `ndk;27.2.12479018`) with it, and set
+`ANDROID_HOME` (the `Sdk` folder) and `NDKROOT` (`Sdk\ndk\27.2.12479018`) yourself.
+
+A portrait mobile game is recorded in a 1080x1920 window: `check.ps1` warns (`Primary display (portrait mobile
+games)`) when the primary display is less than 1920 pixels high.
+
 ## Scratch test (without touching a live setup)
 
 `-DryRun` reports installs, Windows settings, sign-ins and game clones without doing them; with a scratch root and
