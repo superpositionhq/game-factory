@@ -29,7 +29,8 @@ consumer receives it. Both run `tools/validate-dataset.ps1` (layout, sizes, sha2
 **VALID** or **INVALID** (exit 0 / 2); warnings never change it. Options: `--quick` (do not unpack the history),
 `--no-hash`, `--no-layout`, `--json <file>`. `--checks-mode warn` is the default while writers update their skill
 packs: problems with `Checks/` warn. `--checks-mode reject` makes those problems errors when the Lab project switches
-to reject mode. Packaging requires valid checks and scores in either case. Standard library Python 3.10+.
+to reject mode. Packaging requires valid checks and scores by default; the temporary `-NoWriterChecks` compatibility
+switch omits them until Lab reads `Checks/` (see [task-check.md](task-check.md)). Standard library Python 3.10+.
 
 ## The repo
 
@@ -186,15 +187,16 @@ through the history rewrite, scrubs them, and splits each into `Tasks/<name>/tas
 `Tasks/<name>/grader.json` (the grader's half: `milestones` with their probes, rubrics, judge and code-judge questions and
 log patterns, and `seed.reference`); merging the two gives the task. `Tasks/README.md` explains it.
 
-**Writer checks and scores.** Every newly packaged task ships `Checks/<name>.json` from
-`<repo>/.task-checks/<name>.json`, a `task-check/2` result. Packaging refuses a missing, INVALID or ERROR result, a
-check older than that task file's last commit on the tasks branch, or a `task_digest` different from the task. The
+**Writer checks and scores.** By default every newly packaged task ships `Checks/<name>.json` from
+`<repo>/.task-checks/<name>.json`, a `task-check/2` result. Packaging refuses a missing, INVALID or ERROR result, or a
+`task_digest` different from the task. A matching digest establishes freshness despite rebases or amends; only a
+legacy `task-check/1` without a digest uses the task file's last commit time as its freshness fallback. The
 digest is the SHA-256 of the whole task as sorted, compact, Unicode JSON encoded as UTF-8, the same canonicalisation
 Lab uses for the merged halves. The packager validates the original binding and verifies that the delivered task
 differs only by full commit-ID substitutions through the delivery's commit map. Other scrub changes refuse
 packaging and must be fixed and checked in the source. It then binds the shipped result to the delivered merged
 task. `task_sha256` keeps its original meaning. `manifest.tasks.last_commit_at` maps each task name to its tasks-branch
-last commit time (ISO 8601 UTC), so dataset validation can check freshness without the private tasks branch.
+last commit time (ISO 8601 with Git's timezone offset), for the legacy fallback without the private tasks branch.
 
 `Checks/writer-scores.json` has schema `writer-task-scores/1`, with a `tasks` object keyed by every shipped task's
 name. Each row holds `difficulty_estimate` (`hard` or `medium`, matching the task), integer `quality` (1-5), positive

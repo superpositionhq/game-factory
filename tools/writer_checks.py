@@ -11,6 +11,10 @@ from task_check.digest import canonical_digest
 SCHEMA_DIR = Path(__file__).resolve().parent.parent / 'docs' / 'schemas'
 SCHEMAS = {name: json.loads((SCHEMA_DIR / (name + '.schema.json')).read_text(encoding='utf-8'))
            for name in ('task-check', 'writer-task-scores')}
+# Legacy results predate digest binding; retain their strict shape and timestamp fallback.
+LEGACY_CHECK_SCHEMA = dict(SCHEMAS['task-check'],
+    properties=dict(SCHEMAS['task-check']['properties'], format={'const': 'task-check/1'}),
+    required=[key for key in SCHEMAS['task-check']['required'] if key != 'task_digest'])
 
 
 TYPES = {'object': dict, 'array': list, 'string': str, 'boolean': bool, 'null': type(None)}
@@ -98,7 +102,10 @@ def check_schema(value, schema, root=None, path='$'):
 
 
 def schema_problems(value, name):
-    return list(check_schema(value, SCHEMAS[name]))
+    schema = SCHEMAS[name]
+    if name == 'task-check' and isinstance(value, dict) and value.get('format') == 'task-check/1':
+        schema = LEGACY_CHECK_SCHEMA
+    return list(check_schema(value, schema))
 
 
 def parse_at(value):
@@ -132,16 +139,20 @@ def check_errors(task, result, last_commit_at=None):
     seed = task.get('seed') if isinstance(task.get('seed'), dict) else {}
     if result['game'] != seed.get('game'):
         errors.append('game does not match task seed.game')
-    if result['task_digest'] != canonical_digest(task):
+    digest = result.get('task_digest')
+    if digest is not None and digest != canonical_digest(task):
         errors.append('task_digest does not match the merged task')
     if result['verdict'] != 'VALID':
         errors.append(f"verdict is {result['verdict']}, not VALID")
     try:
         checked = parse_at(result['at'])
-        if last_commit_at is None:
-            errors.append('no task last-commit timestamp to establish freshness')
-        elif checked < parse_at(last_commit_at):
-            errors.append('check is older than the task last commit')
+        # A digest binds content even when amend/rebase changes its commit date. Only
+        # legacy task-check/1 results without a digest need the commit-time fallback.
+        if digest is None:
+            if last_commit_at is None:
+                errors.append('no task last-commit timestamp to establish freshness')
+            elif checked < parse_at(last_commit_at):
+                errors.append('check is older than the task last commit')
     except ValueError as exc:
         errors.append(f'freshness: {exc}')
     for check in task_checks(task):

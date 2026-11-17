@@ -22,6 +22,8 @@ from writer_checks import check_errors, score_errors
 SLUG = re.compile(r"[a-z0-9][a-z0-9-]{1,62}\Z")
 CHECK_NAME = re.compile(r"[a-z0-9_]{1,48}\Z")
 SHA = re.compile(r"(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])")
+MAX_ANSWERS_BYTES = 16 * 1024
+MAX_ANSWER_BYTES = 8 * 1024
 
 
 def read_json(path):
@@ -60,8 +62,21 @@ def delivered_task(task, mapping):
     return json.loads(SHA.sub(lambda match: mapping.get(match[0], match[0]), text))
 
 
-def stage(repo, tasks_dir, out, commit_map=None, tasks_ref=None):
+def task_at_ref(repo, ref, name):
+    path = f"Tasks/{name}.json"
+    if not git(repo, "ls-tree", "--name-only", ref, "--", path).strip():
+        raise ValueError(f"{name}: task isn't on the tasks branch at {ref}; package its current tasks again")
+    return json.loads(git(repo, "show", f"{ref}:{path}"))
+
+
+def stage(repo, tasks_dir, out, commit_map=None, tasks_ref=None, no_writer_checks=False):
     repo, tasks_dir, out = Path(repo), Path(tasks_dir), Path(out)
+    if no_writer_checks:
+        if out.exists():
+            shutil.rmtree(out)
+        print("WARNING: writer checks omitted (--no-writer-checks); temporary compatibility with Lab projects "
+              "that do not read Checks/ yet", file=sys.stderr)
+        return {"last_commit_at": {}}
     ref = task_ref(repo, tasks_ref)
     latest = task_ref(repo)
     checks = repo / ".task-checks"
@@ -75,10 +90,10 @@ def stage(repo, tasks_dir, out, commit_map=None, tasks_ref=None):
         name = folder.name
         if not SLUG.fullmatch(name) or name == "writer-scores":
             raise ValueError(f"task name {name!r} cannot be used in Checks/")
-        original = json.loads(git(repo, "show", f"{ref}:Tasks/{name}.json"))
+        original = task_at_ref(repo, ref, name)
         if not isinstance(original, dict) or original.get("name") != name:
             raise ValueError(f"{name}: not a task object with the matching name")
-        current = json.loads(git(repo, "show", f"{latest}:Tasks/{name}.json"))
+        current = task_at_ref(repo, latest, name)
         if canonical_digest(current) != canonical_digest(original):
             raise ValueError(f"{name}: task changed on the tasks branch since package-game ran; package it again")
         whole = merged(read_json(folder / "task.json"), read_json(folder / "grader.json"))
@@ -105,10 +120,17 @@ def stage(repo, tasks_dir, out, commit_map=None, tasks_ref=None):
                     source = checks / relative
                     if source.is_file():
                         # Parse before copying: this allowlist cannot carry a log or an image.
-                        if source.stat().st_size > 1024 * 1024:
-                            raise ValueError(f"{name}/{check_name}: blind answers exceed 1 MiB")
-                        read_json(source)
-                        answers[relative] = source.read_bytes()
+                        with source.open("rb") as stream:
+                            raw = stream.read(MAX_ANSWERS_BYTES + 1)
+                        if len(raw) > MAX_ANSWERS_BYTES:
+                            raise ValueError(f"{name}/{check_name}: blind answers exceed 16 KiB")
+                        answer = json.loads(raw.decode("utf-8-sig"))
+                        if not isinstance(answer, dict) or not answer or not set(answer) <= {"A", "B"}:
+                            raise ValueError(f"{name}/{check_name}: answers must be an object with blind A/B sides")
+                        if any(len(json.dumps(value, ensure_ascii=False).encode("utf-8")) > MAX_ANSWER_BYTES
+                               for value in answer.values()):
+                            raise ValueError(f"{name}/{check_name}: each blind answer must be at most 8 KiB")
+                        answers[relative] = raw
     problems = score_errors(originals, scores)
     if problems:
         raise ValueError("writer-scores.json: " + "; ".join(problems))
@@ -134,9 +156,12 @@ def main():
     parser.add_argument("out")
     parser.add_argument("--commit-map")
     parser.add_argument("--tasks-ref", help="the tasks commit pinned by package-game, else tasks/origin/tasks")
+    parser.add_argument("--no-writer-checks", action="store_true",
+                        help="temporarily omit Checks/ and its refusal until the Lab project reads Checks/")
     args = parser.parse_args()
     try:
-        metadata = stage(args.repo, args.tasks_dir, args.out, args.commit_map, args.tasks_ref)
+        metadata = stage(args.repo, args.tasks_dir, args.out, args.commit_map, args.tasks_ref,
+                         no_writer_checks=args.no_writer_checks)
     except (OSError, ValueError, TypeError, KeyError) as exc:
         print(f"Checks/: {exc}", file=sys.stderr)
         return 2

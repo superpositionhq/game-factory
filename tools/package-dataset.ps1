@@ -28,6 +28,7 @@ param(
     [switch]$NoZip,
     [switch]$RebuildVideos,
     [switch]$NoTasks,               # build layout v1.2 (no Tasks/) from a package with a git history
+    [switch]$NoWriterChecks,        # temporary: omit Checks/ and its gate until Lab accepts it; default ships Checks/
     [switch]$GameplayPending        # no gameplay runs: a pending delivery with Gameplay/ listed as pending; the validator and the Lab reject it (a game needs a gameplay video)
 )
 
@@ -354,8 +355,22 @@ if ($layout -eq 'dataset-layout/v1.3') {
         '--commit-map', $mapTsv)
     $tasksCommit = [string](Get-Prop $man 'tasks_commit')
     if ($tasksCommit) { $checkArgs += @('--tasks-ref', $tasksCommit) }
-    $checksOut = & $py @checkArgs 2>&1 | ForEach-Object { "$_" }
-    if ($LASTEXITCODE -ne 0) { throw "package-checks.py refused the tasks: $($checksOut -join ' ')" }
+    if ($NoWriterChecks) { $checkArgs += '--no-writer-checks' }
+    # stdout is JSON only. A warning on stderr must not corrupt the manifest metadata,
+    # and Windows PowerShell 5.1 must not turn native stderr into an early terminating error.
+    $checksErrPath = [IO.Path]::GetTempFileName()
+    $checksEap = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $checksOut = & $py @checkArgs 2> $checksErrPath | ForEach-Object { "$_" }
+        $checksExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $checksEap
+        $checksStderr = [IO.File]::ReadAllText($checksErrPath)
+        Remove-Item -LiteralPath $checksErrPath -Force
+    }
+    if ($checksExitCode -ne 0) { throw "package-checks.py refused the tasks (exit ${checksExitCode}): $checksStderr" }
+    if ($checksStderr.Trim()) { Write-Host $checksStderr.TrimEnd() -ForegroundColor Yellow }
     $checkMetadata = ($checksOut -join "`n") | ConvertFrom-Json
     # Tasks/README.md: what a task is, the split, the harness rule, how a seed is checked out of History/
     $tr = New-Object System.Text.StringBuilder; function TA([string]$s = '') { [void]$tr.Append($s + "`n") }
@@ -517,7 +532,7 @@ function New-Delivery([string]$Src, [string]$Dest, [string]$Variant) {
         }
         if ($taskNames.Count) {
             $null = Copy-TreeChecked $tasksDir (Join-Path $Dest 'Tasks') $true '' 'Tasks/'
-            $null = Copy-TreeChecked $checksDir (Join-Path $Dest 'Checks') $true '' 'Checks/'
+            if (-not $NoWriterChecks) { $null = Copy-TreeChecked $checksDir (Join-Path $Dest 'Checks') $true '' 'Checks/' }
         }
     }
     if ($haveReplay) {
@@ -565,7 +580,8 @@ function New-Delivery([string]$Src, [string]$Dest, [string]$Variant) {
     }
     if ($isMobile) { $mj['platform'] = [ordered]@{ kind = 'mobile'; orientation = [string]$gamePlatform.orientation } }   # a desktop game's manifest has none
     if ($layout -eq 'dataset-layout/v1.3') {
-        $mj['tasks'] = if ($repo) { $null } else { [ordered]@{ count = $taskNames.Count; names = @($taskNames); schema = 'game-task/1'; last_commit_at = $checkMetadata.last_commit_at } }
+        $mj['tasks'] = if ($repo) { $null } else { [ordered]@{ count = $taskNames.Count; names = @($taskNames); schema = 'game-task/1' } }
+        if (-not $repo -and -not $NoWriterChecks) { $mj['tasks']['last_commit_at'] = $checkMetadata.last_commit_at }
     }
     Write-JsonFile (Join-Path $Dest 'manifest.json') $mj
 }
@@ -623,7 +639,7 @@ function Write-Readme([string]$Dest, [string]$Variant) {
         A '- `Brief/` — the original brief the game was built from (`Brief/brief.md`) and its design doc with story bible and status (`Brief/design.md`).'
         if ($layout -eq 'dataset-layout/v1.3' -and -not $repo) {
             A "- ``Tasks/`` — $($taskNames.Count) tasks on this game for a game-creation environment (``Tasks/README.md``)."
-            A '- `Checks/` — each task''s writer check bound by digest, blind answers and writer scores; no probe files, logs or screenshots.'
+            if (-not $NoWriterChecks) { A '- `Checks/` — each task''s writer check bound by digest, blind answers and writer scores; no probe files, logs or screenshots.' }
         }
     }
     if ($scen.Count) { A "- ``Gameplay/`` — $(if ($scen.Count -eq 1) { 'a video of one scenario' } else { "videos of $($scen.Count) scenarios" }) of this version, played through with the game audio." }

@@ -292,7 +292,7 @@ and in the README, and a FAIL dataset is COMPLETE too. `package-dataset.ps1` ref
 are there and agree. The README's "Replay the creation process" section shows PASS or FAIL, the criteria, the
 results and the exclusions. No verification, no COMPLETE.
 
-**Layout v1.3 writer checks (2026-11-17).** Current task-bearing deliveries also carry `Checks/` beside `Tasks/`
+**Layout v1.3 writer checks (2026-11-17).** By default current task-bearing deliveries also carry `Checks/` beside `Tasks/`
 ([game-format.md](game-format.md), "Writer checks and scores";
 [dataset-layout-v1.3.json](dataset-layout-v1.3.json)). It holds the latest valid, fresh, digest-bound
 `Checks/<task>.json` (`task-check/2`) for every shipped task, `Checks/writer-scores.json` (`writer-task-scores/1`),
@@ -302,6 +302,8 @@ blind judge scores from the task's notes. A missing, non-VALID, stale or unbound
 or answers, stops packaging. `probe.json`, screenshots, logs and blind keys are never copied into `Checks/`.
 Like `Tasks/`, it is left out of the committed repo `Dataset/` and the agent's snapshot. Older task-bearing datasets
 without `Checks/` receive warnings by default; `validate-game.py --checks-mode reject` enforces the new requirements.
+Until Lab accepts and reads `Checks/`, `package-dataset.ps1 -NoWriterChecks` temporarily omits the folder and its
+packaging refusal with one warning; remove that switch once Lab supports it ([task-check.md](task-check.md)).
 
 **README template.** Title (the game's name), hero image (`Screenshots/...`), the pending banner while pending, a
 version and commit line, then these sections in this order: Requirements, Package contents, Play the game, Replay the

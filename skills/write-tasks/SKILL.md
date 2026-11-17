@@ -489,10 +489,13 @@ of the task. Step by step:
    [docs/task-check.md](../../docs/task-check.md), "Writer scores and delivery".
 6. **Fix and run again** each task that isn't VALID (`--task <name>`), and run again every task you changed after its
    last VALID check, however small the change. Commit task edits before the check: the newest
-   `.task-checks\<name>.json` must be `task-check/2`, VALID, at least as new as that task file's last commit on the
-   tasks branch, and bound to the exact task by `task_digest`. Packaging refuses anything else, and refuses missing
-   scores or required answers. It ships `Checks/<name>.json`, `Checks/writer-scores.json` and only the small blind
+   `.task-checks\<name>.json` must be VALID and bound to the exact task by `task_digest` (`task-check/2` requires it).
+   A rebase or amend of unchanged content needs no new check; only a legacy `task-check/1` without a digest falls
+   back to requiring a check at least as new as the task file's last commit. Packaging refuses anything else, and
+   refuses missing scores or required answers. It ships `Checks/<name>.json`, `Checks/writer-scores.json` and only the small blind
    answer JSON files; `probe.json`, screenshots and logs stay out.
+   Until Lab reads `Checks/`, the temporary `package-dataset.ps1 -NoWriterChecks` switch omits that folder and its
+   refusal with one warning; remove it once Lab supports the folder (see the delivery rules in `docs/task-check.md`).
 
 What each verdict means:
 

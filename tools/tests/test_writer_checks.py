@@ -47,10 +47,31 @@ class WriterChecks(unittest.TestCase):
         t = task()
         self.assertEqual(check_errors(t, result(t), AT), [])
         old = dict(result(t), at='2026-11-16T12:00:00Z')
-        self.assertIn('check is older than the task last commit', check_errors(t, old, AT))
-        self.assertTrue(check_errors(t, result(t)))
+        self.assertEqual(check_errors(t, old, AT), [])  # same content after amend/rebase
+        self.assertEqual(check_errors(t, result(t)), [])
+        self.assertEqual(check_errors(t, result(t), 'not a timestamp'), [])
         changed = dict(t, instruction='An edit after the check')
         self.assertIn('task_digest does not match the merged task', check_errors(changed, result(t), AT))
+
+    def test_legacy_without_digest_uses_timestamp_fallback(self):
+        t = task()
+        legacy = dict(result(t), format='task-check/1')
+        del legacy['task_digest']
+        self.assertEqual(schema_problems(legacy, 'task-check'), [])
+        self.assertEqual(check_errors(t, legacy, AT), [])
+        old = dict(legacy, at='2026-11-16T12:00:00Z')
+        self.assertIn('check is older than the task last commit', check_errors(t, old, AT))
+        self.assertIn('no task last-commit timestamp to establish freshness', check_errors(t, legacy))
+        self.assertIn('freshness: timestamp must be ISO 8601', check_errors(t, legacy, 'not a timestamp'))
+        self.assertIn('freshness: timestamp needs a timezone', check_errors(t, legacy, '2026-11-17T12:00:00'))
+
+    def test_legacy_with_digest_uses_content_binding(self):
+        t = task()
+        legacy = dict(result(t), format='task-check/1')
+        self.assertEqual(check_errors(t, legacy, '2026-11-18T12:00:00Z'), [])
+        self.assertEqual(check_errors(t, legacy), [])
+        legacy['task_digest'] = '0' * 64
+        self.assertIn('task_digest does not match the merged task', check_errors(t, legacy, AT))
 
     def test_invalid_error_wrong_name_and_game(self):
         t = task()
@@ -63,7 +84,9 @@ class WriterChecks(unittest.TestCase):
         t = task()
         for extra in ('probe.json', 'logs', 'unexpected'):
             self.assertTrue(check_errors(t, dict(result(t), **{extra: []}), AT))
-        self.assertTrue(check_errors(t, dict(result(t), format='task-check/1'), AT))
+        missing_digest = result(t)
+        del missing_digest['task_digest']
+        self.assertTrue(check_errors(t, missing_digest, AT))  # /2 still requires binding
         bad = result(t)
         bad['start_checks'] = [{'name': 'built'}]
         self.assertTrue(check_errors(t, bad, AT))
