@@ -42,6 +42,28 @@ DRIVE = [{"t": 1.0, "key": "W", "press": True}, {"t": 6.0, "key": "W", "press": 
          {"t": 13.0, "key": "A", "press": True}, {"t": 15.0, "key": "A", "press": False},
          {"t": 15.0, "key": "W", "press": True}, {"t": 21.0, "key": "W", "press": False}]
 PLAYS = {"look": (20, 6, None), "drive": (22, 8, DRIVE)}  # seconds, screenshots, inputs
+# A mobile game's drive (docs/task-probes.md, section 1.1): the same route by touch, a left thumb pushing where a virtual
+# stick usually is (down at its middle, over to a side, held there) and a right thumb's tap for the jump.
+STICK = [0.15, 0.75]
+
+
+def _push(t, to, held):
+    return {"t": t, "drag": [STICK, to], "over": 0.2, "hold": held - 0.3, "finger": 0}
+
+
+MOBILE_DRIVE = [_push(1.0, [0.15, 0.6], 5.0), _push(6.0, [0.25, 0.75], 2.0), _push(8.0, [0.15, 0.6], 5.0),
+                {"t": 9.0, "tap": [0.85, 0.75], "finger": 1}, _push(13.0, [0.05, 0.75], 2.0),
+                _push(15.0, [0.15, 0.6], 6.0)]
+
+
+def own_play(play, project):
+    """The checker's own play `play` ("look", "drive") on `project`: (seconds, screenshots, inputs); a mobile game's
+    drive is by touch."""
+    seconds, shots, inputs = PLAYS[play]
+    mobile = getattr(project, "mobile", None)
+    return seconds, shots, MOBILE_DRIVE if play == "drive" and mobile is not None and mobile() else inputs
+
+
 JUDGES = ("judge", "code_judge", "actions_judge")   # actions_judge: retired, still skipped in older tasks
 NOT_JUDGED = "not asked: judges never decide a task check"
 SKIP = {"Binaries", "Intermediate", "Saved", "DerivedDataCache", ".git", ".vs"}  # left out of file_exists
@@ -214,7 +236,7 @@ class Side:
         out = {}
         for play, _, _ in judges.plays(check):
             if isinstance(play, str):
-                seconds, shots, inputs = PLAYS[play]
+                seconds, shots, inputs = own_play(play, self.project)
                 p = self._play(play, seconds, shots, inputs, queries=probes.query_file(self.plan.get(play, [])))
             else:
                 p = self.probe_play(play)
@@ -246,7 +268,7 @@ class Side:
         every = None if isinstance(play, str) else play["every"]
         queries = probes.query_file(self.plan.get(name, []), every)
         if isinstance(play, str):
-            seconds, shots, inputs = PLAYS[play]
+            seconds, shots, inputs = own_play(play, self.project)
             booted = next((b for b in self.boots() if play == "look" and self.idle(b)
                            and f"boot_{b}s" in self.played), None)
             if booted is not None:

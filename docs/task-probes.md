@@ -49,6 +49,8 @@ Words used here:
 - `"look"`: the checker's idle play of the task's `play_map`: 20 s, no input, sampled every 0.5 s.
 - `"drive"`: the checker's scripted drive of `play_map`: 22 s, W 1-6 s, D 6-8 s, W 8-13 s with a jump (SpaceBar) at
   9 s, A 13-15 s, W 15-21 s; sampled every 0.5 s.
+  On a mobile game (its `Platform.json`) the same route by touch: a left thumb at the lower left of the screen pushed
+  up, right, up, left, up at those times, and a tap at the lower right at 9 s.
 - A **task play**, when the outcome needs other input or another start:
   ```json
   {"name": "aim_left", "seconds": 12, "every": 0.5,

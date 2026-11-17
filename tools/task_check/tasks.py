@@ -16,9 +16,9 @@ TOOLS = os.path.dirname(HERE)
 REFS = ("tasks", "origin/tasks")  # where a game's tasks live (validate-game.py TASKS_REFS)
 STILL_WORKS = "still_works"  # the milestone of what a task must leave working (write-tasks section 5)
 RUNTIME = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns", "log",
-           "audio", "ground", "ui", "drawn", "world")
+           "audio", "ground", "ui", "drawn", "world", "render")
 SAMPLED = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns",
-           "audio", "ground", "ui", "drawn", "world")
+           "audio", "ground", "ui", "drawn", "world", "render")
 AUDIO_STARTED = ("started", "started_audible")  # counted per sample's interval, summed by default (as spawns)
 AUDIO_NAMED = ("sounds", "repeats")  # read from the names of the sounds that started (probes._heard_names)
 WHOLE_SCREEN = [0.0, 0.0, 1.0, 1.0]
@@ -185,12 +185,18 @@ def measure(m):
     return out
 
 
+def spot(value):
+    """A touch's place as the plugin reads it: a point of the screen [fx, fy], or {"widget": name}."""
+    return {"widget": value["widget"]} if isinstance(value, dict) else _floats(value)
+
+
 def inputs(rows):
     """A task play's inputs as the plugin reads them: keys, axes, clicks, cursor moves, teleports (`yaw` 0 when
     unset: a teleport always turns the pawn), teleports next to an actor (`distance` 200 and `offset` 0 when unset,
     `face` only when set), either with `hold` only when set, waits in real time, named shots, map travels, view
     turns, wheel notches, mouse movement, and the stages of a contact (docs/task-probes.md, section 1.3): an actor
-    pinned (`front` and `at` only when set), the engine's damage call, a start-named property set."""
+    pinned (`front` and `at` only when set), the engine's damage call, a start-named property set; and touches (`tap`,
+    `drag`: section 1.5)."""
     out = []
     for r in rows or []:
         row = {"t": float(r["t"])}
@@ -227,6 +233,15 @@ def inputs(rows):
             row.update(move=_floats(r["move"]))
             if r.get("over") is not None:
                 row["over"] = float(r["over"])
+        elif "tap" in r:      # a touch (docs/task-probes.md, section 1.5): `hold` only when set, `finger` 0 unless said
+            row.update(tap=spot(r["tap"]), finger=int(r.get("finger", 0)))
+            if r.get("hold") is not None:
+                row["hold"] = float(r["hold"])
+        elif "drag" in r:
+            row.update(drag=[spot(x) for x in r["drag"]], finger=int(r.get("finger", 0)))
+            for k in ("over", "hold"):
+                if r.get(k) is not None:
+                    row[k] = float(r[k])
         elif "cursor" in r:
             row.update(cursor=_floats(r["cursor"]))
         elif "widget" in r:

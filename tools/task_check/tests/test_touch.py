@@ -70,6 +70,47 @@ class Render(unittest.TestCase):
         task_with(glows)
 
 
+class TouchesReachThePlugin(unittest.TestCase):
+    """What the checker hands the plugin for a touch task (found on the studio PC, 2026-11-12: a task with a tap passed
+    the validator and then stopped the checker, which read every input without a kind as a key)."""
+
+    def test_a_tasks_touches_are_the_plugins_rows(self):
+        from task_check import tasks
+        inputs = [{"t": 1, "tap": {"widget": "FireButton"}}, {"t": 2, "tap": [0.5, 0.25], "hold": 0.5, "finger": 1},
+                  {"t": 3, "drag": [{"widget": "MoveStick"}, [0.2, 0.6]], "over": 0.3, "hold": 2},
+                  {"t": 6, "drag": [[0.6, 0.4], [0.7, 0.4]], "finger": 1}, {"t": 7, "key": "Android_Back", "press": True}]
+        task = task_with(probe(play=play(inputs), measure=MOVED))
+        self.assertEqual(tasks.checks(task)[0][1]["play"]["inputs"], [
+            {"t": 1.0, "tap": {"widget": "FireButton"}, "finger": 0},
+            {"t": 2.0, "tap": [0.5, 0.25], "finger": 1, "hold": 0.5},
+            {"t": 3.0, "drag": [{"widget": "MoveStick"}, [0.2, 0.6]], "finger": 0, "over": 0.3, "hold": 2.0},
+            {"t": 6.0, "drag": [[0.6, 0.4], [0.7, 0.4]], "finger": 1},
+            {"t": 7.0, "key": "Android_Back", "press": True}])
+
+    def test_a_render_reading_is_asked_of_the_plugin_and_read_back(self):
+        from task_check import probes, tasks
+        task = task_with(probe(name="budget", measure=BUDGET, expect={"op": "<=", "value": 700}))
+        measure = tasks.checks(task)[0][1]["measure"]
+        self.assertEqual(probes.needs(measure), [{"kind": "render", "fields": ["draw_calls"]}])
+        qid = probes.query_id(probes.needs(measure)[0])
+        played = {"measures": {qid: [{"t": 0.5, "value": {"draw_calls": 310}}, {"t": 1.0, "value": {"draw_calls": 742}}]}}
+        self.assertEqual(probes.series(measure, played), [(0.5, 310.0), (1.0, 742.0)])
+
+    def test_a_mobile_games_drive_is_by_touch_and_a_desktop_games_by_keys(self):
+        from types import SimpleNamespace
+
+        from task_check import check
+        phone, desk, fake = (SimpleNamespace(mobile=lambda: "portrait"), SimpleNamespace(mobile=lambda: None),
+                             SimpleNamespace())
+        self.assertEqual(check.own_play("drive", desk), check.PLAYS["drive"])
+        self.assertEqual(check.own_play("drive", fake), check.PLAYS["drive"])
+        self.assertEqual(check.own_play("look", phone), check.PLAYS["look"])
+        seconds, shots, inputs = check.own_play("drive", phone)
+        self.assertEqual((seconds, shots), check.PLAYS["drive"][:2])
+        self.assertTrue(all("tap" in i or "drag" in i for i in inputs))
+        task_with(probe(play={"name": "thumbs", "seconds": seconds, "inputs": inputs}, measure=MOVED))  # its own rules
+
+
 class CodeJudgeFocus(unittest.TestCase):
     """A code judge may name the files its question is about, as the Lab's grader takes it."""
 
