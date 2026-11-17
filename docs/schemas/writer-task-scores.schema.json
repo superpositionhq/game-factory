@@ -1,0 +1,90 @@
+{
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "writer-task-scores/1"
+    },
+    "tasks": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/taskScore"
+      },
+      "minProperties": 1
+    }
+  },
+  "required": [
+    "schema",
+    "tasks"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "writer-task-scores/1",
+  "title": "Writer scores for every shipped task",
+  "$defs": {
+    "judgeScores": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "reference": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      },
+      "required": [
+        "start",
+        "reference"
+      ],
+      "additionalProperties": false
+    },
+    "taskScore": {
+      "type": "object",
+      "properties": {
+        "difficulty_estimate": {
+          "enum": [
+            "hard",
+            "medium"
+          ]
+        },
+        "quality": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "minutes_to_solve_estimate": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "judges": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/judgeScores"
+          }
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 300,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$(?![\\s\\S])"
+        }
+      },
+      "required": [
+        "difficulty_estimate",
+        "quality",
+        "minutes_to_solve_estimate",
+        "judges",
+        "notes"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
