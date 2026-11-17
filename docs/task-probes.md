@@ -162,8 +162,9 @@ Words used here:
   (threshold `s * 1.3`) or `{"op": ">=", "start_plus": 500}` (threshold `s + 500`), measured on the start.
 
 When the start can't be measured (its play ended before the window), a calibrated threshold anchors on the fix alone:
-`r - 0.25 * |r|` for `>`/`>=`, `r + 0.25 * |r|` for `<`/`<=`. When the fix can't be measured, or the start of a
-`start_times`/`start_plus` check can't, the task is invalid for that check.
+`r - 0.25 * |r|` for `>`/`>=`, `r + 0.25 * |r|` for `<`/`<=`. When the fix can't be measured, the fix measures 0 while
+the start can't be measured (a quarter of nothing is no margin), or the start of a `start_times`/`start_plus` check
+can't be measured, the task is invalid for that check.
 
 ### 1.3 Staging a contact, and reading it
 
@@ -191,10 +192,11 @@ reference misses too):
 
 - a thing gone or drawn (`drawn`, a count), a start-named state or property (`prop:`);
 - a sound started (`audio` `started_audible` near the place it lands, section 2.16);
-- **a hit stop** (0.05 to 0.1 s: no screenshot shows it): `world` `time_dilation` (section 2.20) where the stop slows
-  the world, actors `frozen` where it is the actor's own (the longest short stop that ended since the previous sample:
-  frames in which the actor moved under 0.1 cm and no bone of its skinned meshes moved 0.1 cm, between two frames of
-  motion, 0.5 s at most), in a tight window right after the contact, never on an actor a pin or teleport holds,
+- **a hit stop** (0.05 to 0.1 s: no screenshot shows it): `world` `time_dilation` (section 2.20) where the ticket
+  says the game's time slows or stops, actors `frozen` where it says the one struck freezes (the longest short stop
+  that ended since the previous sample: frames in which the actor moved under 0.1 cm and no bone of its skinned meshes
+  moved 0.1 cm, between two frames of motion, 0.5 s at most), never `time_dilation` where a fair build could freeze
+  the actors instead (that leaves time dilation untouched); in a tight window right after the contact, never on an actor a pin or teleport holds,
   paired with `world` `paused` == 0; the start's play must read 0;
 - **a stagger, a knock-back or an interrupted action** (behaviour, not looks): actors `montage` 1 in a short window
   after the hit and 0 before it; the actor can't act (the move key held through the window: its `speed` or `moved`
@@ -922,6 +924,11 @@ a run on an invalid task is void.
   degrees: the game's input mapping scales it, and so does the engine's mouse sensitivity. A play that assumes
   `"axis": 90` turns the camera 90 degrees barely moves it. Read the game's look scale at the seed and size the axis
   values (or send several events) so the camera really turns, then measure the turn.
+- **The checker's clock is not the wall clock.** Every play steps the game at a fixed 30 fps (`-benchmark`'s fixed
+  time step) as fast as the machine renders it, so a play's seconds pass in less real time, and a play may teleport
+  the player. Game logic driven by the wall clock, or state that doesn't follow a moved pawn, behaves otherwise under
+  it. Say so in the instruction's QA note where it matters (the test conditions, never the fix), use a `wait` input
+  where the game must see real seconds (section 1.1), and give windows room for it.
 - **Check that a play really reaches the situation.** A probe of a moment the play never reaches measures nothing
   useful. Teleport to the spot (`teleport` input), use a scenario `map`/`args` that starts there, and check on the fix
   that the play gets there before trusting its threshold.

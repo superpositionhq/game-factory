@@ -43,6 +43,16 @@ class Thresholds(unittest.TestCase):
                          (0.0, None, None))
         self.assertEqual(asked, [], "a literal threshold measures neither side")
 
+    def test_a_start_that_measures_nothing_and_a_reference_of_0_leave_no_threshold(self):
+        """A quarter of nothing is no margin: anchored on a reference of 0, the threshold would be 0 and pass a
+        reference that read nothing useful, the same non-information as both sides measuring the same."""
+        for op in (">=", ">", "<=", "<"):
+            check = first_check(task_with(probe(expect={"op": op, "calibrate": 0.5})))
+            with self.assertRaisesRegex(verdict.Uncalibrated, r"hero_on_ground: the start measured nothing \(crashed\) "
+                                                              "and the reference measured 0, so there is no threshold"):
+                verdict.make_threshold(check, (None, "crashed"), (1e-12, None))
+            self.assertEqual(verdict.make_threshold(check, (None, "crashed"), (2.0, None))[1:], (None, 2.0), op)
+
     def test_passes_and_equality_within_1e_9(self):
         self.assertTrue(verdict.passes(1.0 + 1e-12, "==", 1.0))
         self.assertTrue(verdict.passes(2.0, "!=", 1.0))

@@ -4,8 +4,9 @@ Thresholds (a probe's `expect`):
 - a literal (`value`): as written;
 - calibrated (`calibrate: f`): s + f * (r - s) from the start's value s and the reference's r, both measured by this
   check. A start that measured nothing anchors on the reference alone: r moved MARGIN of |r| toward the start's side
-  (below r for > and >=, above it for < and <=). A reference that measured nothing, or a start and reference that
-  measure the same, leave no threshold: the probe fails as uncalibrated;
+  (below r for > and >=, above it for < and <=). A reference that measured nothing, a start and reference that
+  measure the same, or a reference of 0 for a start that measured nothing (a share of nothing is no margin) leave no
+  threshold: the probe fails as uncalibrated;
 - relative to the start (`start_times: f`, `start_plus: d`): s * f or s + d; a start that measured nothing leaves no
   threshold.
 
@@ -36,7 +37,8 @@ MARGIN = 0.25  # a calibrated threshold whose start measured nothing: the refere
 
 class Uncalibrated(Exception):
     """A probe whose threshold can't be made (a start and reference measuring the same; a side that must be measured
-    measuring nothing): the task can't be graded by it. `start`, `fix`: what each side measured."""
+    measuring nothing; a reference of 0 to anchor on): the task can't be graded by it. `start`, `fix`: what each side
+    measured."""
 
     def __init__(self, message, start=None, fix=None):
         super().__init__(message)
@@ -80,12 +82,15 @@ def make_threshold(check, start_value, fix_value):
                            start)
     fix = None
     if relative == "calibrate":
-        fix, why = fix_value() if callable(fix_value) else fix_value
+        fix, fix_why = fix_value() if callable(fix_value) else fix_value
         if fix is None:
-            raise Uncalibrated(f"{check['name']}: the reference measured nothing ({why})", start, fix)
+            raise Uncalibrated(f"{check['name']}: the reference measured nothing ({fix_why})", start, fix)
         if start is not None and same(start, fix):
             raise Uncalibrated(f"{check['name']}: the start and the reference both measure {probes.fmt(start)}, so "
                                "there is no threshold between them", start, fix)
+        if start is None and same(fix, 0.0):  # the anchor's MARGIN of nothing is no margin
+            raise Uncalibrated(f"{check['name']}: the start measured nothing ({why}) and the reference measured 0, so "
+                               "there is no threshold", start, fix)
     return threshold(expect, start, fix), start, fix
 
 

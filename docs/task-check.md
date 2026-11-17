@@ -121,7 +121,8 @@ line says how long it took, and how much of that it waited for a machine slot (`
 - `{"op": ">=", "value": 1}`: a literal.
 - `{"op": ">=", "calibrate": 0.5}`: `s + 0.5 * (r - s)` between the start's measure `s` and the reference's `r`.
   If the start measured nothing (its play crashed: often the bug itself), the threshold is `r` moved a quarter of
-  `|r|` toward the start's side. If the reference measured nothing, or both sides measure the same, the probe fails as
+  `|r|` toward the start's side. If the reference measured nothing, both sides measure the same, or the start
+  measured nothing and the reference measured 0 (a quarter of nothing is no margin), the probe fails as
   **uncalibrated**.
 - `{"op": ">=", "start_times": 1.3}` / `{"op": ">=", "start_plus": 500}`: `s * 1.3` / `s + 500` from the start (for a
   task with no reference). A start that measured nothing leaves no threshold (uncalibrated).
