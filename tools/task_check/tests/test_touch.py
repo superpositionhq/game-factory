@@ -70,5 +70,22 @@ class Render(unittest.TestCase):
         task_with(glows)
 
 
+class CodeJudgeFocus(unittest.TestCase):
+    """A code judge may name the files its question is about, as the Lab's grader takes it."""
+
+    @staticmethod
+    def judge(**more):
+        return {"kind": "code_judge", "name": "fixed_at_its_cause", "required": False, "question": "Is it fixed at its cause?",
+                "rubric": [{"key": "cause", "criterion": "The cause is fixed."}], **more}
+
+    def test_a_focus_of_project_file_globs_is_taken(self):
+        task_with(probe(measure=MOVED), self.judge(focus=["Source/*", "Scripts/make_data.py"]))
+        task_with(probe(measure=MOVED), self.judge())
+
+    def test_a_focus_outside_the_project_or_too_long_is_refused(self):
+        for bad in (["/etc/passwd"], ["../other/*"], ["Source/*"] * 9, "Source/*"):
+            self.assertIsNotNone(refused(probe(measure=MOVED), self.judge(focus=bad)), bad)
+
+
 if __name__ == "__main__":
     unittest.main()
