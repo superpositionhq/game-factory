@@ -9,7 +9,8 @@ The engine is the one the machine config gives for the project's EngineAssociati
   mutex named after UnrealEditor.exe, so any editor on the machine, on any game, stops UBT with "Unable to build while
   Live Coding is active": -NoHotReloadFromIDE skips that guard, and a scratch copy's DLLs are its own. A build that
   still reports the line is retried: see build);
-- play: UnrealEditor.exe <uproject> [map] -game offscreen at 960x540, a fixed 30 fps, with -TaskProbe and its flags
+- play: UnrealEditor.exe <uproject> [map] -game offscreen at 960x540 (a mobile game, whose copy has a Platform.json:
+  the mobile renderer at the phone's size, MOBILE_FLAGS and MOBILE_SIZE), a fixed 30 fps, with -TaskProbe and its flags
   (-TaskProbeOut, -TaskProbeSeconds, -TaskProbeShots, -TaskProbeInputs, -TaskProbeQueries, -TaskProbeEvery), the log
   in Saved/Logs/TaskProbePlay.log, then a task play's own game flags; without sound (-nosound -benchmark) unless the
   play measures audio (probes.sound_flags: muted, with -benchmark's fixed step);
@@ -38,6 +39,10 @@ LIVE_CODING_BLOCKED = "Unable to build while Live Coding is active"
 LIVE_CODING_RETRY_SECONDS = 60
 LIVE_CODING_RETRY_LIMIT = 30 * 60
 SHOT_SIZE = (960, 540)
+# a mobile game's play (docs/task-probes.md, section 1.1): the engine's mobile renderer at the phone's size, by how the
+# game is held; -ForceRes because the engine otherwise clamps a game window to the primary display
+MOBILE_SIZE = {"landscape": (1920, 1080), "portrait": (1080, 1920)}
+MOBILE_FLAGS = ["-FeatureLevelES31", "-ForceRes"]
 OUTPUT_CHARS = 30_000
 WRAPPER_GRACE = 60  # seconds ue-heavy.ps1 gets to release its slot once the job it runs is killed
 QUEUE_POLL = 5  # seconds between looks at whether the wrapper has started its job
@@ -203,6 +208,13 @@ class Project:
     def uproject(self):
         return seeds.uproject(self.folder)
 
+    def mobile(self):
+        """How the copy's game is held when it is a mobile game ("landscape", "portrait"), or None for a desktop game:
+        the copy's own Platform.json, as the game had it at this commit (tools/validate-game.py read_platform)."""
+        from . import tasks
+
+        return tasks.validator().read_platform(self.folder)
+
     def build(self, timeout, sleep=time.sleep):
         """The editor target's build. One stopped by another process's Live Coding session isn't a failed build: it
         waits and tries again, up to LIVE_CODING_RETRY_LIMIT seconds, and says how many times in its output. Any other
@@ -238,7 +250,10 @@ class Project:
         if map:
             argv.append(map)
         sound, step = probes.sound_flags(queries)  # audio off, unless the play measures it
-        argv += ["-game", "-RenderOffscreen", f"-ResX={SHOT_SIZE[0]}", f"-ResY={SHOT_SIZE[1]}", "-unattended", NO_LIVE_CODING,
+        mobile = self.mobile()
+        width, height = MOBILE_SIZE[mobile] if mobile else SHOT_SIZE
+        argv += ["-game", "-RenderOffscreen", *(MOBILE_FLAGS if mobile else []), f"-ResX={width}", f"-ResY={height}",
+                 "-unattended", NO_LIVE_CODING,
                  *sound, "-nosplash", *step, "-fps=30", "-TaskProbe", f"-TaskProbeOut={out}",
                  f"-TaskProbeSeconds={seconds}", f"-TaskProbeShots={shots}", f"-log={LOG_NAME}"]
         if inputs:

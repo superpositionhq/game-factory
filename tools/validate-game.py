@@ -563,6 +563,30 @@ def check_history(rep, area, v, m):
             rep.error(a, f'cannot read the bundle: {e}')
 
 
+# A game's platform (docs/game-format.md, "Platform"): a mobile (Android) game has Platform.json at its root, written by
+# templates/new-game.ps1 -Platform mobile when the project is created; a game without the file is a desktop game.
+PLATFORM_FILE = 'Platform.json'
+ORIENTATIONS = ('landscape', 'portrait')
+
+
+def read_platform(folder):
+    """How the game in `folder` (a game repo, a copy of one at a commit, a dataset's UEProject/) is held when it is a
+    mobile game ('landscape' or 'portrait'), or None: a desktop game, which has no Platform.json. ValueError, saying
+    why, for a file that is there and says neither: never read as desktop."""
+    path = os.path.join(str(folder), PLATFORM_FILE)
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, encoding='utf-8-sig') as f:
+            said = json.load(f)
+    except (OSError, ValueError) as e:
+        raise ValueError(f'{PLATFORM_FILE} cannot be read ({type(e).__name__})') from e
+    if (not isinstance(said, dict) or set(said) != {'platform', 'orientation'} or said['platform'] != 'mobile'
+            or said['orientation'] not in ORIENTATIONS):
+        raise ValueError(f'{PLATFORM_FILE} must be {{"platform": "mobile", "orientation": "landscape" or "portrait"}}')
+    return said['orientation']
+
+
 TASK_NAME = re.compile(r'^[a-z0-9][a-z0-9-]{1,62}$')
 GRADER_KEYS = ('milestones',)          # the grader's half of a task, with seed.reference
 
