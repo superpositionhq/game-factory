@@ -99,7 +99,8 @@ class WriterChecks(unittest.TestCase):
         t = task()
         for key, value in [('quality', 0), ('quality', 6), ('quality', True), ('minutes_to_solve_estimate', 0),
                            ('minutes_to_solve_estimate', float('nan')), ('minutes_to_solve_estimate', float('inf')),
-                           ('notes', 'x' * 301), ('notes', 'line\nline'), ('notes', 'line\tline'), ('notes', 'line\n')]:
+                           ('notes', 'x' * 301), ('notes', 'line\nline'), ('notes', 'line\tline'), ('notes', 'line\n'),
+                           ('notes', 'line\u2028line'), ('notes', 'line\n')]:
             with self.subTest(key=key, value=value):
                 s = scores(t)
                 s['tasks'][t['name']][key] = value
