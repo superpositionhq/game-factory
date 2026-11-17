@@ -590,6 +590,9 @@ UI_SIGNATURE_AGGS = ('changes', 'any', 'all', 'count')  # a ui signature's value
 DRAWN_NEAR = ('drawn', 'motion', 'base_r', 'base_g', 'base_b', 'base_change')  # a drawn measure near a point
 DRAWN_LINE = ('drawn', 'reach', 'length')    # a drawn measure along a line
 WAITS = 300   # seconds of real time a task play's waits add at most
+# seconds a finger stays up before it goes down again (docs/task-probes.md, section 1.5): the probe lifts a finger a
+# frame after its touch is over, so a touch that began sooner would find its finger still down and miss on every run
+TOUCH_GAP = 0.1
 JUDGE_PLAY_SHOTS = 5   # the screenshots a judge check is shown of each of its own plays, unless its `shots` says
 JUDGE_SHOTS = 20       # the screenshots a judge check is shown at most: its plays times its shots
 
@@ -632,7 +635,8 @@ def named_shots(play):
 
 def task_play_errors(n, play, plays):
     """A task play's rules beyond the schema, for check `n` (a probe's `play`, a judge's `plays`): not named
-    look/drive/editor/trace, no input at or after its end, no grader flag, waits of at most 300 s in all, its named
+    look/drive/editor/trace, no input at or after its end, no touch that ends after it or begins less than TOUCH_GAP
+    after its finger lifts, no grader flag, waits of at most 300 s in all, its named
     shots each named once (20 at most), a view's pitch within -89 to 89, and identical to every other task play of its
     name in the task (`plays`: those seen so far, by name)."""
     errs, pname = [], play.get('name')
@@ -674,10 +678,55 @@ def task_play_errors(n, play, plays):
         if 'move' in i and isinstance(over, (int, float)) and isinstance(t, (int, float)) and isinstance(secs, (int, float)) \
                 and t + over > secs:
             errs.append(f'check {n}: play {pname} has a mouse movement that ends after the play ({secs} s)')
+    down = {}   # finger -> when its last touch lifts
+    touches = [i for i in play.get('inputs') or [] if isinstance(i, dict) and ('tap' in i or 'drag' in i)
+               and isinstance(i.get('t'), (int, float))]
+    for i in sorted(touches, key=lambda i: i['t']):
+        lasts = sum(i[k] for k in (('over', 'hold') if 'drag' in i else ('hold',))
+                    if isinstance(i.get(k), (int, float)) and not isinstance(i.get(k), bool))
+        finger = i.get('finger') if isinstance(i.get('finger'), int) else 0
+        if isinstance(secs, (int, float)) and i['t'] + lasts > secs:
+            errs.append(f'check {n}: play {pname} has a touch that ends after the play ({secs} s)')
+        if finger in down and i['t'] < down[finger] + TOUCH_GAP - 1e-9:
+            errs.append(f"check {n}: play {pname} puts finger {finger} down at {i['t']:g} s, less than {TOUCH_GAP:g} s "
+                        f"after it lifts ({down[finger]:g} s): give the second touch another finger, or start it later")
+        down[finger] = i['t'] + lasts
     whole = dict(TASK_PLAY_DEFAULTS, **play)
     if plays.setdefault(pname, whole) != whole:
         errs.append(f'check {n}: task play {pname} differs from another play of that name')
     return errs
+
+
+def captures(value):
+    """Whether a measure or a play's inputs make the probe render a capture of its own: a `drawn` measure, an actors
+    or components measure of `lit` or `glow` (read as rendered), or a select anywhere in it with `has.lit`."""
+    if isinstance(value, dict):
+        if value.get('probe') == 'drawn' or (value.get('probe') in ('actors', 'components')
+                                             and value.get('field') in ('lit', 'glow')):
+            return True
+        if isinstance(value.get('has'), dict) and value['has'].get('lit') is True:
+            return True
+        return any(captures(v) for v in value.values())
+    return isinstance(value, list) and any(captures(v) for v in value)
+
+
+def render_errors(checks):
+    """A play that takes a render measure (draw calls, triangles) takes no reading that makes the probe capture
+    (`captures`): the counts would hold the probe's own renders, and a budget a correct game keeps could read as
+    broken. A budget check gets a play of its own (docs/task-probes.md, section 2.21)."""
+    reads, capturing = set(), {}
+    for c in checks:
+        if c.get('kind') != 'probe' or not isinstance(c.get('measure'), dict):
+            continue
+        play = c.get('play')
+        name = play if isinstance(play, str) else (play.get('name') if isinstance(play, dict) else None)
+        if c['measure'].get('probe') == 'render':
+            reads.add(name)
+        if captures(c['measure']) or (isinstance(play, dict) and captures(play.get('inputs'))):
+            capturing.setdefault(name, c.get('name'))
+    return [f'play {name} takes a render measure and also makes the probe capture (check {capturing[name]}: a drawn, '
+            'lit or glow reading, or a select with has.lit): give the render measure a play with none of them'
+            for name in sorted(x for x in reads & set(capturing) if x)]
 
 
 def probe_errors(c, seed, ref, plays):
@@ -774,7 +823,8 @@ def task_semantic_errors(t):
     plays of its own and its plays times its shots 20 at most, and the
     probe rules (probe_errors); and a task whose start doesn't build (a build check's `fails_at_start`) has nothing
     that needs the start played: no start-relative threshold, no before/after judge (docs/task-probes.md, 3.1); and a
-    task play's `after` names task plays of the task, never itself, in no cycle (play_after_errors)."""
+    task play's `after` names task plays of the task, never itself, in no cycle (play_after_errors); and a play
+    that takes a render measure makes no capture of the probe's own (render_errors)."""
     errs, seen, plays = [], set(), {}
     seed = t.get('seed') if isinstance(t.get('seed'), dict) else None
     ref = seed.get('reference') if seed else None
@@ -822,7 +872,7 @@ def task_semantic_errors(t):
             if missing:
                 errs.append(f'check {n} needs {missing}, which come later or do not exist')
             seen.add(n)
-    return errs + play_after_errors(checks)
+    return errs + play_after_errors(checks) + render_errors(checks)
 
 
 def play_after_errors(checks):

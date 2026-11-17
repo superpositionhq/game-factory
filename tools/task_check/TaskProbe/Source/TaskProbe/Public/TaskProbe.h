@@ -7,7 +7,8 @@
 // (held there for a while when asked), real-time waits, named screenshots, map travels and view turns (LoadInputs):
 // one launch can visit several places and scenarios and picture each; and the checker's stages of a contact: an actor
 // pinned in front of the pawn, the engine's damage call, a reflected property written
-// (docs/task-probes.md, section 1.3). An input that didn't land (a click no button took, a wheel
+// (docs/task-probes.md, section 1.3); and touches, as a phone's screen sends them (a tap, a long press, a drag,
+// several fingers at once: docs/task-probes.md, section 1.5). An input that didn't land (a click no button took, a wheel
 // step or a mouse movement no game viewport received, a stage nothing took) is listed in probe.json "inputs_missed", as
 // is a named screenshot whose file wasn't written; "screenshots" lists only files written.
 // -TaskProbeSound: the checker's play that measures audio, launched with sound (muted) and a fixed time step instead of
@@ -52,7 +53,16 @@ private:
 		View,
 		Pin,
 		Damage,
-		Set
+		Set,
+		Touch
+	};
+
+	/** A place a touch names: a viewport point in fractions 0-1, or the centre of a widget by its name. */
+	struct FTouchSpot
+	{
+		bool bWidget = false;
+		FString Widget;
+		FVector2D At = FVector2D::ZeroVector;
 	};
 
 	struct FScriptedKey
@@ -87,6 +97,22 @@ private:
 		FString Path;  // set: the property path
 		TSharedPtr<class FJsonValue> Value;  // set: the value written
 		bool bAll = false;  // set: on every match, not only the nearest
+		TArray<FTouchSpot> Spots;  // tap, drag: where the finger goes down, then each place it moves through
+		bool bDrag = false;  // drag (a tap otherwise): what a miss is listed as
+		int32 Finger = 0;  // tap, drag: the touch index, 0-9 (several fingers at once by their numbers)
+		double Press = 0.0;  // tap: seconds the finger stays down; drag: seconds it stays at the last place before it lifts
+	};
+
+	/** A finger on the screen: sent a part each tick until it lifts. */
+	struct FTouching
+	{
+		int32 Input = 0;  // its index in Inputs
+		double Start = 0.0;  // play time it went down
+		TArray<FVector2D> Points;  // its path in Slate's absolute space, resolved when it went down
+		FVector2D Last = FVector2D::ZeroVector;  // where it is
+		bool bDown = false;
+		bool bMissed = false;  // a move Slate didn't take (listed once)
+		bool bFinished = false;  // lifted
 	};
 
 	/** An actor a pin holds: where, until when (play time). */
@@ -126,6 +152,9 @@ private:
 	bool ClickSlate(const FScriptedKey& K);
 	void SendWheel(const FScriptedKey& K);
 	void MoveMouse(FMoving& M);
+	void StartTouch(const FScriptedKey& K, UWorld* World);
+	void MoveTouch(FTouching& T);
+	void LiftTouches();
 	void Missed(const FScriptedKey& K, const TCHAR* Kind, const FString& Target, const FString& Why);
 	void AskShot(const FString& File, int32 Input);
 	void ShotTaken();
@@ -152,6 +181,7 @@ private:
 	double ShotsWaitStart = 0.0;  // the real time that wait began
 	TArray<TSharedPtr<class FJsonValue>> InputsMissed;  // probe.json "inputs_missed": [{t, kind, target, why}]
 	TArray<FMoving> Moving;  // mouse movements under way
+	TArray<FTouching> Touching;  // fingers on the screen
 	TSharedPtr<class FTaskProbeQueries> Queries;  // only with -TaskProbeQueries
 	bool bDone = false;
 	bool bStarted = false;  // the first world has begun play: the clock runs from then on

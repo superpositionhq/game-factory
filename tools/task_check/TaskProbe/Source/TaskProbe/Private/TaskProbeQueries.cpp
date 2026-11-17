@@ -70,6 +70,8 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "GlobalRenderResources.h"
+#include "RHI.h"
+#include "RHIStats.h"
 #include "Interfaces/Interface_PostProcessVolume.h"
 #include "Kismet/GameplayStatics.h"
 #include "Internationalization/Regex.h"
@@ -1659,6 +1661,34 @@ UButton* FindButton(UWorld* World, const FString& Want)
 		ForEachWidgetDeep(Top, Visit);
 	}
 	return Found;
+}
+
+bool WidgetCentre(UWorld* World, const FString& Want, FVector2D& OutCentre, FString& OutLabel)
+{
+	TArray<UUserWidget*> Tops;
+	ViewportWidgets(World, Tops);
+	bool bFound = false;
+	auto Visit = [&](UWidget* W)
+	{
+		if (bFound || !(W->GetName().MatchesWildcard(Want) || ClassMatches(W->GetClass(), Want)) || !WidgetVisible(W))
+		{
+			return;
+		}
+		const FGeometry& G = W->GetCachedGeometry();
+		const FVector2D Size(G.GetAbsoluteSize());
+		if (Size.X <= 0.0 || Size.Y <= 0.0)
+		{
+			return;  // never laid out: nothing a finger could touch
+		}
+		bFound = true;
+		OutCentre = FVector2D(G.GetAbsolutePosition()) + Size * 0.5;
+		OutLabel = FString::Printf(TEXT("%s (%s)"), *W->GetName(), *W->GetClass()->GetName());
+	};
+	for (UUserWidget* Top : Tops)
+	{
+		ForEachWidgetDeep(Top, Visit);
+	}
+	return bFound || FindSlateButton(Want, OutCentre, OutLabel).IsValid();
 }
 
 /** Do, with a renderer of its own for a `has` `lit` while none is set (defined after FGlowRender). */
@@ -6430,7 +6460,7 @@ void FTaskProbeQueries::Load(const FString& Path)
 		return;
 	}
 	static const TSet<FString> Kinds = {TEXT("actors"), TEXT("widgets"), TEXT("light"), TEXT("grading"), TEXT("spawns"), TEXT("camera"), TEXT("components"),
-		TEXT("pieces"), TEXT("screen"), TEXT("audio"), TEXT("ground"), TEXT("ui"), TEXT("drawn"), TEXT("world")};
+		TEXT("pieces"), TEXT("screen"), TEXT("audio"), TEXT("ground"), TEXT("ui"), TEXT("drawn"), TEXT("world"), TEXT("render")};
 	TSet<FString> Ids;
 	for (const TSharedPtr<FJsonValue>& Item : *List)
 	{
@@ -6474,6 +6504,7 @@ void FTaskProbeQueries::Load(const FString& Path)
 			Q.Fields.Add(TEXT("count"));
 		}
 		bHasWorld = bHasWorld || Q.Kind == TEXT("world");
+		bHasRender = bHasRender || Q.Kind == TEXT("render");
 		if (Q.Kind == TEXT("spawns"))
 		{
 			Q.Def->TryGetStringField(TEXT("class"), Q.SpawnClass);
@@ -6717,6 +6748,10 @@ void FTaskProbeQueries::Sample(UWorld* World, APlayerController* PC, double T)
 		{
 			SampleWorld(*S);
 		}
+		else if (Q.Kind == TEXT("render"))
+		{
+			SampleRender(*S);
+		}
 		else if (Q.Kind == TEXT("spawns"))
 		{
 			const TSharedRef<FJsonObject> V = MakeShared<FJsonObject>();
@@ -6733,6 +6768,7 @@ void FTaskProbeQueries::Sample(UWorld* World, APlayerController* PC, double T)
 	// world: the lowest time dilation and any pause are noted afresh from this sample on
 	MinDilation = -1.0;
 	bPausedSince = false;
+	MaxDrawCalls = MaxPrimitives = -1;
 	// frozen: the actors read this sample are followed frame by frame until the next one, and only those; a stillness
 	// under way goes on into the next interval
 	for (auto It = Stills.CreateIterator(); It; ++It)
@@ -8302,6 +8338,13 @@ static void PoseOf(const AActor* A, TArray<FVector>& Out)
 
 void FTaskProbeQueries::Frame(float DeltaTime, UWorld* World)
 {
+	if (bHasRender)
+	{
+		// render: the RHI's counts of the last frame it finished (what `stat RHI` shows), the highest since the previous
+		// sample, so a heavy frame between two samples is read too (only in a play that reads it)
+		MaxDrawCalls = FMath::Max(MaxDrawCalls, GNumDrawCallsRHI[0]);
+		MaxPrimitives = FMath::Max(MaxPrimitives, GNumPrimitivesDrawnRHI[0]);
+	}
 	if (World && bHasWorld)
 	{
 		// world: a hit pause slows or stops the world for a few frames, which a sample every 0.1 s can fall between (only
@@ -8396,6 +8439,25 @@ TSharedPtr<FJsonValue> FTaskProbeQueries::ActorStill(const AActor* A)
 	StillRead.Add(Key);
 	const FStillTrack* T = Stills.Find(Key);
 	return T && T->Time > 0.0 ? Num(T->Longest) : Null();
+}
+
+void FTaskProbeQueries::SampleRender(FJsonObject& Out)
+{
+	const TSharedRef<FJsonObject> V = MakeShared<FJsonObject>();
+	if (MaxDrawCalls < 0)
+	{
+		V->SetField(TEXT("draw_calls"), Null());  // no frame since the previous sample
+		V->SetField(TEXT("triangles"), Null());
+	}
+	else
+	{
+		V->SetNumberField(TEXT("draw_calls"), MaxDrawCalls);
+		V->SetNumberField(TEXT("triangles"), MaxPrimitives);
+	}
+	FTextureMemoryStats Textures;
+	RHIGetTextureMemoryStats(Textures);
+	V->SetNumberField(TEXT("texture_mb"), (double)(Textures.StreamingMemorySize + Textures.NonStreamingMemorySize) / (1024.0 * 1024.0));
+	Out.SetObjectField(TEXT("value"), V);
 }
 
 void FTaskProbeQueries::SampleWorld(FJsonObject& Out)

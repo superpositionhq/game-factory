@@ -197,6 +197,31 @@ its text, tag or type. Every input that didn't land (a click no button took, a w
 received, a stage nothing took, a named shot whose file wasn't written) is listed in probe.json `inputs_missed`, and
 `screenshots` lists only files written; two named shots asked in one frame are one capture, the second a copy.
 
+### 1.5 Touches
+
+A task play may touch the screen as a phone's player does. Two inputs, each with a `finger` (the touch index, 0 to 9,
+0 unless said):
+
+- `{"t", "tap": <spot>, "hold": s, "finger": n}`: the finger goes down at the spot and lifts the next frame, or after
+  `hold` seconds (a long press, a button kept down).
+- `{"t", "drag": [<spot>, <spot>, ...], "over": s, "hold": s, "finger": n}` (2 to 16 spots): the finger goes down at
+  the first spot, moves through the others evenly over `over` seconds (at once without it), stays at the last for
+  `hold` seconds, then lifts: a swipe, a slider, a virtual stick pushed over and held there.
+
+A spot is a point of the screen `[fx, fy]` in fractions 0-1 from its top left, or `{"widget": "<name>"}`: the centre
+of the first visible, laid-out UMG widget of that name (a wildcard) or class, whatever its kind (a button, a stick, a
+panel), else of a Slate button as a click finds one. Name the widget where you can: its place differs between
+landscape and portrait, its name does not.
+
+Touches of different fingers may overlap in time (a stick held while a button is tapped, two fingers pinching). One
+finger's touches are at least 0.1 s apart, from one's lift to the next one's start, and every touch is over by the
+play's end: the validator refuses a task that asks otherwise. They reach the game through Slate as a touch screen's
+do, so a UMG or Slate widget takes them as a player's and what no widget takes reaches the game view (the player
+controller's touch input). A spot whose widget isn't on screen is listed in probe.json `inputs_missed` (kind `tap` or
+`drag`). Android's back button is the key `Android_Back`. A desktop build takes touches too, so they are allowed in
+any task; a mobile game is played by touch, so its tasks' plays drive it with touches and `Android_Back`, never
+with a key or the mouse.
+
 ## 2. Measures
 
 ### 2.1 Common fields
@@ -761,6 +786,18 @@ opaque behind it (translucent particles).
 `{"probe": "world", "field": "time_dilation" | "paused"}`: `time_dilation` the lowest global time dilation over the
 frames since the previous sample (a hit stop that slows the world shows even between samples); `paused` 1 when the game
 was paused in any of them ("Escape pauses the game").
+
+### 2.21 `render`: what the renderer drew
+
+`{"probe": "render", "field": "draw_calls" | "triangles" | "texture_mb"}`: the readings a budget is checked by.
+`draw_calls` and `triangles` are the renderer's counts of a frame, what `stat RHI` shows (the UI's draws among them),
+the highest over the frames since the previous sample; `texture_mb` is the texture memory in use at the sample, in
+MiB. A literal threshold is allowed, since a budget is a number of its own: `{"op": "<=", "value": 700}`.
+
+The counts hold whatever the probe itself rendered in those frames. So a play that takes a `render` measure takes no
+reading that makes the probe capture: no `drawn` measure, no `lit` or `glow`, no select with `has.lit`, in its
+measures or in its inputs. The validator refuses a task with the two in one play. Give a budget check a play of its
+own.
 
 ## 3. What gates, and how a probe fails
 

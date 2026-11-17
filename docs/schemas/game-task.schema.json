@@ -1,5 +1,5 @@
 {
-  "$comment": "game-factory's task format, GameTask (game-task/1): one task a game ships with, on its orphan tasks branch (Tasks/<name>.json) and, split into the agent's and the grader's parts, in its dataset. The deterministic `probe` check kind is described for task authors in docs/task-probes.md, and every task is seeded; a build check's `fails_at_start` marks a start that doesn't compile. tools/validate-game.py checks every task in a game repo's tasks branch and in a dataset against this schema and the rules it cannot express. Since 2026-11-11 (Lab game grader 1.5.0) a task play may turn the mouse wheel (`wheel`), move the mouse (`move`) and stage a contact (`pin`, `damage`, `set`); an actor select may filter by a reflected property (`where`) or leave the player out (`player` false); a probe may read the world's lowest time dilation and pause (`world`), an actor's short stops, montage, damage taken and AI focus (`frozen`, `montage`, `damage_taken`, `focus_player`), and the sounds that start (`started`, `started_audible`, `sounds`, `repeats`, a select `near` a point). Since 2026-11-12 (Lab game grader 1.7.0) a task play may name the task plays that run before it on the same side (`after`), for a play that reads what another writes.",
+  "$comment": "game-factory's task format, GameTask (game-task/1): one task a game ships with, on its orphan tasks branch (Tasks/<name>.json) and, split into the agent's and the grader's parts, in its dataset. The deterministic `probe` check kind is described for task authors in docs/task-probes.md, and every task is seeded; a build check's `fails_at_start` marks a start that doesn't compile. tools/validate-game.py checks every task in a game repo's tasks branch and in a dataset against this schema and the rules it cannot express. Since 2026-11-11 (Lab game grader 1.5.0) a task play may turn the mouse wheel (`wheel`), move the mouse (`move`) and stage a contact (`pin`, `damage`, `set`); an actor select may filter by a reflected property (`where`) or leave the player out (`player` false); a probe may read the world's lowest time dilation and pause (`world`), an actor's short stops, montage, damage taken and AI focus (`frozen`, `montage`, `damage_taken`, `focus_player`), and the sounds that start (`started`, `started_audible`, `sounds`, `repeats`, a select `near` a point). Since 2026-11-12 (Lab game grader 1.7.0) a task play may name the task plays that run before it on the same side (`after`), for a play that reads what another writes. Since 2026-11-12 (Lab game grader 1.8.0) a task play may send touches (`tap`, `drag`: a finger down at a point of the screen or a widget's centre, held, moved, several fingers at once), and a probe may read what the renderer drew (`render`: draw calls, triangles, texture memory).",
   "$defs": {
     "ActionsJudge": {
       "additionalProperties": false,
@@ -1298,6 +1298,89 @@
       "title": "Damage",
       "type": "object"
     },
+    "Drag": {
+      "additionalProperties": false,
+      "description": "A finger put down at the first spot of `drag`, moved through the others evenly over `over` seconds (at once\nwithout it), kept at the last for `hold` seconds, then lifted: a swipe, a slider, a virtual stick pushed over and\nheld there. `finger` as a tap's; two drags of different fingers at the same time are a pinch. One finger's touches are at\nleast 0.1 s apart, from one's lift to the next one's start. A drag with a spot\nwhose widget isn't on screen is a miss the play reports.",
+      "properties": {
+        "drag": {
+          "items": {
+            "anyOf": [
+              {
+                "items": {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              {
+                "$ref": "#/$defs/OnWidget"
+              }
+            ]
+          },
+          "maxItems": 16,
+          "minItems": 2,
+          "title": "Drag",
+          "type": "array"
+        },
+        "finger": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 10,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finger"
+        },
+        "hold": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 120,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hold"
+        },
+        "over": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 120,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Over"
+        },
+        "t": {
+          "maximum": 120,
+          "minimum": 0,
+          "title": "T",
+          "type": "number"
+        }
+      },
+      "required": [
+        "t",
+        "drag"
+      ],
+      "title": "Drag",
+      "type": "object"
+    },
     "DrawnMeasure": {
       "additionalProperties": false,
       "description": "What is drawn in a place, whatever draws it (docs/task-probes.md, section 2.19): every primitive drawn in game within the place\n(`near` a point, its height band applied; or within `radius` of a `line`), rendered alone, each pixel kept where\nits depth puts it inside the place. Near a point: `drawn` (1 when anything is), `motion` (the share of what is drawn\nthere that changed since the previous sample: a moving mesh, particles, a panned material), `base_r|g|b` (the mean\nrendered base colour, linear 0-1) and `base_change` (that colour's distance from the first sample's). Along a line:\n`drawn`, `reach` (cm from `from` to the furthest point drawn on it) and `length` (cm of it drawn). Every field but\n`drawn` depends on what a build drew, so its threshold is calibrated or relative to the start, never a literal\n(tools/validate-game.py).",
@@ -2519,6 +2602,22 @@
       "title": "Near",
       "type": "object"
     },
+    "OnWidget": {
+      "additionalProperties": false,
+      "description": "The centre of the first visible widget of that name (a wildcard) or class, whatever its kind: a UMG widget in\nthe viewport (a button, a stick, a panel), else a Slate button as a click finds one.",
+      "properties": {
+        "widget": {
+          "pattern": "^[A-Za-z0-9_*?]{1,120}$",
+          "title": "Widget",
+          "type": "string"
+        }
+      },
+      "required": [
+        "widget"
+      ],
+      "title": "OnWidget",
+      "type": "object"
+    },
     "Package": {
       "additionalProperties": false,
       "description": "A Development package builds, and the packaged game boots.",
@@ -3026,6 +3125,7 @@
               "log": "#/$defs/LogMeasure",
               "pawn": "#/$defs/PawnMeasure",
               "pieces": "#/$defs/PiecesMeasure",
+              "render": "#/$defs/RenderMeasure",
               "screen": "#/$defs/ScreenMeasure",
               "spawns": "#/$defs/SpawnsMeasure",
               "trace": "#/$defs/TraceMeasure",
@@ -3089,6 +3189,9 @@
             },
             {
               "$ref": "#/$defs/WorldMeasure"
+            },
+            {
+              "$ref": "#/$defs/RenderMeasure"
             }
           ],
           "title": "Measure"
@@ -3143,6 +3246,130 @@
         "expect"
       ],
       "title": "Probe",
+      "type": "object"
+    },
+    "RenderMeasure": {
+      "additionalProperties": false,
+      "description": "What the renderer drew (docs/task-probes.md, section 2.21): `draw_calls` and `triangles`,\nthe RHI's counts of a frame (what `stat RHI` shows, the UI's draws among them), the highest over the frames since\nthe previous sample; `texture_mb`, the texture memory in use at the sample (MiB). A budget's readings: a literal\nthreshold is allowed, since a budget is a number of its own (a mobile game's 700 draw calls). The counts hold\nwhatever the plugin itself rendered in those frames, so a play that takes a render measure may take no reading\nthat captures (drawn, lit, glow, a select with has.lit): the validator refuses the two together.",
+      "properties": {
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "delta",
+                "any",
+                "all",
+                "count",
+                "sum",
+                "range",
+                "std",
+                "changes",
+                "rises",
+                "falls",
+                "step"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 120,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "const": "end",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "field": {
+          "enum": [
+            "draw_calls",
+            "triangles",
+            "texture_mb"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "probe": {
+          "const": "render",
+          "title": "Probe",
+          "type": "string"
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        }
+      },
+      "required": [
+        "probe",
+        "field"
+      ],
+      "title": "RenderMeasure",
       "type": "object"
     },
     "RubricItem": {
@@ -3723,6 +3950,70 @@
       "title": "StartTimes",
       "type": "object"
     },
+    "Tap": {
+      "additionalProperties": false,
+      "description": "A finger put down at `tap` (a viewport point in fractions, or `{\"widget\": name}`: that widget's centre) and\nlifted: the next frame, or after `hold` seconds (a long press, a button held). `finger`: which finger (0-9, 0\nunless said); taps and drags of different fingers may overlap in time (two thumbs). A tap whose widget isn't on\nscreen is a miss the play reports.",
+      "properties": {
+        "finger": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 10,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finger"
+        },
+        "hold": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 120,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hold"
+        },
+        "t": {
+          "maximum": 120,
+          "minimum": 0,
+          "title": "T",
+          "type": "number"
+        },
+        "tap": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "$ref": "#/$defs/OnWidget"
+            }
+          ],
+          "title": "Tap"
+        }
+      },
+      "required": [
+        "t",
+        "tap"
+      ],
+      "title": "Tap",
+      "type": "object"
+    },
     "TaskPlay": {
       "additionalProperties": false,
       "description": "A task-defined scripted play: `inputs` (keys, axes, widget clicks, wheel notches, mouse movement, ...; and the\ngrader's stages of a contact: pin, damage, set) sent at their times during `seconds` (a move spread over time\nends by then too); its\nown `map` (with URL options) instead of the task's play_map, `args` on its command line (game flags, -Name or\n-Name=value, but never the grader's own: DENIED_ARGS, -GameEnv*), and samples every `every` seconds (default\n0.5). `after`: the task plays (probe or judge plays of the task) that run and end on the same side before it\nstarts, for a play that reads what another writes (a save: a side's plays share the game's Saved folder); one that\nfailed still counts as run.",
@@ -3815,6 +4106,12 @@
               },
               {
                 "$ref": "#/$defs/SetProp"
+              },
+              {
+                "$ref": "#/$defs/Tap"
+              },
+              {
+                "$ref": "#/$defs/Drag"
               }
             ]
           },

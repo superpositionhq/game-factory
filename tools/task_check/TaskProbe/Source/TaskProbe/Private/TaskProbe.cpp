@@ -5,6 +5,7 @@
 #include "Camera/PlayerCameraManager.h"
 #include "Components/Button.h"
 #include "Framework/Application/SlateApplication.h"
+#include "GenericPlatform/GenericPlatformInputDeviceMapper.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Engine/Engine.h"
@@ -147,7 +148,11 @@ void UTaskProbe::LoadInputs(const FString& Path)
 	// (docs/task-probes.md, section 1.3): {"t", "pin": <actor select>, "hold": seconds, "front": cm, "at": <point>, "offset": [x, y, z]} (the nearest match
 	// held at its place, first set ahead of the pawn with front, or at a point with at), {"t", "damage": points, "to": <select>, "from": <select>} (the
 	// engine's damage call), {"t", "set": "<path>", "on": <select>, "value": v, "all": bool} (a reflected property
-	// written)
+	// written); and touches, sent through Slate as a touch screen's are: {"t", "tap": <spot>, "hold": seconds, "finger": n}
+	// (finger n goes down at the spot and lifts after the hold, the next frame without one) and {"t", "drag": [<spot>,
+	// <spot>, ...], "over": seconds, "hold": seconds, "finger": n} (it goes down at the first spot, moves through the
+	// others evenly over the seconds, stays at the last for the hold, then lifts); a spot is a viewport point [fx, fy]
+	// in fractions 0-1 or {"widget": "<name>"}, the centre of that widget; fingers 0-9 may be down at the same time
 	FString Text;
 	if (!FFileHelper::LoadFileToString(Text, *Path))
 	{
@@ -177,6 +182,18 @@ void UTaskProbe::LoadInputs(const FString& Path)
 		}
 		return true;
 	};
+	auto ReadSpot = [](const TSharedPtr<FJsonValue>& V, FTouchSpot& Out)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* A = nullptr;
+		const TSharedPtr<FJsonObject>* O = nullptr;
+		if (V.IsValid() && V->TryGetArray(A) && A->Num() == 2 && (*A)[0].IsValid() && (*A)[1].IsValid() && (*A)[0]->TryGetNumber(Out.At.X)
+			&& (*A)[1]->TryGetNumber(Out.At.Y))
+		{
+			return true;
+		}
+		Out.bWidget = V.IsValid() && V->TryGetObject(O) && O->IsValid() && (*O)->TryGetStringField(TEXT("widget"), Out.Widget) && !Out.Widget.IsEmpty();
+		return Out.bWidget;
+	};
 	for (const TSharedPtr<FJsonValue>& Row : Rows)
 	{
 		const TSharedPtr<FJsonObject>* Obj = nullptr;
@@ -191,7 +208,48 @@ void UTaskProbe::LoadInputs(const FString& Path)
 		bool bClick = false;
 		const TSharedPtr<FJsonObject>* Target = nullptr;
 		const TSharedPtr<FJsonObject>* On = nullptr;
-		if ((*Obj)->TryGetObjectField(TEXT("pin"), Target) && Target->IsValid())
+		if ((*Obj)->HasField(TEXT("tap")) || (*Obj)->HasField(TEXT("drag")))
+		{
+			K.Kind = EScriptedKind::Touch;
+			K.bDrag = (*Obj)->HasField(TEXT("drag"));
+			const TArray<TSharedPtr<FJsonValue>>* Spots = nullptr;
+			FTouchSpot Spot;
+			if (!K.bDrag && ReadSpot((*Obj)->TryGetField(TEXT("tap")), Spot))
+			{
+				K.Spots.Add(Spot);
+			}
+			else if (K.bDrag && (*Obj)->TryGetArrayField(TEXT("drag"), Spots))
+			{
+				for (const TSharedPtr<FJsonValue>& V : *Spots)
+				{
+					FTouchSpot Next;
+					if (!ReadSpot(V, Next))
+					{
+						K.Spots.Reset();
+						break;
+					}
+					K.Spots.Add(Next);
+				}
+			}
+			if (K.Spots.Num() < (K.bDrag ? 2 : 1) || K.Spots.Num() > 16)
+			{
+				continue;
+			}
+			double Finger = 0.0;
+			(*Obj)->TryGetNumberField(TEXT("finger"), Finger);
+			K.Finger = FMath::RoundToInt(Finger);
+			if (K.Finger < 0 || K.Finger > 9)
+			{
+				// never sent as another finger: a touch of a finger the engine doesn't have is a miss the play reports
+				Missed(K, K.bDrag ? TEXT("drag") : TEXT("tap"), FString::Printf(TEXT("finger %d"), K.Finger), TEXT("a finger is 0 to 9"));
+				continue;
+			}
+			(*Obj)->TryGetNumberField(TEXT("hold"), K.Press);
+			K.Press = FMath::Clamp(K.Press, 0.0, 120.0);
+			(*Obj)->TryGetNumberField(TEXT("over"), K.Over);
+			K.Over = FMath::Clamp(K.Over, 0.0, 120.0);
+		}
+		else if ((*Obj)->TryGetObjectField(TEXT("pin"), Target) && Target->IsValid())
 		{
 			K.Kind = EScriptedKind::Pin;
 			K.Target = *Target;
@@ -527,6 +585,9 @@ void UTaskProbe::SendInput(const FScriptedKey& K, UWorld* World, APlayerControll
 	case EScriptedKind::Set:
 		Stage(K, World, PC);
 		break;
+	case EScriptedKind::Touch:
+		StartTouch(K, World);
+		break;
 	case EScriptedKind::Move:
 	{
 		FMoving M;
@@ -857,6 +918,108 @@ void UTaskProbe::MoveMouse(FMoving& M)
 	}
 }
 
+void UTaskProbe::StartTouch(const FScriptedKey& K, UWorld* World)
+{
+	// a finger going down: its spots are resolved now (a widget's centre as it is laid out at this moment), then it is
+	// sent a part each tick (MoveTouch) until it lifts
+	const TCHAR* Kind = K.bDrag ? TEXT("drag") : TEXT("tap");
+	auto Named = [](const FTouchSpot& S) { return S.bWidget ? S.Widget : FString::Printf(TEXT("%.3f, %.3f"), S.At.X, S.At.Y); };
+	const FString Target = Named(K.Spots[0]);
+	if (!FSlateApplication::IsInitialized())
+	{
+		Missed(K, Kind, Target, TEXT("no game viewport"));
+		return;
+	}
+	if (Touching.ContainsByPredicate([&](const FTouching& T) { return !T.bFinished && Inputs[T.Input].Finger == K.Finger; }))
+	{
+		Missed(K, Kind, Target, FString::Printf(TEXT("finger %d is still down from an earlier touch"), K.Finger));
+		return;
+	}
+	FTouching T;
+	T.Input = static_cast<int32>(&K - Inputs.GetData());
+	T.Start = Elapsed;
+	for (const FTouchSpot& S : K.Spots)
+	{
+		FVector2D At;
+		FString Label;
+		if (S.bWidget ? !TaskProbe::WidgetCentre(World, S.Widget, At, Label) : !TaskProbe::ViewportPoint(S.At.X, S.At.Y, At))
+		{
+			Missed(K, Kind, Named(S), S.bWidget ? TEXT("no visible widget matches it, UMG or a Slate button") : TEXT("no game viewport"));
+			return;
+		}
+		T.Points.Add(At);
+	}
+	Touching.Add(T);
+	MoveTouch(Touching.Last());
+}
+
+void UTaskProbe::MoveTouch(FTouching& T)
+{
+	// one finger's part due by now, through Slate as a touch screen's events are (the application's own touch entry
+	// points): down at its first spot, a move when its place changed, up once its path and its hold are over (never in
+	// the tick it went down, so a tap is a press in one frame and a release in the next)
+	const FScriptedKey& K = Inputs[T.Input];
+	FSlateApplication& Slate = FSlateApplication::Get();
+	const FInputDeviceId Device = IPlatformInputDeviceMapper::Get().GetDefaultInputDevice();
+	const FPlatformUserId User = IPlatformInputDeviceMapper::Get().GetPrimaryPlatformUser();
+	const TCHAR* Kind = K.bDrag ? TEXT("drag") : TEXT("tap");
+	const double Since = Elapsed - T.Start;
+	if (!T.bDown)
+	{
+		T.bDown = true;
+		T.Last = T.Points[0];
+		const bool bSent = Slate.OnTouchStarted(TSharedPtr<FGenericWindow>(), T.Last, 1.f, K.Finger, User, Device);
+		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: %s finger %d down at absolute (%.0f, %.0f)%s"), Kind, K.Finger, T.Last.X, T.Last.Y,
+			bSent ? TEXT("") : TEXT(": Slate refused it"));
+		if (!bSent)
+		{
+			T.bMissed = T.bFinished = true;
+			Missed(K, Kind, FString::Printf(TEXT("finger %d"), K.Finger), TEXT("Slate refused the touch"));
+		}
+		return;
+	}
+	FVector2D To = T.Points.Last();
+	if (T.Points.Num() > 1 && K.Over > 0.0 && Since < K.Over)
+	{
+		const double Along = FMath::Clamp(Since / K.Over, 0.0, 1.0) * (T.Points.Num() - 1);
+		const int32 i = FMath::Min(FMath::FloorToInt32(Along), T.Points.Num() - 2);
+		To = FMath::Lerp(T.Points[i], T.Points[i + 1], Along - i);
+	}
+	if (!To.Equals(T.Last, 0.01))
+	{
+		if (!Slate.OnTouchMoved(To, 1.f, K.Finger, User, Device) && !T.bMissed)
+		{
+			T.bMissed = true;
+			Missed(K, Kind, FString::Printf(TEXT("finger %d"), K.Finger), TEXT("Slate has no such finger down: its move was not sent"));
+		}
+		T.Last = To;
+	}
+	if (Since >= (T.Points.Num() > 1 ? K.Over : 0.0) + K.Press)
+	{
+		Slate.OnTouchEnded(T.Last, K.Finger, User, Device);
+		T.bFinished = true;
+		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: %s finger %d up at absolute (%.0f, %.0f) after %.2f s"), Kind, K.Finger, T.Last.X, T.Last.Y, Since);
+	}
+}
+
+void UTaskProbe::LiftTouches()
+{
+	// the play is over: no finger stays down in Slate
+	if (!FSlateApplication::IsInitialized())
+	{
+		return;
+	}
+	for (FTouching& T : Touching)
+	{
+		if (T.bDown && !T.bFinished)
+		{
+			FSlateApplication::Get().OnTouchEnded(T.Last, Inputs[T.Input].Finger, IPlatformInputDeviceMapper::Get().GetPrimaryPlatformUser(),
+				IPlatformInputDeviceMapper::Get().GetDefaultInputDevice());
+			T.bFinished = true;
+		}
+	}
+}
+
 bool UTaskProbe::Tick(float DeltaTime)
 {
 	if (bDone)
@@ -944,6 +1107,15 @@ bool UTaskProbe::Tick(float DeltaTime)
 		}
 	}
 	Moving.RemoveAll([](const FMoving& M) { return M.bFinished; });
+	// fingers on the screen: the part due by now (one that went down this tick was sent its press already)
+	for (FTouching& T : Touching)
+	{
+		if (!T.bFinished && T.Start < Elapsed)
+		{
+			MoveTouch(T);
+		}
+	}
+	Touching.RemoveAll([](const FTouching& T) { return T.bFinished; });
 
 	if (Elapsed >= NextTrack)
 	{
@@ -1007,6 +1179,7 @@ bool UTaskProbe::Tick(float DeltaTime)
 void UTaskProbe::Finish(const FString& Reason)
 {
 	bDone = true;
+	LiftTouches();
 	UGameInstance* GI = GetGameInstance();
 	UWorld* World = GI ? GI->GetWorld() : nullptr;
 	const TSharedRef<FJsonObject> Out = MakeShared<FJsonObject>();

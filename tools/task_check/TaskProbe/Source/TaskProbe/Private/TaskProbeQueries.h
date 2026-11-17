@@ -2,7 +2,7 @@
 // the track (every -TaskProbeEvery seconds, default 0.5) and written to probe.json "measures" as {"<id>": [{"t": t, "rows": [...]} | {"t": t,
 // "value": ...}, ...]}. The contract is game-factory's docs/task-probes.md
 // (the measures) and docs/task-check.md (how the checker plays and reduces them).
-// Query kinds: actors, widgets, light, grading, spawns, camera, components, pieces, screen, audio, ground, ui, drawn, world. Anything unknown (a class, a
+// Query kinds: actors, widgets, light, grading, spawns, camera, components, pieces, screen, audio, ground, ui, drawn, world, render. Anything unknown (a class, a
 // property, a widget, a kind) gives empty rows or null values and never stops the play.
 //
 // A select's near ({"point", "radius"}) may also give a height band, "z_min" and/or "z_max" (cm; world heights, or offsets
@@ -52,6 +52,9 @@
 //   (read as prop: reads it) compares so, and "player": false every actor but the player pawn.
 // - world: "value": {"time_dilation" (the lowest effective global time dilation over the frames since the previous
 //   sample, null before any frame), "paused" (1 when the game was paused in any of them)}.
+// - render: "value": {"draw_calls", "triangles" (the RHI's counts of a frame, as `stat RHI` shows them: the highest over
+//   the frames since the previous sample, the UI's draws and the plugin's own captures among them; null before any
+//   frame), "texture_mb" (the RHI's texture memory in use at the sample, streaming and not, in MiB)}.
 // - widgets: "rows": [{"name", "class", <field>: value}] over the UMG trees in the viewport. select.class alone matches
 //   the widget's own class; with select.name it also matches an enclosing user widget's class. visible = visible,
 //   render opacity > 0, and every parent (through enclosing user widgets) the same. x, y, w, h: the cached geometry in
@@ -205,6 +208,10 @@ UButton* FindButton(UWorld* World, const FString& Want);
  *  LabelKey makes them, so "New_expedition" names the button whose text reads "New expedition". Null when none.
  *  OutCentre: its centre in Slate's absolute space; OutLabel: what matched, for the log. */
 TSharedPtr<SWidget> FindSlateButton(const FString& Want, FVector2D& OutCentre, FString& OutLabel);
+/** The centre, in Slate's absolute space, of the first visible, laid-out UMG widget in the viewport whose name
+ *  (wildcard) or class matches, whatever its kind (a button, a stick, a panel); else of the Slate button
+ *  FindSlateButton finds. Where a touch on that widget lands. */
+bool WidgetCentre(UWorld* World, const FString& Want, FVector2D& OutCentre, FString& OutLabel);
 /** A name or a caption as a click compares them: lower case, each run of anything but letters and digits one "_",
  *  none at either end ("New expedition", "new_expedition" and "NEW  EXPEDITION!" alike). */
 FString LabelKey(const FString& Text);
@@ -357,6 +364,7 @@ private:
 	TSharedPtr<FJsonValue> ActorSpin(const AActor* A);
 	TSharedPtr<FJsonValue> ActorStill(const AActor* A);
 	void SampleWorld(FJsonObject& Out);
+	void SampleRender(FJsonObject& Out);
 	void OnPaintBeginWindow(const FSlateWindowElementList& List);
 	void OnPaintEndWindow(const FSlateWindowElementList& List);
 	void OnPaintBeginWidget(const SWidget* Widget, const FPaintArgs& Args, const FGeometry& Geometry, const FSlateRect& Culling, const FSlateWindowElementList& List, int32 Layer);
@@ -387,6 +395,8 @@ private:
 	double MinDilation = -1.0;  // world: the lowest global time dilation since the previous sample (-1: no frame yet)
 	bool bPausedSince = false;  // world: the game was paused in a frame since the previous sample
 	bool bHasWorld = false;  // a world query is asked for: only then is the world read every frame
+	int32 MaxDrawCalls = -1, MaxPrimitives = -1;  // render: the RHI's highest frame counts since the previous sample (-1: no frame yet)
+	bool bHasRender = false;  // a render query is asked for: only then are the RHI's counts read every frame
 	// ui: the elements widgets paint themselves, from the game window's Slate draw elements (only with a ui query)
 	FDelegateHandle PaintHandles[5];
 	const FSlateWindowElementList* PaintList = nullptr;  // the game window's element list while it is painted
