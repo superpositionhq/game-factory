@@ -1,0 +1,56 @@
+{
+  "task": {
+    "name": "harbor-lights",
+    "title": "Réparer les lumières — 港",
+    "instruction": "Keep the harbor lamps lit for the night.",
+    "difficulty": "hard",
+    "seed": {
+      "game": "harbor",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "bug_fix"
+    },
+    "limits": {
+      "max_usd": 8.0
+    },
+    "tags": [
+      "lighting",
+      "night"
+    ]
+  },
+  "grader": {
+    "name": "harbor-lights",
+    "seed": {
+      "reference": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "milestones": [
+      {
+        "name": "graded",
+        "checks": [
+          {
+            "kind": "probe",
+            "name": "lamps_lit",
+            "describe": "The lamps light the harbor.",
+            "play": "look",
+            "measure": {
+              "probe": "light",
+              "field": "luma",
+              "point": {
+                "xyz": [
+                  1,
+                  2.5,
+                  -3
+                ]
+              }
+            },
+            "expect": {
+              "op": ">=",
+              "value": 0.25
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "computed_with": "formats.game_dev_rl.checks.canonical_digest(merged(task, grader))",
+  "digest": "79f18dc20315324105daeaa9adb7568231fee89710a5d83c8243e0dd22d85bef"
+}

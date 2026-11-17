@@ -40,6 +40,7 @@ import time
 from pathlib import Path
 
 from . import FORMAT, judges, probes, seeds, seen, tasks, unreal, verdict
+from .digest import canonical_digest
 
 DRIVE = [{"t": 1.0, "key": "W", "press": True}, {"t": 6.0, "key": "W", "press": False},
          {"t": 6.0, "key": "D", "press": True}, {"t": 8.0, "key": "D", "press": False},
@@ -728,7 +729,8 @@ def check_task(repo, task, raw, scratch, out_dir, keep=False, direct=False, time
     started = clock()
     name = task.get("name", "?")
     result = {"format": FORMAT, "task": name, "game": (task.get("seed") or {}).get("game"),
-              "task_sha256": tasks.digest(raw), "verdict": None, "reasons": [], "notes": [], "start": None,
+              "task_sha256": tasks.digest(raw), "task_digest": canonical_digest(task),
+              "verdict": None, "reasons": [], "notes": [], "start": None,
               "reference": None, "probes": {}, "start_checks": [], "reference_checks": [], "judges": {}, "seen": {},
               "evidence": f"{name}/", "at": None, "seconds": None}
 

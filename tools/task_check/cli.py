@@ -10,7 +10,8 @@ import sys
 import time
 from pathlib import Path
 
-from . import check, judges, seeds, seen, tasks, unreal
+from . import FORMAT, check, judges, seeds, seen, tasks, unreal
+from .digest import canonical_digest
 
 USAGE = __doc__
 
@@ -170,7 +171,8 @@ def main(argv=None):
             task, raw, why, source = sources[name]
             log(f"{name}: checking ({source})")
             if task is None:
-                result = {"task": name, "verdict": "INVALID", "reasons": [why]}
+                result = {"format": FORMAT, "task": name, "task_digest": canonical_digest(task),
+                          "verdict": "INVALID", "reasons": [why]}
             else:
                 result = check.check_task(repo, task, raw, scratch_root / tag, out, keep=args.keep,
                                           direct=args.direct, timeout=args.timeout, build_timeout=args.build_timeout,

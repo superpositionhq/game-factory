@@ -15,6 +15,7 @@ from unittest import mock
 from helpers import NO_FIX, FakeProject, measuring, probe, ran, side, task_with
 
 from task_check import check, cli, probes, seeds, tasks, unreal
+from task_check.digest import canonical_digest
 
 WALLS = {"class": "SCCastlePiece", "tag": "Wall"}
 
@@ -192,6 +193,8 @@ def make_game(root, engine="5.7"):
     (repo / "Source" / "Metro.cpp").write_text("int a;\n", encoding="utf-8")
     (repo / "Tasks").mkdir()
     (repo / "Tasks" / "x.json").write_text("{}", encoding="utf-8")
+    (repo / "Checks").mkdir()
+    (repo / "Checks" / "x.json").write_text('{"verdict":"VALID"}', encoding="utf-8")
     data = b"a texture's bytes"
     import hashlib
     oid = hashlib.sha256(data).hexdigest()
@@ -219,6 +222,8 @@ class Seeds(unittest.TestCase):
             self.assertEqual((copy / "Content" / "T_Wall.uasset").read_bytes(), data)
             self.assertEqual((copy / "Source" / "Metro.cpp").read_text(encoding="utf-8"), "int a;\n")
             self.assertFalse((copy / "Tasks").exists(), "a task's answers never reach a copy")
+            self.assertFalse((copy / "Checks").exists(), "writer check answers never reach a copy")
+            self.assertTrue(seeds.answer("cHeCkS/writer-scores.json"), "the exclusion ignores case")
             self.assertEqual(made["linked"] + made["copied"], 1)
             seeds.add_probe(copy)
             self.assertTrue((copy / "Plugins" / "TaskProbe" / "TaskProbe.uplugin").is_file())
@@ -290,6 +295,7 @@ class Whole(unittest.TestCase):
             self.assertEqual(result["probes"]["hero_on_ground"]["threshold"], -200.0)
             kept = json.loads((Path(tmp) / "out" / "probe-task.json").read_text(encoding="utf-8"))
             self.assertEqual(kept["verdict"], "VALID")
+            self.assertEqual((kept["format"], kept["task_digest"]), ("task-check/2", canonical_digest(task)))
             self.assertTrue((Path(tmp) / "out" / "probe-task" / "start" / "look" / "probe.json").is_file())
             self.assertFalse((Path(tmp) / "scratch").exists(), "the scratch copies are deleted")
 
@@ -348,6 +354,20 @@ class Whole(unittest.TestCase):
                                       log=lambda *a: None)
             self.assertEqual(result["verdict"], "INVALID")
             self.assertTrue(result["reasons"][0].startswith("the task doesn't validate"))
+            self.assertEqual((result["format"], result["task_digest"]),
+                             ("task-check/2", canonical_digest({"name": "x"})))
+
+    def test_a_checker_error_still_binds_the_exact_task(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            task = task_with(probe())
+            with mock.patch.object(seeds, "resolve", return_value="a" * 40), \
+                    mock.patch.object(check.Builds, "get", side_effect=OSError("test failure")):
+                result = check.check_task(tmp, task, json.dumps(task).encode(), Path(tmp) / "s", Path(tmp) / "out",
+                                          log=lambda *a: None)
+            self.assertEqual(result["verdict"], "ERROR")
+            self.assertEqual((result["format"], result["task_digest"]), ("task-check/2", canonical_digest(task)))
+            kept = json.loads((Path(tmp) / "out" / "probe-task.json").read_text(encoding="utf-8"))
+            self.assertEqual(kept, result)
 
 
 def rising(log="LogInit: ready\n"):
