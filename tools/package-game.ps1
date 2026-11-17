@@ -2444,6 +2444,7 @@ $manifest = [ordered]@{
     commit = $sha; commit_time = $commitTime; commits = $commitCount; variant = $variant
     commit_delivered = $(if ($gitHistory) { $gitHistory.head } else { $sha }); git_history = $gitHistory
     tasks = @($taskFiles | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) })
+    tasks_commit = $(if ($tasksAt) { $tasksAt.commit } else { $null })
     created = (Get-IsoNow); tool_version = $ToolVersion
     store_content = [ordered]@{ included_files = @($storeRows | Where-Object status -eq 'included').Count; dropped_files = @($storeRows | Where-Object status -eq 'dropped').Count
         dropped_bytes = [long](($storeRows | Where-Object status -eq 'dropped' | ForEach-Object { $_.f.Bytes } | Measure-Object -Sum).Sum) }

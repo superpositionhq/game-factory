@@ -324,6 +324,7 @@ catch [System.IO.IOException] { throw "another package-dataset run for $Game is 
 # `tasks` branch, scrubbed, seed commits mapped to the delivered history), each split into the agent's part and the
 # grader's part -------------------------------------------------------------------------------------------------------
 $taskNames = @(); $taskRows = @(); $tasksDir = Join-Path $outDir '_tasks'
+$checksDir = Join-Path $outDir '_checks'; $checkMetadata = $null
 if ($layout -eq 'dataset-layout/v1.3') {
     $pkgTasks = Join-Path $pkg 'Tasks'
     $srcTasks = @(Get-ChildItem -LiteralPath $pkgTasks -Filter *.json -File -ErrorAction SilentlyContinue)
@@ -346,6 +347,16 @@ if ($layout -eq 'dataset-layout/v1.3') {
     if ($LASTEXITCODE -ne 0) { throw "split-tasks.py failed: $($splitOut -join ' ')" }
     $taskRows = @(($splitOut | Where-Object { $_ -match '^\[' } | Select-Object -Last 1) | ConvertFrom-Json)
     $taskNames = @($taskRows | ForEach-Object { $_.name })
+    # Refuse missing, failed, stale or unbound checks before videos, copies or zipping.
+    # The Python helper verifies original Tasks/ on the tasks branch, then binds the
+    # result to the delivered halves after the package's commit-id mapping only.
+    $checkArgs = @((Join-Path $PSScriptRoot 'package-checks.py'), $info.Dir, $tasksDir, $checksDir,
+        '--commit-map', $mapTsv)
+    $tasksCommit = [string](Get-Prop $man 'tasks_commit')
+    if ($tasksCommit) { $checkArgs += @('--tasks-ref', $tasksCommit) }
+    $checksOut = & $py @checkArgs 2>&1 | ForEach-Object { "$_" }
+    if ($LASTEXITCODE -ne 0) { throw "package-checks.py refused the tasks: $($checksOut -join ' ')" }
+    $checkMetadata = ($checksOut -join "`n") | ConvertFrom-Json
     # Tasks/README.md: what a task is, the split, the harness rule, how a seed is checked out of History/
     $tr = New-Object System.Text.StringBuilder; function TA([string]$s = '') { [void]$tr.Append($s + "`n") }
     TA '# Tasks'; TA ''
@@ -504,7 +515,10 @@ function New-Delivery([string]$Src, [string]$Dest, [string]$Variant) {
             if ($sessionRows.Count) { $null = Invoke-ShaRemap $sesDir }
             foreach ($f in 'messages.jsonl', 'actions.jsonl') { if (-not $sessionRows.Contains($f)) { Write-Host "  note: no History/sessions/$f (the package has no History\$f rows)" -ForegroundColor Yellow } }
         }
-        if ($taskNames.Count) { $null = Copy-TreeChecked $tasksDir (Join-Path $Dest 'Tasks') $true '' 'Tasks/' }
+        if ($taskNames.Count) {
+            $null = Copy-TreeChecked $tasksDir (Join-Path $Dest 'Tasks') $true '' 'Tasks/'
+            $null = Copy-TreeChecked $checksDir (Join-Path $Dest 'Checks') $true '' 'Checks/'
+        }
     }
     if ($haveReplay) {
         $rs = Join-Path $Dest 'ReplayScripts'
@@ -551,7 +565,7 @@ function New-Delivery([string]$Src, [string]$Dest, [string]$Variant) {
     }
     if ($isMobile) { $mj['platform'] = [ordered]@{ kind = 'mobile'; orientation = [string]$gamePlatform.orientation } }   # a desktop game's manifest has none
     if ($layout -eq 'dataset-layout/v1.3') {
-        $mj['tasks'] = if ($repo) { $null } else { [ordered]@{ count = $taskNames.Count; names = @($taskNames); schema = 'game-task/1' } }
+        $mj['tasks'] = if ($repo) { $null } else { [ordered]@{ count = $taskNames.Count; names = @($taskNames); schema = 'game-task/1'; last_commit_at = $checkMetadata.last_commit_at } }
     }
     Write-JsonFile (Join-Path $Dest 'manifest.json') $mj
 }
@@ -607,7 +621,10 @@ function Write-Readme([string]$Dest, [string]$Variant) {
                '`actions.jsonl` holds every tool call with its input and its result. `session_id` (session_NN) and `time` tie the two together.')
         }
         A '- `Brief/` — the original brief the game was built from (`Brief/brief.md`) and its design doc with story bible and status (`Brief/design.md`).'
-        if ($layout -eq 'dataset-layout/v1.3' -and -not $repo) { A "- ``Tasks/`` — $($taskNames.Count) tasks on this game for a game-creation environment (``Tasks/README.md``)." }
+        if ($layout -eq 'dataset-layout/v1.3' -and -not $repo) {
+            A "- ``Tasks/`` — $($taskNames.Count) tasks on this game for a game-creation environment (``Tasks/README.md``)."
+            A '- `Checks/` — each task''s writer check bound by digest, blind answers and writer scores; no probe files, logs or screenshots.'
+        }
     }
     if ($scen.Count) { A "- ``Gameplay/`` — $(if ($scen.Count -eq 1) { 'a video of one scenario' } else { "videos of $($scen.Count) scenarios" }) of this version, played through with the game audio." }
     else { A '- `Gameplay/` — videos of the recorded scenarios (at least one), played through with the game audio. *(pending)*' }

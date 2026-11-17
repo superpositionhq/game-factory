@@ -91,6 +91,9 @@ foreach ($en in $L.entries) {
     $present = if ($en.kind -eq 'file') { $files.ContainsKey($en.name) } else { [bool]($files.Keys | Where-Object { $_.StartsWith("$($en.name)/") } | Select-Object -First 1) }
     if ($RepoDataset -and -not $en.in_repo_dataset) { if ($present) { E "$($en.name) must not be in a repo Dataset folder" }; continue }
     if (-not $present) {
+        # New writer Checks/ roll out as warnings in validate-game.py first. Older
+        # layouts omitted required flags, so only an explicit false is optional.
+        if ($en.PSObject.Properties['required'] -and $en.required -eq $false) { continue }
         if ((Get-Prop $en 'pending_allowed') -and $status -eq 'pending') { [void]$missingPending.Add($en.name) }
         else { E "$($en.name)$(if ($en.kind -eq 'dir') { '/' }) is missing" }
     }

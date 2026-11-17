@@ -398,6 +398,14 @@
         },
         "schema": {
           "type": "string"
+        },
+        "last_commit_at": {
+          "type": "object",
+          "description": "Each task's last commit time on the original tasks branch (%cI); writer check at must be at least this time. The tasks branch stays out of History/.",
+          "additionalProperties": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       }
     },
