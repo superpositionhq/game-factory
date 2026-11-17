@@ -20,8 +20,9 @@ A task is VALID when
 - either way, every required probe of the task's `still_works` milestone already passes at the start: what still works
   must hold there, or the probe is broken and would fail every correct solution. A still-works probe the start
   measured nothing for (its play crashed: the task's own bug) is no sign of a broken probe;
-- a required check of weight 0 outside still_works that the start passes is a guard, not refused (it rewards
-  nothing; a task may hold more guards than still_works' 32);
+- a required check of weight 0 outside still_works that the start passes is not refused here (it rewards nothing,
+  and the cloud's check doesn't refuse it either); the rule that weight 0 belongs only in builds, boots and
+  still_works is the task writer's (write-tasks section 5), never a refusal;
 - no check holds a task error on either side: a probe whose selector reads nothing in the reference's play, or a
   task play whose inputs don't land on the reference (or whose first session there doesn't end cleanly or saves
   nothing), can be passed by no version of the game, so the cloud's grade of every run fails while it is there,
@@ -166,8 +167,8 @@ def verdict(task, reference, start):
     elif all(c["passed"] for c in gates):
         why.append("start already passes every required probe")
     else:  # every outcome is one issue of the thread: one the start already has rewards no work (write-tasks section 5)
-        # A required check of weight 0 rewards nothing, so one the start passes is a guard wherever it sits (a task
-        # with more guards than still_works holds): it gates, never pays, and is not refused for passing at the start.
+        # A required check of weight 0 rewards nothing, so one the start passes is not refused for passing at the start
+        # (as in the cloud's check); where weight 0 belongs is the writer's rule (write-tasks section 5).
         weight = {c["name"]: c["weight"] for _, c in tasks.checks(task)}
         why.extend(f"start already passes required probe {c['name']}" for c in gates
                    if c["passed"] and c not in broken and weight.get(c["name"], 1) > 0)

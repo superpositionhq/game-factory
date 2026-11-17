@@ -88,9 +88,9 @@ A thread qualifies only when all of these hold (the validator enforces the numbe
    `UI_`), data assets or tables (`DA_`, `DT_`), other assets. The validator counts them by path and name prefix. A long thread confined to one function is a
    short task in disguise.
 3. **Several outcomes.** At least 3 required outcome probes, one per issue the thread settled, so partial work earns
-   partial credit (a compound ticket). A thread that settled only one observable thing is rarely long enough. A
-   required probe of weight 0 is a guard, not an outcome: it doesn't count toward the 3. Neither does a `seen`
-   probe: a model reads it, as a judge's pictures.
+   partial credit (a compound ticket). A thread that settled only one observable thing is rarely long enough. Every
+   outcome probe carries `"weight"` 1 or more (a probe of weight 0 earns nothing, so it is no outcome and doesn't count
+   toward the 3). Neither does a `seen` probe: a model reads it, as a judge's pictures.
 4. **The first attempt didn't hold, or the cause is far from the symptom.** The thread had a fix that was undone,
    complained about again ("still too low") or broke something else; or the symptom shows in one system and the cause
    sits in another (a HUD symptom from a data asset, a camera symptom from collision channels, a crash only in the
@@ -258,7 +258,10 @@ Each milestone is a reward group; a run that gets part of the way earns part of 
 (owner, 2026-11-04; permanent):** the score is the weighted share of checks passed, so every check the start already
 passes takes `"weight": 0`: `builds`, `boots`, all of `still_works`, and any `log_absent` or `file_exists` true of the
 start. They still gate: a run must pass the required ones to be solved. `validate-game.py` and the task check refuse a
-task a no-op would earn anything on. The usual order:
+task a no-op would earn anything on. **Weight 0 belongs only in `builds`, `boots` and `still_works`**, the milestones a
+no-op passes; every probe in any other milestone (`fixed`, `done`, `fixed_hud`, ...) carries weight 1 or more, since an
+outcome that pays nothing rewards no work. A check that must hold but that the start already passes is a keep: it goes
+in `still_works` with weight 0, never as a weight-0 probe beside the outcomes. The usual order:
 
 1. `builds`: `build` (`editor_builds`).
 2. `boots`: `boot` 60 s (`boots_clean`), `needs` the build.

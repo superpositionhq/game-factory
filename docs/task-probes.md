@@ -967,7 +967,8 @@ Before any agent is given a task, the checker grades the start and the fix with 
 - the fix builds, boots and passes every required check;
 - the start fails every required probe outside `still_works` (or the `fails_at_start` build check);
 - a no-op scores zero: no check the start passes carries weight, so build, boot and `still_works` checks take
-  `"weight": 0` (the score is the weighted share of checks passed);
+  `"weight": 0` (the score is the weighted share of checks passed); weight 0 belongs only in those milestones, and
+  every probe in any other milestone carries weight 1 or more;
 - every required `still_works` probe passes at the start;
 - every calibrated probe measures differently on the start and the fix;
 - no check holds a task error (a check no version of the game can pass): every probe's selector reads something in
