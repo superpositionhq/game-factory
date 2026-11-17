@@ -465,7 +465,8 @@ class MoreFairReadings(unittest.TestCase):
                         {"probe": "audio", "field": "audible"}, {"probe": "ground", "xy": [100, 200], "field": "height"},
                         {"probe": "ground", "xy": [0, 0], "field": "hit"},
                         {"probe": "ground", "box": [0, 0, 10, 10], "field": "max"},
-                        {"probe": "widgets", "select": {"name": "Warn*", "visible": True}, "field": "count"}):
+                        {"probe": "widgets", "select": {"name": "Warn*", "visible": True}, "field": "count"},
+                        {"probe": "widgets", "select": {"name": "Warn*", "visible": False}, "field": "count"}):
             task_with(probe(measure=measure, expect={"op": ">=", "value": 1}))
 
     def test_the_new_readings_refuse_what_they_cant_read(self):
@@ -478,8 +479,7 @@ class MoreFairReadings(unittest.TestCase):
                     {"probe": "ground", "xy": [0, 0], "field": "range"},
                     {"probe": "ground", "box": [0, 0, 1, 1], "field": "height"},
                     {"probe": "ground", "box": [5, 0, 1, 1], "field": "max"},
-                    {"probe": "ground", "box": [0, 0, 1, 1], "grid": 64, "field": "max"},
-                    {"probe": "widgets", "select": {"name": "Warn*", "visible": False}, "field": "count"}):
+                    {"probe": "ground", "box": [0, 0, 1, 1], "grid": 64, "field": "max"}):
             with self.assertRaises(ValueError, msg=json.dumps(bad)):
                 task_with(probe(measure=bad))
 
@@ -494,13 +494,36 @@ class MoreFairReadings(unittest.TestCase):
         self.assertEqual(probes.query_id(probes.needs(bright)[0]), probes.query_id(query), "one query, both fields")
         self.assertEqual(probes.reduce(bright, play), 5000.0)
 
-    def test_a_visible_widget_select_is_its_own_query(self):
-        shown = m(probe="widgets", select={"name": "Warn*", "visible": True}, field="count")
-        every = m(probe="widgets", select={"name": "Warn*"}, field="count")
-        self.assertEqual(probes.needs(shown)[0]["select"], {"name": "Warn*", "visible": True})
-        self.assertEqual(probes.needs(every)[0]["select"], {"name": "Warn*"}, "a select without it is as it was")
-        self.assertNotEqual(probes.query_id(probes.needs(shown)[0]), probes.query_id(probes.needs(every)[0]))
-        self.assertEqual(probes.reduce(shown, actors_play(shown, [[{"name": "WarnVisible"}]])), 1)
+    def test_a_widget_select_matches_only_the_widgets_drawn(self):
+        """The plugin is asked `visible` whenever the measure matches only what is on screen: by default and with
+        `visible` true; never with `visible` false, nor for a measure of the `visible` field that says nothing."""
+        said = m(probe="widgets", select={"name": "Warn*", "visible": True}, field="count")
+        default = m(probe="widgets", select={"name": "Warn*"}, field="count")
+        hidden_too = m(probe="widgets", select={"name": "Warn*", "visible": False}, field="count")
+        self.assertEqual(probes.needs(said)[0]["select"], {"name": "Warn*", "visible": True})
+        self.assertEqual(probes.needs(default)[0]["select"], {"name": "Warn*", "visible": True}, "drawn by default")
+        self.assertEqual(probes.needs(hidden_too)[0]["select"], {"name": "Warn*"}, "drawn or not: asked without it")
+        self.assertEqual(probes.query_id(probes.needs(said)[0]), probes.query_id(probes.needs(default)[0]))
+        self.assertNotEqual(probes.query_id(probes.needs(default)[0]), probes.query_id(probes.needs(hidden_too)[0]))
+        self.assertEqual(probes.reduce(default, actors_play(default, [[{"name": "WarnVisible"}]])), 1)
+        which = m(probe="widgets", select={"name": "Warn*"}, field="visible", of="any")
+        self.assertEqual(probes.needs(which)[0]["select"], {"name": "Warn*"}, "it reads which are drawn")
+        drawn = m(probe="widgets", select={"name": "Warn*", "visible": True}, field="visible", of="any")
+        self.assertEqual(probes.needs(drawn)[0]["select"], {"name": "Warn*", "visible": True})
+        self.assertEqual(default["select"], {"name": "Warn*"}, "the measure itself is left as written")
+        lamp = m(**{**LAMP, "field": "on", "of": "any", "at": None})
+        self.assertNotIn("visible", probes.needs(lamp)[0]["select"], "only a widgets select")
+
+    def test_a_map_that_did_not_load_is_named(self):
+        ended = {"map": "L_Title", "seconds": 0.0, "track": [], "camera": []}
+        self.assertEqual(probes.map_unloaded(ended, "/Game/Maps/L_Boss?Scenario=2"),
+                         "map /Game/Maps/L_Boss could not be loaded (the game ran L_Title; the play ended at 0 s)")
+        self.assertEqual(probes.map_unloaded({**ended, "map": ""}, "/Game/Maps/L_Boss"),
+                         "map /Game/Maps/L_Boss could not be loaded (the game opened no map; the play ended at 0 s)")
+        self.assertIsNone(probes.map_unloaded({**ended, "map": "UEDPIE_0_L_Boss"}, "/Game/Maps/L_Boss.L_Boss"))
+        self.assertIsNone(probes.map_unloaded(ended, "/Game/Maps/L_Boss", travels=True), "it travels by its inputs")
+        self.assertIsNone(probes.map_unloaded(ended, None), "no map asked for")
+        self.assertIsNone(probes.map_unloaded({"seconds": 0.0}, "/Game/Maps/L_Boss"), "the probe file names no map")
 
     def test_what_the_player_hears_reduces_from_the_audio_samples(self):
         jungle = m(probe="audio", select={"sound_class": "SC_Jungle*", "owner": {"tag": "Zone2"}}, field="volume",
@@ -1447,8 +1470,8 @@ class ComponentWorldTurn(unittest.TestCase):
         rows = [[{"world_yaw": 0.0}, {"world_yaw": 10.0}], [{"world_yaw": -95.0}, {"world_yaw": 265.0}],
                 [{"world_yaw": 179.0}, {"world_yaw": -84.0}]]
         port = self.comp(field="world_yaw", to_angle=-90, of="max")
-        self.assertAlmostEqual(probes.reduce(facing, actors_play(facing, rows[:2])), 5.0)
-        self.assertAlmostEqual(probes.reduce(facing, actors_play(facing, rows)), 91.0)
+        self.assertAlmostEqual(probes.reduce(port, actors_play(port, rows[:2])), 5.0)
+        self.assertAlmostEqual(probes.reduce(port, actors_play(port, rows)), 91.0)
         held = self.comp(field="world_yaw", to_angle=-90, of="max", agg="min", window=[0, 0.5])
         self.assertAlmostEqual(probes.reduce(held, actors_play(held, rows)), 5.0)
         axis = self.comp(field="world_yaw", to_axis=90, of="first")

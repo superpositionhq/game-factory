@@ -295,6 +295,32 @@ class DatasetView:
             return json.load(f)
 
 
+def dataset_platform_errors(m, v):
+    """A dataset's platform (manifest `m`, view `v`): the manifest's platform and the project's Platform.json say the
+    same (a full dataset holds the project; a desktop game has neither), and a mobile game's build.apk, when it names
+    one, is in Build/. The videos' size is the layout check's (tools/validate-dataset.ps1)."""
+    errs = []
+    said = m.get('platform')
+    build = m.get('build') if isinstance(m.get('build'), dict) else {}
+    if m['variant'] != 'repo-dataset':
+        held = None
+        if v.has('UEProject/' + PLATFORM_FILE):
+            try:
+                with v.open_text('UEProject/' + PLATFORM_FILE) as f:
+                    held = platform_said(f.read())
+            except ValueError as e:
+                return [f'UEProject/{e}']
+        if held != (said or {}).get('orientation'):
+            errs.append(f'platform {json.dumps(said)} differs from UEProject/{PLATFORM_FILE} '
+                        f'({"a mobile game held in " + held if held else "none: a desktop game"})')
+    if build.get('apk') is not None:
+        if not said:
+            errs.append('build.apk on a desktop game (no platform)')
+        elif not v.has('Build/' + build['apk']):
+            errs.append(f"build.apk Build/{build['apk']} is not in the dataset")
+    return errs
+
+
 def check_dataset(rep, path, area='dataset'):
     v = DatasetView(path)
     if v.zip and not v.top:
@@ -329,6 +355,8 @@ def check_dataset(rep, path, area='dataset'):
         rep.error(a, 'variant full needs a build object')
     if m['variant'] == 'repo-dataset' and m.get('build') is not None:
         rep.error(a, 'variant repo-dataset has build null')
+    for e in dataset_platform_errors(m, v):
+        rep.error(a, e)
     # workflow.jsonl
     directions = set()
     if v.has('workflow.jsonl'):
@@ -567,6 +595,10 @@ def check_history(rep, area, v, m):
 # templates/new-game.ps1 -Platform mobile when the project is created; a game without the file is a desktop game.
 PLATFORM_FILE = 'Platform.json'
 ORIENTATIONS = ('landscape', 'portrait')
+# The size every play, screenshot, still and recording of a game has: a desktop game's recording, and a mobile game's
+# phone by how it is held. One table for every tool (the task check, the pipeline, the packager, the dataset check).
+DESKTOP_SIZE = (1920, 1080)
+PHONE_SIZE = {'landscape': (1920, 1080), 'portrait': (1080, 1920)}
 
 
 def read_platform(folder):
@@ -578,8 +610,17 @@ def read_platform(folder):
         return None
     try:
         with open(path, encoding='utf-8-sig') as f:
-            said = json.load(f)
-    except (OSError, ValueError) as e:
+            text = f.read()
+    except OSError as e:
+        raise ValueError(f'{PLATFORM_FILE} cannot be read ({type(e).__name__})') from e
+    return platform_said(text)
+
+
+def platform_said(text):
+    """What a Platform.json's text says, for read_platform and for a dataset's UEProject/Platform.json inside a zip."""
+    try:
+        said = json.loads(text)
+    except ValueError as e:
         raise ValueError(f'{PLATFORM_FILE} cannot be read ({type(e).__name__})') from e
     if (not isinstance(said, dict) or set(said) != {'platform', 'orientation'} or said['platform'] != 'mobile'
             or said['orientation'] not in ORIENTATIONS):
@@ -587,13 +628,23 @@ def read_platform(folder):
     return said['orientation']
 
 
+def platform_of(folder):
+    """What every tool that is not Python asks (`validate-game.py --platform <folder>`, one JSON line): the platform of
+    the game in `folder`, how it is held and the size it is played and recorded at. ValueError as read_platform."""
+    orientation = read_platform(folder)
+    width, height = PHONE_SIZE[orientation] if orientation else DESKTOP_SIZE
+    return {'platform': 'mobile' if orientation else 'desktop', 'orientation': orientation, 'width': width, 'height': height}
+
+
 # ---- a mobile game's own rules (rule `mobile`; mobile-game skill; the Lab's format holds a mobile dataset to the same) --
 # What UE 5.7 itself uses for an Android setting the project leaves out (Engine/Config/BaseEngine.ini): the editor
 # drops a setting put back to its default, so a missing key is read as this, never as wrong.
 ANDROID_DEFAULTS = {'Orientation': 'SensorLandscape', 'bBuildForArm64': 'true', 'bBuildForX8664': 'false',
-                    'MinSDKVersion': '26', 'TargetSDKVersion': '34', 'bPackageDataInsideApk': 'false'}
-MOBILE_MIN_SDK, MOBILE_TARGET_SDK = 26, 34   # proposed 2026-11-12 (the Lab's dataset-layout-v1.3 `mobile`), not yet the owner's
+                    'MinSDKVersion': '26', 'TargetSDKVersion': '34', 'bPackageDataInsideApk': 'false',
+                    'bSupportsVulkan': 'false', 'PackageName': 'com.YourCompany.[PROJECT]'}
+MOBILE_MIN_SDK, MOBILE_TARGET_SDK = 26, 34
 LINUX_MOBILE_SHADERS = 'SF_VULKAN_ES31'      # what a Linux package needs to run the mobile renderer (the grader's plays)
+WINDOWS_MOBILE_SHADERS = 'PCD3D_ES31'       # what the Windows build needs to run it (the recorded plays, the stills)
 # renderer settings of the desktop renderer alone, which the mobile renderer has not: (key, the value that turns it on, what it is)
 DESKTOP_ONLY_RENDERING = (('r.DynamicGlobalIlluminationMethod', '1', 'Lumen global illumination'),
                           ('r.ReflectionMethod', '1', 'Lumen reflections'),
@@ -614,10 +665,11 @@ def ini_section(text, name):
     return keys
 
 
-def mobile_project_errors(orientation, engine_ini):
+def mobile_project_errors(orientation, engine_ini, project=None):
     """What a mobile game's Config/DefaultEngine.ini (`engine_ini`, its text) breaks: the Android settings as
-    Platform.json says (`orientation`), arm64 alone, the SDK levels, the data inside the APK, the Linux mobile shader
-    format, and nothing of the desktop renderer alone turned on."""
+    Platform.json says (`orientation`), arm64 alone, the SDK levels, Vulkan, the package name of `project` (the
+    .uproject's name; not checked when None), the data inside the APK, the Linux and Windows mobile shader formats,
+    and nothing of the desktop renderer alone turned on."""
     errs = []
     a = {**ANDROID_DEFAULTS, **ini_section(engine_ini, '/Script/AndroidRuntimeSettings.AndroidRuntimeSettings')}
     held = a['Orientation']
@@ -632,10 +684,18 @@ def mobile_project_errors(orientation, engine_ini):
             errs.append(f'{key}={a[key]}: at least {least}')
     if a['bPackageDataInsideApk'].lower() != 'true':
         errs.append("bPackageDataInsideApk is not True: the game's data goes inside its APK")
+    if a['bSupportsVulkan'].lower() != 'true':
+        errs.append('bSupportsVulkan is not True: a mobile game runs on Vulkan')
+    if project and a['PackageName'] != f'com.{project.lower()}.game':
+        errs.append(f"PackageName={a['PackageName']}: a mobile game's is com.{project.lower()}.game")
     linux = ini_section(engine_ini, '/Script/LinuxTargetPlatform.LinuxTargetSettings').get('TargetedRHIs', '')
     if LINUX_MOBILE_SHADERS not in linux.split():
         errs.append(f'[/Script/LinuxTargetPlatform.LinuxTargetSettings] has no +TargetedRHIs={LINUX_MOBILE_SHADERS}: '
                     "the game's tasks are played on Linux with the mobile renderer")
+    windows = ini_section(engine_ini, '/Script/WindowsTargetPlatform.WindowsTargetSettings').get('D3D12TargetedShaderFormats', '')
+    if WINDOWS_MOBILE_SHADERS not in windows.split():
+        errs.append(f'[/Script/WindowsTargetPlatform.WindowsTargetSettings] has no +D3D12TargetedShaderFormats={WINDOWS_MOBILE_SHADERS}: '
+                    'the Windows build of the game is recorded with the mobile renderer')
     r = ini_section(engine_ini, '/Script/Engine.RendererSettings')
     for key, on, what in DESKTOP_ONLY_RENDERING:
         if r.get(key, '').lower() == on:
@@ -680,7 +740,8 @@ def check_mobile(rep, repo, files):
     except OSError:
         rep.error('mobile', 'no Config/DefaultEngine.ini')
         return
-    for e in mobile_project_errors(orientation, text):
+    project = next((f[:-len('.uproject')] for f in files if f.endswith('.uproject') and '/' not in f), None)
+    for e in mobile_project_errors(orientation, text, project):
         rep.error('mobile', 'Config/DefaultEngine.ini: ' + e)
 
 
@@ -692,7 +753,7 @@ GRADER_KEYS = ('milestones',)          # the grader's half of a task, with seed.
 PLAY_ARG = re.compile(r'^-([A-Za-z][A-Za-z0-9]{0,40})(=[A-Za-z0-9_.:=,-]{1,60})?$')
 DENIED_PLAY_ARGS = {'execcmds', 'run', 'nullrhi', 'log', 'unattended', 'renderoffscreen', 'resx', 'resy', 'benchmark',
                     'fps', 'game', 'windowed'}
-TASK_PLAY_DEFAULTS = {'inputs': [], 'map': None, 'args': [], 'every': None, 'after': None}
+TASK_PLAY_DEFAULTS = {'inputs': [], 'map': None, 'args': [], 'every': None, 'after': None, 'continues': None}
 
 
 PIECE_TRIANGLES = ('triangles', 'visible_triangles')  # pieces fields whose threshold is never a literal
@@ -944,7 +1005,8 @@ def task_semantic_errors(t):
     plays of its own and its plays times its shots 20 at most, and the
     probe rules (probe_errors); and a task whose start doesn't build (a build check's `fails_at_start`) has nothing
     that needs the start played: no start-relative threshold, no before/after judge (docs/task-probes.md, 3.1); and a
-    task play's `after` names task plays of the task, never itself, in no cycle (play_after_errors); and a play
+    task play's `after` names task plays of the task, never itself, in no cycle (play_after_errors); a task play's
+    `continues` names one task play that starts a session of its own (play_continues_errors); and a play
     that takes a render measure makes no capture of the probe's own (render_errors)."""
     errs, seen, plays = [], set(), {}
     seed = t.get('seed') if isinstance(t.get('seed'), dict) else None
@@ -993,7 +1055,7 @@ def task_semantic_errors(t):
             if missing:
                 errs.append(f'check {n} needs {missing}, which come later or do not exist')
             seen.add(n)
-    return errs + play_after_errors(checks) + render_errors(checks)
+    return errs + play_after_errors(checks) + play_continues_errors(checks) + render_errors(checks)
 
 
 def play_after_errors(checks):
@@ -1025,8 +1087,36 @@ def play_after_errors(checks):
     return []
 
 
+def play_continues_errors(checks):
+    """A task play's `continues` (docs/task-probes.md 1.1; the Lab grader's checks.check_milestones): it names a task
+    play of the task, never the play itself, never with `after`, and the play it names continues no session and runs
+    after no play."""
+    found = {}
+    for c in checks:
+        named = [c.get('play')] if c.get('kind') == 'probe' else (c.get('plays') or [] if c.get('kind') == 'judge' else [])
+        for p in named:
+            if isinstance(p, dict) and isinstance(p.get('name'), str):
+                found.setdefault(p['name'], p)
+    errs = []
+    for name, p in found.items():
+        other = p.get('continues')
+        if not isinstance(other, str):
+            continue
+        if other == name:
+            errs.append(f'task play {name} continues itself')
+        elif other not in found:
+            errs.append(f'task play {name} continues {other}, which is no task play of the task')
+        elif found[other].get('continues') or found[other].get('after'):
+            errs.append(f'task play {name} continues {other}, which itself continues a session or runs after other '
+                        'plays: a first session starts from a cleared save, alone')
+        if p.get('after'):
+            errs.append(f'task play {name} continues a session and runs after plays too: name one or the other')
+    return errs
+
+
 # The bar every task meets (owner, 2026-11-02): only long threads of multiple edits qualify (write-tasks sections 1, 6)
-MIN_OUTCOME_PROBES = 3     # required probes outside still_works: one per issue the thread settled
+MIN_OUTCOME_PROBES = 3     # required probes outside still_works that carry weight: one per issue the thread settled
+                           # (a required probe of weight 0 is a guard, not an outcome)
 MIN_THREAD_FILES = 5       # game files the reference changes against the start
 MIN_THREAD_COMMITS = 4     # commits from seed.commit to seed.reference that change the game (a seed on main)
 MIN_THREAD_CODE_LINES = 100   # code lines added plus removed from start to reference (owner, 2026-11-09; was 300)
@@ -1037,8 +1127,17 @@ GAME_FILE = re.compile(r'^(Source|Content|Config|Plugins)/|\.uproject$')
 GAME_PATHS = ('Source', 'Content', 'Config', 'Plugins', '*.uproject')   # the game itself, not its records or docs
 
 
+def outcome_probes(t):
+    """Task `t`'s outcomes: its required probes outside still_works that carry weight. A required probe of weight 0 is
+    a guard, not an outcome: it gates and pays nothing, and the start may pass it."""
+    return [c for m in t.get('milestones') or [] if isinstance(m, dict) and m.get('name') != 'still_works'
+            for c in m.get('checks') or [] if isinstance(c, dict) and c.get('kind') == 'probe'
+            and c.get('required', True) and c.get('weight', 1) > 0]
+
+
 def thread_errors(t, outcomes):
-    """Why task `t` (with `outcomes` required probes outside still_works) is not a long thread, from the task alone."""
+    """Why task `t` (with `outcomes` weighted required probes outside still_works) is not a long thread, from the task
+    alone."""
     errs = []
     if t.get('difficulty') == 'easy':
         errs.append('difficulty \'easy\': a task is "hard" or "medium" (a game needs at least 4 "hard")')
@@ -1047,7 +1146,8 @@ def thread_errors(t, outcomes):
     if not (isinstance(t.get('seed'), dict) and t['seed'].get('reference')):
         errs.append("no seed.reference: every task ends at the game's own accepted fix of the thread")
     if outcomes < MIN_OUTCOME_PROBES:
-        errs.append(f'{outcomes} required outcome probe(s) outside still_works, fewer than {MIN_OUTCOME_PROBES}')
+        errs.append(f'{outcomes} required outcome probe(s) outside still_works, fewer than {MIN_OUTCOME_PROBES} '
+                    '(a required probe of weight 0 is a guard, not an outcome)')
     return errs + noop_errors(t)
 
 
@@ -1189,10 +1289,7 @@ def check_task(rep, a, label, t, game, has_commit):
                     f'(nothing in a task reads the agent\'s tool calls) (write-tasks section 5)')
     if not gated:
         rep.error(a, f'{label}: no required probe check: pass/fail must be deterministic (write-tasks section 5)')
-    outcomes = [c for m in t.get('milestones') or [] if isinstance(m, dict) and m.get('name') != 'still_works'
-                for c in m.get('checks') or [] if isinstance(c, dict) and c.get('kind') == 'probe'
-                and c.get('required', True)]
-    for e in thread_errors(t, len(outcomes)):
+    for e in thread_errors(t, len(outcome_probes(t))):
         rep.error(a, f'{label}: {e} (write-tasks section 1: only long threads of multiple edits)')
     if judged:
         rep.note(a, f'{label}: required judge check(s) {judged}: only a judge of the brief\'s looks is required '
@@ -1821,7 +1918,19 @@ def main():
     ap.add_argument('--quick', action='store_true', help='skip unpacking the History/ bundle')
     ap.add_argument('--rules-only', action='store_true',
                     help="only the game contract and the sound rule on the repo's Source/ (what the packager checks first)")
+    ap.add_argument('--platform', action='store_true',
+                    help="only print the platform of the game in the folder (its Platform.json), one JSON line: what the "
+                         'PowerShell tools read')
     a = ap.parse_args()
+    if a.platform:
+        if not a.repo:
+            ap.error('--platform takes a game folder')
+        try:
+            print(json.dumps(platform_of(os.path.abspath(a.repo))))
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            sys.exit(2)
+        sys.exit(0)
     if a.rules_only:
         if not a.repo:
             ap.error('--rules-only takes a game repo')

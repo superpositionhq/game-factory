@@ -263,12 +263,12 @@ def waited(p):
 
 def play(p):
     """A check's play: "look", "drive", "editor", "trace", or a task play with its defaults (inputs, map, args,
-    every, after)."""
+    every, after, continues)."""
     if isinstance(p, str):
         return p
     return {"name": p["name"], "seconds": int(p["seconds"]), "inputs": inputs(p.get("inputs")), "map": p.get("map"),
             "args": list(p.get("args") or []), "every": float(p["every"]) if p.get("every") is not None else None,
-            "after": list(p.get("after") or [])}
+            "after": list(p.get("after") or []), "continues": p.get("continues")}
 
 
 def task_plays(task):

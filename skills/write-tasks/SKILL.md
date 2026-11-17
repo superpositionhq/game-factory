@@ -88,7 +88,8 @@ A thread qualifies only when all of these hold (the validator enforces the numbe
    `UI_`), data assets or tables (`DA_`, `DT_`), other assets. The validator counts them by path and name prefix. A long thread confined to one function is a
    short task in disguise.
 3. **Several outcomes.** At least 3 required outcome probes, one per issue the thread settled, so partial work earns
-   partial credit (a compound ticket). A thread that settled only one observable thing is rarely long enough.
+   partial credit (a compound ticket). A thread that settled only one observable thing is rarely long enough. A
+   required probe of weight 0 is a guard, not an outcome: it doesn't count toward the 3.
 4. **The first attempt didn't hold, or the cause is far from the symptom.** The thread had a fix that was undone,
    complained about again ("still too low") or broke something else; or the symptom shows in one system and the cause
    sits in another (a HUD symptom from a data asset, a camera symptom from collision channels, a crash only in the
@@ -178,6 +179,9 @@ made before the game's 5.7 port can't be used as it was; give it a start on 5.7 
   more work on it followed.
 - **The reference must build and run**: the grader plays it beside the agent's result. If the last fix crashed until a
   later commit, extend the thread to the later one.
+- **The reference does everything the instruction asks**, in a place a play can reach. An ask the reference doesn't
+  meet, or meets only where no play gets to (behind a menu no scripted key opens, in a level no option starts), fails
+  its own check on the reference: move the reference to a commit that does it, or take the ask out.
 - **Chains and splits merge**: a person complained again after a fix ("still too low"): one task from before the first
   fix to the last. A direction with several issues fixed in separate commits: one compound task, one required probe
   per issue.
@@ -305,9 +309,16 @@ A probe names one measurement and its threshold:
   `"after": ["<writer's name>"]`. On each side they run, and end, first; the plays of a side share the game's
   `Saved/` folder, so the save is there. A writer that failed still counts as run, so the failure shows in the
   reader's checks. Without `after`, plays run in the order checks first ask for them (docs/task-probes.md, 1.1).
+- **A play that must find what an earlier session saved, after the game was quit and started again, `continues` that
+  play**: `"continues": "<first session's name>"`. On each side the game's save state is cleared, the named play is
+  played as a first session and quits, and this play starts as a new process on the same save data; its probes read
+  the second session. It names one task play of the task, never itself, never together with `after`, and the play it
+  names has neither. A save the game makes only on a menu action needs that action in the first session's inputs
+  (what it saves on quit is saved when the play ends). A first session clears `SaveGames` and `Config` for the whole
+  side, so what earlier plays saved is gone for later ones (docs/task-probes.md, 1.1).
 - `measure.probe`: `pawn` (track: x/y/z/speed/moved/dist), `camera` (distance/height/pitch/fov/occluded/
   pawn_on_screen), `actors` (select by class, tag, name, near; count, transform, extent, hidden, collision, speed,
-  `prop:<Component>.<Property>` by reflection), `widgets` (visible, text, percent, has_brush), `ui` (what the HUD
+  `prop:<Component>.<Property>` by reflection), `widgets` (the drawn widgets of a name or class: visible, text, percent, has_brush), `ui` (what the HUD
   shows, whatever draws it: text, count, place of UMG, Slate and canvas elements alike;
   signature with agg changes for a readout that updates; number and clock for which way a readout or a timer
   moved, with agg rises/falls), `drawn` (what is drawn near a point or along a line, rendered: drawn, motion, base
@@ -319,12 +330,35 @@ A probe names one measurement and its threshold:
   grading environment and puts the threshold that fraction of the way from start to fix; `op` points to the fix's side.
 
 Write probes from the game's own code at `seed.commit`: the real class names, actor tags, map paths, widget names and
-components. **Never a name only the reference has** (a class, tag, widget, map or asset the thread itself created):
-another fair build names it otherwise and reads as absent. Select what the thread creates by what it does or where it
+components. **Everything a required probe or its play relies on is stated in the instruction or exists at the start
+commit.** Never something only the reference has: a name (a class, tag, widget, property, map or asset the thread
+itself created), a URL option the reference's GameMode added, an exact string or regex of text the reference happens
+to show or log, a coordinate where the reference happens to put a thing, a count of key presses that walks the
+reference's own menu or level layout. Another fair build names it, words it, places it or lays it out otherwise, and
+the probe reads nothing or the play ends up somewhere else. Select what the thread creates by what it does or where it
 is (`has`, `near`, `ui` with a `rect` or text, `drawn`, `lit`, `changed`; a part's direction by `components`
 `world_yaw`/`world_pitch` with `near`, not `world_yaw:<Component>`); `validate-game.py` refuses a required probe
 that names something the start lacks and the reference has, a component in a field such as `world_yaw:<Component>`
-included. **Test the outcome a player sees, never the implementation**: another valid fix
+included, and you check the rest yourself:
+
+- **Prefer what the player sees.** On-screen text is read with a loose `match` (the number, the word the ticket uses),
+  never the reference's whole string; an exact string only when the instruction quotes it. A thing is found by what it
+  carries or by a tag or class the start already has. A place is reached by `teleport_to` or `pin` on an actor select,
+  never by raw coordinates of the reference's level. A menu is driven by the key the instruction gives, or by clicking
+  the button whose text the instruction quotes, never by "Down three times, then Enter".
+- **"Shown" means on screen.** A `widgets` check reads the widgets drawn: a hidden or collapsed one, one at zero
+  opacity or under such a parent is matched by nothing, so "the warning is not shown" passes for a build that hides
+  it as for one that removes it, and "the bar is shown" fails for one that only keeps it in the tree. Write
+  `"visible": false` in a select only when the check really means "exists while hidden".
+- **What the solver has to create and a play cannot do without** (the words on a new screen, a new level QA must open)
+  is said in the instruction the way a ticket says it: the wording quoted, the level as where QA will play it. Never a
+  class, property, function or tag name ("Hints, never answers", below): if only such a name would make the probe
+  work, the probe moves to what the player sees.
+- **Ask the second-solution question of every check**: would a correct build that names things differently, lays the
+  level or the menu out differently, or hides a thing where the reference removes it (or removes where it hides) still
+  pass? If not, the check tests the reference, not the task: rewrite it.
+
+**Test the outcome a player sees, never the implementation**: another valid fix
 must pass ("the hero stands on ground", "the stone breaks the wall piece it hits", "the light reaching the tunnel
 floor times the camera's exposure is brighter", not "SpawnZ is 92" or "the function was changed"). Lighting and
 colour are measured from the engine (`light`, `grading`), never from screenshots. `describe` says the assertion in
@@ -353,6 +387,21 @@ fixed takes `--task <name>` once per task instead of `--all`. `--task <path>/Tas
 committed yet ([docs/task-check.md](../../docs/task-check.md)). The check builds each start and reference with the
 probe plugin, plays them and writes VALID or INVALID per task with the reasons and the measured values. **A task ships only when the task check says VALID**; for INVALID, fix the task (the
 docs' "Common reasons and fixes"), never the threshold toward what the start happens to measure.
+
+**No check is written blind: read what each one measured, on both sides, before the task is submitted.** VALID says
+the start failed and the reference passed; it doesn't say the check measured what you meant. For every probe open the
+result's line (`measured ..., threshold ... (start ..., fix ...)`) and the two plays' `probe.json`
+([docs/task-check.md](../../docs/task-check.md)) and see that:
+
+- the play's inputs landed on both sides (`inputs_missed` is empty: a click found its button, a stage its actor, a
+  key its moment), and the play reached the state the check is about;
+- the probe matched something on both sides (rows in the sample, not "nothing it selects was measured" excused as the
+  start's bug), and the event falls inside the `window` on both, with room to spare;
+- the value at the start is wrong for the reported reason, not because the play never got there;
+- a judge's frames show the moment on the reference (look at them: section "The check asks no model").
+
+A threshold comes from the instruction (a number it states) or from the start (calibrated, or relative to it), never
+from "what makes the reference pass". A check added or changed after the run is run again before it ships.
 
 **The check asks no model, so you answer the judges.** For every `judge` check it plays the check's plays on the start
 and on the reference and saves the screenshots the cloud's judge would be shown under
@@ -406,7 +455,10 @@ no check at all, naming the task and the sentence. Fix what you find in the task
   "each gun has its own sound". What the sound is, how it sounds, is never checked. New games import every sound
   (game-session skill), so every sound has an asset name.
 - **An ask that cannot be checked fairly** comes out: rewrite the instruction so it no longer asks for it, rather than
-  ship an ask nothing checks. The instruction stays plain prose, never fields.
+  ship an ask nothing checks. The instruction stays plain prose, never fields. Never asked, because no play can show
+  it: how a sound sounds (its quality, mix or tone), behaviour of the packaged build only, a frame rate on given
+  hardware. Keeping something across sessions (a best score, settings, a checkpoint after the game is closed and
+  opened again) is checkable: a play that `continues` the play that earned it.
 
 ## 6. Difficulty, limits and what the validator enforces
 
@@ -462,7 +514,9 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 | a light's turn read relative to its own actor | `world_yaw:`/`world_pitch:`/`forward:` read the component in the world |
 | a part's direction read by a component name only the reference had | `components` `world_yaw`/`world_pitch` of the part picked by `near`, `class` or `owner`, with `to_angle` |
 | a lamp hidden in game (or at intensity 0) read as lit | the `light` probe counts only lights the renderer draws; a lamp's `on` and `intensity` are `components` fields |
-| a collapsed warning still counted as shown | `"visible": true` in a widget select counts only what is on screen |
+| a collapsed warning still counted as shown, or a "not shown" check failed a build that hid the widget where the reference removed it | a `widgets` select matches only what is drawn; `"visible": false` only for "exists while hidden" |
+| an ask to keep a best score or a setting after the game is closed and opened again had no check, or was read in the same run that set it | a play that `continues` the play that sets it: a first session on a cleared save, a quit, a new process (section 5) |
+| a continuing play found nothing saved because the game saves only from its pause menu | the first session's inputs open the menu and save before its time is up |
 | every audio component read inactive (plays ran with `-nosound`) | `audio` reads what the player hears; a play with it runs with sound, muted; volumes calibrated or relative to the start |
 | relief judged by the height of one spot | `ground` over a box: `range`, calibrated or relative to the start |
 | a teleport to fixed coordinates missed what each build placed itself | `teleport_to` an actor select (nearest match), facing it or a point |
@@ -491,6 +545,12 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 | a probe that tests the reference's implementation ("SpawnZ = 92") | measure the outcome; another valid fix must pass |
 | the brief said "scenario 1" but not `?Scenario=1` | `play_map` always set and checked at the seed |
 | a HUD widget or class name guessed | read the names from the code and assets at `seed.commit` |
+| a probe matched the reference's exact on-screen string, so a build that worded it otherwise read no text | a loose `match` on what the ticket asks to see; an exact string only when the instruction quotes it |
+| a play teleported to coordinates, or pressed Down three times, that only fit the reference's level or menu | `teleport_to` or `pin` on an actor select; the key the instruction gives, or a click on the button whose text it quotes |
+| a play opened a map or passed a URL option only the reference has, and ended at 0 s on every other build | the play's map and options exist at the start, or the instruction says where QA plays the new level |
+| a check passed the task check but had measured nothing it meant to (the click found no button, the window missed the event, the property was null) | read each check's measured values and the plays' `probe.json` on both sides before submitting (section 5) |
+| a threshold was picked to make the reference pass | from the instruction's own number, or calibrated or relative to the start |
+| the instruction asked for something the reference itself doesn't do, or does where no play reaches | the reference does every ask in a place a play can reach (section 2) |
 | a probe named a class, tag or map only the reference had, so a fair build that named it otherwise read as absent | select what the thread creates by what it does or where it is; the validator refuses a reference-only name |
 | a run wrote the feature but never ran the game to see it, and the task had no probe of the moment | a play that triggers each piece of feedback, and a probe of what the player sees then |
 | a judge's pictures came from views the game itself lists, so a build could dress only those spots | the task's own tour: `map`, `teleport_to` what the build made, `view`, named `shot` inputs (docs/task-probes.md, section 1.1); never a view list from the game's files |

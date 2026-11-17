@@ -10,7 +10,7 @@ The engine is the one the machine config gives for the project's EngineAssociati
   Live Coding is active": -NoHotReloadFromIDE skips that guard, and a scratch copy's DLLs are its own. A build that
   still reports the line is retried: see build);
 - play: UnrealEditor.exe <uproject> [map] -game offscreen at 960x540 (a mobile game, whose copy has a Platform.json:
-  the mobile renderer at the phone's size, MOBILE_FLAGS and MOBILE_SIZE), a fixed 30 fps, with -TaskProbe and its flags
+  the mobile renderer at the phone's size, MOBILE_FLAGS and validate-game.py PHONE_SIZE), a fixed 30 fps, with -TaskProbe and its flags
   (-TaskProbeOut, -TaskProbeSeconds, -TaskProbeShots, -TaskProbeInputs, -TaskProbeQueries, -TaskProbeEvery), the log
   in Saved/Logs/TaskProbePlay.log, then a task play's own game flags; without sound (-nosound -benchmark) unless the
   play measures audio (probes.sound_flags: muted, with -benchmark's fixed step);
@@ -40,13 +40,21 @@ LIVE_CODING_RETRY_SECONDS = 60
 LIVE_CODING_RETRY_LIMIT = 30 * 60
 SHOT_SIZE = (960, 540)
 # a mobile game's play (docs/task-probes.md, section 1.1): the engine's mobile renderer at the phone's size, by how the
-# game is held; -ForceRes because the engine otherwise clamps a game window to the primary display
-MOBILE_SIZE = {"landscape": (1920, 1080), "portrait": (1080, 1920)}
+# game is held (tools/validate-game.py PHONE_SIZE); -ForceRes because the engine otherwise clamps a game window to the
+# primary display
 MOBILE_FLAGS = ["-FeatureLevelES31", "-ForceRes"]
 OUTPUT_CHARS = 30_000
 WRAPPER_GRACE = 60  # seconds ue-heavy.ps1 gets to release its slot once the job it runs is killed
 QUEUE_POLL = 5  # seconds between looks at whether the wrapper has started its job
 LOG_NAME = "TaskProbePlay.log"
+# A first session (a task play another `continues`): the game's save state, cleared before it, so the play after it
+# loads only what it wrote: the game's SaveGame files and its saved settings (its user config), under the project's
+# Saved folder, where a game played in the editor's -game keeps both
+SAVES = ("Saved/SaveGames", "Saved/Config")
+# what a first session's write is never looked for in (Played.saved): the checker's own folder and the engine's logs
+# and crash reports, under Saved
+NOT_SAVES = ("Saved/TaskProbe", "Saved/Logs", "Saved/Crashes")
+SAVED_LISTED = 200  # files a first session's Played.saved lists at most
 FATAL = r"Fatal error|Assertion failed|Unhandled Exception"
 
 
@@ -69,6 +77,23 @@ class Played:
     log: str
     files: dict = field(default_factory=dict)  # what the play wrote (probe.json, screenshots) by name
     waited: float = 0.0  # of `seconds`, waiting for a machine slot
+    saved: list | None = None  # a first session's (Project.play session=True): the files it wrote under Saved
+
+
+def _saved(project, began):
+    """What a first session wrote under the project's Saved (Played.saved): its files (but NOT_SAVES) modified since
+    `began`, never through a link."""
+    root, skipped, found = project / "Saved", {project / p for p in NOT_SAVES}, []
+    for folder, dirs, names in os.walk(root):
+        dirs[:] = [d for d in dirs if Path(folder, d) not in skipped and not os.path.islink(os.path.join(folder, d))]
+        for name in names:
+            path = Path(folder, name)
+            try:
+                if not path.is_symlink() and path.stat().st_mtime >= began:
+                    found.append(path.relative_to(project).as_posix())
+            except OSError:
+                continue
+    return sorted(found)[:SAVED_LISTED]
 
 
 def cut(text, limit=OUTPUT_CHARS):
@@ -237,9 +262,11 @@ class Project:
             found.output = f"[task-check] build retried {retries} time(s) for Live Coding\n{found.output}"
         return found
 
-    def play(self, seconds, shots, timeout, map=None, inputs=None, queries=None, args=(), every=None):
+    def play(self, seconds, shots, timeout, map=None, inputs=None, queries=None, args=(), every=None, session=False):
         """The game for `seconds` of game time through the plugin: offscreen at a fixed 30 fps, `shots` screenshots,
-        `inputs` sent at their times, `queries` (probes.query_file) sampled; a Played."""
+        `inputs` sent at their times, `queries` (probes.query_file) sampled; a Played. `session`: a first session (a
+        task play another `continues`): the game's save state (SAVES) is cleared before it, and the Played lists the
+        files it wrote under Saved."""
         out = self.folder / "Saved" / "TaskProbe" / "play"
         shutil.rmtree(out, ignore_errors=True)
         out.mkdir(parents=True)
@@ -251,7 +278,9 @@ class Project:
             argv.append(map)
         sound, step = probes.sound_flags(queries)  # audio off, unless the play measures it
         mobile = self.mobile()
-        width, height = MOBILE_SIZE[mobile] if mobile else SHOT_SIZE
+        from . import tasks
+
+        width, height = tasks.validator().PHONE_SIZE[mobile] if mobile else SHOT_SIZE
         argv += ["-game", "-RenderOffscreen", *(MOBILE_FLAGS if mobile else []), f"-ResX={width}", f"-ResY={height}",
                  "-unattended", NO_LIVE_CODING,
                  *sound, "-nosplash", *step, "-fps=30", "-TaskProbe", f"-TaskProbeOut={out}",
@@ -267,7 +296,12 @@ class Project:
         if every:
             argv.append(f"-TaskProbeEvery={every:g}")
         argv += list(args)
+        if session:
+            for folder in SAVES:
+                shutil.rmtree(self.folder / folder, ignore_errors=True)
+        began = time.time()
         found = self.machine.job(f"task-check play {self.label}", argv, self.folder, timeout)
+        saved = _saved(self.folder, began) if session else None
         files = {p.name: p.read_bytes() for p in out.iterdir() if p.is_file()} if out.is_dir() else {}
         probe = None
         if "probe.json" in files:
@@ -278,7 +312,7 @@ class Project:
         log = log_path.read_bytes().decode("utf-8", errors="replace") if log_path.is_file() else ""
         shutil.rmtree(out, ignore_errors=True)
         return Played(found.exit_code, found.timed_out, found.output, found.seconds,
-                      probe if isinstance(probe, dict) else None, log, files, found.waited)
+                      probe if isinstance(probe, dict) else None, log, files, found.waited, saved)
 
     def editor_python(self, script, timeout):
         path = self.folder / "Saved" / "TaskProbe" / "editor_script.py"

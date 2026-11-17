@@ -68,8 +68,9 @@ class FakeProject:
     """A scratch project whose build exits `build_exit` and whose plays answer `answer(seconds, shots, queries)` with
     (probe dict or None, log). Records its plays and editor scripts."""
 
-    def __init__(self, answer=None, build_exit=0, editor=None, folder="."):
+    def __init__(self, answer=None, build_exit=0, editor=None, folder=".", saved=("Saved/SaveGames/Slot.sav",)):
         self.answer, self.build_exit, self.editor = answer, build_exit, editor
+        self.saved = list(saved)  # what a first session (session=True) is said to have written under Saved
         self.folder = __import__("pathlib").Path(folder)
         self.plays, self.builds, self.scripts, self.files = [], 0, [], {}
 
@@ -77,12 +78,12 @@ class FakeProject:
         self.builds += 1
         return unreal.Result(self.build_exit, "error C2065" if self.build_exit else "built", 1.0)
 
-    def play(self, seconds, shots, timeout, map=None, inputs=None, queries=None, args=(), every=None):
+    def play(self, seconds, shots, timeout, map=None, inputs=None, queries=None, args=(), every=None, session=False):
         self.plays.append({"seconds": seconds, "shots": shots, "map": map, "inputs": inputs, "queries": queries,
-                           "args": list(args), "every": every})
+                           "args": list(args), "every": every, "session": session})
         probe, log = self.answer(seconds, shots, queries) if self.answer else (None, "")
         files = {"probe.json": json.dumps(probe).encode()} if probe is not None else {}
-        return unreal.Played(0, False, "", 1.0, probe, log, files)
+        return unreal.Played(0, False, "", 1.0, probe, log, files, saved=list(self.saved) if session else None)
 
     def editor_python(self, script, timeout):
         self.scripts.append(script)

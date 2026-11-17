@@ -86,6 +86,12 @@ per side, with the measures of every probe that names it. A play runs without so
 one of its measures is `audio`: then it runs with sound, muted (`-muteaudio`, with `-benchmark`'s fixed step and seed
 kept; docs/task-probes.md, section 2.16).
 
+A mobile game (a `Platform.json` at the root of the copy, as the game had it at that commit) is played as a phone
+plays it: the engine's mobile renderer (`-FeatureLevelES31`) at the phone's size, 1920x1080 for a landscape game and
+1080x1920 for a portrait one, in place of 960x540; the checker's own `drive` is by touch (a thumb on the lower left
+pushing as a stick, a tap on the lower right), and the task's plays send the touches they name (docs/task-probes.md,
+sections 1.1 and 1.5). A task play never chooses the renderer or the size itself: `validate-game.py` refuses it.
+
 | `play` | What |
 |---|---|
 | `"look"` | 20 s, no input |
@@ -98,7 +104,10 @@ Plays run in the order the task's checks first ask for them, except that a task 
 it names has run on the same side, a failed one too (docs/task-probes.md, section 1.1), as on the Lab. Every play of a
 side runs on the same scratch copy, and between launches only the probe's folder (`Saved/TaskProbe/play`) and its log
 are cleared, so what a play saves in the project's `Saved/` folder is there for every later play. A run of several tasks
-shares a commit's copy, so that includes plays of earlier tasks on the same commit.
+shares a commit's copy, so that includes plays of earlier tasks on the same commit. A task play that `continues`
+another is played after a first session of its own: the copy's `Saved/SaveGames` and `Saved/Config` are deleted, the
+play it names is played (kept as `play_<name>-first`) and quits, then the play itself starts as a new process on the
+same copy (docs/task-probes.md, section 1.1).
 
 A boot is the same idle game as `"look"`, only longer, so on the side that boots (the reference; a start is never
 booted) one 60 s idle play with look's queries serves both: the boot check reads all of it and `"look"` reads only its
@@ -189,7 +198,14 @@ different field, window or play), or use a literal value when the fact is a coun
 
 **`no samples in the window (the play ended at X s)`.** The play ended before the window: the window or `at` lies past
 the play's `seconds`, or the game crashed or quit (see the play's log). **`the play wrote no probe file`**: the game
-never got to play (a crash at load, a map that doesn't exist).
+never got to play (a crash at load, a map that doesn't exist). **`map X could not be loaded (the game ran Y | the game
+opened no map; ...)`**: the play asked for a map (its own `map`, else `play_map`) and ended in another or in none: the
+map isn't in that commit (a map only the reference has), or it is broken.
+
+**`the play's first session (play X) did not end cleanly`**, or, on the reference, **`the task's own fix carries
+nothing over to the next session`**. A play that `continues` another: its first session crashed, timed out or was cut
+off, or the reference's wrote no file under `Saved/`. Give the first session the inputs that make the game save (a
+save made on a menu action needs that action), and time for it; the game's save on quit runs when the play ends.
 
 **`no value in the window (nothing it selects was measured)`.** The selection matched nothing, or nothing it matched
 has that field. `class` is the class name without its prefix letter (`SCCastlePiece` for `ASCCastlePiece`; a Blueprint

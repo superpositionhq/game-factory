@@ -51,7 +51,7 @@ def needs(measure):
     if probe == "camera":
         return [{"kind": "camera", "fields": [field]}] if field in ("occluded", "pawn_on_screen") else []
     if probe in ("actors", "widgets", "components"):
-        return [{"kind": probe, "select": measure["select"], "fields": [] if field == "count" else [field]}]
+        return [{"kind": probe, "select": selector(measure), "fields": [] if field == "count" else [field]}]
     if probe == "light":
         return [{"kind": "light", "point": measure["point"]}]
     if probe == "pieces":
@@ -522,6 +522,46 @@ def ended(probe):
     if isinstance(seconds, int | float) and not isinstance(seconds, bool):
         return float(seconds)
     return max(found, default=0.0)
+
+
+def selector(measure):
+    """A selecting measure's select as the plugin is asked it. A widgets select names `visible` whenever the measure
+    matches only the widgets drawn (on_screen: its default, as in the Lab's game grader since 1.9.0), and never
+    otherwise, so a select that matches them drawn or not is asked without the key."""
+    select = dict(measure["select"])
+    if measure["probe"] == "widgets":
+        select.pop("visible", None)
+        if on_screen(measure):
+            select["visible"] = True
+    return select
+
+
+def on_screen(measure):
+    """Whether a widgets measure matches only the widgets drawn: what its select's `visible` says, and when it says
+    nothing, every measure but one that reads the `visible` field itself (which is asked of a widget drawn or not)."""
+    said = measure["select"].get("visible")
+    return said if said is not None else measure.get("field") != "visible"
+
+
+def map_name(path):
+    """A map's own name, as a play's probe file names the map it ended in: /Game/Maps/L_Title?Scenario=1 is L_Title (an
+    editor play's UEDPIE_<n>_ prefix left out); "" for none."""
+    name = (path or "").split("?", 1)[0].rsplit("/", 1)[-1].rsplit(".", 1)[-1]
+    return re.sub(r"^UEDPIE_\d+_", "", name)
+
+
+def map_unloaded(probe, requested, travels=False):
+    """"map X could not be loaded (...)" when a play asked to open map `requested` ended in another map, or in none:
+    the game couldn't load it (a map only the reference has, a broken one). None when it ended in that map, when the
+    play has no map of its own to ask for, when it travels to other maps by its inputs (`travels`), and when its probe
+    file doesn't name a map."""
+    if not requested or travels or not isinstance(probe, dict) or not isinstance(probe.get("map"), str):
+        return None
+    loaded = map_name(probe["map"])
+    if loaded.lower() == map_name(requested).lower():
+        return None
+    ran = f"the game ran {loaded}" if loaded else "the game opened no map"
+    return f"map {requested.split('?', 1)[0]} could not be loaded ({ran}; the play ended at {fmt(ended(probe))} s)"
 
 
 def measured(measure, probe, log=""):

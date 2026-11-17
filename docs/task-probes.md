@@ -125,6 +125,24 @@ Words used here:
     among it. So a save one play writes is there for every later play of that side, and every earlier play (the
     boot, `look`, `drive`, other task plays) may have written there too. `after` orders a play after its writer; it
     never gives it a clean `Saved/` folder. The two sides never share one.
+  - `continues` (optional): the task play whose session this play continues, for what the game keeps across a quit
+    and a relaunch (a best score, saved settings, a checkpoint): `{"name": "after_restart", ..., "continues":
+    "plays_and_quits"}`. On each side the game's save state is cleared (`Saved/SaveGames` and `Saved/Config` of the
+    copy), the named play is played as a first session and quits, and this play is then launched as a new process on
+    the same copy; its probes read this second session. The first session is played for this play alone (its
+    evidence is `<play>-first`), never the reading of the named play's own checks, so it costs one more play a side.
+    - It names one task play of the same task, never the play itself, never together with `after`, and the play it
+      names has neither `continues` nor `after` (a first session starts from a cleared save, alone);
+      `tools/validate-game.py` refuses each.
+    - The first session must end cleanly: it runs its time out, or the game quits by its own action (exit 0, no
+      crash). The play then ends as a player's quit does, so what the game saves on quit is saved. A save the game
+      makes only on a menu action needs that action in the first session's `inputs`.
+    - A first session that didn't end cleanly fails the play's checks ("the play's first session (play X) did not end
+      cleanly ..."). On the reference that, or a first session that wrote no file under `Saved/` (the probe's folder,
+      logs and crash reports aside), makes the task INVALID: "the task's own fix carries nothing over to the next
+      session".
+    - A first session clears `SaveGames` and `Config` for the whole side: what earlier plays of that side saved is
+      gone for the plays that run later.
 - `"editor"`: a headless editor pass over the project as saved; takes only `asset` measures, and `asset` measures
   are taken only there.
 - `"trace"`: retired with the `trace` probe (section 2.12); never use it.
@@ -455,9 +473,16 @@ Limits:
 - **To check what a HUD shows, whatever draws it, use `ui` (section 2.18).** `widgets` reads a named widget's own
   state, so it sees a HUD only when a build made it with that widget; a HUD drawn on the canvas, or with other
   widgets, reads as absent.
-- `"visible": true` in the select (UMG or Slate) keeps only the widgets the `visible` field reads 1 for: never a
-  collapsed or hidden widget, nor one under a collapsed or hidden parent, so `count` counts what is on screen (a
-  warning bar's shown messages, not the ones the game keeps collapsed).
+- **A select (UMG or Slate) matches only the widgets drawn**, the ones the `visible` field reads 1 for: never a
+  collapsed or hidden widget, nor one at zero opacity, nor one under such a parent. So every field reads what is on
+  screen: `count` counts a warning bar's shown messages, not the ones the game keeps collapsed, and a build that hides
+  a widget and a build that removes it read the same. `"visible": true` says the same as saying nothing.
+  `"visible": false` matches them drawn or not, for a check that really means "exists while hidden". A measure of the
+  `visible` field itself, with no `visible` in its select, matches them drawn or not too (it reads which are drawn).
+  With `of` `count`, `any`, `all` or `sum`, a select nothing drawn matches reads 0. "Drawn" is the widget's and its
+  parents' visibility and opacity: a widget outside the viewport, of zero size or covered by another still counts.
+  (The Lab's game grader reads it this way since 1.9.0; before, a select without `visible` matched them drawn or
+  not.)
 - `field`: `count`; `visible` (visible, and its parents visible); `text` (a TextBlock's text, with `match`); `percent`
   (a ProgressBar); `has_brush` (an Image's brush resource is set); `brush` (the brush resource's path, with `match`);
   `x`, `y`, `w`, `h` (the widget's rectangle in viewport fractions 0-1, from its cached geometry, whatever anchor or

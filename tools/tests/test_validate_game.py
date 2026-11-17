@@ -2,7 +2,7 @@
 
     python -m unittest discover -s tools/tests -p "test_validate_game.py" -v
 """
-import importlib.util, json, os, shutil, tempfile, unittest
+import importlib.util, json, os, shutil, subprocess, sys, tempfile, unittest
 
 TOOLS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 spec = importlib.util.spec_from_file_location('validate_game', os.path.join(TOOLS, 'validate-game.py'))
@@ -44,6 +44,45 @@ class Units(unittest.TestCase):
             self.assertEqual(list(vg.check_schema(c, schema['$defs']['ActionsJudge'], schema)), [])
         new = {'milestones': [{'name': 'done', 'checks': [check('looks_as_asked', 'judge')]}]}
         self.assertEqual(vg.retired_checks(new), [])
+
+    def test_a_guard_is_not_an_outcome(self):
+        """A required probe of weight 0 outside still_works gates and pays nothing: it doesn't count toward the 3."""
+        probe = lambda n, **k: dict({'name': n, 'kind': 'probe'}, **k)
+        t = {'milestones': [{'name': 'fix', 'checks': [probe('a'), probe('g1', weight=0), probe('g2', weight=0),
+                                                       probe('o', required=False), {'name': 'j', 'kind': 'judge'}]},
+                            {'name': 'still_works', 'checks': [probe('s', weight=0), probe('s2')]}]}
+        self.assertEqual([c['name'] for c in vg.outcome_probes(t)], ['a'])
+        self.assertIn('1 required outcome probe(s) outside still_works, fewer than 3 '
+                      '(a required probe of weight 0 is a guard, not an outcome)',
+                      vg.thread_errors(t, len(vg.outcome_probes(t))))
+
+    def test_a_play_continues_one_first_session(self):
+        """`continues` names a task play of the task that starts a session alone: never itself, never beside `after`."""
+        def checks(*plays):
+            return [{'kind': 'probe', 'name': p['name'], 'play': p} for p in plays]
+        first, again = {'name': 'earns', 'seconds': 10}, {'name': 'restarted', 'seconds': 20, 'continues': 'earns'}
+        self.assertEqual(vg.play_continues_errors(checks(again, first)), [])
+        self.assertEqual(vg.play_continues_errors(checks(first)), [])
+        self.assertEqual(vg.play_continues_errors(checks({**again, 'continues': 'restarted'})),
+                         ['task play restarted continues itself'])
+        self.assertEqual(vg.play_continues_errors(checks({**again, 'continues': 'drive'})),
+                         ['task play restarted continues drive, which is no task play of the task'])
+        self.assertEqual(vg.play_continues_errors(checks(again, {**first, 'after': ['restarted']})),
+                         ['task play restarted continues earns, which itself continues a session or runs after other '
+                          'plays: a first session starts from a cleared save, alone'])
+        self.assertEqual(vg.play_continues_errors(checks({**again, 'after': ['earns']}, first)),
+                         ['task play restarted continues a session and runs after plays too: name one or the other'])
+        schema = vg.SCHEMAS['game-task']
+        self.assertEqual(list(vg.check_schema(again, schema['$defs']['TaskPlay'], schema)), [])
+        self.assertTrue(list(vg.check_schema({**again, 'continues': 'Not A Name'}, schema['$defs']['TaskPlay'], schema)))
+        self.assertIsNone(vg.TASK_PLAY_DEFAULTS['continues'])
+
+    def test_a_widget_select_may_say_drawn_or_not(self):
+        schema = vg.SCHEMAS['game-task']
+        for said in (True, False):
+            self.assertEqual(list(vg.check_schema({'name': 'Warn*', 'visible': said}, schema['$defs']['WidgetSelect'],
+                                                  schema)), [])
+        self.assertTrue(list(vg.check_schema({'name': 'Warn*', 'visible': 1}, schema['$defs']['WidgetSelect'], schema)))
 
     def test_task_bar(self):
         """A game's bar: at least 5 tasks, at least 4 of them hard; the others may be medium (what a task that names
@@ -122,10 +161,15 @@ Orientation=Portrait
 bBuildForArm64=True
 bBuildForX8664=False
 bPackageDataInsideApk=True
+bSupportsVulkan=True
 
 [/Script/LinuxTargetPlatform.LinuxTargetSettings]
 +TargetedRHIs=SF_VULKAN_SM6
 +TargetedRHIs=SF_VULKAN_ES31
+
+[/Script/WindowsTargetPlatform.WindowsTargetSettings]
++D3D12TargetedShaderFormats=PCD3D_SM6
++D3D12TargetedShaderFormats=PCD3D_ES31
 """
 
 
@@ -162,7 +206,7 @@ class Mobile(unittest.TestCase):
                     encoding='utf-8').read()
         for orientation, held in (('landscape', 'SensorLandscape'), ('portrait', 'Portrait')):
             ini = text.replace('__ANDROID_ORIENTATION__', held).replace('__ANDROID_NAME__', 'tide')
-            self.assertEqual(vg.mobile_project_errors(orientation, ini), [])
+            self.assertEqual(vg.mobile_project_errors(orientation, ini, 'Tide'), [])
 
     def test_each_setting_that_disagrees_is_named(self):
         def errs(old, new, orientation='portrait'):
@@ -179,10 +223,63 @@ class Mobile(unittest.TestCase):
         self.assertIn('TargetSDKVersion=33: at least 34', errs('TargetSDKVersion=34', 'TargetSDKVersion=33')[0])
         self.assertIn('bPackageDataInsideApk', errs('bPackageDataInsideApk=True\n', '')[0])    # default False
         self.assertIn('SF_VULKAN_ES31', errs('+TargetedRHIs=SF_VULKAN_ES31\n', '')[0])
+        self.assertIn('PCD3D_ES31', errs('+D3D12TargetedShaderFormats=PCD3D_ES31\n', '')[0])
+        self.assertIn('bSupportsVulkan', errs('bSupportsVulkan=True\n', '')[0])                # default False
+        self.assertEqual(vg.mobile_project_errors('portrait', MOBILE_INI, 'Tide'), [])
+        self.assertIn('PackageName=com.tide.game', vg.mobile_project_errors('portrait', MOBILE_INI, 'TideRunner')[0])
         on = MOBILE_INI + '[/Script/Engine.RendererSettings]\nr.DynamicGlobalIlluminationMethod=1\nr.Shadow.Virtual.Enable=1\n'
         self.assertEqual(len(vg.mobile_project_errors('portrait', on)), 2)
         off = MOBILE_INI + '[/Script/Engine.RendererSettings]\nr.DynamicGlobalIlluminationMethod=0\n'
         self.assertEqual(vg.mobile_project_errors('portrait', off), [])
+
+    def test_what_the_other_tools_read(self):
+        """`--platform`: one answer for the pipeline and the packagers, with the size a play and a recording have."""
+        self.assertEqual(vg.platform_of(self.game()),
+                         {'platform': 'desktop', 'orientation': None, 'width': 1920, 'height': 1080})
+        self.assertEqual(vg.platform_of(self.game({'platform': 'mobile', 'orientation': 'landscape'})),
+                         {'platform': 'mobile', 'orientation': 'landscape', 'width': 1920, 'height': 1080})
+        self.assertEqual(vg.platform_of(self.game({'platform': 'mobile', 'orientation': 'portrait'})),
+                         {'platform': 'mobile', 'orientation': 'portrait', 'width': 1080, 'height': 1920})
+        with self.assertRaises(ValueError):
+            vg.platform_of(self.game('{"platform": "desktop"}'))
+        script = os.path.join(TOOLS, 'validate-game.py')
+        run = lambda d: subprocess.run([sys.executable, script, d, '--platform'], capture_output=True, text=True)
+        out = run(self.game({'platform': 'mobile', 'orientation': 'portrait'}))
+        self.assertEqual((out.returncode, json.loads(out.stdout)['height']), (0, 1920))
+        self.assertEqual(json.loads(run(self.game()).stdout)['platform'], 'desktop')
+        bad = run(self.game('not json'))
+        self.assertEqual((bad.returncode, bad.stdout), (2, ''))
+
+    def test_a_datasets_manifest_and_project_say_the_same_platform(self):
+        class View:
+            def __init__(self, files):
+                self.files = files
+
+            def has(self, rel):
+                return rel in self.files
+
+            def open_text(self, rel):
+                import io
+                return io.StringIO(self.files[rel])
+        port = '{"platform": "mobile", "orientation": "portrait"}'
+        mobile = {'variant': 'full', 'platform': {'kind': 'mobile', 'orientation': 'portrait'}, 'build': {'apk': None}}
+        errs = vg.dataset_platform_errors
+        self.assertEqual(errs({'variant': 'full', 'build': {}}, View({})), [])                       # a desktop game
+        self.assertEqual(errs(mobile, View({'UEProject/Platform.json': port})), [])                  # no APK built
+        self.assertEqual(errs(dict(mobile, build={'apk': 'Android/Tide-arm64.apk'}),
+                              View({'UEProject/Platform.json': port, 'Build/Android/Tide-arm64.apk': ''})), [])
+        self.assertIn('is not in the dataset', errs(dict(mobile, build={'apk': 'Android/Tide-arm64.apk'}),
+                                                    View({'UEProject/Platform.json': port}))[0])
+        self.assertIn('none: a desktop game', errs(mobile, View({}))[0])
+        self.assertIn('a mobile game held in portrait', errs({'variant': 'full', 'build': {}},
+                                                              View({'UEProject/Platform.json': port}))[0])
+        self.assertIn('held in portrait', errs(dict(mobile, platform={'kind': 'mobile', 'orientation': 'landscape'}),
+                                               View({'UEProject/Platform.json': port}))[0])
+        self.assertEqual(errs(dict(mobile, variant='repo-dataset', build=None), View({})), [])       # the repo's Dataset/
+        schema = vg.SCHEMAS['dataset-manifest']['properties']
+        self.assertEqual(list(vg.check_schema(mobile['platform'], schema['platform'])), [])
+        self.assertTrue(list(vg.check_schema({'kind': 'mobile'}, schema['platform'])))
+        self.assertTrue(list(vg.check_schema({'kind': 'desktop', 'orientation': 'portrait'}, schema['platform'])))
 
     def test_a_platform_file_that_says_neither_is_an_error_never_desktop(self):
         for bad in ('{"platform": "desktop"}', '{"platform": "mobile"}', 'not json',

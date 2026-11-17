@@ -69,6 +69,36 @@ NOT_JUDGED = "not asked: judges never decide a task check"
 SKIP = {"Binaries", "Intermediate", "Saved", "DerivedDataCache", ".git", ".vs"}  # left out of file_exists
 
 
+def session(first, named):
+    """What a continuing play's first session (play `named`, an unreal.Played) left for it: {play, clean, text,
+    saved}. Clean: it ran its time out, or the game quit by its own action (the probe ended at the game's shutdown,
+    exit 0, no crash), so the game's own save-on-quit ran; saved: the files it wrote under Saved."""
+    probe = first.probe or {}
+    crashed = fatal(first.log)
+    ok = first.probe is not None and probe.get("ended") == "time" and not crashed
+    clean = ok or (probe.get("ended") == "shutdown" and first.exit_code == 0 and not crashed and not first.timed_out)
+    text = "timed out" if first.timed_out else "crashed" if crashed else "wrote no probe file" if first.probe is None \
+        else f"ended by {probe.get('ended')} at {probes.fmt(probes.ended(probe))} s, exit {first.exit_code}"
+    return {"play": named, "clean": bool(clean), "text": text, "saved": first.saved}
+
+
+def session_unclean(found):
+    """Why a continuing play's first session (session) didn't end cleanly, or None."""
+    if found["clean"]:
+        return None
+    return f"its first session (play {found['play']}) did not end cleanly ({found['text']}), so the game never " \
+           "quit as a player's game does and nothing it should have saved can be trusted"
+
+
+def session_empty(found):
+    """Why a continuing play's first session (session) left nothing to load: it wrote no file under the game's Saved
+    folder; None when it wrote one, or the listing can't tell."""
+    if not found["clean"] or found["saved"] != []:
+        return None
+    return f"its first session (play {found['play']}) wrote nothing under the game's Saved folder, so the " \
+           "relaunched game had nothing to load"
+
+
 def fatal(log):
     return bool(re.search(unreal.FATAL, log or ""))
 
@@ -177,6 +207,7 @@ class Side:
         self.plan = probes.plan(task)
         self._build = None
         self.played = {}  # play name -> unreal.Played
+        self.sessions = {}  # a continuing task play's name -> what its first session left (session)
         self._editor = None
 
     # -- the build ---------------------------------------------------------------------------------------------------
@@ -212,14 +243,16 @@ class Side:
         for f, data in files.items():
             (folder / f).write_bytes(data)
 
-    def _play(self, name, seconds, shots, inputs=None, map=None, queries=None, args=(), every=None, waits=0.0):
+    def _play(self, name, seconds, shots, inputs=None, map=None, queries=None, args=(), every=None, waits=0.0,
+              session=False):
         """A play, once per name; `waits`: the real seconds its waits add (a task play's), which its timeout gets on
-        top."""
+        top; `session`: a continuing play's first session, played on a cleared save (unreal.Project.play)."""
         if name not in self.played:
             self.log(f"  {self.name}: playing {name} ({seconds} s" + (f", {waits:g} s waiting" if waits else "") + ")")
             found = self.project.play(seconds, shots, self.timeout + math.ceil(waits),
                                       map=map or self.task.get("play_map"),
-                                      inputs=inputs, queries=queries, args=args, every=every)
+                                      inputs=inputs, queries=queries, args=args, every=every,
+                                      **({"session": True} if session else {}))
             self.played[name] = found
             waited = getattr(found, "waited", 0.0)
             self.log(f"  {self.name}: played {name} in {found.seconds:.0f} s"
@@ -281,9 +314,31 @@ class Side:
         named = tasks.task_plays(self.task)
         for before in play.get("after") or ():
             self.probe_play(named[before])
+        # a play that `continues` another's session is played after a first session of its own: the game's save state
+        # cleared, the play it names played (evidence play_<name>-first, never a reading of that play) and quit, then
+        # this play launched as a new process on the copy (docs/task-probes.md 1.1)
+        if play.get("continues") and name not in self.sessions:
+            first = named[play["continues"]]
+            ended = self._play(f"play_{name}-first", first["seconds"], 1, first["inputs"] or None, map=first["map"],
+                               args=first["args"], every=first["every"], waits=tasks.waited(first), session=True)
+            self.sessions[name] = session(ended, first["name"])
         shots = judges.play_shots(self.task).get(name, 2)  # as the grader plays it: a judge showing it asks more
         return self._play(f"play_{name}", play["seconds"], shots, play["inputs"] or None, map=play["map"],
                           queries=queries, args=play["args"], every=every, waits=tasks.waited(play))
+
+    def carried(self, play):
+        """Why a continuing task play's readings can't stand on this side, or None: its first session didn't end
+        cleanly (on any side), or, on the reference, wrote nothing under Saved (the task's own fix then carries
+        nothing over; a start that saves nothing is often the task's bug, and its checks fail by their readings)."""
+        found = None if isinstance(play, str) else self.sessions.get(play["name"])
+        if found is None:
+            return None
+        unclean = session_unclean(found)
+        if self.name == "reference":
+            why = unclean or session_empty(found)
+            return why and f"in the reference's play {play['name']}, {why}: the task's own fix carries nothing over " \
+                           "to the next session"
+        return unclean and f"the play's {unclean.removeprefix('its ')}"
 
     def boots(self):
         """The boot plays this task's checks run (seconds): its boot checks, and 60 s for a log_absent check."""
@@ -322,8 +377,17 @@ class Side:
             return probes.reduce_asset(measure, results.get(probes.editor_id(measure)))
         if not self.built():
             return None, f"{self.why_unbuilt()}, so it wasn't played"
-        p = self.probe_play(check["play"])
-        return probes.measured(measure, p.probe, p.log)
+        play = check["play"]
+        p = self.probe_play(play)
+        carried = self.carried(play)
+        if carried:
+            return None, carried
+        value, why = probes.measured(measure, p.probe, p.log)
+        if value is None and why and why.startswith("no samples in the window"):  # the play's map not loaded: said so
+            own = None if isinstance(play, str) else play
+            travels = bool(own) and any("map" in i for i in own["inputs"])
+            why = probes.map_unloaded(p.probe, (own and own["map"]) or self.task.get("play_map"), travels) or why
+        return value, why
 
 
 class Grade:
