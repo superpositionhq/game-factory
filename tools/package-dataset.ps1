@@ -368,7 +368,7 @@ if ($layout -eq 'dataset-layout/v1.3') {
     TA ''
     TA 'Merging `grader.json` into `task.json` (its `seed` into the task''s `seed`) gives the whole task.'; TA ''
     TA '**The harness rule.** An agent given a task starts from a snapshot of the game at `seed.commit` with no git history and'
-    TA 'without `Tasks/`, `History/` and `Dataset/` (they hold every task''s rubrics and the reference fixes). It sees the brief'
+    TA 'without `Tasks/`, `Checks/`, `History/` and `Dataset/` (they hold every task''s rubrics and the reference fixes). It sees the brief'
     TA 'and that snapshot only; `grader.json` and `seed.reference` are for grading.'; TA ''
     TA "The seed commits are commits of ``History/$Game.bundle``. Make a task's start:"; TA ''
     TA '```'
@@ -379,7 +379,7 @@ if ($layout -eq 'dataset-layout/v1.3') {
     TA 'git checkout <seed.commit>'
     TA 'git lfs checkout'
     TA '```'; TA ''
-    TA 'then copy the working tree, without `.git`, `Tasks/`, `History/` and `Dataset/`, to where the agent works.'; TA ''
+    TA 'then copy the working tree, without `.git`, `Tasks/`, `Checks/`, `History/` and `Dataset/`, to where the agent works.'; TA ''
     TA '| Task | Kind | Difficulty | Title |'; TA '|---|---|---|---|'
     foreach ($r in $taskRows) { TA "| ``$($r.name)`` | $($r.kind) | $($r.difficulty) | $($r.title) |" }
     Write-Utf8 (Join-Path $tasksDir 'README.md') $tr.ToString()
@@ -687,7 +687,7 @@ function Write-Readme([string]$Dest, [string]$Variant) {
             A "``Tasks/`` holds $($taskNames.Count) tasks on this game in a game-creation environment's format, each split into ``<name>/task.json``"
             A '(what the agent sees) and `<name>/grader.json` (milestones with rubrics, and `seed.reference`). A task starts the project at a'
             A 'commit of `History/` (its `seed`); `Tasks/README.md` explains the fields. **An agent starts from a snapshot at `seed.commit`'
-            A 'with no history and without `Tasks/`, `History/` and `Dataset/`, and never sees `grader.json`.**'; A ''
+            A 'with no history and without `Tasks/`, `Checks/`, `History/` and `Dataset/`, and never sees `grader.json`.**'; A ''
             A '| Task | Kind | Difficulty | Title |'; A '|---|---|---|---|'
             foreach ($r in $taskRows) { A "| ``$($r.name)`` | $($r.kind) | $($r.difficulty) | $($r.title) |" }
         }
