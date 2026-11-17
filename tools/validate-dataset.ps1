@@ -188,8 +188,14 @@ else {
         if (-not $j -or -not (Get-Prop $j 'format')) { E "$v cannot be read as a video"; if ($isZip) { Remove-Item -Force $p }; continue }
         $vs = @($j.streams | Where-Object codec_type -eq 'video'); $as = @($j.streams | Where-Object codec_type -eq 'audio')
         $g = $L.gameplay_video
+        # a mobile game's videos have its phone's size (manifest platform; the layout's gameplay_video.mobile)
+        $gw = [int]$g.width; $gh = [int]$g.height
+        $mp = Get-Prop $man 'platform'; $mo = [string](Get-Prop $mp 'orientation')
+        $ms = Get-Prop (Get-Prop $g 'mobile') $mo
+        if ($mp -and $mo -and $ms) { $gw = [int]$ms.width; $gh = [int]$ms.height }
+        elseif ($mp) { E "manifest.json platform $($mp | ConvertTo-Json -Compress) is not one this layout knows" }
         if ($j.format.format_name -notmatch 'mp4') { E "$v is not an mp4 ($($j.format.format_name))" }
-        if ($vs.Count -ne 1 -or $vs[0].codec_name -ne $g.video_codec -or [int]$vs[0].width -ne $g.width -or [int]$vs[0].height -ne $g.height) { E "$v video is not $($g.video_codec) $($g.width)x$($g.height): $(@($vs | ForEach-Object { "$($_.codec_name) $($_.width)x$($_.height)" }) -join ', ')" }
+        if ($vs.Count -ne 1 -or $vs[0].codec_name -ne $g.video_codec -or [int]$vs[0].width -ne $gw -or [int]$vs[0].height -ne $gh) { E "$v video is not $($g.video_codec) ${gw}x${gh}: $(@($vs | ForEach-Object { "$($_.codec_name) $($_.width)x$($_.height)" }) -join ', ')" }
         if ($g.audio_required -and ($as.Count -lt 1 -or $as[0].codec_name -ne $g.audio_codec)) { E "$v has no $($g.audio_codec) audio" }
         N ("{0}: {1:N1} s, {2} {3}x{4} + {5}" -f $v, [double]$j.format.duration, $vs[0].codec_name, $vs[0].width, $vs[0].height, $(if ($as.Count) { $as[0].codec_name } else { 'no audio' }))
         if ($isZip) { Remove-Item -Force $p }

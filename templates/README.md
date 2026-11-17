@@ -18,10 +18,12 @@ containing Superposition, game-factory, Claude or Anthropic.
 
 `-Platform mobile -Orientation landscape|portrait` makes an Android phone game instead: the files of `ue-game-mobile/`
 are laid over the skeleton (`Config/DefaultEngine.ini` with the Android target settings, the game's orientation and the
-Linux mobile shader format, and without the desktop renderer settings; `Config/DefaultInput.ini` without the mouse
-settings) and `Platform.json` (`{"platform": "mobile", "orientation": ...}`) is written at the root. That file is how
-every later tool knows the game is a mobile game; a game without it is a desktop game. The default, `-Platform
-desktop`, creates a desktop game exactly as before.
+Linux and Windows mobile shader formats, and without the desktop renderer settings; `Config/DefaultInput.ini` without
+the mouse settings; `Scripts/ue.ps1`, whose `game -Render` plays with the mobile renderer at the phone's size), the
+AutoPlay drop-in is the mobile one (`tools/ue-pipeline/autoplay-mobile/`, drop-in 5: the phone's window size and a bot
+that plays by touch), and `Platform.json` (`{"platform": "mobile", "orientation": ...}`) is written at the root. That
+file is how every later tool knows the game is a mobile game; a game without it is a desktop game. The default,
+`-Platform desktop`, creates a desktop game exactly as before.
 
 What the skeleton carries, and why:
 

@@ -101,11 +101,22 @@ lists what needs a person).
 A game is a desktop (Windows) game unless its root has `Platform.json`, written by `templates/new-game.ps1 -Platform
 mobile -Orientation landscape|portrait` when the project is created and never edited after. That file makes it a mobile
 game: an Android phone game held one way, played by touch (the mobile-game skill). Every tool reads the platform from
-it (`tools/validate-game.py` `read_platform`): the validator's rule `mobile` holds the project's Android settings in
-`Config/DefaultEngine.ini` to it (the orientation, arm64 alone, the SDK levels, the data inside the APK, the Linux mobile
-shader format, nothing of the desktop renderer alone turned on), a mobile game's task plays never choose a renderer,
-and the task check plays a mobile game with the mobile renderer at the phone's size (1920x1080 landscape, 1080x1920
-portrait). A file that says anything else is an error, never read as a desktop game. Nothing here changes for a
+it through one reader (`tools/validate-game.py` `read_platform`; the PowerShell tools ask it with `validate-game.py
+--platform <folder>`): the validator's rule `mobile` holds the project's Android settings in
+`Config/DefaultEngine.ini` to it (the orientation, arm64 alone, the SDK levels 26 and 34, Vulkan, the package name
+`com.<project lowercase>.game`, the data inside the APK, the Linux and Windows mobile shader formats, nothing of the
+desktop renderer alone turned on), a mobile game's task plays never choose a renderer, and the task check, the
+recording pipeline and the stills all play a mobile game with the mobile renderer at the phone's size (1920x1080
+landscape, 1080x1920 portrait). A file that says anything else is an error, never read as a desktop game.
+
+A mobile game's dataset says so in its manifest: `platform` is `{"kind": "mobile", "orientation": ...}` (a desktop
+game's manifest has no `platform`), its gameplay videos have the phone's size, and `Build/` holds the Windows build
+the videos were recorded from plus, when the machine that built it has the Android toolchain, the Android Shipping
+APK (arm64) as `Build/Android/<name>.apk`, named by `build.apk` (`null` when none was built). The dataset check
+compares `platform` with `UEProject/Platform.json` and the videos with the size.
+
+Budgets a mobile game keeps in any view the player can reach: at most 500,000 triangles drawn, 700 draw calls and
+1 GB of textures in memory (a task can measure them: docs/task-probes.md, section 2.21). Nothing here changes for a
 desktop game.
 
 ## The dataset (layout v1.3)

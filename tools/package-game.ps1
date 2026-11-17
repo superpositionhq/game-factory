@@ -1921,8 +1921,18 @@ foreach ($sel in $selectedRuns) {
             })
 }
 $gpMd = New-Object System.Text.StringBuilder
+# What the game is (its Platform.json; never edited after the project is created): a mobile game's recordings have the
+# phone's size and its bot plays by touch; Build/ also gets its APK when the build made one.
+$gamePlatform = Get-GamePlatform $repo
+$isMobile = $gamePlatform.platform -eq 'mobile'
+if ($isMobile) {
+    [void]$gpMd.Append("# Gameplay recordings`n`nEach folder is one AutoPlay run: the game played by its in-game bot by touch, on the Windows build running the`n")
+    [void]$gpMd.Append("engine's mobile renderer at the phone's size, recorded with video ($($gamePlatform.width)x$($gamePlatform.height), 60 fps), game audio, every touch and`n")
+    [void]$gpMd.Append("injected input and the game's telemetry on one clock. Only runs that`n")
+} else {
 [void]$gpMd.Append("# Gameplay recordings`n`nEach folder is one AutoPlay run: the game played by its in-game bot through Enhanced Input, recorded with`n")
 [void]$gpMd.Append("video (1920x1080, 60 fps), game audio, every injected input and the game's telemetry on one clock. Only runs that`n")
+}
 [void]$gpMd.Append("passed validation (``validation.json`` status ok or warn) and were played on a build of this project's history are included.`n`n")
 if ($runs.Count) {
     if ($packNames.Count) {
@@ -1950,12 +1960,31 @@ Write-Step "build: $($buildSel.source), $($buildSel.config), commit $($buildSel.
 $skipExt = if ($IncludePdb) { [string[]]@() } else { [string[]]@('.pdb') }
 $null = [GameDeliverable.Tools]::CopyTree($buildSel.root, $buildDir, '', $skipExt, $true, $false, 'build', $null, $problems)
 $exe = Get-ChildItem $buildDir -Filter *.exe -File | Select-Object -First 1
+# A mobile game's Android APK, when the build made one (build.ps1, on a machine with the Android toolchain): Build\Android\.
+$apkName = $null; $apkNote = $null
+if ($isMobile) {
+    $an = Get-Prop $buildSel.info 'android'
+    $apkSrc = [string](Get-Prop $an 'apk')
+    if ((Get-Prop $an 'status') -eq 'ok' -and $apkSrc -and (Test-Path -LiteralPath $apkSrc)) {
+        New-Item -ItemType Directory -Force (Join-Path $buildDir 'Android') | Out-Null
+        Copy-Item -LiteralPath $apkSrc (Join-Path $buildDir "Android\$(Split-Path $apkSrc -Leaf)") -Force
+        $apkName = "Android/$(Split-Path $apkSrc -Leaf)"
+        Write-Step "build: APK $apkName"
+    } else {
+        $apkNote = if (Get-Prop $an 'reason') { [string](Get-Prop $an 'reason') } else { 'the build has no APK (built without -Package, or not by tools\ue-pipeline\build.ps1)' }
+        [void]$warnings.Add("Build/ has no Android APK: $apkNote")
+    }
+}
 $buildInfo = [ordered]@{
     project = $info.ProjectName; config = $buildSel.config; commit = $buildSel.commit
     commit_verified = [bool](Get-Prop $buildSel.info 'commit'); source = $buildSel.source
     built_start = (Get-Prop $buildSel.info 'start'); built_end = (Get-Prop $buildSel.info 'end'); exe = $(if ($exe) { $exe.Name })
     debug_symbols = [bool]$IncludePdb
     store_packs_outside_git = $(if ($storeArt) { [ordered]@{ cooked = @($storeArt.found); not_in_pak_index = @($storeArt.missing) } } else { $null })
+}
+if ($isMobile) {   # a desktop game's build_info.json is as it always was
+    $buildInfo.platform = 'mobile'; $buildInfo.orientation = $gamePlatform.orientation
+    $buildInfo.apk = $apkName; $buildInfo.apk_note = $apkNote
 }
 Write-JsonFile (Join-Path $buildDir 'build_info.json') $buildInfo
 # The account name compiled into the build (source paths in the exe) is a blocker; -PendingCleanBuild produces a package
@@ -2122,6 +2151,12 @@ A ''
 A '## Play'
 A ''
 A "Windows 10/11 64-bit, DirectX 12 GPU. Run ``Build/$(if ($exe) { $exe.Name } else { '<Project>.exe' })``. No installation needed."
+if ($isMobile) {
+    A ''
+    A "This is an Android phone game, held in $($gamePlatform.orientation) and played by touch. The Windows build is the one the gameplay videos were recorded from; add ``-FeatureLevelES31 -windowed -ResX=$($gamePlatform.width) -ResY=$($gamePlatform.height)`` to see it as a phone draws it."
+    if ($apkName) { A "``Build/$apkName`` is the Android Shipping APK (arm64): install it on a phone with ``adb install``." }
+    else { A "This package has no Android APK: $apkNote." }
+}
 if ($PlayNote) { A ''; A $PlayNote }
 A ''
 if ($playSec) {   # the project's own play notes, minus lines about its local Packaged/ folder or packaging scripts

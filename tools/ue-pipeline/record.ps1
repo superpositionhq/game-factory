@@ -10,6 +10,11 @@
   Bundle: recordings\<game>\<run-id>\ video.mkv, system_audio.mka, inputs.jsonl, telemetry.jsonl, outcome.json,
   metadata.json, validation.json, manifest.json, raw\ (the game's RecordDir, ffmpeg log). Failed runs are kept and
   marked (validation.json status "failed", FAILED file). One row per run in .recording\<game>\runs.jsonl.
+
+  A mobile game's build (build_info.json platform "mobile") is launched with the engine's mobile renderer
+  (-FeatureLevelES31) in a window of the phone's size, 1920x1080 landscape or 1080x1920 portrait; the video, the
+  stills and gameplay.mp4 have that size. Its bot plays by touch (touch rows in inputs.jsonl), and the run fails when
+  the mobile renderer was not the one drawing or the bot never touched the screen.
 #>
 param(
     [Parameter(Mandatory = $true, Position = 0)][string]$Game,
@@ -56,6 +61,11 @@ if (-not $autoplayVersion) {
     $h = Get-ChildItem (Join-Path (Join-Path $SrcRoot $Game) 'Source') -Recurse -Filter AutoPlaySubsystem.h -File -ErrorAction SilentlyContinue | Select-Object -First 1
     $autoplayVersion = if ($h -and ((Get-Content $h.FullName -Raw) -match 'ContractVersion\s*=\s*(\d+)')) { [int]$matches[1] } else { 1 }
 }
+# The size of the game's window and of the video: a desktop game's 1920x1080, a mobile game's phone by how it is held.
+$platform = Get-BuildPlatform $buildInfo
+$mobile = $platform.platform -eq 'mobile'
+$W = [int]$platform.width; $H = [int]$platform.height
+if ($mobile) { Write-Step "a mobile game, held in $($platform.orientation): mobile renderer, ${W}x${H}" }
 $outDirFlag = if ($autoplayVersion -ge 2) { 'OutputDir' } else { 'RecordDir' }
 $scenarioFlag = if ($autoplayVersion -ge 3) { 'Scenario' } else { 'Level' }   # v1.3 renamed level -> scenario
 
@@ -428,7 +438,8 @@ for ($i = 0; $i -lt $Runs; $i++) {
         if (-not $vramOk) { throw "more than $MaxVramInUseMB MB VRAM stayed in use by other processes for 120 min; not launching" }
         [void]$clock.Add((Get-ClockSample 'record_start'))
         $gameArgs = "-AutoPlay -$scenarioFlag=$Scenario -Seed=$runSeed -Skill=$runSkill -${outDirFlag}=`"$rawDir`" -MaxSeconds=$MaxSeconds " +
-                    "-BuildCommit=$($buildInfo.commit) -RunId=$runId -GoTimeout=300 -windowed -ResX=1920 -ResY=1080 -WinX=200 -WinY=150 " +
+                    "-BuildCommit=$($buildInfo.commit) -RunId=$runId -GoTimeout=300 -windowed -ResX=$W -ResY=$H -WinX=200 -WinY=150 " +
+                    $(if ($mobile) { "-FeatureLevelES31 -AutoPlaySize=${W}x${H} " } else { '' }) +
                     "-ini:Engine:[/Script/Engine.UserInterfaceSettings]:bAllowHighDPIInGameMode=True " +
                     "-nosplash -abslog=`"$rawDir\game.log`" $ExtraArgs"
         $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -457,20 +468,24 @@ for ($i = 0; $i -lt $Runs; $i++) {
                 Start-Sleep -Milliseconds 200
             }
         }
+        # A mobile game is drawn by the mobile renderer or the run is no recording of it (the mobile drop-in says which).
+        if ($mobile -and -not ($ready.PSObject.Properties['mobile_renderer'] -and $ready.mobile_renderer -eq $true)) {
+            throw "the game is not running the mobile renderer (ready.json mobile_renderer): a mobile game's Config/DefaultEngine.ini needs +D3D12TargetedShaderFormats=PCD3D_ES31 (validate-game.py, rule mobile) and the mobile AutoPlay drop-in"
+        }
         $hwnd =[UePipeline.Win]::FindWindowOfPid([uint32]$ready.pid, '[AutoPlay]')
         if ($hwnd -eq [IntPtr]::Zero) { $hwnd = [UePipeline.Win]::FindWindowOfPid([uint32]$ready.pid, $null) }
         if ($hwnd -eq [IntPtr]::Zero) { throw "no visible window for pid $($ready.pid)" }
         $title = [UePipeline.Win]::Title($hwnd)
-        # Games re-center their window; centre the 1920x1080 client on the primary screen ourselves (any screen size
-        # that holds it, title bar may sit off-screen on an exactly-1080p display).
+        # Games re-center their window; centre the client (1920x1080; a mobile game's phone size) on the primary screen
+        # ourselves (any screen size that holds it, title bar may sit off-screen on an exactly-1080p display).
         $screen = [UePipeline.Win]::PrimaryScreenSize()
-        if ($screen[0] -lt 1920 -or $screen[1] -lt 1080) { throw "primary screen is $($screen -join 'x'); recording needs room for a 1920x1080 client (check.ps1: Primary display)" }
-        [void][UePipeline.Win]::MoveClientTo($hwnd, [int][math]::Floor(($screen[0] - 1920) / 2), [int][math]::Floor(($screen[1] - 1080) / 2))
+        if ($screen[0] -lt $W -or $screen[1] -lt $H) { throw "primary screen is $($screen -join 'x'); recording needs room for a ${W}x${H} client (check.ps1: Primary display)" }
+        [void][UePipeline.Win]::MoveClientTo($hwnd, [int][math]::Floor(($screen[0] - $W) / 2), [int][math]::Floor(($screen[1] - $H) / 2))
         Start-Sleep -Milliseconds 300
         $rect = [UePipeline.Win]::ClientRectOnScreen($hwnd)
         Write-Step "window '$title' client $($rect -join ',') on screen $($screen -join 'x')"
-        if ($rect[2] -ne 1920 -or $rect[3] -ne 1080) { throw "client area is $($rect[2])x$($rect[3]), expected 1920x1080" }
-        if ($rect[0] -lt 0 -or $rect[1] -lt 0 -or $rect[0] + 1920 -gt $screen[0] -or $rect[1] + 1080 -gt $screen[1]) { throw "window not fully on the primary screen: $($rect -join ',')" }
+        if ($rect[2] -ne $W -or $rect[3] -ne $H) { throw "client area is $($rect[2])x$($rect[3]), expected ${W}x${H}" }
+        if ($rect[0] -lt 0 -or $rect[1] -lt 0 -or $rect[0] + $W -gt $screen[0] -or $rect[1] + $H -gt $screen[1]) { throw "window not fully on the primary screen: $($rect -join ',')" }
 
         # ---- start capture (ddagrab, falling back to gdigrab) ----
         # ddagrab (topmost window + privacy guard) is the default. It is tried twice: a display that went off delivers
@@ -550,7 +565,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
             if ($cap.Process.HasExited) { [void]$problems.Add('ffmpeg exited during the run'); break }
             if (((Get-Date) - $lastLow).TotalSeconds -ge 5) { Set-BackgroundUeLow; $lastLow = Get-Date }   # jobs started meanwhile
             $now = [UePipeline.Win]::ClientRectOnScreen($hwnd)
-            if ($now -and ($now[2] -ne 1920 -or $now[3] -ne 1080)) { [void]$problems.Add("game window client area changed to $($now[2])x$($now[3])"); break }
+            if ($now -and ($now[2] -ne $W -or $now[3] -ne $H)) { [void]$problems.Add("game window client area changed to $($now[2])x$($now[3])"); break }
             if ([UePipeline.Win]::IsIconic($hwnd)) { [void]$problems.Add('game window was minimized (no frames)'); break }
             if ($now -and ($now[0] -ne $rect[0] -or $now[1] -ne $rect[1])) {
                 if (-not $windowMoved) {
@@ -670,6 +685,9 @@ for ($i = 0; $i -lt $Runs; $i++) {
 
     if ($inputs) {
         $injects = 0; if ($inputs.counts.ContainsKey('inject')) { $injects = $inputs.counts['inject'] }
+        # a mobile game's bot plays by touch (the mobile drop-in's Touch): its touch rows are its injected inputs
+        $touches = 0; if ($inputs.counts.ContainsKey('touch')) { $touches = $inputs.counts['touch'] }
+        if ($mobile) { $injects += $touches; if ($touches -eq 0) { [void]$problems.Add("no touch inputs: a mobile game's bot plays by touch (AutoPlay Touch)") } }
         $checks.inputs = [ordered]@{ ok = ($injects -gt 0 -and $inputs.bad_lines -eq 0 -and $inputs.non_monotonic -eq 0); lines = $inputs.lines; injects = $injects; bad_lines = $inputs.bad_lines; non_monotonic = $inputs.non_monotonic; counts = $inputs.counts }
         if ($injects -eq 0) { [void]$problems.Add('no injected inputs') }
         if ($inputs.bad_lines -gt 0) { [void]$problems.Add("inputs.jsonl has $($inputs.bad_lines) unparseable lines") }
@@ -762,7 +780,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
             duration_s = $vdur; frames = $frames; dup_frames = $dup; dup_pct = $dupPct; surplus_input_frames_dropped = $drop; input = $gaps
             capture_span_s = $capSpan; duration_diff_s = $durDiff; covers_scenario = $cover
         }
-        if ($probe.streams[0].width -ne 1920 -or $probe.streams[0].height -ne 1080) { [void]$problems.Add("video is $($probe.streams[0].width)x$($probe.streams[0].height)") }
+        if ($probe.streams[0].width -ne $W -or $probe.streams[0].height -ne $H) { [void]$problems.Add("video is $($probe.streams[0].width)x$($probe.streams[0].height)") }
         if ($dupPct -gt 5.0) { [void]$problems.Add("ffmpeg duplicated $dupPct % of output frames (no new image)") }
         elseif ($dupPct -gt 1.0) { [void]$warnings.Add("ffmpeg duplicated $dupPct % of output frames (no new image)") }
         if ($gaps -and $gaps.missed_pct -gt 2.0) { [void]$warnings.Add("capture input had gaps worth $($gaps.missed_pct) % of frames") }
@@ -812,14 +830,14 @@ for ($i = 0; $i -lt $Runs; $i++) {
         seed = $runSeed; skill = $runSkill; max_seconds = $MaxSeconds
         output_fps = $OutputFps; extra_args = $(if ($ExtraArgs) { $ExtraArgs } else { $null }); capture_notes = $(if ($CaptureNote) { $CaptureNote } else { $null })
         result = $(if ($outcome) { $outcome.result } else { $null }); score = $(if ($outcome) { $outcome.score } else { $null })
-        player = [ordered]@{ kind = 'bot'; name = 'autoplay'; input_injection = 'UE Enhanced Input (InjectInputForAction)' }
+        player = [ordered]@{ kind = 'bot'; name = 'autoplay'; input_injection = $(if ($mobile) { 'touches sent through Slate as a touch screen sends them; UE Enhanced Input (InjectInputForAction) for the back button' } else { 'UE Enhanced Input (InjectInputForAction)' }) }
         build = [ordered]@{ commit = $buildInfo.commit; short_sha = $buildInfo.short_sha; config = $buildConfig; path = $Build; exe = $exe; autoplay_version = $autoplayVersion; output_dir_flag = "-$outDirFlag"; hydrated_content = $(if ($buildInfo.PSObject.Properties.Name -contains 'hydrated_content') { @($buildInfo.hydrated_content) } else { $null }); content_check = $contentCheck }
         clock = [ordered]@{
             source = 'QueryPerformanceCounter'; qpc_frequency = $qpcFreq; t_ns_definition = 'qpc * 1e9 / qpc_frequency'
             samples = @(@($(if ($gameClock) { $gameClock.samples | ForEach-Object { $_ | Add-Member -NotePropertyName source -NotePropertyValue 'game' -PassThru -Force } })) + @($clock))
         }
         video = [ordered]@{
-            file = 'video.mkv'; codec = 'h264'; encoder = $Encoder; width = 1920; height = 1080; fps = 60; cfr = $true; audio = $false
+            file = 'video.mkv'; codec = 'h264'; encoder = $Encoder; width = $W; height = $H; fps = 60; cfr = $true; audio = $false
             capture = $captureMode; capture_rect = $rect; window_title = $(if ($hwnd -ne [IntPtr]::Zero) { [UePipeline.Win]::Title($hwnd) } else { $null })
             ffmpeg_command = $(if ($cap) { $cap.Command } else { $null }); ffmpeg_version = $ffmpegVersion
             start_estimate = $videoStart
@@ -834,6 +852,7 @@ for ($i = 0; $i -lt $Runs; $i++) {
         stills = $stills
         gameplay_mp4 = $gameplayMp4
     }
+    if ($mobile) { $metadata.platform = [ordered]@{ kind = 'mobile'; orientation = $platform.orientation; renderer = 'mobile (feature level ES3_1) on the Windows build' } }   # a desktop run's metadata is as it always was
     Write-JsonFile (Join-Path $runDir 'metadata.json') $metadata
     $validation = [ordered]@{ run_id = $runId; status = $status; problems = @($problems); warnings = @($warnings); checks = $checks; game_exit_code = $gameExit; killed = $killed }
     Write-JsonFile (Join-Path $runDir 'validation.json') $validation

@@ -289,3 +289,9 @@ The packager waits for `READY`, then passes the folder of section 2.6 to `tools/
 The replay is required but need not pass. A verification FAIL (`release --force`: `ReplayScripts/` with the FAIL
 report, no `READY`) is packaged as metadata: manifest `replay_verification.pass` false and the README says FAIL. The dataset is COMPLETE
 with it as with a PASS ([game-format.md](game-format.md), "Complete vs pending").
+
+## Mobile games
+
+The creation replay works on the project's files and editor operations, never on a renderer or a window size, so a
+mobile game (`Platform.json`) is replayed and verified exactly as a desktop game. `Platform.json` and the mobile
+config come from the first commit and are compared like every other file.

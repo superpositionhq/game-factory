@@ -20,6 +20,7 @@ through Enhanced Input, see [autoplay-contract.md](autoplay-contract.md)) as gam
 | `stills.ps1 <game> [-RunId id] [-Force]` | README stills for runs recorded before record.ps1 made them (updates metadata/manifest) |
 | `sync-check.ps1 <bundle>` | measures video/audio lag against telemetry sync markers (pipeline test project) |
 | `autoplay/AutoPlaySubsystem.h/.cpp` | the drop-in C++ every game copies (contract implementation) |
+| `autoplay-mobile/AutoPlaySubsystem.h/.cpp` | the drop-in of a mobile game: the phone's window size and a bot that plays by touch |
 
 ## Paths
 
@@ -112,6 +113,28 @@ when the queue is empty.
 Every editor process the pipeline starts has `-unattended` (smoke test; RunUAT passes it to the cook commandlet):
 an `UnrealEditor.exe` without it starts Live Coding, and while Live Coding runs UBT refuses to build any project on
 this engine install. The recorded game itself is the packaged exe, which has no Live Coding.
+
+## Mobile games
+
+A game whose root has a `Platform.json` is a mobile (Android phone) game ([game-format.md](game-format.md),
+"Platform"). The pipeline reads that through one reader, `tools/validate-game.py --platform <folder>`
+(`Get-GamePlatform` in `common.ps1`), and you start every script as for a desktop game:
+
+- `build.ps1` packages the same Windows Shipping build and writes `platform`, `orientation`, `width` and `height` to
+  `build_info.json`. With `-Package` it then builds the Android Shipping APK (arm64, `-cookflavor=ASTC`) into
+  `builds\<game>\<sha>\Android\` when the machine has the Android toolchain (`Get-GFAndroidToolchain`;
+  [new-machine.md](new-machine.md), "Android"). Without the toolchain the step prints `APK SKIPPED: ...` and
+  `build_info.json` has `android.status` `skipped`; a failed APK build is `failed` with the reason. Neither fails the
+  build: the Windows build is what is played and recorded.
+- `record.ps1` launches that build with `-FeatureLevelES31` in a window of the phone's size (1920x1080 landscape,
+  1080x1920 portrait), refuses to record when the game is not running the mobile renderer or the bot sent no touch
+  ([autoplay-contract.md](autoplay-contract.md), "Mobile games"), and writes video, stills and `gameplay.mp4` at that
+  size; `metadata.json` gets `platform`.
+- `stills.ps1`, `gameplay-mp4.ps1` and `validate-run.ps1` work on a run's own files and take any size.
+- `tools/package-game.ps1` copies the APK to `Build\Android\` when the build has one, and `tools/package-dataset.ps1`
+  writes `platform` and `build.apk` to the dataset manifest and checks the videos against the phone's size.
+
+A desktop game goes through every step exactly as before: none of its files gains a key.
 
 ## build.ps1
 

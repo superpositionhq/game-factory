@@ -335,6 +335,37 @@ from) a `milestone/autoplay-*` tag; a game session can queue a run itself, see [
 
 Changes to this contract go through the coordinating session; bump `ContractVersion` when the files change shape.
 
+## Mobile games
+
+A mobile game (made with `new-game.ps1 -Platform mobile`; its root has a `Platform.json`) has its own drop-in,
+`tools/ue-pipeline/autoplay-mobile/` (`ContractVersion = 5`), copied into the project when it is created. Everything
+above holds for it, with these differences:
+
+- **The window is the phone's size.** `record.ps1` reads the platform from the build and launches the Windows build
+  with `-FeatureLevelES31 -AutoPlaySize=<w>x<h> -ResX=<w> -ResY=<h>`: 1920x1080 for a landscape game, 1080x1920 for a
+  portrait one. The drop-in applies that size in place of 1920x1080 (section 2). A portrait game needs a primary
+  display at least 1920 pixels high (`machine/check.ps1`).
+- **The mobile renderer draws it.** `ready.json` carries `"mobile_renderer": true` when the game runs at feature level
+  ES3_1; `record.ps1` refuses to record a mobile game without it. The project's `Config/DefaultEngine.ini` has
+  `+D3D12TargetedShaderFormats=PCD3D_ES31` for this (the template sets it; `validate-game.py`, rule `mobile`).
+- **The bot plays by touch.** `UAutoPlaySubsystem::Touch(Finger, ViewportPos)` holds finger 0-9 on the screen at a
+  viewport pixel for one frame: the first call puts the finger down, a call at another place moves it, the first frame
+  without a call lifts it; a tap is one call. The touch goes through Slate as a touch screen's does, so an on-screen
+  button, a virtual stick and the player controller's touch events get it; the bot aims at the control a player would
+  use. Hardware touches, like the mouse and the keyboard, are swallowed during a run. `Inject` stays for what is no
+  touch: the back button (an action mapped to `Android_Back`). A recorded mobile run with no touch row fails.
+- **`inputs.jsonl`** has a row per touch event, counted in `outcome.json` `inputs_injected`; `edge` is `down`, `move`
+  or `up`, `value` the viewport pixel, `sent` whether Slate took the event:
+
+```json
+{"t_ns":...,"qpc":...,"frame":931,"type":"touch","finger":0,"edge":"down","value":[288,810],"viewport":[1920,1080],"sent":true}
+```
+
+- Section 4's hotkey rule does not apply: nothing in a mobile game is reachable only by a key, so the bot needs no
+  hotkey action for a control; it touches the control.
+
+The two drop-ins are separate files: a change to one that the other needs too is made in both.
+
 ## Naming rule (game side)
 
 The names **Superposition** and **game-factory** (case-insensitive, including `game_factory` / `gamefactory`) must not appear anywhere in a game: repo files, code, comments,
@@ -376,6 +407,10 @@ project with v1.2: the run completes and validate-run passes).
    `enqueue.ps1 <game> -Scenarios 1 -Runs 1 -RequestedBy <session>`.
 
 ## Changes
+
+- **Mobile drop-in** (`ContractVersion` 5, `tools/ue-pipeline/autoplay-mobile/`, mobile games only): the desktop
+  drop-in v1.4 with `-AutoPlaySize`, `Touch`, touch rows and `ready.json` `mobile_renderer` ("Mobile games" above).
+  The desktop drop-in is unchanged and stays at v1.4.
 
 - **v1.4** (`ContractVersion` 4, games re-copy `AutoPlaySubsystem.h/.cpp`): audio capture by an `ISubmixBufferListener`
   on the master submix instead of `StartRecordingOutput`/`StopRecordingOutput`; new `audio_clock.jsonl` (per-buffer QPC,

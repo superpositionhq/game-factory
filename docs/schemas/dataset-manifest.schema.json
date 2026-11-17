@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "dataset-layout/v1.1/manifest",
   "title": "Dataset manifest.json",
-  "description": "Metadata of one game's dataset and the path, size and sha256 of every other file in it. Cross-file rules (files exist and match, status complete needs the replay report, whose verdict PASS or FAIL is metadata, commit = last git.log commit) are in docs/game-format-v1.json, dataset.manifest. v1.2 (2026-10-15) adds history and brief (required when layout is v1.2; checked by tools/validate-game.py). v1.3 (2026-10-15) adds tasks.",
+  "description": "Metadata of one game's dataset and the path, size and sha256 of every other file in it. Cross-file rules (files exist and match, status complete needs the replay report, whose verdict PASS or FAIL is metadata, commit = last git.log commit) are in docs/game-format-v1.json, dataset.manifest. v1.2 (2026-10-15) adds history and brief (required when layout is v1.2; checked by tools/validate-game.py). v1.3 (2026-10-15) adds tasks. 2026-11-16 adds platform (a mobile game's; absent: a desktop game) and a mobile game's build.apk.",
   "type": "object",
   "required": [
     "layout",
@@ -142,7 +142,7 @@
         "object",
         "null"
       ],
-      "description": "the packaged build in Build/ (full variant); null in the repo Dataset/",
+      "description": "the packaged build in Build/ (full variant); null in the repo Dataset/. A mobile game's (platform.kind mobile) also names its Android APK, or null when none was built",
       "required": [
         "config",
         "commit",
@@ -163,6 +163,17 @@
         },
         "source": {
           "type": "string"
+        },
+        "apk": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^Android/[^/\\\\]+\\.apk$",
+          "description": "a mobile game's Android Shipping APK, relative to Build/; null when the machine that built the game has no Android toolchain"
+        },
+        "abi": {
+          "const": "arm64-v8a"
         }
       }
     },
@@ -389,6 +400,26 @@
           "type": "string"
         }
       }
+    },
+    "platform": {
+      "type": "object",
+      "description": "what the game is made for: {\"kind\": \"mobile\", \"orientation\": \"landscape\" | \"portrait\"} for an Android phone game. A manifest without it is a desktop game's",
+      "required": [
+        "kind",
+        "orientation"
+      ],
+      "properties": {
+        "kind": {
+          "const": "mobile"
+        },
+        "orientation": {
+          "enum": [
+            "landscape",
+            "portrait"
+          ]
+        }
+      },
+      "additionalProperties": false
     }
   },
   "$defs": {

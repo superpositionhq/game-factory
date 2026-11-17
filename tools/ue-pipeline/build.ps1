@@ -11,6 +11,11 @@
   the game session's editor keeps its DLLs and half-edited files to itself. Uncommitted changes are not built.
   Output: builds\<game>\<short-sha>\Windows\<Project>.exe, build_info.json, logs\. One row per run in
   .recording\<game>\builds.jsonl. Holds the pipeline lock (one heavy job at a time).
+
+  A mobile game (Platform.json at its root) gets the same Windows build, which is what is recorded (running the mobile
+  renderer at the phone's size), and with -Package its Android Shipping APK (arm64) in builds\<game>\<short-sha>\Android\
+  when the machine has the Android toolchain (machine\check.ps1; docs\new-machine.md, "Android"). Without the toolchain
+  that step is skipped and says so; build_info.json then has android.status "skipped".
 #>
 param(
     [Parameter(Mandatory = $true, Position = 0)][string]$Game,
@@ -70,6 +75,8 @@ $missingByPipeline = New-Object System.Collections.ArrayList
 $missingInGame = New-Object System.Collections.ArrayList
 $cookedBytes = $null
 $leakScan = $null
+$platform = $null
+$android = $null
 $freeCommitGB = $null
 $maxParallelActions = $null
 $status = 'ok'
@@ -167,6 +174,9 @@ try {
     if ($apHeader -and ((Get-Content $apHeader.FullName -Raw) -match 'ContractVersion\s*=\s*(\d+)')) { $autoplayVersion = [int]$matches[1] }
 
     $uproject = Join-Path $src $info.UProjectName
+    # What the game is, at this commit: a mobile game (Platform.json) also gets its APK below.
+    $platform = Get-GamePlatform $src
+    if ($platform.platform -eq 'mobile') { Write-Step "a mobile game, held in $($platform.orientation): recorded at $($platform.width)x$($platform.height) with the mobile renderer" }
     # The game's own engine (its EngineAssociation): games made on an older UE keep building on it.
     $script:EngineRoot = Get-GFEngine $uproject $GFConfig
     Write-Step "engine $EngineRoot"
@@ -239,6 +249,38 @@ try {
         else { Write-Step 'leak scan: no user name or forbidden names in the packaged files' }
     }
 
+    # ---- 2b. a mobile game's Android APK (Shipping, arm64, the game's data inside it) ----
+    # Only on a machine with the Android toolchain; never the build's failure: the Windows build above is what is
+    # played and recorded, so a missing or failed APK is recorded in build_info.json (android) and said aloud.
+    if ($Package -and $platform.platform -eq 'mobile') {
+        $toolchain = Get-GFAndroidToolchain $EngineRoot
+        if (-not $toolchain.ready) {
+            $android = [ordered]@{ status = 'skipped'; reason = "no Android toolchain on this machine: $($toolchain.missing -join '; ')"; apk = $null }
+            Write-Step "APK SKIPPED: $($android.reason). docs\new-machine.md, ""Android"", says how to install it."
+        } else {
+            $apkDir = Join-Path $outDir 'Android'
+            $savedEnv = @{}
+            foreach ($kv in @(@('ANDROID_HOME', $toolchain.sdk), @('NDKROOT', $toolchain.ndk), @('NDK_ROOT', $toolchain.ndk), @('JAVA_HOME', $toolchain.jdk))) {
+                $savedEnv[$kv[0]] = [Environment]::GetEnvironmentVariable($kv[0], 'Process'); [Environment]::SetEnvironmentVariable($kv[0], $kv[1], 'Process')
+            }
+            try {
+                $par = Get-UbtParallelArg
+                $r = Invoke-Step 'package-android' (Join-Path $EngineRoot 'Engine\Build\BatchFiles\RunUAT.bat') `
+                    ("-WaitForUATMutex BuildCookRun -project=`"$uproject`" -target=$gameTarget -noP4 -platform=Android -cookflavor=ASTC -clientconfig=Shipping " +
+                     "-build -cook -stage -pak -package -archive -archivedirectory=`"$apkDir`" -nocompileeditor -unattended -utf8output -ubtargs=`"-WaitMutex$par`"")
+            } finally { foreach ($k in $savedEnv.Keys) { [Environment]::SetEnvironmentVariable($k, $savedEnv[$k], 'Process') } }
+            $apk = @(Get-ChildItem $apkDir -Recurse -File -Filter *.apk -ErrorAction SilentlyContinue | Sort-Object Length -Descending | Select-Object -First 1)
+            if ($r.exit_code -eq 0 -and $apk.Count) {
+                $android = [ordered]@{ status = 'ok'; reason = ''; apk = $apk[0].FullName; bytes = $apk[0].Length; abi = 'arm64-v8a'; config = 'Shipping' }
+                Write-Step ("APK {0} ({1:N1} MB)" -f $apk[0].FullName, ($apk[0].Length / 1MB))
+            } else {
+                $r['not_fatal'] = $true   # kept in steps[] for the record; not the build's failing step
+                $android = [ordered]@{ status = 'failed'; reason = $(if ($r.exit_code -ne 0) { "package-android exit $($r.exit_code): $($r.error_excerpt)" } else { "no .apk under $apkDir" }); apk = $null }
+                Write-Step "WARNING: the APK was not built ($($android.reason)); log $($r.log_path)"
+            }
+        }
+    }
+
     # ---- 3. smoke test (only if the game defines <Project>.Smoke) ----
     if ($Smoke) {
         $testName = "$($info.ProjectName).Smoke"
@@ -272,7 +314,7 @@ try {
 }
 
 $end = Get-Date
-$failedStep = $steps | Where-Object { $_.exit_code -ne 0 -and -not $_.Contains('retried') } | Select-Object -First 1
+$failedStep = $steps | Where-Object { $_.exit_code -ne 0 -and -not $_.Contains('retried') -and -not $_.Contains('not_fatal') } | Select-Object -First 1
 $lastStep = $steps | Select-Object -Last 1
 $subject = "$(Invoke-Git $info.Dir @('log', '-1', '--format=%s', $sha) -AllowFail)"
 $commitTime = "$(Invoke-Git $info.Dir @('log', '-1', '--format=%cI', $sha) -AllowFail)"
@@ -302,6 +344,10 @@ $row = [ordered]@{
     engine = $EngineRoot
     config = $Config
     steps = @($steps)
+}
+if ($platform -and $platform.platform -eq 'mobile') {   # a desktop game's row is as it always was
+    $row.platform = 'mobile'; $row.orientation = $platform.orientation; $row.width = $platform.width; $row.height = $platform.height
+    $row.android = $android
 }
 Add-JsonLine (Join-Path $info.LogDir 'builds.jsonl') $row
 if ($status -eq 'ok' -and $Package) { Write-JsonFile $buildInfoPath $row }   # describes the packaged output only

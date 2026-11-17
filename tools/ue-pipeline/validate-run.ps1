@@ -37,13 +37,14 @@ function Read-Rows([string]$Name, [string]$KindField) {
 
 $inputs = Read-Rows 'inputs.jsonl' 'type'
 $telemetry = Read-Rows 'telemetry.jsonl' 'event'
-if (-not $inputs.kinds.ContainsKey('inject')) { [void]$problems.Add('inputs.jsonl has no inject rows') }
+# a mobile game's bot plays by touch (the mobile drop-in, 5): its touch rows are its inputs
+if (-not $inputs.kinds.ContainsKey('inject') -and -not $inputs.kinds.ContainsKey('touch')) { [void]$problems.Add('inputs.jsonl has no inject rows') }
 # v1.3 writes scenario_start/scenario_end, v1/v1.2 level_start/level_end; either is accepted.
 foreach ($e in 'run_start', 'scenario_start|level_start', 'scenario_end|level_end', 'run_end') { if (-not @($e -split '\|' | Where-Object { $telemetry.kinds.ContainsKey($_) }).Count) { [void]$problems.Add("telemetry.jsonl has no $e") } }
 foreach ($e in 'score', 'state') { if (-not $telemetry.kinds.ContainsKey($e)) { [void]$notes.Add("telemetry has no '$e' events (required for all games)") } }
 
 $outcome = Read-JsonFile (Join-Path $Dir 'outcome.json')
-if ($outcome) { $v = if ($outcome.PSObject.Properties.Name -contains 'autoplay_version') { $outcome.autoplay_version } elseif ($outcome.PSObject.Properties.Name -contains 'contract_version') { $outcome.contract_version } else { '?' }; [void]$notes.Add("AutoPlay drop-in version $v (1 = v1, 2 = v1.2, 3 = v1.3, 4 = v1.4)") }
+if ($outcome) { $v = if ($outcome.PSObject.Properties.Name -contains 'autoplay_version') { $outcome.autoplay_version } elseif ($outcome.PSObject.Properties.Name -contains 'contract_version') { $outcome.contract_version } else { '?' }; [void]$notes.Add("AutoPlay drop-in version $v (1 = v1, 2 = v1.2, 3 = v1.3, 4 = v1.4, 5 = the mobile drop-in)") }
 if (-not $outcome) { [void]$problems.Add('missing outcome.json') }
 else {
     if ($outcome.result -notin @('win', 'lose', 'timeout', 'abort')) { [void]$problems.Add("outcome.result is '$($outcome.result)'") }

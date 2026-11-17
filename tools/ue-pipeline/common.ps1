@@ -100,6 +100,28 @@ function Get-GameInfo([string]$Game) {
     }
 }
 
+# The platform of the game in $Folder (a game repo, a clone of one at a commit, a dataset's UEProject\): what
+# tools\validate-game.py --platform says, the one reader of a game's Platform.json. platform 'desktop' or 'mobile';
+# orientation 'landscape' or 'portrait' (mobile only); width, height: the size the game is played and recorded at.
+function Get-GamePlatform([string]$Folder) {
+    $py = (Get-Command python -ErrorAction SilentlyContinue | Where-Object { $_.Source -notmatch 'WindowsApps' } | Select-Object -First 1).Source
+    if (-not $py) { $py = 'py' }
+    $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try { $out = & $py (Join-Path $PSScriptRoot '..\validate-game.py') $Folder --platform 2>&1 | ForEach-Object { "$_" }; $code = $LASTEXITCODE }
+    finally { $ErrorActionPreference = $eap }
+    if ($code -ne 0) { throw "cannot tell the platform of ${Folder}: $($out -join ' ')" }
+    return (@($out | Where-Object { $_ -match '^\{' })[-1] | ConvertFrom-Json)
+}
+
+# The same for a packaged build, from its build_info.json: build.ps1 writes platform, orientation, width and height
+# there for a mobile game; a build without them is a desktop game's, recorded at 1920x1080.
+function Get-BuildPlatform($BuildInfo) {
+    if ($BuildInfo -and $BuildInfo.PSObject.Properties['platform'] -and $BuildInfo.platform -eq 'mobile') {
+        return [pscustomobject]@{ platform = 'mobile'; orientation = [string]$BuildInfo.orientation; width = [int]$BuildInfo.width; height = [int]$BuildInfo.height }
+    }
+    return [pscustomobject]@{ platform = 'desktop'; orientation = $null; width = 1920; height = 1080 }
+}
+
 function Find-Target([string]$ProjectDir, [string]$Type) {
     # Returns the target name whose Target.cs declares Type = TargetType.<Type>.
     foreach ($f in Get-ChildItem (Join-Path $ProjectDir 'Source') -Filter *.Target.cs -File) {

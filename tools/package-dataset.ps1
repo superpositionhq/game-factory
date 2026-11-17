@@ -411,6 +411,11 @@ if ($other.Count) { throw "the package has runs of other commits ($(@($other | F
 $scen = @($runs | Group-Object scenario | Sort-Object { [int]$_.Name } | ForEach-Object {
         $_.Group | Sort-Object name | Select-Object -First 1 })   # run names start with the scenario and the start time
 $vidDir = Join-Path $outDir '_videos'; New-Item -ItemType Directory -Force $vidDir | Out-Null
+# What the game is (the packaged project's Platform.json): a desktop game's videos are 1920x1080; a mobile game's have
+# its phone's size, and its manifest says platform and orientation.
+$gamePlatform = Get-GamePlatform (Join-Path $pkg 'UEProject')
+$isMobile = $gamePlatform.platform -eq 'mobile'
+$vw = [int]$gamePlatform.width; $vh = [int]$gamePlatform.height
 $ff = Find-FFmpeg
 # Preferred source: the run's own gameplay.mp4 (record.ps1 / gameplay-mp4.ps1: video.mkv's H.264 stream copied + the
 # system audio as AAC, aligned on the QPC clock), hard-linked as is. The libx264 re-encode below is the fallback for
@@ -419,14 +424,14 @@ function Test-GameplayMp4([string]$Path) {
     try {
         $j = (Invoke-Native (Find-FFprobe) @('-v', 'error', '-show_entries', 'stream=codec_type,codec_name,width,height', '-of', 'json', $Path)) -join "`n" | ConvertFrom-Json
         $v = @($j.streams | Where-Object { $_.codec_type -eq 'video' }); $au = @($j.streams | Where-Object { $_.codec_type -eq 'audio' })
-        return ($v.Count -eq 1 -and $v[0].codec_name -eq 'h264' -and [int]$v[0].width -eq 1920 -and [int]$v[0].height -eq 1080 -and $au.Count -eq 1 -and $au[0].codec_name -eq 'aac')
+        return ($v.Count -eq 1 -and $v[0].codec_name -eq 'h264' -and [int]$v[0].width -eq $vw -and [int]$v[0].height -eq $vh -and $au.Count -eq 1 -and $au[0].codec_name -eq 'aac')
     } catch { return $false }
 }
 foreach ($r in $scen) {
     $out = Join-Path $vidDir "$($Game)_S$($r.scenario).mp4"
     $tag = Join-Path $vidDir "$($Game)_S$($r.scenario).source"
     $gm = @((Join-Path $r.dir 'gameplay.mp4'), (Join-Path (Join-Path (Join-Path $RecordingsRoot $Game) $r.name) 'gameplay.mp4')) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-    if ($gm -and -not (Test-GameplayMp4 $gm)) { Write-Step "WARNING: $gm is not h264 1920x1080 + aac: re-encoding instead"; $gm = $null }
+    if ($gm -and -not (Test-GameplayMp4 $gm)) { Write-Step "WARNING: $gm is not h264 ${vw}x${vh} + aac: re-encoding instead"; $gm = $null }
     $srcTag = if ($gm) { "$($r.name) gameplay.mp4" } else { $r.name }
     if (-not $RebuildVideos -and (Test-Path $out) -and (Test-Path $tag) -and ((Get-Content $tag -Raw).Trim() -eq $srcTag)) { continue }
     if ($gm) {
@@ -437,7 +442,7 @@ foreach ($r in $scen) {
     }
     $d = $r.dur.ToString('0.000', $inv)
     $shift = if ($r.offset -ge 0) { "adelay=$([int][math]::Round($r.offset * 1000)):all=1," } else { "atrim=start=$((-$r.offset).ToString('0.000', $inv)),asetpts=PTS-STARTPTS," }
-    $fc = "[0:v]scale=1920:1080:flags=lanczos,fps=60,format=yuv420p,setsar=1,trim=0:$d,setpts=PTS-STARTPTS[v];[1:a]aformat=sample_rates=48000:channel_layouts=stereo,${shift}apad,atrim=0:$d,asetpts=PTS-STARTPTS[a]"
+    $fc = "[0:v]scale=${vw}:${vh}:flags=lanczos,fps=60,format=yuv420p,setsar=1,trim=0:$d,setpts=PTS-STARTPTS[v];[1:a]aformat=sample_rates=48000:channel_layouts=stereo,${shift}apad,atrim=0:$d,asetpts=PTS-STARTPTS[a]"
     $a = @('-hide_banner', '-loglevel', 'error', '-y', '-i', (Join-Path $r.dir 'video.mkv'), '-i', (Join-Path $r.dir 'system_audio.mka'), '-filter_complex', $fc,
         '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-profile:v', 'high', '-pix_fmt', 'yuv420p',
         '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', "$out.tmp.mp4")
@@ -452,6 +457,7 @@ foreach ($r in $scen) {
 $pkgReadme = Get-Content (Join-Path $pkg 'README.md') -Raw -Encoding UTF8
 $title = if ($pkgReadme -match '(?m)^#\s+(.+)$') { $Matches[1].Trim() } else { $info.ProjectName }
 $exe = Get-Prop $man.build 'exe'
+$apk = if ($isMobile) { Get-Prop $man.build 'apk' } else { $null }   # Build/Android/<name>.apk when the build made one
 # Link (or copy) a whole folder and prove it arrived: the destination must hold exactly the source's files (minus
 # $SkipExt). A delivery once came out without UEProject\ and Screenshots\ while Build\ was fine and nothing complained;
 # a missing or short tree now stops the run here.
@@ -518,7 +524,10 @@ function New-Delivery([string]$Src, [string]$Dest, [string]$Variant) {
             layout = $layout; game = $Game; title = $title; version = $Version; commit = $sha; status = $status; variant = $Variant
             pending = $pendingList; created = (Get-IsoNow); source_package = (Split-Path $Src -Leaf)
             replay_verification = $replayVerification
-            build = $(if ($repo) { $null } else { [ordered]@{ config = $man.build.config; commit = $buildCommit; exe = $exe; source = $man.build.source } })
+            build = $(if ($repo) { $null } else {
+                    $b = [ordered]@{ config = $man.build.config; commit = $buildCommit; exe = $exe; source = $man.build.source }
+                    if ($isMobile) { $b.apk = $(if ($apk) { [string]$apk } else { $null }); if ($apk) { $b.abi = 'arm64-v8a' } }
+                    $b })
             scenarios = @($scen | ForEach-Object { $o = [ordered]@{ file = "Gameplay/$($Game)_S$($_.scenario).mp4"; scenario = $_.scenario; name = $_.scenario_name; result = $_.result
                         seconds = [math]::Round($_.dur, 3); source_run = $_.name; audio_offset_s = [math]::Round($_.offset, 3) }
                     if ($_.note) { $o.capture_notes = [string]$_.note }   # e.g. a lower scalability preset used for the recording
@@ -536,6 +545,7 @@ function New-Delivery([string]$Src, [string]$Dest, [string]$Variant) {
         }
         $mj['brief'] = [ordered]@{ brief = 'Brief/brief.md'; design = 'Brief/design.md' }
     }
+    if ($isMobile) { $mj['platform'] = [ordered]@{ kind = 'mobile'; orientation = [string]$gamePlatform.orientation } }   # a desktop game's manifest has none
     if ($layout -eq 'dataset-layout/v1.3') {
         $mj['tasks'] = if ($repo) { $null } else { [ordered]@{ count = $taskNames.Count; names = @($taskNames); schema = 'game-task/1' } }
     }
@@ -561,6 +571,7 @@ function Write-Readme([string]$Dest, [string]$Variant) {
     A $vline; A ''
     A '## Requirements'; A ''
     A '- 64-bit Windows 10/11 and a DirectX 12 GPU.'
+    if ($isMobile -and $apk -and -not $repo) { A '- An Android phone (Android 8.0 or later, arm64, Vulkan) to install the APK on.' }
     A "- Unreal Engine $($man.engine) and Visual Studio 2022 (C++ game development) to open the project$(if (-not $repo) { '; nothing to play the packaged build' })."
     A '- Python 3.11+ for the creation replay.'
     A ''
@@ -596,11 +607,23 @@ function Write-Readme([string]$Dest, [string]$Variant) {
     }
     if ($scen.Count) { A "- ``Gameplay/`` — $(if ($scen.Count -eq 1) { 'a video of one scenario' } else { "videos of $($scen.Count) scenarios" }) of this version, played through with the game audio." }
     else { A '- `Gameplay/` — videos of the recorded scenarios (at least one), played through with the game audio. *(pending)*' }
-    if (-not $repo) { A "- ``Build/`` — the packaged Windows Shipping build$(if ($exe) { " (``Build/$exe``)" })." }
+    if (-not $repo -and $isMobile) {
+        A ("- ``Build/`` — the game's Windows Shipping build$(if ($exe) { " (``Build/$exe``)" }), which the videos were recorded from running the mobile renderer" +
+           $(if ($apk) { ", and its Android Shipping APK (``Build/$apk``, arm64)." } else { '. This delivery has no Android APK: the machine that built it has no Android toolchain.' }))
+    }
+    elseif (-not $repo) { A "- ``Build/`` — the packaged Windows Shipping build$(if ($exe) { " (``Build/$exe``)" })." }
     A '- `Screenshots/` — the images in this README.'
     A '- `manifest.json` — path, size and sha256 of every file, and the release metadata.'
     A ''; A 'Keep these files and folders together.'; A ''
     A '## Play the game'; A ''
+    if ($isMobile) {
+        A "This is an Android phone game, held in $($gamePlatform.orientation) and played by touch; the videos show it at $($vw)x$($vh), drawn by the engine's mobile renderer."
+        if (-not $repo) {
+            if ($apk) { A "Install ``Build/$apk`` on a phone (``adb install``), or run the Windows build as a phone draws it:" } else { A 'Run the Windows build as a phone draws it:' }
+            A "``Build/$exe -FeatureLevelES31 -windowed -ResX=$vw -ResY=$vh``."
+        }
+        A ''
+    }
     if (-not $repo) { A "Run ``Build/$exe`` (no installation), or open ``UEProject/$($info.UProjectName)`` with Unreal Engine $($man.engine) and click **Play**." }
     else { A "Open ``$($info.UProjectName)`` in the repository root with Unreal Engine $($man.engine) and click **Play**." }
     A ''

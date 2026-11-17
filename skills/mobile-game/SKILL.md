@@ -3,8 +3,6 @@ name: mobile-game
 description: The rules of a game-factory game-building session that hold for a mobile (Android phone) game only. Use with the game-session skill in every session that builds a game made with new-game.ps1 -Platform mobile (its root has a Platform.json), and with the write-tasks skill when writing that game's tasks. A desktop game's session reads desktop-game instead.
 ---
 
-<!-- The three budget numbers and the two SDK levels below are PROPOSED (2026-11-12), not yet confirmed by the owner. -->
-
 # Mobile game
 
 Your game is an Android phone game, landscape or portrait, played by touch. Everything in the **game-session** skill
@@ -17,10 +15,12 @@ applies.
 - Create the project with `new-game.ps1 ... -Platform mobile -Orientation landscape` (or `portrait`), as the
   game-session skill's Start says, with those two switches added. The orientation is chosen with the person before the
   project exists and never changes after.
-- It writes `Platform.json` at the root (`{"platform": "mobile", "orientation": "..."}`) and the Android settings in
-  `Config/DefaultEngine.ini`. Never edit or delete `Platform.json`, and keep the `AndroidRuntimeSettings` block as it
-  came (package name, SDK levels 26 and 34, arm64 only, Vulkan, the orientation, data inside the APK): every later
-  tool reads the platform from that file, and the validators hold the project, the APK and the dataset to it.
+- It writes `Platform.json` at the root (`{"platform": "mobile", "orientation": "..."}`), the Android settings in
+  `Config/DefaultEngine.ini`, the mobile AutoPlay drop-in and a `Scripts/ue.ps1` that plays at the phone's size. Never
+  edit or delete `Platform.json`, and keep the `AndroidRuntimeSettings` block as it came (package name
+  `com.<project lowercase>.game`, SDK levels 26 and 34, arm64 only, Vulkan, the orientation, data inside the APK) and
+  the two mobile shader format lines (Linux and Windows): every later tool reads the platform from that file, and
+  `tools/validate-game.py` (rule `mobile`) holds the project to it.
 - Android only. No iOS target, no tablet-only layout.
 
 ## Rendering
@@ -31,8 +31,9 @@ applies.
   one written for desktop can come out black or flat.
 - **Look at the game as a phone draws it.** On this PC a play with `-FeatureLevelES31` runs the mobile renderer; add
   the phone's size, `-ResX=1920 -ResY=1080` (landscape) or `-ResX=1080 -ResY=1920` (portrait), with `-ForceRes
-  -windowed`, through `ue-heavy.ps1` like every play. Every screenshot you judge the game by, the framing screenshots
-  and the README stills come from such a play, never from the desktop renderer.
+  -windowed`, through `ue-heavy.ps1` like every play. Your game's `Scripts/ue.ps1 game -Render` does exactly this.
+  Every screenshot you judge the game by, the framing screenshots and the README stills come from such a play, never
+  from the desktop renderer.
 - **Budgets, for a mid-range phone, in any view the player can reach:** at most 500,000 triangles drawn, at most 700
   draw calls, at most 1 GB of textures in memory. Design to them from the first level (fewer, merged and instanced
   meshes, texture sizes chosen on purpose, few translucent layers, few dynamic lights). A task may measure them
@@ -44,8 +45,13 @@ applies.
 
 - **Touch only.** Everything the player does is done with fingers on the screen: on-screen buttons, a virtual stick,
   taps, drags and swipes on the world. Nothing in the game is reachable only by a key, a mouse button, mouse movement
-  or a gamepad. Build the controls as UMG widgets with names of their own and bind play through Enhanced Input, so the
-  AutoPlay bot still acts through `AP->Inject` and a task can press a control by its widget name.
+  or a gamepad. Build the controls as UMG widgets with names of their own, so a task can press a control by its
+  widget name.
+- **The AutoPlay bot plays by touch too.** Your game has the mobile drop-in (`Source/<Project>/AutoPlay/`, from
+  `tools/ue-pipeline/autoplay-mobile/`): the bot calls `AP->Touch(Finger, ViewportPos)` every frame a finger is on
+  the screen, at the place of the control it uses (a button's centre, a point on the stick), and the touch reaches the
+  game as a phone's does. `AP->Inject` is only for the back button. A recorded run with no touch fails
+  (docs/autoplay-contract.md, "Mobile games").
 - **The back button.** Android's back button (key `Android_Back`) does what Escape does on a desktop game: it opens
   the pause menu in play, closes what is open, and goes back one screen in menus. It never quits without asking.
 - **Sized for a thumb.** Controls a finger must hit are large and apart from each other, inside the screen's safe area
@@ -57,7 +63,8 @@ applies.
 ## Quality bar
 
 - **Quality bar:** main menu, settings (volume, touch sensitivity where the game has a look or aim control), pause on
-  the back button, save/load where it fits, HUD, sound, clear win/lose, packaged Android Shipping APK (arm64).
+  the back button, save/load where it fits, HUD, sound, clear win/lose, packaged Windows Shipping build that runs the mobile renderer (what is
+  recorded) and the Android Shipping APK (arm64) where the machine can build it.
   Recorded and TTS voices are allowed.
 - **Room for hard tasks.** A game's tasks come from its own history (write-tasks skill), and strong agents miss what
   only shows when the game runs. So build these in, and work them over several rounds rather than in one commit:
@@ -81,9 +88,13 @@ applies.
 
 ## Build, recording and dataset
 
-- The dataset's `Build/` holds the game's Android Shipping APK and no Windows build. The packager builds it and reads
-  it back; it needs the machine set up for mobile games (machine/README.md). Until then the game is built and played
-  on this PC with the mobile renderer as above.
-- The scenario videos are recorded from the game running the mobile renderer on this PC, at the orientation's size
-  (1920x1080 or 1080x1920).
+- The pipeline (`tools/ue-pipeline/build.ps1`, `record.ps1`) reads the platform itself: you start it as for any game.
+  It packages the Windows Shipping build, records the scenario videos from that build running the mobile renderer at
+  the orientation's size (1920x1080 or 1080x1920), and takes the stills from those videos.
+- **The APK.** The same build step makes the game's Android Shipping APK (arm64) when the machine has the Android
+  toolchain (`machine/check.ps1` says whether it has; docs/new-machine.md, "Android", says how to install it). Without
+  the toolchain the step is skipped with a message, and the dataset says it has no APK. Never install the toolchain
+  yourself in a game session: ask the person.
+- The dataset's `Build/` holds the Windows build the videos came from and, when it was built, the APK in
+  `Build/Android/`; its manifest says `platform` (`mobile`) and the orientation.
 - `tools/validate-game.py` reads `Platform.json` and holds a mobile game to this skill's project rules.

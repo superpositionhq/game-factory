@@ -90,6 +90,7 @@ The text above starts a desktop game as it is. For a mobile game (an Android pho
 chosen with the person before the session starts), change three things in the filled text before sending it:
 
 1. Add ` -Platform mobile -Orientation landscape` (or `portrait`) to the `new-game.ps1` line.
-2. Replace `packaged Win64 Shipping build` with `packaged Android Shipping APK`.
+2. Replace `packaged Win64 Shipping build` with `packaged Windows Shipping build running the mobile renderer, and the
+   Android Shipping APK where this machine has the Android toolchain`.
 3. Add this line after the paragraph that names the skills to follow:
    `This is a mobile game (Android phone, <orientation>, touch only): follow the mobile-game skill with game-session, in place of desktop-game.`

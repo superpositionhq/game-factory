@@ -20,7 +20,8 @@
 .EXAMPLE
   ... -Slug <game> -Path <root>\games\<game> -Platform mobile -Orientation portrait
   An Android phone game: the same skeleton with templates\ue-game-mobile laid over it (the Android target settings,
-  the game's orientation, no desktop renderer or mouse settings) and Platform.json at its root. -Platform desktop (the
+  the game's orientation, no desktop renderer or mouse settings, Scripts\ue.ps1 playing at the phone's size), the
+  mobile AutoPlay drop-in and Platform.json at its root. -Platform desktop (the
   default) creates a desktop game exactly as before; -Orientation goes with mobile only and is the game's for good.
 #>
 param(
@@ -92,6 +93,9 @@ if ($Platform -eq 'mobile') {
     # has neither: it is created exactly as before.
     $map['__ANDROID_NAME__'] = $Project.ToLowerInvariant()
     $map['__ANDROID_ORIENTATION__'] = if ($Orientation -eq 'portrait') { 'Portrait' } else { 'SensorLandscape' }
+    $map['__ORIENTATION__'] = $Orientation
+    $map['__PHONE_W__'] = if ($Orientation -eq 'portrait') { '1080' } else { '1920' }
+    $map['__PHONE_H__'] = if ($Orientation -eq 'portrait') { '1920' } else { '1080' }
     $overlay = Join-Path $PSScriptRoot 'ue-game-mobile'
     foreach ($f in Get-ChildItem -LiteralPath $overlay -Recurse -File -Force) {
         $rel = Expand ($f.FullName.Substring($overlay.Length + 1))
@@ -104,9 +108,10 @@ if ($Platform -eq 'mobile') {
     $count++
 }
 $apDir = Join-Path $Path "Source\$Project\AutoPlay"
+$apSource = if ($Platform -eq 'mobile') { 'autoplay-mobile' } else { 'autoplay' }   # a mobile game's bot plays by touch at the phone's size
 New-Item -ItemType Directory -Force $apDir | Out-Null
 foreach ($n in 'AutoPlaySubsystem.h', 'AutoPlaySubsystem.cpp') {
-    Copy-Item -LiteralPath (Join-Path $repo "tools\ue-pipeline\autoplay\$n") (Join-Path $apDir $n)
+    Copy-Item -LiteralPath (Join-Path $repo "tools\ue-pipeline\$apSource\$n") (Join-Path $apDir $n)
     $count++
 }
 $contract = if ((Get-Content (Join-Path $apDir 'AutoPlaySubsystem.h') -Raw) -match 'ContractVersion\s*=\s*(\d+)') { [int]$Matches[1] } else { $null }
