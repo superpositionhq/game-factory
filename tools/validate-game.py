@@ -1140,6 +1140,10 @@ def probe_errors(c, seed, ref, plays):
     if probe == 'screen' and not rel:
         errs.append(f"check {n}: the frame's luminance moves between machines, so a screen measure's threshold is "
                     'calibrated or relative to the start, never a literal value')
+    if probe == 'screen':
+        rect = measure.get('rect')
+        if isinstance(rect, list) and len(rect) == 4 and not (rect[0] < rect[2] and rect[1] < rect[3]):
+            errs.append(f'check {n}: a screen rect is [x0, y0, x1, y1] with x0 < x1 and y0 < y1')
     if probe == 'pieces' and measure.get('field') in PIECE_TRIANGLES and not rel:
         errs.append(f'check {n}: how many triangles a fair build draws depends on the meshes it chose, so a pieces '
                     "measure's triangles threshold is calibrated or relative to the start, never a literal value")

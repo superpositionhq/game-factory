@@ -290,6 +290,11 @@ class Shapes(unittest.TestCase):
                          {'probe': 'audio', 'field': field, 'agg': 'max'})
         self.refused('audio `started` takes no `owner`',
                      {'probe': 'audio', 'field': 'started', 'select': {'owner': {'class': 'X'}}})
+        for rect in ([0.8, 0.1, 0.2, 0.9], [0.1, 0.9, 0.9, 0.1], [0.5, 0.1, 0.5, 0.9]):
+            self.refused('a screen rect is [x0, y0, x1, y1] with x0 < x1 and y0 < y1',
+                         {'probe': 'screen', 'rect': rect, 'field': 'luminance'})
+        self.assertFalse([e for e in self.errors({'probe': 'screen', 'rect': [0.1, 0.1, 0.9, 0.9], 'field': 'luminance'})
+                          if 'rect' in e])
 
     def test_asset_measures(self):
         cases = [("an asset measure names an `asset` or a `map`, one of them",

@@ -244,7 +244,8 @@ a URL option, a dev flag or a map its own code added (section 5).
 
 **Pass/fail is decided by checks the grader computes itself** (the owner, 2026-10-19): `build`, `boot`, `log_absent` and
 **`probe`** checks, and nothing is graded from pixel statistics of the game's frames except the frame's mean luminance
-(`screen`, the owner, 2026-11-06), whose threshold is always calibrated or relative to the start. Two judges are
+(`screen`, the owner, 2026-11-06), whose threshold is always calibrated or relative to the start, and whose `rect` is
+`[x0, y0, x1, y1]` with x0 < x1 and y0 < y1, since a reversed area holds no pixels to measure. Two judges are
 required (the owner, 2026-11-11): `looks_as_asked`, whose rubric items are the brief's own look-and-feel asks, and one
 in `still_works` of what must still look as it did (below). Every other judge (`judge`, `code_judge`: taste,
 readability, code review) stays a `"required": false` quality check. Nothing in a task reads the agent's tool calls: a
