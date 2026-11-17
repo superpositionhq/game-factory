@@ -33,7 +33,7 @@
             "play": "look",
             "measure": {
               "probe": "light",
-              "field": "luma",
+              "field": "illuminance",
               "point": {
                 "xyz": [
                   1,
@@ -52,5 +52,5 @@
     ]
   },
   "computed_with": "formats.game_dev_rl.checks.canonical_digest(merged(task, grader))",
-  "digest": "79f18dc20315324105daeaa9adb7568231fee89710a5d83c8243e0dd22d85bef"
+  "digest": "e9abba3a3446c350c457c1447e61aca996811d907e2dd72d6b82d2ad152a5f7f"
 }

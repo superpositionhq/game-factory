@@ -7,6 +7,7 @@ from pathlib import Path
 
 import helpers  # puts tools/ on the import path
 from task_check.digest import canonical_digest, merged
+from task_check import tasks
 
 FIXTURE = Path(__file__).parent / "fixtures" / "task-digest.json"
 
@@ -15,6 +16,7 @@ class TaskDigest(unittest.TestCase):
     def test_split_halves_have_the_digest_computed_with_lab(self):
         fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
         task = merged(fixture["task"], fixture["grader"])
+        self.assertEqual(tasks.problems(task), [], "the fixture is a valid GameTask")
         self.assertEqual(canonical_digest(task), fixture["digest"])
         # The source file and the two shipped halves represent the same task, even with Unicode and floats.
         spec = importlib.util.spec_from_file_location("split_tasks", Path(helpers.TOOLS) / "split-tasks.py")
