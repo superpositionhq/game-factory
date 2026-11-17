@@ -587,6 +587,103 @@ def read_platform(folder):
     return said['orientation']
 
 
+# ---- a mobile game's own rules (rule `mobile`; mobile-game skill; the Lab's format holds a mobile dataset to the same) --
+# What UE 5.7 itself uses for an Android setting the project leaves out (Engine/Config/BaseEngine.ini): the editor
+# drops a setting put back to its default, so a missing key is read as this, never as wrong.
+ANDROID_DEFAULTS = {'Orientation': 'SensorLandscape', 'bBuildForArm64': 'true', 'bBuildForX8664': 'false',
+                    'MinSDKVersion': '26', 'TargetSDKVersion': '34', 'bPackageDataInsideApk': 'false'}
+MOBILE_MIN_SDK, MOBILE_TARGET_SDK = 26, 34   # proposed 2026-11-12 (the Lab's dataset-layout-v1.3 `mobile`), not yet the owner's
+LINUX_MOBILE_SHADERS = 'SF_VULKAN_ES31'      # what a Linux package needs to run the mobile renderer (the grader's plays)
+# renderer settings of the desktop renderer alone, which the mobile renderer has not: (key, the value that turns it on, what it is)
+DESKTOP_ONLY_RENDERING = (('r.DynamicGlobalIlluminationMethod', '1', 'Lumen global illumination'),
+                          ('r.ReflectionMethod', '1', 'Lumen reflections'),
+                          ('r.Shadow.Virtual.Enable', '1', 'virtual shadow maps'),
+                          ('r.RayTracing', 'true', 'ray tracing'), ('r.Nanite', '1', 'Nanite'))
+# the renderer a mobile game's plays are launched with is the tools' choice, never a task play's (the Lab's
+# MOBILE_DENIED_ARGS)
+MOBILE_DENIED_PLAY_ARGS = {'es31', 'featureleveles31', 'featureleveles3_1', 'sm5', 'sm6', 'vulkan', 'opengl', 'd3d11',
+                           'd3d12', 'dx11', 'dx12'}
+
+
+def ini_section(text, name):
+    """The keys of one section of an Unreal .ini text ({key: last value}); `+Key=` lines are joined under Key."""
+    found = re.search(r'(?ms)^\[' + re.escape(name) + r'\]\s*$(.*?)(?=^\[|\Z)', text)
+    keys = {}
+    for sign, key, value in re.findall(r'(?m)^\s*([+.]?)([A-Za-z0-9_.]+)\s*=\s*(\S*)\s*$', found.group(1) if found else ''):
+        keys[key] = (keys[key] + ' ' + value) if sign and key in keys else value
+    return keys
+
+
+def mobile_project_errors(orientation, engine_ini):
+    """What a mobile game's Config/DefaultEngine.ini (`engine_ini`, its text) breaks: the Android settings as
+    Platform.json says (`orientation`), arm64 alone, the SDK levels, the data inside the APK, the Linux mobile shader
+    format, and nothing of the desktop renderer alone turned on."""
+    errs = []
+    a = {**ANDROID_DEFAULTS, **ini_section(engine_ini, '/Script/AndroidRuntimeSettings.AndroidRuntimeSettings')}
+    held = a['Orientation']
+    if orientation not in held.lower() or held.lower() in ('sensor', 'fullsensor'):
+        errs.append(f'Orientation={held}, but {PLATFORM_FILE} says {orientation}')
+    if a['bBuildForArm64'].lower() != 'true':
+        errs.append('bBuildForArm64 is not True: a mobile game is built for arm64')
+    if a['bBuildForX8664'].lower() == 'true':
+        errs.append('bBuildForX8664 is True: a mobile game is built for arm64 alone')
+    for key, least in (('MinSDKVersion', MOBILE_MIN_SDK), ('TargetSDKVersion', MOBILE_TARGET_SDK)):
+        if not a[key].isdigit() or int(a[key]) < least:
+            errs.append(f'{key}={a[key]}: at least {least}')
+    if a['bPackageDataInsideApk'].lower() != 'true':
+        errs.append("bPackageDataInsideApk is not True: the game's data goes inside its APK")
+    linux = ini_section(engine_ini, '/Script/LinuxTargetPlatform.LinuxTargetSettings').get('TargetedRHIs', '')
+    if LINUX_MOBILE_SHADERS not in linux.split():
+        errs.append(f'[/Script/LinuxTargetPlatform.LinuxTargetSettings] has no +TargetedRHIs={LINUX_MOBILE_SHADERS}: '
+                    "the game's tasks are played on Linux with the mobile renderer")
+    r = ini_section(engine_ini, '/Script/Engine.RendererSettings')
+    for key, on, what in DESKTOP_ONLY_RENDERING:
+        if r.get(key, '').lower() == on:
+            errs.append(f'{key}={r[key]} turns on {what}, which the mobile renderer has not')
+    return errs
+
+
+def mobile_play_errors(t):
+    """The plays of a mobile game's task `t` that choose a renderer themselves: its plays are launched with the mobile
+    renderer at the phone's size."""
+    errs = []
+    for m in t.get('milestones') or []:
+        for c in (m.get('checks') or []) if isinstance(m, dict) else []:
+            if not isinstance(c, dict):
+                continue
+            plays = [c.get('play')] if c.get('kind') == 'probe' else (c.get('plays') or [] if c.get('kind') == 'judge' else [])
+            for play in (x for x in plays if isinstance(x, dict)):
+                for arg in (x for x in play.get('args') or [] if isinstance(x, str)):
+                    mm = PLAY_ARG.match(arg)
+                    names = ([mm.group(1)] + re.findall(r'([A-Za-z][A-Za-z0-9]*)=', arg.split('=', 1)[1] if '=' in arg else '')
+                             if mm else [])
+                    for name in (x for x in names if x.lower() in MOBILE_DENIED_PLAY_ARGS):
+                        errs.append(f"check {c.get('name')}: play {play.get('name')} can't set -{name}: a mobile game's "
+                                    'plays are launched with the mobile renderer')
+    return errs
+
+
+def check_mobile(rep, repo, files):
+    """Rule `mobile`: nothing for a desktop game (no Platform.json); a mobile game's project settings
+    (mobile_project_errors). A Platform.json that says neither is an error, never read as desktop."""
+    try:
+        orientation = read_platform(repo)
+    except ValueError as e:
+        rep.error('mobile', str(e))
+        return
+    if orientation is None:
+        return
+    if PLATFORM_FILE not in files:
+        rep.error('mobile', f'{PLATFORM_FILE} is not committed')
+    try:
+        text = open(os.path.join(repo, 'Config', 'DefaultEngine.ini'), encoding='utf-8-sig', errors='replace').read()
+    except OSError:
+        rep.error('mobile', 'no Config/DefaultEngine.ini')
+        return
+    for e in mobile_project_errors(orientation, text):
+        rep.error('mobile', 'Config/DefaultEngine.ini: ' + e)
+
+
 TASK_NAME = re.compile(r'^[a-z0-9][a-z0-9-]{1,62}$')
 GRADER_KEYS = ('milestones',)          # the grader's half of a task, with seed.reference
 
@@ -1146,6 +1243,10 @@ def check_repo_tasks(rep, repo, files=None):
         rep.error(a, f'no task files in Tasks/ on {ref} (a game ships at least one; about 10 recommended)')
         return
     known, current, levels = {}, {'stem': ''}, {}
+    try:
+        mobile = read_platform(repo) is not None   # a mobile game: its plays never choose the renderer
+    except ValueError:
+        mobile = False                              # said by rule `mobile` (check_mobile)
 
     def has_commit(c):   # an ancestor of main's head, or of the task's own start branch
         key = (c, current['stem'])
@@ -1174,6 +1275,9 @@ def check_repo_tasks(rep, repo, files=None):
         current['stem'] = stem
         levels[stem] = t.get('difficulty') if isinstance(t.get('difficulty'), str) else None
         check_task(rep, a, label, t, game, has_commit)
+        if mobile:
+            for e in mobile_play_errors(t)[:5]:
+                rep.error(a, f'{label}: {e}')
         seed = t.get('seed') if isinstance(t.get('seed'), dict) else {}
         for k in ('commit', 'reference'):
             if seed.get(k) and has_commit(seed[k]):
@@ -1495,6 +1599,7 @@ def check_rules(rep, repo, files):
     game in progress too, meets them before it is packaged; games already approved in the Lab are not re-validated."""
     check_contract(rep, repo, files)
     check_sound(rep, repo, files)
+    check_mobile(rep, repo, files)
 
 
 # ---- the contract on a game with combat (Lab docs/planning/2026-11-11_game-contact-checks/spec.md section 11.1):

@@ -114,5 +114,95 @@ class Sessions(unittest.TestCase):
         self.assertIn('roles other than user, assistant and thinking: system', bad[0])
 
 
+MOBILE_INI = """[/Script/AndroidRuntimeSettings.AndroidRuntimeSettings]
+PackageName=com.tide.game
+MinSDKVersion=26
+TargetSDKVersion=34
+Orientation=Portrait
+bBuildForArm64=True
+bBuildForX8664=False
+bPackageDataInsideApk=True
+
+[/Script/LinuxTargetPlatform.LinuxTargetSettings]
++TargetedRHIs=SF_VULKAN_SM6
++TargetedRHIs=SF_VULKAN_ES31
+"""
+
+
+class Mobile(unittest.TestCase):
+    """Rule `mobile`: a mobile game's project settings and its tasks' plays; a desktop game is not looked at."""
+
+    def game(self, platform=None, ini=None):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        if platform is not None:
+            with open(os.path.join(d, 'Platform.json'), 'w', encoding='utf-8') as f:
+                f.write(platform if isinstance(platform, str) else json.dumps(platform))
+        if ini is not None:
+            os.makedirs(os.path.join(d, 'Config'))
+            with open(os.path.join(d, 'Config', 'DefaultEngine.ini'), 'w', encoding='utf-8') as f:
+                f.write(ini)
+        return d
+
+    def said(self, d, files=('Platform.json',)):
+        rep = vg.Report()
+        vg.check_mobile(rep, d, list(files))
+        return [m for _, area, m in rep.items if area == 'mobile']
+
+    def test_a_desktop_game_is_not_looked_at(self):
+        lumen = '[/Script/Engine.RendererSettings]\nr.DynamicGlobalIlluminationMethod=1\n'
+        self.assertEqual(self.said(self.game(ini=lumen), files=()), [])
+        self.assertEqual(self.said(self.game(), files=()), [])
+
+    def test_a_mobile_game_as_the_template_makes_it_passes(self):
+        self.assertEqual(self.said(self.game({'platform': 'mobile', 'orientation': 'portrait'}, MOBILE_INI)), [])
+
+    def test_the_template_overlays_pass_for_both_orientations(self):
+        text = open(os.path.join(os.path.dirname(TOOLS), 'templates', 'ue-game-mobile', 'Config', 'DefaultEngine.ini'),
+                    encoding='utf-8').read()
+        for orientation, held in (('landscape', 'SensorLandscape'), ('portrait', 'Portrait')):
+            ini = text.replace('__ANDROID_ORIENTATION__', held).replace('__ANDROID_NAME__', 'tide')
+            self.assertEqual(vg.mobile_project_errors(orientation, ini), [])
+
+    def test_each_setting_that_disagrees_is_named(self):
+        def errs(old, new, orientation='portrait'):
+            self.assertIn(old, MOBILE_INI)
+            return vg.mobile_project_errors(orientation, MOBILE_INI.replace(old, new))
+        self.assertIn('Orientation=Portrait, but Platform.json says landscape', errs('x', 'x', 'landscape')[0])
+        self.assertIn('Orientation=Sensor,', errs('Orientation=Portrait', 'Orientation=Sensor')[0])
+        self.assertIn('Orientation=SensorLandscape', errs('Orientation=Portrait\n', '')[0])   # the engine's default
+        self.assertEqual(errs('Orientation=Portrait\n', '', 'landscape'), [])
+        self.assertIn('bBuildForArm64', errs('bBuildForArm64=True', 'bBuildForArm64=False')[0])
+        self.assertEqual(errs('bBuildForArm64=True\n', ''), [])                                # default True
+        self.assertIn('bBuildForX8664', errs('bBuildForX8664=False', 'bBuildForX8664=True')[0])
+        self.assertIn('MinSDKVersion=24: at least 26', errs('MinSDKVersion=26', 'MinSDKVersion=24')[0])
+        self.assertIn('TargetSDKVersion=33: at least 34', errs('TargetSDKVersion=34', 'TargetSDKVersion=33')[0])
+        self.assertIn('bPackageDataInsideApk', errs('bPackageDataInsideApk=True\n', '')[0])    # default False
+        self.assertIn('SF_VULKAN_ES31', errs('+TargetedRHIs=SF_VULKAN_ES31\n', '')[0])
+        on = MOBILE_INI + '[/Script/Engine.RendererSettings]\nr.DynamicGlobalIlluminationMethod=1\nr.Shadow.Virtual.Enable=1\n'
+        self.assertEqual(len(vg.mobile_project_errors('portrait', on)), 2)
+        off = MOBILE_INI + '[/Script/Engine.RendererSettings]\nr.DynamicGlobalIlluminationMethod=0\n'
+        self.assertEqual(vg.mobile_project_errors('portrait', off), [])
+
+    def test_a_platform_file_that_says_neither_is_an_error_never_desktop(self):
+        for bad in ('{"platform": "desktop"}', '{"platform": "mobile"}', 'not json',
+                    '{"platform": "mobile", "orientation": "sideways"}'):
+            self.assertEqual(len(self.said(self.game(bad, MOBILE_INI))), 1, bad)
+
+    def test_an_uncommitted_platform_file_and_a_missing_config_are_named(self):
+        d = self.game({'platform': 'mobile', 'orientation': 'portrait'}, MOBILE_INI)
+        self.assertIn('not committed', self.said(d, files=())[0])
+        self.assertIn('no Config/DefaultEngine.ini', self.said(self.game({'platform': 'mobile', 'orientation': 'portrait'}))[0])
+
+    def test_a_mobile_tasks_play_never_chooses_the_renderer(self):
+        def task(args):
+            return {'milestones': [{'checks': [
+                {'kind': 'probe', 'name': 'a', 'play': {'name': 'p', 'seconds': 10, 'args': args}},
+                {'kind': 'judge', 'name': 'b', 'plays': [{'name': 'q', 'seconds': 10, 'args': ['-Scenario=2']}]}]}]}
+        self.assertEqual(vg.mobile_play_errors(task(['-Scenario=1'])), [])
+        for arg in ('-sm6', '-vulkan', '-FeatureLevelES31', '-d3d12', '-Opt=x,dx11=1'):
+            self.assertEqual(len(vg.mobile_play_errors(task([arg]))), 1, arg)
+
+
 if __name__ == '__main__':
     unittest.main()

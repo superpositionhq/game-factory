@@ -42,6 +42,7 @@ Everything needed to rebuild the game from the repo alone, tracked in git (binar
 | `assets.manifest.json` | every external asset in `assets-manifest/v1` (below) |
 | `Docs/ThirdPartyNotices.md` | credits and licences |
 | `ReplayConfig.json` | creation replay config ([ue-replay.md](ue-replay.md)) |
+| `Platform.json` | a mobile game only ("Platform", below): `{"platform": "mobile", "orientation": "landscape" or "portrait"}`; a desktop game has no such file |
 | `.gitattributes`, `.gitignore` | LFS for every binary type; `/Dataset.zip`, `/Dataset.pending.zip`, `/.dataset/` ignored; `Content/` never ignored |
 | `Dataset/` | the dataset minus `UEProject/`, `Build/`, `History/` and `Tasks/` (written by the packager) |
 
@@ -94,6 +95,18 @@ from inside the studio) instead of a url.
 inside `UEProject/` of `Dataset.zip` (dataset check). Content shipped with the engine and content made by the game's
 own scripts are not listed. `tools/migrate-assets-manifest.py <repo>` converts the earlier shapes (dry run first; it
 lists what needs a person).
+
+## Platform
+
+A game is a desktop (Windows) game unless its root has `Platform.json`, written by `templates/new-game.ps1 -Platform
+mobile -Orientation landscape|portrait` when the project is created and never edited after. That file makes it a mobile
+game: an Android phone game held one way, played by touch (the mobile-game skill). Every tool reads the platform from
+it (`tools/validate-game.py` `read_platform`): the validator's rule `mobile` holds the project's Android settings in
+`Config/DefaultEngine.ini` to it (the orientation, arm64 alone, the SDK levels, the data inside the APK, the Linux mobile
+shader format, nothing of the desktop renderer alone turned on), a mobile game's task plays never choose a renderer,
+and the task check plays a mobile game with the mobile renderer at the phone's size (1920x1080 landscape, 1080x1920
+portrait). A file that says anything else is an error, never read as a desktop game. Nothing here changes for a
+desktop game.
 
 ## The dataset (layout v1.3)
 
