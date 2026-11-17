@@ -970,6 +970,8 @@ Before any agent is given a task, the checker grades the start and the fix with 
   `"weight": 0` (the score is the weighted share of checks passed);
 - every required `still_works` probe passes at the start;
 - every calibrated probe measures differently on the start and the fix;
+- no check holds a task error (a check no version of the game can pass): every probe's selector reads something in
+  the fix's play, and every task play's inputs land there (docs/task-check.md, "VALID and INVALID");
 - every required `judge` check, answered by the task's writer from the screenshots the check saves (section 3.2),
   fails on the start and passes on the fix, item by item;
 - every required `seen` probe, read by the task's writer from the crops the check saves (section 2.22), fails on the

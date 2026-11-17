@@ -30,8 +30,8 @@ Run it from PowerShell (the machine's `ue-heavy.ps1` is a PowerShell script; see
 VALID:
 
 ```
-VALID   metro-runner-corr-cell-and-dead-meter
-INVALID island-survival-fix-hut-door: start already passes every required probe
+VALID   <game>-corr-<slug>
+INVALID <game>-fix-<slug>: start already passes every required probe
 ```
 
 Options: `--keep` keeps the built copies (to look at a build or rerun a play by hand), `--out DIR` puts the results
@@ -140,10 +140,22 @@ A task is **VALID** when all of this holds:
   before the change, or the probe is broken and would fail every correct solution. A still-works probe the start
   measured nothing for (its play crashed, which is often the task's own bug) doesn't count against it;
 - a no-op scores zero: no check the start passes carries weight, so build, boot and `still_works` checks take
-  `"weight": 0`. Judges aren't measured here, so a judge's weight isn't covered by this rule.
+  `"weight": 0`. Judges aren't measured here, so a judge's weight isn't covered by this rule;
+- no check holds a **task error**, on either side, `required` or not: a check no version of the game can pass. One is
+  a probe whose selector reads nothing in the reference's play (no row matched, or none had the field; a `count`, or a
+  `widgets` reading combined by count, any, all or sum, reads 0 of nothing, which is an answer unless 0 fails the
+  threshold on the reference), and a task play whose inputs don't land on the reference (`inputs_missed`: a click no
+  button took, a tap no widget, a stage nothing took) or whose first session there doesn't end cleanly or saves nothing
+  (`continues`). The cloud's grade of every run fails while a task holds one. An input the start's play missed while
+  the reference's landed fails that check on the start: the start's play didn't do what the task says.
 
-Never decided by the check: judges (`judge`, `code_judge`: no model is asked), `package` checks, and the
-retired `actions_judge` checks and `trace` probes an older task still carries. The reference's other failures (`log_absent`,
+This is the cloud's own check of every task, by two scripted runs: the **no-op** (the start, untouched) must fail and
+earn nothing, and the **oracle** (the reference) must pass. VALID here is both of them as they must be; the write-tasks
+skill (section 5, "The no-op and the oracle") walks through it step by step.
+
+Never decided by the check: judges (`judge`, `code_judge`: no model is asked), `package` checks (the cloud packages
+the reference for a required one, which must then pass: the game's own packaging is checked when the game is
+released), and the retired `actions_judge` checks and `trace` probes an older task still carries. The reference's other failures (`log_absent`,
 `file_exists`, probes with `"required": false`) are reported as notes and never make a task INVALID.
 
 A `judge` check is looked at by you instead. The check plays its plays on the start and on the reference (its own
@@ -169,8 +181,9 @@ task play is played on the start and on the reference (once, with the other prob
 it reads is saved under `<task>\seen-shots\<check>\` as the Lab's model would get it: `start\` and `reference\`
 (`<shot>.png`, cropped to the probe's `rect`, or the whole frame without one), `ask.md` (the Lab's prompt, what the
 probe reads, what each picture is), `crops.json` (each crop's sha256) and a blind copy, `blind\A\` and `blind\B\`,
-whose sides are in `blind\key.json`. The crops are at the shot's own pixels: the Lab also scales them up (`ask.md`
-says how much), which the checker can't do without an image library. Until it is answered, the probe measures nothing
+whose sides are in `blind\key.json`. The crops are at the shot's own pixels, a mobile play's shot first kept within
+960x540 (540x960 held upright) as the Lab keeps every play's shots: the Lab also scales them up (`ask.md` says how
+much), which the checker can't do without an image library. Until it is answered, the probe measures nothing
 on either side, the task's line says `seen <check>: crops saved for start/reference, answer needed`, and a task with
 a required `seen` probe is not VALID. To answer:
 
@@ -271,6 +284,24 @@ turn. Check the camera's `yaw` in the start play's `probe.json` and scale the ax
 **`start fails still-works X`.** The game works at the start, so a still-works probe that fails there is broken: it
 doesn't find the HUD, the actor or the value it looks for. Fix the probe (see the play's `probe.json`), never the
 threshold.
+
+**`task error in X: in the reference's play P, an input did not land (...): the task's own fix can't be driven by its
+play`.** The play's click, tap, wheel or stage found nothing on the reference (the play's `probe.json` lists it in
+`inputs_missed`). Drive the play by what the reference shows at that moment: the on-screen text the instruction gives,
+a wait until the screen is there, a stage on something both sides have. **`the play's input did not land: ...`** on
+the start alone is the start failing the check (often the task's own bug: the button isn't there yet).
+
+**`task error in X: in the reference's play P, its selector {...} matched nothing in N samples: the check reads nothing
+even on the task's own fix`** (or `nothing its selector matched had a value for F`; or, for a count, `the task's own
+fix fails it`). No build can pass the check as written: the selector names something the reference doesn't have in
+that play, or a field its rows don't carry. Read the rows in the reference's `probe.json` and select by what the thing
+does or carries, or by a name the start already has.
+
+**`task error in X: in the reference's play P, its first session ... : the task's own fix carries nothing over to the
+next session`.** See the session reason above: on the reference this can be passed by no build.
+
+**`its probe file was malformed`**: the play's `probe.json` isn't of the plugin's shape (a game that wrote over it, a
+cut-off file); it reads as nothing, as in the cloud.
 
 **`reference fails X`.** The reference doesn't do what the probe asks (a threshold on the wrong side: check `op`), or
 the reference's play doesn't reach the situation either. `reference fails boots_clean: crashed` means the reference

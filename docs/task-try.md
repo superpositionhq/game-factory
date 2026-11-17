@@ -18,8 +18,8 @@ python tools\task-try.py C:\Users\<you>\Work\games\<slug> --task C:\Users\<you>\
 Each task prints one line, for example:
 
 ```
-0/3 solved  stealth-fix-guards-lose-the-player  (best 4/7 required checks)
-2/3 solved  rally-racer-corr-chase-camera  (best 7/7 required checks)
+0/3 solved  <game>-fix-<slug>  (best 4/7 required checks)
+2/3 solved  <game>-corr-<slug>  (best 7/7 required checks)
 ```
 
 Options: `--runs N` (default 1), `--model M` (the harness's model; default its own), `--agent-arg ARG` (an extra

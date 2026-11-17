@@ -82,6 +82,10 @@ applies.
   screen as fractions of its width and height, or a widget by name; `hold` for a held touch, `finger` for a second
   finger. The back button is the key `Android_Back`. A brief written for a mobile game never asks for a key or a
   mouse.
+- **The instruction says what the player touches**: an on-screen button, a tap, a drag, the back button. An ask to
+  press a key, use the mouse or a gamepad, or press Escape asks for controls a phone has not, and no check can decide
+  it: reword it to the touch the player makes. A key named while describing the desktop editor or a developer's tool
+  is not such an ask.
 - Good mobile threads to look for in your history: a control that was too small or badly placed and took rounds to
   fix, a layout broken in the game's orientation, a view over a budget brought back under it (the `render` reading,
   in a play of its own with no picture-taking check), the back button's behaviour, the pause on leaving the app.

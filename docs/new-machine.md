@@ -91,6 +91,21 @@ Cloned games carry their store packs (committed through Git LFS in each private 
   either agent; you take the coordinator's decisions (pushes, recordings). What differs between the agents:
   [AGENTS.md](../AGENTS.md), "Agents".
 
+## 4. Checking tasks on this PC
+
+A game's tasks are checked on this PC before they are handed in, with the same rules as in the cloud: the **no-op**
+(each task's start, untouched) must fail and the **oracle** (its reference) must pass. Nothing more needs installing:
+the task check uses the engine, Python, git and Git LFS that setup installed, and the job slots `ue-heavy.ps1` gives it.
+
+```powershell
+python <root>\game-factory\tools\validate-game.py <root>\games\<slug>
+python <root>\game-factory\tools\task-check.py <root>\games\<slug> --all
+```
+
+It takes about 20-60 minutes a task, so a session starts it as a background process; the results are under
+`<root>\games\<slug>\.task-checks\`. How to read them and what to do for each failure: the write-tasks skill, section
+5 ("The no-op and the oracle, checked on your own PC"), and [task-check.md](task-check.md).
+
 ## Reference: what bootstrap writes
 
 `machine/bootstrap.ps1` (run by setup; can be run on its own any time):

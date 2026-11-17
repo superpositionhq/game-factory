@@ -271,9 +271,8 @@ task a no-op would earn anything on. The usual order:
 5. `quality` (optional, never required): a `judge` for taste items no probe can capture ("reads as a castle",
    readability of text over the scene), and a `code_judge` for code quality.
 
-**Every look-and-feel ask in the brief gets a required `looks_as_asked` rubric item** (a review of delivered tasks
-found the checks thinner than the briefs, look-and-feel asks most of all; the owner, 2026-11-11: such an ask gates the
-task). Go through the brief ask by ask: what a probe can measure gets a probe; what only an eye can tell (reads
+**Every look-and-feel ask in the brief gets a required `looks_as_asked` rubric item** (such an ask gates the task, like
+any other). Go through the brief ask by ask: what a probe can measure gets a probe; what only an eye can tell (reads
 clearly, fits the style, looks like the thing it is meant to be) gets its own rubric item, `"required": true`, in one
 required `judge` named `looks_as_asked`, with `"before": true` and `"reference": true` when the seed has a reference.
 A judge can misread screenshots, so word each item concretely, decidable from the screenshots alone, so the unchanged
@@ -442,23 +441,102 @@ The start must fail every required rubric item (below 0.5) and the reference mus
 reword the item or fix the plays so the pictures show the state, never by asking less of the solution. Write both
 sides' scores in the task's notes (its `tasks-workflow.jsonl` row).
 
+### The no-op and the oracle, checked on your own PC
+
+Every task is checked in the cloud by two scripted runs before any agent gets it, and the task check runs both on your
+PC with the same rules:
+
+- **The no-op** is the start (`seed.commit`) left untouched, graded as if an agent had handed it in. It must **fail**:
+  it must not pass every required outcome probe, it earns nothing (every check it passes has `"weight": 0`), and it
+  passes every required `still_works` probe (what still works must already work there).
+- **The oracle** is the reference (`seed.reference`) graded as if an agent had handed it in. It must **pass**: it
+  builds, boots and passes every required check, and no check holds a task error (below).
+
+A task is not finished until both are right: the no-op fails and the oracle passes, on your PC, after the last edit
+of the task. Step by step:
+
+1. **Validate the format** after committing on the tasks branch:
+   `python <GF_ROOT>\game-factory\tools\validate-game.py <GF_ROOT>\games\<slug>`. Fix every task error it names
+   first; the task check refuses a task that doesn't validate.
+2. **Run the check** of every task in one background run (the `Start-Process` command above), or one task:
+   `python <GF_ROOT>\game-factory\tools\task-check.py <GF_ROOT>\games\<slug> --task <name>` (repeat `--task` for
+   several; a path to a `.json` file checks a task not committed yet). It builds the start and the reference once
+   each, plays them with the probe plugin and grades both sides: the start as the no-op, the reference as the oracle.
+3. **Follow it** in `<GF_ROOT>\games\<slug>\.task-checks\progress.txt` until it says `finished`. The console prints one
+   line a task: `VALID <name>`, or `INVALID <name>: <first reason>`; the exit code is 0 only when every task is VALID.
+4. **Read each task's result**, `.task-checks\<name>.json`: `verdict`; `reasons` (why INVALID, one line each); `notes`
+   (the oracle's failures that decide nothing: optional probes, `log_absent`, `file_exists`); `probes` (each probe's
+   `start` and `reference` measures, its `threshold`, and `start_passed` / `reference_passed`); `start_checks` and
+   `reference_checks` (every check's row on each side, with its `detail`). Each play's `probe.json`, screenshots and
+   log are under `.task-checks\<name>\start\<play>\` and `reference\<play>\`.
+5. **Answer what the check can't**: every required `judge` (`judge-shots\`, above) and every `seen` probe
+   (`seen-shots\`, [docs/task-check.md](../../docs/task-check.md)), blind first. A required judge passes on the
+   oracle only when the reference scores every required item; a required `seen` probe decides nothing until both sides
+   are answered.
+6. **Fix and run again** each task that isn't VALID (`--task <name>`), and run again every task you changed after its
+   last VALID check, however small the change.
+
+What each verdict means:
+
+| verdict | meaning |
+|---|---|
+| `VALID` | the no-op fails, the oracle passes, a no-op earns nothing, the still-works probes pass at the start, no task error; judges and `seen` probes still need your answers before the task ships |
+| `INVALID` | one of those doesn't hold: `reasons` says which; the task doesn't ship as it is |
+| `ERROR` | the checker couldn't check it (a commit not fetched, LFS objects missing, the engine refused the project); fix that and run again, it says nothing about the task |
+
+What each failure means and what to do (never by asking less of the solution, section 1):
+
+| the check says | it means | do this |
+|---|---|---|
+| `start already passes every required probe`, or `start already passes required probe X` | the no-op passes: the check doesn't test the change (the play never reaches the moment, or the measure doesn't see the issue) | compare the two sides' `probe.json` for that measure; give the probe a play that reaches the moment and a measure the change moves |
+| `a no-op scores N, not 0` | the start earns reward for doing nothing | give the named checks `"weight": 0` (builds, boots, still-works, anything true at the start) |
+| `start fails still-works X` | the probe is broken: what still works fails at the start | fix the probe (its selector, its play, its window), never the threshold |
+| `reference fails X` | the oracle fails: the check, or the reference, is wrong | read the reference's row and `probe.json`: a threshold on the wrong side (`op`), a play that doesn't reach the state on the reference, or a reference that doesn't do the ask (move the reference, or take the ask out of the instruction) |
+| `task error in X: ... an input did not land ...` | the play can't be driven on the reference (a click found no button, a tap no widget, a stage no actor) | drive the play by what the reference shows at that moment: the on-screen text the instruction gives, a wait, a stage on something both sides have |
+| `task error in X: ... matched nothing ...: the check reads nothing even on the task's own fix` | the selector finds nothing on the reference, so no build can pass it | select by what the thing does or carries, or by names the start has; read the rows in the reference's `probe.json` |
+| `task error in X: ... carries nothing over to the next session` | a play that `continues` another found no save on the reference | give the first session the inputs that make the game save, and the time to do it |
+| `uncalibrated: ... both measure X` | start and reference read the same: nothing to put a threshold between | measure something the change moves, or a literal for a count or a boolean |
+| a value that differs between two runs of the same commit, or a reference just past its threshold | a flaky reading: a window at the edge of the event, a sample at a moment that moves, a threshold with no room | widen the window around the event so it holds on both sides, read a quantity with a clear gap between start and reference, calibrate between them; never ease what the instruction asks |
+| `judge X: shots saved ..., answer needed` / `seen X: crops saved ..., answer needed` | the check can't decide it without you | answer it (step 5), then check again |
+
+The full list of reasons and their fixes is in [docs/task-check.md](../../docs/task-check.md), "Common reasons and
+fixes".
+
 ### Every ask has a check
 
-Before the game is packaged, read each task you wrote, its instruction against its checks, yourself; no tool or
-reviewer does this for you. Lab reviews every task the same way at submission and sends the game back when an ask has
-no check at all, naming the task and the sentence. Fix what you find in the task before it is packed.
+Before the game is packaged, read each task you wrote, its instruction against its checks, yourself; no tool does
+this for you. Every submitted task is read the same way, and a task is not accepted as it is when an ask has no
+required check, when a check is tied to the reference (it relies on something the instruction doesn't give and the
+start doesn't have), or when the reference doesn't do an ask. Fix what you find before it is packed.
 
-Lab may repair a check at submission without sending the game back, in these ways only: it restages a play with the
-steps the instruction gives a player, moves a window or a judge's frames to the recorded moment, retargets a selector
-to what the instruction names, clicks by on-screen text or waits, reads a null property from the screen, and removes a
-click repeated after its action already happened. The measure and its threshold stay. Each is a mistake to avoid when
-writing the check.
+Each of these is a mistake in a check, to avoid when writing it: a play staged otherwise than with the steps the
+instruction gives a player; a window or a judge's frames away from the moment the event happens; a selector aimed at
+something other than what the instruction names; a click by a name the player never sees where on-screen text or a
+wait would do; a property read that is empty in play while the screen shows the value; a click repeated after its
+action already happened; text read in a way that reads nothing on the reference (read it from the widget or element
+that shows it); a readout drawn in a way no reading sees (read the value the game keeps for it, by a name the start
+already has, moving the way the ask says); `speed` combined by `count` (a count of rows, not a speed: `"of": "max"`);
+a staged foe or target out of reach of the attack the play makes; a literal threshold the reference misses when the
+instruction states no number (calibrate between the start and the reference instead).
 
 Read each task this way:
 
 - **Go through the instruction sentence by sentence.** The game's description, the controls line and the art line are
-  context, and so are a bug report's symptom, cause and steps to reproduce; they ask nothing. What should now be
-  different is an ask (in a bug report, the expected behaviour); what must stay as it is is a keep.
+  context, and so are a bug report's cause and steps to reproduce; they ask nothing. A sentence that would be equally
+  true in every task of the game is context (a line shared word for word with the game's other tasks usually is, but
+  a shared line this task's request depends on can still be a keep). What should now be different is an ask; what must
+  stay as it is is a keep. The title counts as given to the solver, like the instruction, and follows the same rules.
+- **In a bug report, the expected behaviour is the ask only when it is as broad as the symptom.** With no "expected"
+  sentence, or a narrower one, the symptom is the ask too: its no longer happening, under the reported conditions,
+  needs a check.
+- **A check covers an ask by what it reads**: its select, field, window, threshold and play. Its `describe` is a
+  label; a `describe` that claims more than the measure reads covers nothing more. Make each ask's check plainly its
+  own: its `describe` or rubric item in the ask's own words, its play reaching the moment the ask is about, so any
+  reader sees the coverage without arguing for it.
+- **An ask about time or about many cases needs checks that match it.** "Stays until", "never", "for as long as",
+  "whatever the player does" need a window over that span (a check at one instant covers it only in part); in a bug
+  report such words mean under the reported conditions, so the play runs past the moment the symptom was reported.
+  "Every" or "each" means each case it lists gets a check of its own.
 - **Every ask has a check that would fail if that ask alone were not done**: a required probe for each key, direction,
   scenario or case it lists; a number it states held on both sides; a look-and-feel ask as a required
   `looks_as_asked` rubric item in the ask's own words, with the judge's own `plays` when the state must be reached
@@ -487,17 +565,39 @@ Read each task this way:
     on." "Hits reach her through the engine's damage events."
   - Refused: "Add an actor of class AsTrainingPost to the yard." "Keep the enemy's health in a property called
     Health." "Tag each generator Generator so QA can find it."
-  _(failure: tasks were reworked by writing the check's read target into the ticket, which hands the solver the
-  answer)_
+  Writing the check's read target into the ticket hands the solver the answer; when only such a name would make a
+  check work, the check moves to what the player sees.
+- **The instruction stays a producer's or a playtester's text.** No coordinates of things that exist at the start; a
+  new thing's place as a designer gives it ("about 6 m in front of each base"), in coordinates only where the task
+  already speaks in them. Never how QA stages a play (teleports, holds, timings) and nothing of the checks' workings:
+  the instruction would become the check's script. A statement of an interface the solver must keep (the engine's
+  damage events, the words on a new screen) is one short sentence.
 - **A sound ask** is checked by a sound starting when the event happens: `audio` `started_audible` near the source,
   in a window right after the event; `sounds` or `repeats` (by asset name) when the ticket asks for distinct sounds,
   "each gun has its own sound". What the sound is, how it sounds, is never checked. New games import every sound
-  (game-session skill), so every sound has an asset name.
-- **An ask that cannot be checked fairly** comes out: rewrite the instruction so it no longer asks for it, rather than
-  ship an ask nothing checks. The instruction stays plain prose, never fields. Never asked, because no play can show
-  it: how a sound sounds (its quality, mix or tone), behaviour of the packaged build only, a frame rate on given
-  hardware. Keeping something across sessions (a best score, settings, a checkpoint after the game is closed and
-  opened again) is checkable: a play that `continues` the play that earned it.
+  (game-session skill), so every sound has an asset name. A sound the game's own characters hear and react to (guards
+  hearing footsteps, a door that alerts) is a gameplay ask: its check reads the reaction or the state it changes, not
+  only a sound starting.
+- **A look described by a list of items** gets those items named in the `looks_as_asked` rubric, an item each where
+  the instruction asks for each on its own (its own sentence or numbered point): a judge asked only about the whole
+  look can pass a build that leaves one out.
+- **An ask about how the work is built or documented needs no check** ("fix it at its cause", "keep it in a data
+  table", "in C++", "add it to the README"): no check of the game's outcome can decide it. Anything about what the
+  player sees, hears or can do is never such an ask, however it is worded.
+- **Exactly five kinds of sentence need no check**, because no play can show them: a packaged or Shipping build's own
+  behaviour; given screen sizes or resolutions (the size itself: what must be visible on screen still needs a check);
+  a frame rate or performance on given hardware; how a sound sounds (its quality, mix or tone); a statement of what the
+  task does not add or change. Everything else stays an ask, however hard to check: a value the running game holds, a
+  timing, a random or rare event, something a play must set up first, something kept across sessions (a best score,
+  settings, a checkpoint after the game is closed and opened again: a play that `continues` the play that earned it).
+  When in doubt, it is an ask.
+- **A sentence no check can decide as written** ("every exit stays reachable", "the game's own tests still pass") is
+  reworded into what the reference demonstrably does and a check can decide, so the task asks as much as before; a
+  sentence that can be checked is never dropped. The instruction stays plain prose, never fields.
+- **A `still_works` probe never calibrates.** What still works reads the same on the start and the reference, so a
+  calibrated threshold has nothing to sit between: use a literal, or a threshold relative to the start.
+- **A check's name says what it decides** (`hud_shows_ammo`, not `check3`): the grade, the result files and every
+  reader of the task go by it.
 
 ## 6. Difficulty, limits and what the validator enforces
 
@@ -509,7 +609,10 @@ Read each task this way:
   systems against its start; for a seed on main it
   also fails fewer than 4 game-changing commits from `seed.commit` to `seed.reference`, and any required probe that
   names a class, tag, map or asset the reference has and the start doesn't (section 5). These are floors, not targets:
-  pick the longest threads the history has.
+  pick the longest threads the history has. It also refuses every shape the cloud grader refuses: a select that names
+  nothing to pick by, a window outside 0-120 s, `to_angle` on a field that isn't an angle, `match` on a field that
+  holds no text, a regular expression that doesn't compile, a wheel or mouse move that moves nothing, and the like;
+  its message says which.
 - **Judge difficulty in the session; never run the task with another agent** (owner, 2026-11-05: the try took up to
   25 minutes a task and slowed contractors down). Don't run `tools/task-try.py` or start a fresh Claude Code or Codex
   session on a task. Before committing, review each task against section 1 here, with the person: would a strong
@@ -609,7 +712,5 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 
 ## 9. Examples
 
-Older tasks on the game repos' tasks branches (`duo-kart-fix-wheels-turned-sideways.json`,
-`rally-racer-corr-steering-and-chase-camera.json`, `battle-boats-feat-coal-burst.json`) show the file format and probe
-style only; most are single fixes that no longer meet the bar (section 1). Rework such a task into its whole thread or
-remove it.
+Older tasks on a game's tasks branch show the file format and probe style only; most are single fixes that no longer
+meet the bar (section 1). Rework such a task into its whole thread or remove it.
