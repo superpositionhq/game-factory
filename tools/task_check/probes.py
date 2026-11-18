@@ -573,6 +573,28 @@ def all_needs(measure):
     return needs(measure) + (needs(since["measure"]) if since is not None else [])
 
 
+def probe_inputs(inputs):
+    """A play's inputs (tasks.inputs) as the probe plugin reads them: a shot's `when` (Lab game grader 1.16.0) as the
+    plugin reads it every frame, {"query": the one query its measure needs (needs, with its id), "field", "of",
+    "match", "op", "value", "within"} (within only when set); every other input as it is. None stays None."""
+    if not inputs:
+        return inputs
+    out = []
+    for row in inputs:
+        if isinstance(row, dict) and isinstance(row.get("when"), dict) and "query" not in row["when"]:
+            event = row["when"]
+            inner = tasks.measure(event["measure"])
+            (query,) = needs(inner)
+            when = {"query": {"id": query_id(query), **query}, "field": inner["field"],
+                    "of": inner.get("of") or "count", "match": inner.get("match"),
+                    "op": event["expect"]["op"], "value": float(event["expect"]["value"])}
+            if event.get("within") is not None:
+                when["within"] = float(event["within"])
+            row = {**row, "when": when}
+        out.append(row)
+    return out
+
+
 def selector(measure):
     """A selecting measure's select as the plugin is asked it. A widgets select names `visible` whenever the measure
     matches only the widgets drawn (on_screen: its default, as in the Lab's game grader since 1.9.0), and never
@@ -698,6 +720,9 @@ def missed(probe):
 
 NOT_SHOWN = "no visible button matches it"  # the plugin's words for a click no button takes (an `optional` click)
 DISABLED = "shown but disabled"  # its words for a click whose button is shown disabled (a `disabled` click)
+COVERED = "covered by another control"  # its words for a click on a button something else is drawn over: no option
+# excuses it (a player's press there lands on what is over it)
+SHOT_WHEN = "shot_when"  # the kind of a missed shot whose event never came (its why: NEVER)
 
 
 def excused(probe, inputs):

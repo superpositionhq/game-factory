@@ -140,6 +140,8 @@
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SEditableText.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SScrollBox.h"
+#include "Layout/WidgetPath.h"
 #include "Widgets/Notifications/SProgressBar.h"
 #include "Widgets/SViewport.h"
 #include "Widgets/SWindow.h"
@@ -459,7 +461,9 @@ static bool WhereHolds(AActor* A, const FWhereSel& W)
 	{
 		return false;
 	}
-	if (W.Value->TryGetBool(bR))
+	// a boolean value as 1 or 0; a number as itself (an FJsonValueNumber answers TryGetBool too, as value != 0, so
+	// before game grader 1.14.0 every number was compared as 1 or 0: Kind == 2 matched Kind == 1)
+	if (W.Value->Type == EJson::Boolean && W.Value->TryGetBool(bR))
 	{
 		R = bR ? 1.0 : 0.0;
 	}
@@ -1466,9 +1470,21 @@ static bool WidgetClassMatches(UWidget* W, const FString& Want, bool bWithOwners
 	return false;
 }
 
-/** Visible and every parent visible (through the enclosing user widgets up to the one in the viewport). */
+static bool SlateVisible(const TSharedRef<SWidget>& W);
+
+/** Visible and every parent visible (through the enclosing user widgets up to the one in the viewport), and, since
+ *  game grader 1.14.0, its Slate widget's every parent too: a widget under a parent the game collapsed in Slate is not
+ *  on screen whatever its own visibility says (effective visibility). */
 static bool WidgetVisible(UWidget* W)
 {
+	if (W)
+	{
+		const TSharedPtr<SWidget> Drawn = W->GetCachedWidget();
+		if (Drawn.IsValid() && !SlateVisible(Drawn.ToSharedRef()))
+		{
+			return false;
+		}
+	}
 	for (int32 Depth = 0; W && Depth < 512; ++Depth)
 	{
 		if (!W->IsVisible() || W->GetRenderOpacity() <= 0.001f)
@@ -1538,6 +1554,12 @@ static TSharedPtr<FJsonValue> WidgetField(UWidget* W, const FString& F)
 	if (F == TEXT("visible"))
 	{
 		return Num(WidgetVisible(W) ? 1.0 : 0.0);
+	}
+	if (F == TEXT("covered"))
+	{
+		FString Over;
+		const int32 Cover = CoverAt(W->GetCachedWidget(), Over);
+		return Cover < 0 ? Null() : Num((double)Cover);
 	}
 	if (IsRectField(F))
 	{
@@ -2019,6 +2041,12 @@ static TSharedPtr<FJsonValue> SlateField(const TSharedRef<SWidget>& W, const FSt
 	{
 		return Num(SlateVisible(W) ? 1.0 : 0.0);
 	}
+	if (F == TEXT("covered"))
+	{
+		FString Over;
+		const int32 Cover = CoverAt(TSharedPtr<SWidget>(W), Over);
+		return Cover < 0 ? Null() : Num((double)Cover);
+	}
 	if (IsRectField(F))
 	{
 		return RectField(W->GetTickSpaceGeometry(), F);
@@ -2056,7 +2084,116 @@ FString LabelKey(const FString& Text)
 	return Out;
 }
 
+static TSharedPtr<SWidget> FindSlateButtonIn(const FString& Want, bool bEnabled, FVector2D& OutCentre, FString& OutLabel);
+
+/** The scroll boxes above `W` whose view leaves the point `At` (Slate's absolute space) out, innermost first. */
+static void ScrollAreasHiding(const TSharedRef<SWidget>& W, const FVector2D& At, TArray<TSharedRef<SWidget>>& OutAreas)
+{
+	TSharedPtr<SWidget> Cur = W->GetParentWidget();
+	for (int32 Depth = 0; Cur.IsValid() && Depth < 512; ++Depth)
+	{
+		if (Cur->GetType() == TEXT("SScrollBox") && !Cur->GetTickSpaceGeometry().IsUnderLocation(At))
+		{
+			OutAreas.Add(Cur.ToSharedRef());
+		}
+		Cur = Cur->GetParentWidget();
+	}
+}
+
+/** A widget's centre in Slate's absolute space, when it is drawn and of some size. */
+static bool CentreOf(const TSharedPtr<SWidget>& Target, FVector2D& OutAt)
+{
+	if (!Target.IsValid() || !SlateVisible(Target.ToSharedRef()))
+	{
+		return false;
+	}
+	const FGeometry& G = Target->GetTickSpaceGeometry();
+	const FVector2D Size(G.GetAbsoluteSize());
+	if (Size.X <= 0.0 || Size.Y <= 0.0)
+	{
+		return false;
+	}
+	OutAt = FVector2D(G.GetAbsolutePosition()) + Size * 0.5;
+	return true;
+}
+
+int32 CoverAt(const TSharedPtr<SWidget>& Target, FString& OutOver)
+{
+	OutOver.Reset();
+	FVector2D At, VPos, VSize;
+	if (!FSlateApplication::IsInitialized() || !CentreOf(Target, At) || !ViewportRect(VPos, VSize)
+		|| At.X < VPos.X || At.Y < VPos.Y || At.X > VPos.X + VSize.X || At.Y > VPos.Y + VSize.Y)
+	{
+		return -1;
+	}
+	TArray<TSharedRef<SWidget>> Hiding;
+	ScrollAreasHiding(Target.ToSharedRef(), At, Hiding);
+	if (Hiding.Num() > 0)
+	{
+		return -1;  // out of a scroll area's view: what covers it there is not what a player's press would meet
+	}
+	const FWidgetPath Path = FSlateApplication::Get().LocateWindowUnderMouse(At, FSlateApplication::Get().GetTopLevelWindows(), true);
+	if (!Path.IsValid())
+	{
+		return -1;
+	}
+	if (Path.ContainsWidget(Target.Get()))
+	{
+		return 0;
+	}
+	const TSharedRef<SWidget> Over = Path.GetLastWidget();
+	const TSharedPtr<SWidget> OverParent = Over->GetParentWidget();
+	OutOver = FString::Printf(TEXT("%s/%s (%s)"), OverParent.IsValid() ? *OverParent->GetReadableLocation() : TEXT("-"),
+		*Over->GetReadableLocation(), *Over->GetTypeAsString());
+	return 1;
+}
+
+bool ScrollIntoView(const TSharedPtr<SWidget>& Target, FString& OutAreas)
+{
+	OutAreas.Reset();
+	FVector2D At;
+	if (!CentreOf(Target, At))
+	{
+		return false;
+	}
+	TArray<TSharedRef<SWidget>> Hiding;
+	ScrollAreasHiding(Target.ToSharedRef(), At, Hiding);
+	for (const TSharedRef<SWidget>& Area : Hiding)
+	{
+		StaticCastSharedRef<SScrollBox>(Area)->ScrollDescendantIntoView(Target, false, EDescendantScrollDestination::IntoView, 0.0f);
+		OutAreas += (OutAreas.IsEmpty() ? TEXT("") : TEXT(", ")) + Area->GetReadableLocation();
+	}
+	return Hiding.Num() > 0;
+}
+
 TSharedPtr<SWidget> FindSlateButton(const FString& Want, FVector2D& OutCentre, FString& OutLabel)
+{
+	return FindSlateButtonIn(Want, true, OutCentre, OutLabel);
+}
+
+bool DisabledButtonShown(UWorld* World, const FString& Want, FString& OutLabel)
+{
+	TArray<UUserWidget*> Tops;
+	ViewportWidgets(World, Tops);
+	bool bFound = false;
+	auto Visit = [&](UWidget* W)
+	{
+		UButton* B = Cast<UButton>(W);
+		if (!bFound && B && (B->GetName().MatchesWildcard(Want) || ClassMatches(B->GetClass(), Want)) && !B->GetIsEnabled() && WidgetVisible(B))
+		{
+			bFound = true;
+			OutLabel = FString::Printf(TEXT("%s (%s)"), *B->GetName(), *B->GetClass()->GetName());
+		}
+	};
+	for (UUserWidget* Top : Tops)
+	{
+		ForEachWidgetDeep(Top, Visit);
+	}
+	FVector2D Centre;
+	return bFound || (FSlateApplication::IsInitialized() && FindSlateButtonIn(Want, false, Centre, OutLabel).IsValid());
+}
+
+static TSharedPtr<SWidget> FindSlateButtonIn(const FString& Want, bool bEnabled, FVector2D& OutCentre, FString& OutLabel)
 {
 	const UGameViewportClient* GVC = GEngine ? GEngine->GameViewport.Get() : nullptr;
 	const TSharedPtr<SViewport> Root = GVC ? GVC->GetGameViewportWidget() : nullptr;
@@ -2069,7 +2206,7 @@ TSharedPtr<SWidget> FindSlateButton(const FString& Want, FVector2D& OutCentre, F
 	WalkSlate(Root.ToSharedRef(), [&](const TSharedRef<SWidget>& W)
 	{
 		const FString Type = W->GetTypeAsString();
-		if (Found.IsValid() || !Type.EndsWith(TEXT("Button")) || !W->IsEnabled() || !SlateVisible(W))
+		if (Found.IsValid() || !Type.EndsWith(TEXT("Button")) || W->IsEnabled() != bEnabled || !SlateVisible(W))
 		{
 			return;
 		}
@@ -6856,6 +6993,96 @@ void FTaskProbeQueries::Sample(UWorld* World, APlayerController* PC, double T)
 		}
 	}
 	SpinRead.Reset();
+}
+
+bool FTaskProbeQueries::ReadNow(const TSharedPtr<FJsonObject>& Def, const FString& Field, const FString& Of,
+	const FString& Match, UWorld* World, APlayerController* PC, double& OutValue)
+{
+	FString Kind;
+	if (!World || !Def.IsValid() || !Def->TryGetStringField(TEXT("kind"), Kind))
+	{
+		return false;
+	}
+	FQuery Q;
+	Q.Def = Def;
+	Q.Kind = Kind;
+	if (Field != TEXT("count"))
+	{
+		Q.Fields.Add(Field);
+	}
+	const TSharedRef<FJsonObject> S = MakeShared<FJsonObject>();
+	if (Kind == TEXT("actors"))
+	{
+		SampleActors(Q, World, PC, *S);
+	}
+	else if (Kind == TEXT("widgets"))
+	{
+		SampleWidgets(Q, World, *S);
+	}
+	else
+	{
+		return false;
+	}
+	const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+	if (!S->TryGetArrayField(TEXT("rows"), Rows))
+	{
+		return false;
+	}
+	double Total = 0.0;
+	if (Field == TEXT("count"))
+	{
+		OutValue = S->TryGetNumberField(TEXT("total"), Total) ? Total : (double)Rows->Num();
+		return true;
+	}
+	TArray<double> Values;  // the rows' values (a boolean 1 or 0, text 1 or 0 by Match); rows with none left out
+	const TOptional<FRegexPattern> Pattern = Match.IsEmpty() ? TOptional<FRegexPattern>() : TOptional<FRegexPattern>(FRegexPattern(Match));
+	for (const TSharedPtr<FJsonValue>& R : *Rows)
+	{
+		const TSharedPtr<FJsonObject>* Row = nullptr;
+		if (!R.IsValid() || !R->TryGetObject(Row) || !Row->IsValid())
+		{
+			continue;
+		}
+		const TSharedPtr<FJsonValue> V = (*Row)->TryGetField(Field);
+		if (!V.IsValid() || V->IsNull())
+		{
+			continue;
+		}
+		if (V->Type == EJson::Boolean)
+		{
+			Values.Add(V->AsBool() ? 1.0 : 0.0);
+		}
+		else if (V->Type == EJson::Number)
+		{
+			Values.Add(V->AsNumber());
+		}
+		else if (V->Type == EJson::String && Pattern.IsSet())
+		{
+			FRegexMatcher Matcher(Pattern.GetValue(), V->AsString());
+			Values.Add(Matcher.FindNext() ? 1.0 : 0.0);
+		}
+	}
+	const FString How = Of.IsEmpty() ? FString(TEXT("count")) : Of;
+	int32 NonZero = 0;
+	double Sum = 0.0;
+	for (const double V : Values)
+	{
+		NonZero += V != 0.0 ? 1 : 0;
+		Sum += V;
+	}
+	if (How == TEXT("count")) { OutValue = NonZero; return true; }
+	if (How == TEXT("any")) { OutValue = NonZero > 0 ? 1.0 : 0.0; return true; }
+	if (How == TEXT("all")) { OutValue = Values.Num() > 0 && NonZero == Values.Num() ? 1.0 : 0.0; return true; }
+	if (How == TEXT("sum")) { OutValue = Sum; return true; }
+	if (Values.Num() == 0)
+	{
+		return false;
+	}
+	if (How == TEXT("first")) { OutValue = Values[0]; return true; }
+	if (How == TEXT("mean")) { OutValue = Sum / Values.Num(); return true; }
+	if (How == TEXT("min")) { OutValue = FMath::Min(Values); return true; }
+	if (How == TEXT("max")) { OutValue = FMath::Max(Values); return true; }
+	return false;
 }
 
 TSharedRef<FJsonObject> FTaskProbeQueries::MeasuresJson() const

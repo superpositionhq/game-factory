@@ -96,7 +96,7 @@ class Units(unittest.TestCase):
     def test_a_window_tied_to_its_event(self):
         """A sampled measure's `since` names an event: one sample of a measure the play samples (no window, at, agg or
         since of its own; never log, asset, seen, trace, audio sounds or repeats), a literal expect, an optional
-        `within` (0 < s <= 120); the event's measure keeps a measure's shape rules."""
+        `within` (0 < s <= 300); the event's measure keeps a measure's shape rules."""
         schema = vg.SCHEMAS['game-task']
         event = {'measure': {'probe': 'widgets', 'select': {'name': 'ResultPanel'}, 'field': 'count'},
                  'expect': {'op': '>=', 'value': 1}}
@@ -106,7 +106,7 @@ class Units(unittest.TestCase):
             self.assertEqual(fits(ok), [], ok)
             self.assertEqual(vg.since_errors('c', ok), [])
         for bad in ({**event, 'expect': {'op': '>=', 'calibrate': 0.5}}, {**event, 'within': 0},
-                    {**event, 'within': 121}, {'measure': event['measure']}, {**event, 'at': 2}):
+                    {**event, 'within': 301}, {'measure': event['measure']}, {**event, 'at': 2}):
             self.assertTrue(fits({**tied, 'since': bad}), bad)
         self.assertTrue(list(vg.check_schema({'probe': 'log', 'pattern': 'x', 'since': event},
                                              schema['$defs']['LogMeasure'], schema)))
@@ -319,8 +319,10 @@ class Shapes(unittest.TestCase):
                      {'probe': 'widgets', 'select': {'class': 'W', 'slate': 'STextBlock'}, 'field': 'visible', 'of': 'any'})
 
     def test_times_and_angles(self):
-        self.refused('a window is [t0, t1] with 0 <= t0 < t1 <= 120',
-                     {'probe': 'pawn', 'field': 'z', 'window': [3, 130], 'agg': 'min'})
+        self.refused('a window is [t0, t1] with 0 <= t0 < t1 <= 300',
+                     {'probe': 'pawn', 'field': 'z', 'window': [3, 310], 'agg': 'min'})
+        self.assertEqual(self.errors({'probe': 'pawn', 'field': 'z', 'window': [130, 299], 'agg': 'min'}), [],
+                         'a play lasts up to 300 s, and its windows with it')
         self.refused('a window is [t0, t1]', {'probe': 'camera', 'field': 'yaw', 'window': [5, 5], 'agg': 'min'})
         self.refused('a measure takes `to_angle` or `to_axis`, not both',
                      {'probe': 'camera', 'field': 'yaw', 'window': [3, 18], 'agg': 'min', 'to_angle': 1, 'to_axis': 1})
@@ -373,6 +375,37 @@ class Shapes(unittest.TestCase):
                   {'probe': 'asset', 'asset': '/Game/A', 'field': 'prop:Yaw', 'to_angle': 9, 'to_axis': 9})]
         for said, measure in cases:
             self.refused(said, measure, 'editor')
+
+    def test_a_shots_when_and_a_widgets_covered(self):
+        """A shot may say `when`, an event the probe reads itself every frame: widgets count or visible, or actors
+        count, x, y, z, hidden or a prop: member, no to_angle or to_axis, no has.lit, and every rule of an event; a
+        widgets measure may read `covered`; a play lasts up to 300 s."""
+        def shot(measure, **more):
+            return {'name': 'p', 'seconds': 300, 'inputs': [
+                {'t': 1, 'shot': 's', 'when': {'measure': measure, 'expect': {'op': '>=', 'value': 1}, **more}}]}
+        for measure in ({'probe': 'widgets', 'select': {'name': 'Result'}, 'field': 'count'},
+                        {'probe': 'widgets', 'select': {'name': 'Result'}, 'field': 'visible', 'of': 'any'},
+                        {'probe': 'actors', 'select': {'class': 'Boat'}, 'field': 'z', 'of': 'max'},
+                        {'probe': 'actors', 'select': {'class': 'Boat'}, 'field': 'prop:Health', 'of': 'min'}):
+            self.assertEqual(self.errors(play=shot(measure, within=299)), [], measure)
+        for measure, said in (({'probe': 'ui', 'field': 'count'}, 'reads widgets count or visible'),
+                              ({'probe': 'widgets', 'select': {'name': 'W'}, 'field': 'text', 'match': 'x'},
+                               'reads widgets count or visible'),
+                              ({'probe': 'actors', 'select': {'class': 'Boat'}, 'field': 'speed'},
+                               'reads widgets count or visible'),
+                              ({'probe': 'actors', 'select': {'class': 'Boat'}, 'field': 'x', 'to_axis': 0},
+                               'takes no to_angle or to_axis'),
+                              ({'probe': 'actors', 'select': {'class': 'Lamp', 'has': {'class': 'PointLight',
+                                                                                       'lit': True}},
+                                'field': 'count'}, 'asks for no lit part'),
+                              ({'probe': 'widgets', 'select': {'name': 'W'}, 'field': 'count', 'window': [0, 1]},
+                               'takes no window of its own')):
+            self.refused(said, play=shot(measure))
+        found = self.errors(play=shot({'probe': 'widgets', 'select': {'name': 'W'}, 'field': 'count'}, within=301))
+        self.assertTrue(found, 'within is at most 300 s')
+        self.assertTrue(self.errors(play={'name': 'p', 'seconds': 301, 'inputs': []}), 'a play lasts at most 300 s')
+        self.assertEqual(self.errors({'probe': 'widgets', 'select': {'name': 'Buy'}, 'field': 'covered', 'of': 'any',
+                                      'at': 'end'}), [])
 
     def test_inputs(self):
         def play(*inputs, **over):

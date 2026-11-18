@@ -82,7 +82,8 @@ elsewhere, `--scratch DIR` puts the copies elsewhere, `--direct` runs Unreal wit
 
 Each play is the game started with `-game`, offscreen at 960x540 and a fixed 30 fps, on the task's `play_map` (or the
 task play's own `map`), with the TaskProbe plugin sampling every 0.5 s (a task play's `every`). Each play is played once
-per side, with the measures of every probe that names it, and the measure of each one's `since` event. A play runs without sound (`-nosound -benchmark`), unless
+per side, with the measures of every probe that names it, and the measure of each one's `since` event; a named shot's
+`when` event goes to the plugin with the play's inputs, as one query it reads every frame from the shot's time. A play runs without sound (`-nosound -benchmark`), unless
 one of its measures is `audio`: then it runs with sound, muted (`-muteaudio`, with `-benchmark`'s fixed step and seed
 kept; docs/task-probes.md, section 2.16).
 
@@ -148,9 +149,11 @@ A task is **VALID** when all of this holds:
   a probe whose selector reads nothing in the reference's play (no row matched, or none had the field; a `count`, or a
   `widgets` reading combined by count, any, all or sum, reads 0 of nothing, which is an answer unless 0 fails the
   threshold on the reference), and a task play whose inputs don't land on the reference (`inputs_missed`: a click no
-  button took, a tap no widget, a stage nothing took) or whose first session there doesn't end cleanly or saves nothing
+  button took or on a button something else covers, a tap no widget, a stage nothing took, a shot whose `when` event
+  never came) or whose first session there doesn't end cleanly or saves nothing
   (`continues`). An `optional` click no button took, and a `disabled` click whose button the plugin found shown but
-  disabled, are no misses, as on the Lab. The cloud's grade of every run fails while a task holds one. An input the start's play missed while
+  disabled, are no misses, as on the Lab; a click on a covered button ("covered by another control") is a miss whatever
+  its options. The cloud's grade of every run fails while a task holds one. An input the start's play missed while
   the reference's landed fails that check on the start: the start's play didn't do what the task says.
 
 This is the cloud's own check of every task, by two scripted runs: the **no-op** (the start, untouched) must fail and
@@ -244,7 +247,10 @@ missing or malformed result, a verdict other than VALID, or a `task_digest` that
 digest establishes freshness regardless of commit dates: rebasing or amending an unchanged task needs no new check.
 Only a legacy `task-check/1` result without a digest falls back to comparing its `at` with the last commit changing
 `Tasks/<task>.json` on the tasks branch; it refuses a missing commit timestamp or a check older than that commit.
-`task-check/2` always requires a digest. Even a small content edit needs another check. Required judge and `seen`
+`task-check/2` always requires a digest. Even a small content edit needs another check. The digest binds the task
+alone, not the checker or its TaskProbe plugin: after you pull a change to either, check your tasks again before
+packaging, because a result from the earlier checker still matches an unchanged task's digest while the cloud grades
+with the new one. Required judge and `seen`
 answers must be complete before the task ships.
 
 `task_digest` is the lowercase SHA-256 of the whole task encoded as canonical JSON: sorted object keys, no spaces
@@ -377,7 +383,10 @@ threshold.
 **`task error in X: in the reference's play P, an input did not land (...): the task's own fix can't be driven by its
 play`.** The play's click, tap, wheel or stage found nothing on the reference (the play's `probe.json` lists it in
 `inputs_missed`). Drive the play by what the reference shows at that moment: the on-screen text the instruction gives,
-a wait until the screen is there, a stage on something both sides have. **`the play's input did not land: ...`** on
+a wait until the screen is there, a stage on something both sides have. A click "covered by another control" met
+something drawn over its button: close it in the play first, as a player would. A `shot_when` miss ("its event never
+happened") is a shot whose event didn't come within its `within` or by the play's end: lengthen the play, or read the
+event from what the reference really shows. **`the play's input did not land: ...`** on
 the start alone is the start failing the check (often the task's own bug: the button isn't there yet).
 
 **`task error in X: in the reference's play P, its selector {...} matched nothing in N samples: the check reads nothing

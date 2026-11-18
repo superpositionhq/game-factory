@@ -360,10 +360,18 @@ A probe names one measurement and its threshold:
   that reaches a state where the control always shows, and mark the click optional only when neither will do.
 - **A click on a button the game disables by design (a locked choice) is `"disabled": true`.** It lands when that
   button is shown but disabled and does nothing, as a player's click on it; unmarked, a click on a disabled button is
-  a miss. Until the probe plugin reports a disabled button, such a click is still a miss (docs/task-probes.md, 1.4).
+  a miss, since a click the task relies on must reach a control that works (docs/task-probes.md, 1.4).
+- **A click needs no scroll step, and nothing may cover its button.** A click scrolls its button's own scroll box to
+  it before pressing, as a player does, so write no cursor and wheel steps for it. A button something else is drawn
+  over is not pressed: the click is a miss, "covered by another control", that no option excuses, because a player's
+  press there would not reach it either. Close what covers it in the play first, the way a player would.
+- **A shot of a moment whose time varies between builds says `when`** (an event as `since` takes one; within the
+  play's 300 s): the picture is taken in the first frame the event holds, so a judge sees the moment on every build.
+  Its event reads widgets `count` or `visible`, or actors `count`, `x`, `y`, `z`, `hidden` or a `prop:` member, which
+  the probe can read every frame; a shot whose event never comes is a missed input (docs/task-probes.md, 1.1).
 - `measure.probe`: `pawn` (track: x/y/z/speed/moved/dist), `camera` (distance/height/pitch/fov/occluded/
   pawn_on_screen), `actors` (select by class, tag, name, near; count, transform, extent, hidden, collision, speed,
-  `prop:<Component>.<Property>` by reflection), `widgets` (the drawn widgets of a name or class: visible, text, percent, has_brush), `ui` (what the HUD
+  `prop:<Component>.<Property>` by reflection), `widgets` (the drawn widgets of a name or class: visible, text, percent, has_brush, covered), `ui` (what the HUD
   shows, whatever draws it: text, count, place of UMG, Slate and canvas elements alike;
   signature with agg changes for a readout that updates; number and clock for which way a readout or a timer
   moved, with agg rises/falls), `drawn` (what is drawn near a point or along a line, rendered: drawn, motion, base
@@ -563,9 +571,9 @@ already has, moving the way the ask says); `speed` combined by `count` (a count 
 a staged foe or target out of reach of the attack the play makes; a literal threshold the reference misses when the
 instruction states no number (calibrate between the start and the reference instead); a click at a point of the
 screen where a click by the control's name or on-screen text would do (another layout puts the control elsewhere); a
-press at a point on a control below the visible part of a scrolling list or panel (a tap, a cursor click, or a click
-on a button the game builds in Slate, which is pressed at its centre on the screen: scroll first, with a `cursor` over
-the list, then `wheel` notches, then the press; a click on a UMG button fires the button itself and needs no scroll); a
+press at a point on a control below the visible part of a scrolling list or panel (a tap or a cursor click: scroll
+first, with a `cursor` over the list, then `wheel` notches, then the press; a click by the button's name or text
+scrolls to it by itself and needs no scroll); a
 click
 on a control that shows only in some states, such as a confirmation that appears only when a save exists, left
 unmarked (start the play `fresh` or reach a state where the control always shows; mark the click `optional` only when
@@ -666,7 +674,7 @@ Read each task this way:
   also fails fewer than 4 game-changing commits from `seed.commit` to `seed.reference`, and any required probe that
   names a class, tag, map or asset the reference has and the start doesn't (section 5). These are floors, not targets:
   pick the longest threads the history has. It also refuses every shape the cloud grader refuses: a select that names
-  nothing to pick by, a window outside 0-120 s, `to_angle` on a field that isn't an angle, `match` on a field that
+  nothing to pick by, a window outside 0-300 s, `to_angle` on a field that isn't an angle, `match` on a field that
   holds no text, a regular expression that doesn't compile, a wheel or mouse move that moves nothing, and the like;
   its message says which.
 - **Judge difficulty in the session; never run the task with another agent** (owner, 2026-11-05: the try took up to

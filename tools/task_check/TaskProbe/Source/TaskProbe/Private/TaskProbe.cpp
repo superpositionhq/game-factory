@@ -245,9 +245,9 @@ void UTaskProbe::LoadInputs(const FString& Path)
 				continue;
 			}
 			(*Obj)->TryGetNumberField(TEXT("hold"), K.Press);
-			K.Press = FMath::Clamp(K.Press, 0.0, 120.0);
+			K.Press = FMath::Clamp(K.Press, 0.0, 300.0);
 			(*Obj)->TryGetNumberField(TEXT("over"), K.Over);
-			K.Over = FMath::Clamp(K.Over, 0.0, 120.0);
+			K.Over = FMath::Clamp(K.Over, 0.0, 300.0);
 		}
 		else if ((*Obj)->TryGetObjectField(TEXT("pin"), Target) && Target->IsValid())
 		{
@@ -323,6 +323,15 @@ void UTaskProbe::LoadInputs(const FString& Path)
 				continue;
 			}
 			K.Kind = EScriptedKind::Shot;
+			const TSharedPtr<FJsonObject>* WhenObj = nullptr;
+			if ((*Obj)->TryGetObjectField(TEXT("when"), WhenObj) && WhenObj->IsValid())
+			{
+				K.When = *WhenObj;  // taken in the first frame its event holds (Watch)
+				if (!Watcher)
+				{
+					Watcher = MakeShared<FTaskProbeQueries>();
+				}
+			}
 		}
 		else if ((*Obj)->TryGetStringField(TEXT("map"), K.Map))
 		{
@@ -363,7 +372,7 @@ void UTaskProbe::LoadInputs(const FString& Path)
 			K.Kind = EScriptedKind::Move;
 			K.Move = FVector2D(FMath::Clamp(By[0], -5000.0, 5000.0), FMath::Clamp(By[1], -5000.0, 5000.0));
 			(*Obj)->TryGetNumberField(TEXT("over"), K.Over);
-			K.Over = FMath::Clamp(K.Over, 0.0, 120.0);
+			K.Over = FMath::Clamp(K.Over, 0.0, 300.0);
 		}
 		else if ((*Obj)->TryGetStringField(TEXT("key"), Name))
 		{
@@ -474,6 +483,27 @@ void UTaskProbe::SendInput(const FScriptedKey& K, UWorld* World, APlayerControll
 				break;
 			}
 		}
+		if (!K.Key.IsMouseButton() && FSlateApplication::IsInitialized())
+		{
+			// a menu that has the keyboard focus (a Slate or UMG widget, not the game viewport) gets the key first,
+			// as a player's keyboard gives it (game grader 1.17.0: a menu that reads keys in OnKeyDown); a
+			// key it doesn't take goes on to the player controller, as before
+			const TSharedPtr<SWidget> Focused = FSlateApplication::Get().GetKeyboardFocusedWidget();
+			const TSharedPtr<SViewport> Viewport = GameViewportWidget();
+			if (Focused.IsValid() && Focused != StaticCastSharedPtr<SWidget>(Viewport))
+			{
+				const FKeyEvent Event(K.Key, FModifierKeysState(), 0, false, 0, 0);
+				const bool bHandled = K.bPress ? FSlateApplication::Get().ProcessKeyDownEvent(Event)
+					: FSlateApplication::Get().ProcessKeyUpEvent(Event);
+				UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: %s %s to the focused %s through Slate: %s"), *K.Key.ToString(),
+					K.bPress ? TEXT("press") : TEXT("release"), *Focused->GetTypeAsString(),
+					bHandled ? TEXT("handled") : TEXT("unhandled, sent to the player controller"));
+				if (bHandled)
+				{
+					break;
+				}
+			}
+		}
 		PC->InputKey(FInputKeyEventArgs::CreateSimulated(K.Key, K.bPress ? IE_Pressed : IE_Released, K.bPress ? 1.f : 0.f));
 		break;
 	case EScriptedKind::Axis:
@@ -482,6 +512,10 @@ void UTaskProbe::SendInput(const FScriptedKey& K, UWorld* World, APlayerControll
 	case EScriptedKind::Click:
 		if (UButton* Button = TaskProbe::FindButton(World, K.Widget))
 		{
+			if (ScrolledOrCovered(K, Button->GetCachedWidget(), FString::Printf(TEXT("%s (%s)"), *Button->GetName(), *Button->GetClass()->GetName())))
+			{
+				break;
+			}
 			// what a player's click on the button fires: pressed, released, clicked
 			Button->OnPressed.Broadcast();
 			Button->OnReleased.Broadcast();
@@ -490,8 +524,19 @@ void UTaskProbe::SendInput(const FScriptedKey& K, UWorld* World, APlayerControll
 		}
 		else if (!ClickSlate(K))
 		{
-			UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: no visible button matches '%s'"), *K.Widget);
-			Missed(K, TEXT("click"), K.Widget, TEXT("no visible button matches it, UMG or Slate"));
+			FString Disabled;
+			if (TaskProbe::DisabledButtonShown(World, K.Widget, Disabled))
+			{
+				// a button the game disabled: the click does nothing, as a player's (game grader 1.14.0: a click that
+				// says `disabled` has landed on it; any other is a miss, as before)
+				UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: button %s matches '%s' but is disabled"), *Disabled, *K.Widget);
+				Missed(K, TEXT("click"), K.Widget, FString::Printf(TEXT("a button matches it (%s), shown but disabled: the click does nothing"), *Disabled));
+			}
+			else
+			{
+				UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: no visible button matches '%s'"), *K.Widget);
+				Missed(K, TEXT("click"), K.Widget, TEXT("no visible button matches it, UMG or Slate"));
+			}
 		}
 		break;
 	case EScriptedKind::Cursor:
@@ -511,6 +556,17 @@ void UTaskProbe::SendInput(const FScriptedKey& K, UWorld* World, APlayerControll
 		const bool bHandled = FSlateApplication::Get().ProcessMouseMoveEvent(Move);
 		CursorAbsolute = Absolute;
 		bCursorSet = true;
+		// the viewport's own mouse position too (game grader 1.17.0): a game that reads where the mouse is from its
+		// player controller (a HUD's hit boxes, a menu painted on a canvas) found it at 0,0 when Slate's move didn't
+		// reach the viewport
+		if (const UGameViewportClient* GVC = GEngine ? GEngine->GameViewport.Get() : nullptr)
+		{
+			if (GVC->Viewport)
+			{
+				const FIntPoint Size = GVC->Viewport->GetSizeXY();
+				PC->SetMouseLocation(FMath::RoundToInt(K.Cursor.X * Size.X), FMath::RoundToInt(K.Cursor.Y * Size.Y));
+			}
+		}
 		float MX = -1.f, MY = -1.f;
 		const bool bMouse = PC->GetMousePosition(MX, MY);
 		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: cursor to (%.3f, %.3f) = absolute (%.0f, %.0f), Slate %s, player mouse %s (%.0f, %.0f)"),
@@ -553,6 +609,12 @@ void UTaskProbe::SendInput(const FScriptedKey& K, UWorld* World, APlayerControll
 		// with the UI, as the evenly spaced screenshots: what the player sees at that moment (the inputs after it wait
 		// until its frame is drawn: NamedShotWaiting)
 		const FString File = FString::Printf(TEXT("shot_%s.png"), *K.Shot);
+		if (K.When.IsValid())  // its event's: read every frame from now on (Watch)
+		{
+			Watches.Add(FWatch{static_cast<int32>(&K - Inputs.GetData()), Elapsed});
+			UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: screenshot %s waits for its event from %.2f s"), *File, Elapsed);
+			break;
+		}
 		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: screenshot %s at %.2f s"), *File, Elapsed);
 		AskShot(File, static_cast<int32>(&K - Inputs.GetData()));
 		break;
@@ -815,6 +877,10 @@ bool UTaskProbe::ClickSlate(const FScriptedKey& K)
 	{
 		return false;
 	}
+	if (ScrolledOrCovered(K, Button, Label))
+	{
+		return true;
+	}
 	const TSharedPtr<SViewport> Viewport = GameViewportWidget();
 	const bool bViewportCaptured = Viewport.IsValid() && Viewport->HasMouseCapture();
 	FSlateApplication& Slate = FSlateApplication::Get();
@@ -839,6 +905,72 @@ bool UTaskProbe::ClickSlate(const FScriptedKey& K)
 			bViewportCaptured ? TEXT(" (the game viewport holds the mouse captured)") : TEXT(" (covered, or Slate found no window there)")));
 	}
 	return true;
+}
+
+bool UTaskProbe::ScrolledOrCovered(const FScriptedKey& K, const TSharedPtr<SWidget>& Control, const FString& Label)
+{
+	// scrolled out of its own scroll areas' view: scrolled to, as a player does, and clicked in the next frame once the
+	// layout has followed (game grader 1.16.0); once only
+	FString Areas;
+	if (!K.bScrolled && TaskProbe::ScrollIntoView(Control, Areas))
+	{
+		FScriptedKey Next = K;
+		Next.bScrolled = true;
+		Again.Add(Next);
+		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: scrolled %s to show %s for the click on '%s'"), *Areas, *Label, *K.Widget);
+		return true;
+	}
+	// a press at its centre lands on something else drawn over it: nothing is pressed
+	FString Over;
+	if (TaskProbe::CoverAt(Control, Over) == 1)
+	{
+		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: %s matches '%s', but %s is over it: not clicked"), *Label, *K.Widget, *Over);
+		Missed(K, TEXT("click"), K.Widget, TEXT("covered by another control"));
+		return true;
+	}
+	return false;
+}
+
+void UTaskProbe::Watch(UWorld* World, APlayerController* PC, bool bEnded)
+{
+	TArray<FWatch> Left;
+	for (const FWatch& W : Watches)
+	{
+		const FScriptedKey& K = Inputs[W.Input];
+		const TSharedPtr<FJsonObject>& E = K.When;
+		double Within = 0.0;
+		const bool bWithin = E->TryGetNumberField(TEXT("within"), Within);
+		if (bEnded || (bWithin && Elapsed > W.Start + Within + 1e-6))
+		{
+			Missed(K, TEXT("shot_when"), K.Shot, TEXT("its event never happened"));
+			continue;
+		}
+		const TSharedPtr<FJsonObject>* Query = nullptr;
+		FString Field, Of, Match, Op;
+		double Value = 0.0, Read = 0.0;
+		E->TryGetObjectField(TEXT("query"), Query);
+		E->TryGetStringField(TEXT("field"), Field);
+		E->TryGetStringField(TEXT("of"), Of);
+		E->TryGetStringField(TEXT("match"), Match);
+		E->TryGetStringField(TEXT("op"), Op);
+		E->TryGetNumberField(TEXT("value"), Value);
+		bool bHolds = false;
+		if (Watcher && Query && Watcher->ReadNow(*Query, Field, Of, Match, World, PC, Read))
+		{
+			const bool bEqual = FMath::IsNearlyEqual(Read, Value, 1e-9);
+			bHolds = Op == TEXT(">") ? Read > Value : Op == TEXT(">=") ? Read >= Value : Op == TEXT("<") ? Read < Value
+				: Op == TEXT("<=") ? Read <= Value : Op == TEXT("==") ? bEqual : Op == TEXT("!=") ? !bEqual : false;
+		}
+		if (bHolds)
+		{
+			const FString File = FString::Printf(TEXT("shot_%s.png"), *K.Shot);
+			UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: screenshot %s at %.2f s: its event came (%s reads %g)"), *File, Elapsed, *Field, Read);
+			AskShot(File, W.Input);
+			continue;
+		}
+		Left.Add(W);
+	}
+	Watches = MoveTemp(Left);
 }
 
 void UTaskProbe::SendWheel(const FScriptedKey& K)
@@ -1027,8 +1159,7 @@ bool UTaskProbe::Tick(float DeltaTime)
 		return false;
 	}
 #if PLATFORM_LINUX && WITH_EDITOR
-	// A game run's Linux VM plays in the editor's -game on a fresh shader cache (Lab's docs/planning/2026-10-29_game-runs-linux/
-	// spec.md section 3.4): shader compiles still pending are finished each tick, which 5.7.4's synchronous mode
+	// A play on Linux runs in the editor's -game on a fresh shader cache: shader compiles still pending are finished each tick, which 5.7.4's synchronous mode
 	// would otherwise assert on
 	if (GShaderCompilingManager && GShaderCompilingManager->IsCompiling())
 	{
@@ -1093,10 +1224,24 @@ bool UTaskProbe::Tick(float DeltaTime)
 	// inputs wait for a player controller (e.g. during a map travel)
 	// (a wait holds the inputs after it until it is over; a named shot holds them until its frame is drawn, but for
 	// another named shot, which is the same frame)
-	while (PC && !bWaiting && NextInput < Inputs.Num() && Inputs[NextInput].Time <= Elapsed
+	// a click whose control was scrolled into view last frame is made now, before any later input (game grader 1.16.0)
+	if (PC && !bWaiting && Again.Num() > 0)
+	{
+		const TArray<FScriptedKey> Now = MoveTemp(Again);
+		Again.Reset();
+		for (const FScriptedKey& K : Now)
+		{
+			SendInput(K, World, PC);
+		}
+	}
+	while (PC && !bWaiting && Again.Num() == 0 && NextInput < Inputs.Num() && Inputs[NextInput].Time <= Elapsed
 		&& (Inputs[NextInput].Kind == EScriptedKind::Shot || !NamedShotWaiting()))
 	{
 		SendInput(Inputs[NextInput++], World, PC);
+	}
+	if (PC && Watches.Num() > 0)
+	{
+		Watch(World, PC, false);
 	}
 	// mouse movements spread over time: the part due by now
 	for (FMoving& M : Moving)
@@ -1180,6 +1325,12 @@ void UTaskProbe::Finish(const FString& Reason)
 {
 	bDone = true;
 	LiftTouches();
+	Watch(nullptr, nullptr, true);
+	for (const FScriptedKey& K : Again)
+	{
+		Missed(K, TEXT("click"), K.Widget, TEXT("its scroll area was scrolled to it, but the play ended before the press"));
+	}
+	Again.Reset();
 	UGameInstance* GI = GetGameInstance();
 	UWorld* World = GI ? GI->GetWorld() : nullptr;
 	const TSharedRef<FJsonObject> Out = MakeShared<FJsonObject>();

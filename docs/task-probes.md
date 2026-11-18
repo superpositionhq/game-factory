@@ -64,7 +64,8 @@ Words used here:
               {"t": 8.0, "widget": "RetryButton", "click": true}]}
   ```
   - `name`: not `look`, `drive`, `editor` or `trace`. Plays with the same name in one task must be identical.
-  - `seconds`: 5-120. No input at or after the end.
+  - `seconds`: 5-300. No input at or after the end; every time in a play (an input's `t`, a hold, a move's or a
+    drag's spread, a window, an event's `within`) is at most 300 s too.
   - `every`: the sampling step, 0.1-1.0 s (default 0.5).
   - `map` (optional): the map and URL options this play opens instead of the task's `play_map`.
   - `args` (optional): game flags on the play's command line, `-Name` or `-Name=value` (name: letters and digits;
@@ -74,16 +75,21 @@ Words used here:
     (any flag starting with `-TaskProbe`, the TaskProbe plugin's; `tools/validate-game.py` lists what it refuses).
   - `inputs`, each at time `t` (seconds of play):
     - a key: `{"t": 1.0, "key": "W", "press": true}` and later `"press": false` (Unreal key names: W, A, D, SpaceBar,
-      LeftShift, LeftMouseButton, F2, Escape, ...);
+      LeftShift, LeftMouseButton, F2, Escape, ...). A keyboard key goes first to the widget that has the keyboard focus
+      when that is not the game viewport (a menu that reads keys itself), as a player's keyboard gives it, and on to the
+      player controller only when that widget doesn't take it;
     - an axis event: `{"t": 2.0, "key": "MouseX", "axis": 4.0}` (MouseX, MouseY, Gamepad_LeftX, ...; see the lessons
       on mouse axes in section 5);
     - a widget click: `{"t": 6.0, "widget": "RetryButton", "click": true}` clicks the first visible button widget of that
       name or class, as a player would; `widget` may also be the button's on-screen text exactly as shown, spaces and
       punctuation included (`"widget": "New expedition"`). `"optional": true`: no miss when no button matches it (a
       control that shows only in some states, section 1.4). `"disabled": true`: a click on a button the game disables
-      by design (a locked choice); it has landed when that button is shown but disabled, and does nothing;
-    - the cursor: `{"t": 1.0, "cursor": [0.5, 0.6]}` moves the mouse cursor to a viewport point (fractions 0-1); a
-      following `LeftMouseButton` press clicks there;
+      by design (a locked choice); it has landed when that button is shown but disabled, and does nothing. A button
+      outside its own scroll box's view is scrolled to first, and a button something else is drawn over is not
+      pressed: a miss (section 1.4);
+    - the cursor: `{"t": 1.0, "cursor": [0.5, 0.6]}` moves the mouse cursor to a viewport point (fractions 0-1), both
+      the pointer the UI sees and the game's own mouse position; a following `LeftMouseButton` press clicks there,
+      whether the UI's button or a hit box the game paints itself (a canvas menu, a HUD);
     - a teleport: `{"t": 0.2, "teleport": [x, y, z], "yaw": 90}` places the player pawn (cm, facing `yaw`): the way
       to reach a test spot;
     - a teleport next to an actor: `{"t": 0.2, "teleport_to": <actor select>, "distance": 200, "offset": [x, y, z],
@@ -91,7 +97,7 @@ Words used here:
       the pawn's side and level with it, plus `offset` (default none), facing `face` (a point, section 2.13) or else
       that actor; the engine's teleport then finds a free spot near there. The way to reach a spot each build chooses
       itself (the ore a fix placed, a door it moved). No match: nothing happens (the play's log says so);
-    - holding the pawn there: `"hold": 5` on a `teleport` or `teleport_to` (seconds, up to 120) puts the pawn back at
+    - holding the pawn there: `"hold": 5` on a `teleport` or `teleport_to` (seconds, up to 300) puts the pawn back at
       the spot (its location; its view stays free) after every tick of the world for that many seconds of play, after
       the game's own tick. For a game that sets its player's ground position every tick, which would otherwise undo
       a teleport at once. Without `hold`, a teleport places the pawn once, as before;
@@ -101,11 +107,19 @@ Words used here:
       keeps running, paced to real time (each frame waits for the wall clock to catch up with the game's own time),
       until `wait` real seconds and `wait` seconds of game time have both passed; nothing is sampled, sent or
       screenshot meanwhile; then the play goes on from `t`. A play's waits add at most 300 s in all, and its timeout
-      grows by them; `seconds`, windows and `at` stay in play time, within 120 s;
+      grows by them; `seconds`, windows and `at` stay in play time, within 300 s;
     - a named screenshot: `{"t": 6.0, "shot": "pause_menu"}` (a letter or `_` first, then letters, digits, `_`; up to
       32) takes `shot_pause_menu.png` at that moment, with the UI, beside the evenly spaced ones. Each name once in a
       play, 20 at most. A picture never passes or fails anything by itself: it is for a judge (section 3.2), for a
-      `seen` probe that reads its text (section 2.22) and for whoever reviews a run;
+      `seen` probe that reads its text (section 2.22) and for whoever reviews a run. A shot of a moment whose time
+      varies between builds says `when`, an event as a measure's `since` has one (section 2.1):
+      `{"t": 2.0, "shot": "result", "when": {"measure": {"probe": "widgets", "select": {"name": "ResultPanel"},
+      "field": "count"}, "expect": {"op": ">=", "value": 1}, "within": 60}}` is taken in the first frame at or after
+      `t` at which the event holds. The probe reads the event itself every frame, so its measure reads only what is
+      cheap to read then: `widgets` `count` or `visible`, or `actors` `count`, `x`, `y`, `z`, `hidden` or a `prop:`
+      member, with no `to_angle`, `to_axis` or `has.lit`, and never `ui`. A shot whose event doesn't come within
+      `within` seconds of its `t` (or, without `within`, by the play's end) is a missed input of kind `shot_when`,
+      "its event never happened": its play's inputs didn't land, as any other miss;
     - a map travel: `{"t": 10.0, "map": "/Game/Maps/L_Yard?Scenario=2"}` opens that map with its options, as the game's
       own travel does. The play's clock runs on through the load; inputs and samples wait for the new world's player;
     - a view turn: `{"t": 10.5, "view": [-15, 90]}` turns the player's view (its control rotation) to that pitch and yaw
@@ -199,6 +213,7 @@ reference misses too):
 - `{"t", "set": "<property path>", "on": <select>, "value": v, "all": bool}`: a start-named property written to set a
   fight up (a foe's health at 1, the player's high), never to decide what the check reads.
 - `where` in any actor select: `[{"prop": "<path>", "op": "==", "value": v}]` (only foes not dead, a bay's group);
+  a number compares as itself (`"value": 2` matches a member that reads 2, never one that reads 1), a boolean as 1 or 0;
   `"player": false`: anything but the player. `set` and `where` only on members the task does not ask to change.
 
 **Read it deterministically**, in a probe one sentence explains:
@@ -232,16 +247,20 @@ its text, tag or type. Every input that didn't land (a click no button took, a w
 received, a stage nothing took, a named shot whose file wasn't written) is listed in probe.json `inputs_missed`, and
 `screenshots` lists only files written; two named shots asked in one frame are one capture, the second a copy.
 
-A `click` on a UMG button fires that button's own pressed, released and clicked events, wherever it sits on screen. A
-Slate button, a `tap`, and a mouse button after a `cursor` are pressed at a point of the screen, so a control below
-the visible part of a scrolling list or panel is scrolled into view first: a `cursor` over the list, `wheel` notches,
-then the press. A click no button takes is a miss, unless it is marked `"optional": true`: mark a click optional only
+A `click` reaches its button as a player's would. A button that lies outside the view of its own scroll box (a UMG
+ScrollBox or a Slate SScrollBox) is scrolled into view first and clicked in the next frame, the inputs after it waiting
+that frame: write no scroll step for it, since the click does what a player does before pressing. A button something
+else is drawn over, where a press at its centre would land on that other control instead, is not pressed: a miss,
+"covered by another control", that neither `optional` nor `disabled` excuses, since a player's press there would not
+reach it either. A `tap` and a mouse button after a `cursor` are pressed at a point of the screen, so for them a
+control below the visible part of a scrolling list is scrolled into view by the play itself: a `cursor` over the list,
+`wheel` notches, then the press. A click no button takes is a miss, unless it is marked `"optional": true`: mark a click optional only
 when its control may or may not show in a correct game (a confirmation that appears only when a save exists), never to
 cover a control the task asks for, and still prefer a play that reaches a state where it always shows (`fresh`, section
-1.1). A click marked `"disabled": true` is on a button the game disables by design; it also lands when the button is
-shown but disabled (and does nothing, as a player's click on it), and is still a miss when no such button shows.
-Without the mark a click on a disabled button is a miss, as before. The plugin says "shown but disabled" for such a click only from a later plugin version; until then a
-`disabled` click on a disabled button is a miss here too.
+1.1). A click on a button the game shows but disables is reported "shown but disabled". A click marked `"disabled":
+true` is on a button the game disables by design: it lands when the button is shown but disabled and does nothing, as
+a player's click on it, and it is still a miss when no such button shows. Without the mark a click on a disabled button
+is a miss: a click the task relies on must reach a control that works.
 
 ### 1.5 Touches
 
@@ -520,11 +539,15 @@ Limits:
   a widget and a build that removes it read the same. `"visible": true` says the same as saying nothing.
   `"visible": false` matches them drawn or not, for a check that really means "exists while hidden". A measure of the
   `visible` field itself, with no `visible` in its select, matches them drawn or not too (it reads which are drawn).
-  With `of` `count`, `any`, `all` or `sum`, a select nothing drawn matches reads 0. "Drawn" is the widget's and its
-  parents' visibility and opacity: a widget outside the viewport, of zero size or covered by another still counts.
+  With `of` `count`, `any`, `all` or `sum`, a select nothing drawn matches reads 0. "Drawn" is the widget's and every
+  parent's visibility and opacity, the Slate widgets that hold it included (a panel the game collapsed in Slate hides
+  what is inside it, whatever the widget's own visibility says): a widget outside the viewport, of zero size or covered
+  by another still counts.
   (The Lab's game grader reads it this way since 1.9.0; before, a select without `visible` matched them drawn or
   not.)
-- `field`: `count`; `visible` (visible, and its parents visible); `text` (a TextBlock's text, with `match`); `percent`
+- `field`: `count`; `visible` (visible, and every parent visible, Slate's included); `covered` (1 when a press at the
+  widget's centre would land on something else drawn over it, 0 when it reaches the widget, no value when that can't be
+  told: not drawn, outside the viewport or outside its scroll box's view); `text` (a TextBlock's text, with `match`); `percent`
   (a ProgressBar); `has_brush` (an Image's brush resource is set); `brush` (the brush resource's path, with `match`);
   `x`, `y`, `w`, `h` (the widget's rectangle in viewport fractions 0-1, from its cached geometry, whatever anchor or
   offset placed it).

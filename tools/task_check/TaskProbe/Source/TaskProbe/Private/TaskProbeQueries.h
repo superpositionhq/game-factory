@@ -208,6 +208,18 @@ UButton* FindButton(UWorld* World, const FString& Want);
  *  LabelKey makes them, so "New_expedition" names the button whose text reads "New expedition". Null when none.
  *  OutCentre: its centre in Slate's absolute space; OutLabel: what matched, for the log. */
 TSharedPtr<SWidget> FindSlateButton(const FString& Want, FVector2D& OutCentre, FString& OutLabel);
+/** Whether a button Want names (a UMG button by name or class, a Slate button as FindSlateButton names it) is shown
+ *  but disabled: a click on it does nothing, as a player's would (game grader 1.14.0). OutLabel: which, for the log. */
+bool DisabledButtonShown(UWorld* World, const FString& Want, FString& OutLabel);
+/** Whether a press at a widget's centre reaches it (game grader 1.16.0): 0 when Slate's
+ *  hit test there finds the widget or one inside it, 1 when it finds another widget over it (OutOver: what, for the
+ *  log), -1 when it can't be told (not drawn, of no size, its centre outside the game viewport or outside a scroll area
+ *  above it, no window there). */
+int32 CoverAt(const TSharedPtr<SWidget>& Target, FString& OutOver);
+/** A widget whose centre lies outside the view of the scroll boxes above it (SScrollBox, as UMG's UScrollBox draws one)
+ *  scrolled into each one's view, innermost first, at once (no animation): what a player does before clicking it
+ *  (game grader 1.16.0). Whether any was scrolled; OutAreas: which, for the log. The layout follows on the next frame. */
+bool ScrollIntoView(const TSharedPtr<SWidget>& Target, FString& OutAreas);
 /** The centre, in Slate's absolute space, of the first visible, laid-out UMG widget in the viewport whose name
  *  (wildcard) or class matches, whatever its kind (a button, a stick, a panel); else of the Slate button
  *  FindSlateButton finds. Where a touch on that widget lands. */
@@ -310,6 +322,11 @@ public:
 	/** Every frame of the play, before the world ticks (only with an audio query): the sounds that started since the
 	 *  last frame, at play time T (audio's started fields). */
 	void Listen(UWorld* World, double T);
+	/** One reading, now, of a shot's `when` (game grader 1.16.0): query `Def` (an actors or widgets query as the
+	 *  queries file names one) sampled once, its rows' `Field` reduced by `Of` (count: how many match; any, all, count,
+	 *  sum, min, max, mean, first of the rows' values; text by `Match`). False when it reads no value. */
+	bool ReadNow(const TSharedPtr<FJsonObject>& Def, const FString& Field, const FString& Of, const FString& Match,
+		UWorld* World, APlayerController* PC, double& OutValue);
 
 private:
 	struct FQuery

@@ -289,7 +289,7 @@ class Project:
                  f"-TaskProbeSeconds={seconds}", f"-TaskProbeShots={shots}", f"-log={LOG_NAME}"]
         if inputs:
             keys = out / "inputs.json"
-            keys.write_text(json.dumps(inputs), encoding="utf-8")
+            keys.write_text(json.dumps(probes.probe_inputs(inputs)), encoding="utf-8")
             argv.append(f"-TaskProbeInputs={keys}")
         if queries:  # beside the play's folder, so it isn't one of the files the play wrote
             asked = out.parent / "queries.json"

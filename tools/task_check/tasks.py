@@ -191,7 +191,7 @@ def measure(m):
 
 
 def event(e):
-    """A measure's `since` event with its measure's defaults filled in and `within` (None when unset): the first
+    """A measure's `since` event or a shot's `when` with its measure's defaults filled in and `within` (None when unset): the first
     sample of the play at which that measure, read as one sample, meets the literal `expect` (probes.event_time)."""
     return {"measure": measure(e["measure"]), "expect": {"op": e["expect"]["op"], "value": float(e["expect"]["value"])},
             "within": float(e["within"]) if e.get("within") is not None else None}
@@ -206,7 +206,7 @@ def inputs(rows):
     """A task play's inputs as the plugin reads them: keys, axes, clicks, cursor moves, teleports (`yaw` 0 when
     unset: a teleport always turns the pawn), teleports next to an actor (`distance` 200 and `offset` 0 when unset,
     `face` only when set), either with `hold` only when set, waits in real time, named shots, map travels, view
-    turns, wheel notches, mouse movement, and the stages of a contact (docs/task-probes.md, section 1.3): an actor
+    turns (a named shot's `when` with its defaults), wheel notches, mouse movement, and the stages of a contact (docs/task-probes.md, section 1.3): an actor
     pinned (`front` and `at` only when set), the engine's damage call, a start-named property set; and touches (`tap`,
     `drag`: section 1.5)."""
     out = []
@@ -221,8 +221,10 @@ def inputs(rows):
             row.update(teleport=_floats(r["teleport"]), yaw=float(r.get("yaw", 0.0)))
         elif "wait" in r:
             row.update(wait=float(r["wait"]))
-        elif "shot" in r:
+        elif "shot" in r:  # `when` only when set: its event with its measure's defaults (probes.probe_inputs)
             row.update(shot=r["shot"])
+            if r.get("when") is not None:
+                row["when"] = event(r["when"])
         elif "map" in r:
             row.update(map=r["map"])
         elif "view" in r:

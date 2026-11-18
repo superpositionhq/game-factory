@@ -96,7 +96,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 120,
+                "maximum": 300,
                 "minimum": 0,
                 "type": "number"
               },
@@ -467,7 +467,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 120,
+                "maximum": 300,
                 "minimum": 0,
                 "type": "number"
               },
@@ -644,7 +644,7 @@
           "type": "string"
         },
         "t": {
-          "maximum": 120,
+          "maximum": 300,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -819,7 +819,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 120,
+                "maximum": 300,
                 "minimum": 0,
                 "type": "number"
               },
@@ -922,7 +922,7 @@
     },
     "Click": {
       "additionalProperties": false,
-      "description": "A click on the first visible button widget of that name or class, as a player would: a UMG button by its name or\nclass, else a Slate button (a game's own `SNew(SButton)` UI) by its text, tag or type, names and captions compared\nalike in lower case with every run of other characters one `_` (\"New_expedition\" clicks a button reading \"New\nexpedition\"), pressed at its centre through Slate (probes.md 2m). A click no button takes is a miss the play\nreports. Since 1.14.0 `widget` may be the button's on-screen text as shown,\nspaces and punctuation included (\"New expedition\"); `optional`: a click whose button may not be shown (a\nconfirmation that appears only when a save exists) is no miss when no button matches it; `disabled`: a click on a\nbutton the game disables by design (a locked choice) has landed when that button is shown disabled (the plugin\nsays so: \"shown but disabled\"), and does nothing, as a player's click on it.",
+      "description": "A click on the first visible button widget of that name or class, as a player would: a UMG button by its name or\nclass, else a Slate button (a game's own `SNew(SButton)` UI) by its text, tag or type, names and captions compared\nalike in lower case with every run of other characters one `_` (\"New_expedition\" clicks a button reading \"New\nexpedition\"), pressed at its centre through Slate (probes.md 2m). A click no button takes is a miss the play\nreports. Since 1.14.0 `widget` may be the button's on-screen text as shown,\nspaces and punctuation included (\"New expedition\"); `optional`: a click whose button may not be shown (a\nconfirmation that appears only when a save exists) is no miss when no button matches it; `disabled`: a click on a\nbutton the game disables by design (a locked choice) has landed when that button is shown disabled (the plugin\nsays so: \"shown but disabled\"), and does nothing, as a player's click on it.\nSince 1.16.0 a button scrolled out of its own scroll boxes' view is scrolled into it first and clicked in the next\nframe, as a player scrolls to it; one something else is drawn over, where a press at its centre would land on that\ninstead, is not clicked: a miss, \"covered by another control\", that neither option excuses.",
       "properties": {
         "click": {
           "const": true,
@@ -956,7 +956,7 @@
           "title": "Optional"
         },
         "t": {
-          "maximum": 120,
+          "maximum": 300,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -1175,7 +1175,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 120,
+                "maximum": 300,
                 "minimum": 0,
                 "type": "number"
               },
@@ -1311,7 +1311,7 @@
     },
     "Cursor": {
       "additionalProperties": false,
-      "description": "The mouse cursor moved to a viewport point (fractions 0-1); a following LeftMouseButton press clicks there.",
+      "description": "The mouse cursor moved to a viewport point (fractions 0-1); a following LeftMouseButton press clicks there.\nSince 1.17.0 the viewport's own mouse position goes there too, where a game reads it from its player controller (a\nHUD's hit boxes, a menu painted on a canvas).",
       "properties": {
         "cursor": {
           "items": {
@@ -1325,7 +1325,7 @@
           "type": "array"
         },
         "t": {
-          "maximum": 120,
+          "maximum": 300,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -1360,7 +1360,7 @@
           "default": null
         },
         "t": {
-          "maximum": 120,
+          "maximum": 300,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -1422,7 +1422,7 @@
           "anyOf": [
             {
               "exclusiveMinimum": 0,
-              "maximum": 120,
+              "maximum": 300,
               "type": "number"
             },
             {
@@ -1436,7 +1436,7 @@
           "anyOf": [
             {
               "exclusiveMinimum": 0,
-              "maximum": 120,
+              "maximum": 300,
               "type": "number"
             },
             {
@@ -1447,7 +1447,7 @@
           "title": "Over"
         },
         "t": {
-          "maximum": 120,
+          "maximum": 300,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -1498,7 +1498,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 120,
+                "maximum": 300,
                 "minimum": 0,
                 "type": "number"
               },
@@ -1719,7 +1719,7 @@
           "anyOf": [
             {
               "exclusiveMinimum": 0,
-              "maximum": 120,
+              "maximum": 300,
               "type": "number"
             },
             {
@@ -1828,7 +1828,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 120,
+                "maximum": 300,
                 "minimum": 0,
                 "type": "number"
               },
@@ -1974,7 +1974,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 120,
+                "maximum": 300,
                 "minimum": 0,
                 "type": "number"
               },
@@ -2311,7 +2311,7 @@
     },
     "Key": {
       "additionalProperties": false,
-      "description": "A key pressed or released (Unreal key names: W, SpaceBar, LeftMouseButton).",
+      "description": "A key pressed or released (Unreal key names: W, SpaceBar, LeftMouseButton). Since 1.17.0 a keyboard key goes\nfirst to the widget that has the keyboard focus when that is not the game viewport (a menu reading keys in\nOnKeyDown), through Slate as a keyboard's, and on to the player controller when that widget doesn't take it.",
       "properties": {
         "key": {
           "pattern": "^[A-Za-z0-9_]{1,40}$",
@@ -2323,7 +2323,7 @@
           "type": "boolean"
         },
         "t": {
-          "maximum": 120,
+          "maximum": 300,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -2374,7 +2374,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 120,
+                "maximum": 300,
                 "minimum": 0,
                 "type": "number"
               },
@@ -2740,7 +2740,7 @@
           "anyOf": [
             {
               "exclusiveMinimum": 0,
-              "maximum": 120,
+              "maximum": 300,
               "type": "number"
             },
             {
@@ -2751,7 +2751,7 @@
           "title": "Over"
         },
         "t": {
-          "maximum": 120,
+          "maximum": 300,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -2934,7 +2934,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 120,
+                "maximum": 300,
                 "minimum": 0,
                 "type": "number"
               },
@@ -3162,7 +3162,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 120,
+                "maximum": 300,
                 "minimum": 0,
                 "type": "number"
               },
@@ -3306,7 +3306,7 @@
         },
         "hold": {
           "exclusiveMinimum": 0,
-          "maximum": 120,
+          "maximum": 300,
           "title": "Hold",
           "type": "number"
         },
@@ -3323,7 +3323,7 @@
           "$ref": "#/$defs/Select"
         },
         "t": {
-          "maximum": 120,
+          "maximum": 300,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -3550,7 +3550,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 120,
+                "maximum": 300,
                 "minimum": 0,
                 "type": "number"
               },
@@ -3719,7 +3719,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 120,
+                "maximum": 300,
                 "minimum": 0,
                 "type": "number"
               },
@@ -4096,7 +4096,7 @@
           "type": "string"
         },
         "t": {
-          "maximum": 120,
+          "maximum": 300,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -4128,7 +4128,7 @@
     },
     "Shot": {
       "additionalProperties": false,
-      "description": "A screenshot at `t` with the UI, as the player sees it, named `shot` (shot_<name>.png beside the evenly spaced\nones): the grader's own picture of a moment, for a judge and for whoever reviews a run (docs/task-probes.md, section 1.1). Never a pass\nor fail by itself.",
+      "description": "A screenshot at `t` with the UI, as the player sees it, named `shot` (shot_<name>.png beside the evenly spaced\nones): the grader's own picture of a moment, for a judge and for whoever reviews a run (docs/task-probes.md, section 1.1). Never a pass\nor fail by itself. `when` (1.16.0): taken in the first frame at or after `t` at which\nits event comes, read by the probe every frame (widgets count or visible, actors count, x, y, z, hidden or a prop:\nmember; no to_angle, to_axis or has.lit); a missed input (kind shot_when, \"its event never happened\") when\nit doesn't come within `within` s of `t` or by the play's end.",
       "properties": {
         "shot": {
           "pattern": "^[a-z_][a-z0-9_]{0,31}$",
@@ -4136,10 +4136,21 @@
           "type": "string"
         },
         "t": {
-          "maximum": 120,
+          "maximum": 300,
           "minimum": 0,
           "title": "T",
           "type": "number"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Event"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -4186,7 +4197,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 120,
+                "maximum": 300,
                 "minimum": 0,
                 "type": "number"
               },
@@ -4368,7 +4379,7 @@
           "anyOf": [
             {
               "exclusiveMinimum": 0,
-              "maximum": 120,
+              "maximum": 300,
               "type": "number"
             },
             {
@@ -4379,7 +4390,7 @@
           "title": "Hold"
         },
         "t": {
-          "maximum": 120,
+          "maximum": 300,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -4561,7 +4572,7 @@
           "type": "string"
         },
         "seconds": {
-          "maximum": 120,
+          "maximum": 300,
           "minimum": 5,
           "title": "Seconds",
           "type": "integer"
@@ -4582,7 +4593,7 @@
           "anyOf": [
             {
               "exclusiveMinimum": 0,
-              "maximum": 120,
+              "maximum": 300,
               "type": "number"
             },
             {
@@ -4593,7 +4604,7 @@
           "title": "Hold"
         },
         "t": {
-          "maximum": 120,
+          "maximum": 300,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -4658,7 +4669,7 @@
           "anyOf": [
             {
               "exclusiveMinimum": 0,
-              "maximum": 120,
+              "maximum": 300,
               "type": "number"
             },
             {
@@ -4678,7 +4689,7 @@
           "type": "array"
         },
         "t": {
-          "maximum": 120,
+          "maximum": 300,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -4733,7 +4744,7 @@
           "type": "string"
         },
         "t": {
-          "maximum": 120,
+          "maximum": 300,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -4784,7 +4795,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 120,
+                "maximum": 300,
                 "minimum": 0,
                 "type": "number"
               },
@@ -5011,7 +5022,7 @@
       "description": "At `t` the player's view turns to `view` [pitch, yaw] in degrees (the control rotation; pitch -89 to 89), for a\nshot that faces a given way (docs/task-probes.md, section 1.1).",
       "properties": {
         "t": {
-          "maximum": 120,
+          "maximum": 300,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -5038,7 +5049,7 @@
       "description": "At `t` the play's clock holds for `wait` seconds of real time while the game runs on, paced to real time (each\nframe waits for the wall clock to catch up with the game's own time), for what runs on the wall clock (a menu that\npages on real time). No samples, inputs or screenshots meanwhile; then the play goes on from `t` (docs/task-probes.md, section 1.1).",
       "properties": {
         "t": {
-          "maximum": 120,
+          "maximum": 300,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -5062,7 +5073,7 @@
       "description": "Mouse wheel notches at the cursor (the viewport's centre before any cursor move), positive away from the player\n(scroll up), sent through Slate as a wheel's are: the UI under the cursor or the game viewport takes them, which\ngives the engine's MouseWheelAxis and MouseScrollUp/MouseScrollDown, to legacy mappings and Enhanced Input alike\n(probes.md 2m). A wheel no game viewport receives is a miss the play reports.",
       "properties": {
         "t": {
-          "maximum": 120,
+          "maximum": 300,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -5235,7 +5246,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 120,
+                "maximum": 300,
                 "minimum": 0,
                 "type": "number"
               },
@@ -5265,7 +5276,8 @@
             "x",
             "y",
             "w",
-            "h"
+            "h",
+            "covered"
           ],
           "title": "Field",
           "type": "string"
@@ -5410,7 +5422,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 120,
+                "maximum": 300,
                 "minimum": 0,
                 "type": "number"
               },

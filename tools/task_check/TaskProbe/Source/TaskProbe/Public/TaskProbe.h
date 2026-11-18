@@ -101,6 +101,15 @@ private:
 		bool bDrag = false;  // drag (a tap otherwise): what a miss is listed as
 		int32 Finger = 0;  // tap, drag: the touch index, 0-9 (several fingers at once by their numbers)
 		double Press = 0.0;  // tap: seconds the finger stays down; drag: seconds it stays at the last place before it lifts
+		bool bScrolled = false;  // click: made again after its scroll areas were scrolled to its control (no second scroll)
+		TSharedPtr<class FJsonObject> When;  // shot: its event, as the grader hands it ({query, field, of, match, op, value, within})
+	};
+
+	/** A shot waiting for its event (a `shot` input's `when`): read every frame from its time on. */
+	struct FWatch
+	{
+		int32 Input = 0;  // its index in Inputs
+		double Start = 0.0;  // play time it began waiting
 	};
 
 	/** A finger on the screen: sent a part each tick until it lifts. */
@@ -150,6 +159,11 @@ private:
 	void Stage(const FScriptedKey& K, UWorld* World, class APlayerController* PC);
 	void PinActor(const FScriptedKey& K, UWorld* World, class APlayerController* PC);
 	bool ClickSlate(const FScriptedKey& K);
+	/** A click's control scrolled into its scroll areas' view, or found covered: true when the click is done with
+	 *  (made again next frame, or listed as a miss); false: press it now. */
+	bool ScrolledOrCovered(const FScriptedKey& K, const TSharedPtr<class SWidget>& Control, const FString& Label);
+	/** The shots waiting for their event: each taken in the first frame it holds, or a miss once it can't come. */
+	void Watch(UWorld* World, class APlayerController* PC, bool bEnded);
 	void SendWheel(const FScriptedKey& K);
 	void MoveMouse(FMoving& M);
 	void StartTouch(const FScriptedKey& K, UWorld* World);
@@ -182,6 +196,9 @@ private:
 	TArray<TSharedPtr<class FJsonValue>> InputsMissed;  // probe.json "inputs_missed": [{t, kind, target, why}]
 	TArray<FMoving> Moving;  // mouse movements under way
 	TArray<FTouching> Touching;  // fingers on the screen
+	TArray<FScriptedKey> Again;  // clicks made again next frame, their control scrolled into view (the inputs after them wait)
+	TArray<FWatch> Watches;  // shots waiting for their event
+	TSharedPtr<class FTaskProbeQueries> Watcher;  // reads a shot's event (only with a shot that names one)
 	TSharedPtr<class FTaskProbeQueries> Queries;  // only with -TaskProbeQueries
 	bool bDone = false;
 	bool bStarted = false;  // the first world has begun play: the clock runs from then on

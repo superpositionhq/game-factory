@@ -705,6 +705,9 @@ UI_SIGNATURE_AGGS = ('changes', 'any', 'all', 'count')  # a ui signature's value
 DRAWN_NEAR = ('drawn', 'motion', 'base_r', 'base_g', 'base_b', 'base_change')  # a drawn measure near a point
 DRAWN_LINE = ('drawn', 'reach', 'length')    # a drawn measure along a line
 WAITS = 300   # seconds of real time a task play's waits add at most
+# the longest task play (s), and so every time in one: an input's t, a hold, a move's spread, a window, an event's
+# within (the schema's maxima say the same; a task whose asked moment comes late in a long play needs the room)
+PLAY_SECONDS = 300
 # seconds a finger stays up before it goes down again (docs/task-probes.md, section 1.5): the probe lifts a finger a
 # frame after its touch is over, so a touch that began sooner would find its finger still down and miss on every run
 TOUCH_GAP = 0.1
@@ -808,7 +811,7 @@ AUDIO_NAMES = ('sounds', 'repeats')
 
 def measure_errors(n, measure):
     """A measure's own rules beyond the schema, for check `n` (the shapes the cloud grader refuses): a `window` is
-    [t0, t1] with 0 <= t0 < t1 <= 120 and never beside `at`; `to_angle` or `to_axis`, not both, and only on an angle
+    [t0, t1] with 0 <= t0 < t1 <= PLAY_SECONDS and never beside `at`; `to_angle` or `to_axis`, not both, and only on an angle
     field (a `prop:` too; on an asset measure only a `prop:`); a pawn measure takes `to` exactly when it reads `dist`;
     an actors measure's `match` reads a prop: or bb: field; a widgets measure takes `match` exactly when it reads text
     or brush, and its select names a class, a name or a Slate type (a UMG class or a Slate type, not both); audio's
@@ -822,8 +825,8 @@ def measure_errors(n, measure):
     if window is not None and measure.get('at') is not None:
         errs.append(f'check {n}: a measure takes `window` or `at`, not both')
     if isinstance(window, list) and len(window) == 2 and all(_is(v, 'number') for v in window) \
-            and not 0 <= window[0] < window[1] <= 120:
-        errs.append(f'check {n}: a window is [t0, t1] with 0 <= t0 < t1 <= 120')
+            and not 0 <= window[0] < window[1] <= PLAY_SECONDS:
+        errs.append(f'check {n}: a window is [t0, t1] with 0 <= t0 < t1 <= {PLAY_SECONDS}')
     to_angle, to_axis = measure.get('to_angle'), measure.get('to_axis')
     if to_angle is not None and to_axis is not None:
         errs.append(f'check {n}: a measure takes `to_angle` or `to_axis`, not both')
@@ -888,7 +891,7 @@ def task_play_errors(n, play, plays):
     """A task play's rules beyond the schema, for check `n` (a probe's `play`, a judge's `plays`): not named
     look/drive/editor/trace, no input at or after its end, no touch that ends after it or begins less than TOUCH_GAP
     after its finger lifts, no grader flag, a `fresh` play never with `after` or `continues`, waits of at most 300 s
-    in all, its named
+    in all, a shot's `when` under its rules (when_errors), its named
     shots each named once (20 at most), a view's pitch within -89 to 89, and identical to every other task play of its
     name in the task (`plays`: those seen so far, by name)."""
     errs, pname = [], play.get('name')
@@ -919,6 +922,7 @@ def task_play_errors(n, play, plays):
         if isinstance(i, dict) and isinstance(i.get('move'), list) and i['move'] and not any(i['move']):
             errs.append(f'check {n}: play {pname}: a move input moves the mouse')
     errs.extend(select_errors(n, play.get('inputs')))
+    errs.extend(when_errors(n, pname, play.get('inputs')))
     waits = sum(i['wait'] for i in play.get('inputs') or []
                 if isinstance(i, dict) and isinstance(i.get('wait'), (int, float)))
     if waits > WAITS:
@@ -1095,15 +1099,14 @@ def measure_shape_errors(n, measure):
 EVENT_UNSAMPLED = ('log', 'asset', 'seen', 'trace')  # measures no sample of the play holds
 
 
-def since_errors(n, measure):
-    """A measure's `since` event's rules beyond the schema, for check `n` (Lab game grader 1.15.0): the event is the
-    first sample at which its measure meets its literal expect, so that measure is one the play samples (never log,
-    asset, seen or trace, nor audio sounds or repeats, which are read over a window) and takes no window, at, agg or
-    since of its own; and it keeps every shape rule of a measure (measure_shape_errors)."""
-    since = measure.get('since')
-    if not isinstance(since, dict) or not isinstance(since.get('measure'), dict):
+def event_errors(n, event):
+    """An event's rules beyond the schema, for check `n` (a measure's `since`, a shot's `when`): the event is the first
+    moment its measure meets its literal expect, so that measure is one the play samples (never log, asset, seen or
+    trace, nor audio sounds or repeats, which are read over a window) and takes no window, at, agg or since of its own;
+    and it keeps every shape rule of a measure (measure_shape_errors)."""
+    if not isinstance(event, dict) or not isinstance(event.get('measure'), dict):
         return []
-    errs, inner = [], since['measure']
+    errs, inner = [], event['measure']
     if inner.get('probe') in EVENT_UNSAMPLED or (inner.get('probe') == 'audio' and inner.get('field') in AUDIO_NAMES):
         errs.append(f"check {n}: an event's measure is read from samples of the play, so it is one the probe samples "
                     '(never log, asset, seen or trace, nor audio sounds or repeats)')
@@ -1112,6 +1115,41 @@ def since_errors(n, measure):
         errs.append(f"check {n}: an event's measure takes no {', '.join(own)} of its own: the event is the first "
                     'moment its reading meets its expect')
     return errs + measure_shape_errors(n, inner)
+
+
+def since_errors(n, measure):
+    """A measure's `since` event's rules beyond the schema, for check `n` (Lab game grader 1.15.0): event_errors."""
+    return event_errors(n, measure.get('since'))
+
+
+# what the probe reads itself, every frame, for a shot's `when`: a few cheap fields of the widgets and actors it
+# selects (a prop: member of an actor too); never what needs a drawn frame or a capture of its own
+WHEN_FIELDS = {'widgets': ('count', 'visible'), 'actors': ('count', 'x', 'y', 'z', 'hidden')}
+
+
+def when_errors(n, pname, inputs):
+    """A shot's `when` rules beyond the schema, for check `n`'s play `pname` (Lab game grader 1.16.0): the probe reads
+    the event itself every frame from the shot's `t`, so its measure reads widgets count or visible, or actors count,
+    x, y, z, hidden or a prop: member, with no to_angle or to_axis and no lit part (has.lit) in its select; and it
+    keeps every rule of an event (event_errors)."""
+    errs = []
+    for i in inputs or []:
+        when = i.get('when') if isinstance(i, dict) and 'shot' in i else None
+        if not isinstance(when, dict) or not isinstance(when.get('measure'), dict):
+            continue
+        m = when['measure']
+        field = m.get('field') if isinstance(m.get('field'), str) else ''
+        if not (field in WHEN_FIELDS.get(m.get('probe'), ()) or (m.get('probe') == 'actors' and field.startswith('prop:'))):
+            errs.append(f"check {n}: play {pname}: shot {i.get('shot')}'s event is read by the probe itself every "
+                        'frame, so it reads widgets count or visible, or actors count, x, y, z, hidden or a prop: member')
+        if m.get('to_angle') is not None or m.get('to_axis') is not None:
+            errs.append(f"check {n}: play {pname}: shot {i.get('shot')}'s event takes no to_angle or to_axis")
+        sel = m.get('select') if isinstance(m.get('select'), dict) else {}
+        if isinstance(sel.get('has'), dict) and sel['has'].get('lit'):
+            errs.append(f"check {n}: play {pname}: shot {i.get('shot')}'s event asks for no lit part (has.lit): the "
+                        'probe would draw the part alone to tell, every frame')
+        errs.extend(event_errors(n, when))
+    return errs
 
 
 def probe_errors(c, seed, ref, plays):
