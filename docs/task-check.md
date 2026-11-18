@@ -82,7 +82,7 @@ elsewhere, `--scratch DIR` puts the copies elsewhere, `--direct` runs Unreal wit
 
 Each play is the game started with `-game`, offscreen at 960x540 and a fixed 30 fps, on the task's `play_map` (or the
 task play's own `map`), with the TaskProbe plugin sampling every 0.5 s (a task play's `every`). Each play is played once
-per side, with the measures of every probe that names it. A play runs without sound (`-nosound -benchmark`), unless
+per side, with the measures of every probe that names it, and the measure of each one's `since` event. A play runs without sound (`-nosound -benchmark`), unless
 one of its measures is `audio`: then it runs with sound, muted (`-muteaudio`, with `-benchmark`'s fixed step and seed
 kept; docs/task-probes.md, section 2.16).
 
@@ -337,6 +337,11 @@ map isn't in that commit (a map only the reference has), or it is broken.
 nothing over to the next session`**. A play that `continues` another: its first session crashed, timed out or was cut
 off, or the reference's wrote no file under `Saved/`. Give the first session the inputs that make the game save (a
 save made on a menu action needs that action), and time for it; the game's save on quit runs when the play ends.
+
+**`its event never happened (its <probe> <field> never read <op> <value>)`.** The measure's `since` event never came in
+the play (or not within its `within` seconds), so the measure has no value; on the reference a calibrated threshold is
+then uncalibrated. Check in the play's `probe.json` that the event's measure reads what its `expect` asks on the side
+that failed: the play may stop before the event, or the event's measure may select the wrong thing.
 
 **`no value in the window (nothing it selects was measured)`.** The selection matched nothing, or nothing it matched
 has that field. `class` is the class name without its prefix letter (`SCCastlePiece` for `ASCCastlePiece`; a Blueprint

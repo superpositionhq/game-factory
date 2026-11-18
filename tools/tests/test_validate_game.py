@@ -93,6 +93,32 @@ class Units(unittest.TestCase):
         self.assertIn('check b: task play p differs from another play of that name',
                       vg.task_play_errors('b', {'name': 'p', 'seconds': 10, 'fresh': True}, plays))
 
+    def test_a_window_tied_to_its_event(self):
+        """A sampled measure's `since` names an event: one sample of a measure the play samples (no window, at, agg or
+        since of its own; never log, asset, seen, trace, audio sounds or repeats), a literal expect, an optional
+        `within` (0 < s <= 120); the event's measure keeps a measure's shape rules."""
+        schema = vg.SCHEMAS['game-task']
+        event = {'measure': {'probe': 'widgets', 'select': {'name': 'ResultPanel'}, 'field': 'count'},
+                 'expect': {'op': '>=', 'value': 1}}
+        tied = {'probe': 'pawn', 'field': 'x', 'since': event, 'window': [0, 1]}
+        fits = lambda m: list(vg.check_schema(m, schema['$defs']['PawnMeasure'], schema))  # noqa: E731
+        for ok in (tied, {**tied, 'since': {**event, 'within': 30}}, {**tied, 'since': None}):
+            self.assertEqual(fits(ok), [], ok)
+            self.assertEqual(vg.since_errors('c', ok), [])
+        for bad in ({**event, 'expect': {'op': '>=', 'calibrate': 0.5}}, {**event, 'within': 0},
+                    {**event, 'within': 121}, {'measure': event['measure']}, {**event, 'at': 2}):
+            self.assertTrue(fits({**tied, 'since': bad}), bad)
+        self.assertTrue(list(vg.check_schema({'probe': 'log', 'pattern': 'x', 'since': event},
+                                             schema['$defs']['LogMeasure'], schema)))
+        for inner, said in (({'window': [0, 2]}, 'takes no window of its own'), ({'at': 'end'}, 'takes no at'),
+                            ({'agg': 'max'}, 'takes no agg'), ({'since': event}, 'takes no since'),
+                            ({'probe': 'log', 'pattern': 'x'}, 'one the probe samples'),
+                            ({'probe': 'audio', 'field': 'repeats'}, 'one the probe samples'),
+                            ({'select': {}}, 'a widget select names its class, its name or its Slate type')):
+            found = vg.since_errors('c', {**tied, 'since': {**event, 'measure': {**event['measure'], **inner}}})
+            self.assertTrue(any(said in e for e in found), (inner, found))
+        self.assertEqual(vg.since_errors('c', {'probe': 'pawn', 'field': 'x'}), [])
+
     def test_a_click_by_its_text_optional_or_disabled(self):
         """A click names its button by name, class or on-screen text (spaces and punctuation as shown); `optional`
         and `disabled` are true or unset."""

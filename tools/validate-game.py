@@ -1039,6 +1039,81 @@ def seen_errors(n, measure, play):
     return errs
 
 
+def measure_shape_errors(n, measure):
+    """A measure's shape rules, for check `n`, wherever the measure is (a probe's own, a `since` event's): a screen
+    rect and a ground box are [x0, y0, x1, y1] with x0 < x1 and y0 < y1; a ground measure takes a point `xy` or a
+    `box` and the fields of that one; a drawn measure takes `near` or a `line` and the fields of that one; a components
+    select names its class or `effect`; a ui measure takes `match` exactly when it reads text, `agg` changes, any, all
+    or count when it reads its signature, regular expressions that compile and a select rect with x0 < x1 and y0 < y1;
+    and measure_errors."""
+    errs, probe = [], measure.get('probe')
+    if probe == 'screen':
+        rect = measure.get('rect')
+        if isinstance(rect, list) and len(rect) == 4 and not (rect[0] < rect[2] and rect[1] < rect[3]):
+            errs.append(f'check {n}: a screen rect is [x0, y0, x1, y1] with x0 < x1 and y0 < y1')
+    if probe == 'ground':
+        xy, box, field = measure.get('xy'), measure.get('box'), measure.get('field')
+        if (xy is None) == (box is None):
+            errs.append(f'check {n}: a ground measure takes a point `xy` or a `box`, one of them')
+        elif xy is not None and field not in GROUND_POINT:
+            errs.append(f"check {n}: a ground measure at a point reads {', '.join(GROUND_POINT)}")
+        elif box is not None and field not in GROUND_BOX:
+            errs.append(f"check {n}: a ground measure over a box reads {', '.join(GROUND_BOX)}")
+        elif box is not None and isinstance(box, list) and len(box) == 4 and not (box[0] < box[2] and box[1] < box[3]):
+            errs.append(f'check {n}: a ground box is [x0, y0, x1, y1] with x0 < x1 and y0 < y1')
+    if probe == 'drawn':
+        near, line, field = measure.get('near'), measure.get('line'), measure.get('field')
+        if (near is None) == (line is None):
+            errs.append(f'check {n}: a drawn measure takes `near` (a point) or a `line`, one of them')
+        elif near is not None and field not in DRAWN_NEAR:
+            errs.append(f"check {n}: a drawn measure near a point reads {', '.join(DRAWN_NEAR)}")
+        elif line is not None and field not in DRAWN_LINE:
+            errs.append(f"check {n}: a drawn measure along a line reads {', '.join(DRAWN_LINE)}")
+    for sel in component_selects(measure):
+        if sel.get('class') is None and sel.get('effect') is None:
+            errs.append(f'check {n}: a components select names its class, or `effect`')
+    if probe == 'ui':
+        sel = measure.get('select') if isinstance(measure.get('select'), dict) else {}
+        if (measure.get('field') == 'text') != (measure.get('match') is not None):
+            errs.append(f'check {n}: a ui measure takes `match` exactly when its field is text')
+        if measure.get('field') == 'signature' and measure.get('agg') not in UI_SIGNATURE_AGGS:
+            errs.append(f'check {n}: a ui signature is read with `agg` changes, any, all or count')
+        for pattern in (measure.get('match'), sel.get('text')):
+            try:
+                re.compile(pattern) if isinstance(pattern, str) else None
+            except re.error as e:
+                errs.append(f"check {n}: {pattern!r} isn't a regular expression ({e})")
+        rect = sel.get('rect')
+        if isinstance(rect, list) and len(rect) == 4 and not (rect[0] < rect[2] and rect[1] < rect[3]):
+            errs.append(f'check {n}: a ui select rect is [x0, y0, x1, y1] with x0 < x1 and y0 < y1')
+        if sel.get('text') is not None and sel.get('kind') not in (None, 'text'):
+            errs.append(f"check {n}: a ui select's `text` picks text elements: its kind is text or unset")
+    errs.extend(measure_errors(n, measure))
+    return errs
+
+
+EVENT_UNSAMPLED = ('log', 'asset', 'seen', 'trace')  # measures no sample of the play holds
+
+
+def since_errors(n, measure):
+    """A measure's `since` event's rules beyond the schema, for check `n` (Lab game grader 1.15.0): the event is the
+    first sample at which its measure meets its literal expect, so that measure is one the play samples (never log,
+    asset, seen or trace, nor audio sounds or repeats, which are read over a window) and takes no window, at, agg or
+    since of its own; and it keeps every shape rule of a measure (measure_shape_errors)."""
+    since = measure.get('since')
+    if not isinstance(since, dict) or not isinstance(since.get('measure'), dict):
+        return []
+    errs, inner = [], since['measure']
+    if inner.get('probe') in EVENT_UNSAMPLED or (inner.get('probe') == 'audio' and inner.get('field') in AUDIO_NAMES):
+        errs.append(f"check {n}: an event's measure is read from samples of the play, so it is one the probe samples "
+                    '(never log, asset, seen or trace, nor audio sounds or repeats)')
+    own = [k for k in ('window', 'at', 'agg', 'since') if inner.get(k) is not None]
+    if own:
+        errs.append(f"check {n}: an event's measure takes no {', '.join(own)} of its own: the event is the first "
+                    'moment its reading meets its expect')
+    return errs + measure_shape_errors(n, inner)
+
+
 def probe_errors(c, seed, ref, plays):
     """A probe check's rules beyond the schema (docs/task-probes.md):
     asset measures only with play "editor" and trace measures only with play "trace"; an asset measure's select takes
@@ -1073,57 +1148,17 @@ def probe_errors(c, seed, ref, plays):
     if probe == 'screen' and not rel:
         errs.append(f"check {n}: the frame's luminance moves between machines, so a screen measure's threshold is "
                     'calibrated or relative to the start, never a literal value')
-    if probe == 'screen':
-        rect = measure.get('rect')
-        if isinstance(rect, list) and len(rect) == 4 and not (rect[0] < rect[2] and rect[1] < rect[3]):
-            errs.append(f'check {n}: a screen rect is [x0, y0, x1, y1] with x0 < x1 and y0 < y1')
     if probe == 'pieces' and measure.get('field') in PIECE_TRIANGLES and not rel:
         errs.append(f'check {n}: how many triangles a fair build draws depends on the meshes it chose, so a pieces '
                     "measure's triangles threshold is calibrated or relative to the start, never a literal value")
     if measure.get('field') in NEVER_LITERAL.get(probe, ()) and not rel:
         errs.append(f"check {n}: a {probe} measure's {measure.get('field')} depends on what a build chose, so its "
                     'threshold is calibrated or relative to the start, never a literal value')
-    if probe == 'ground':
-        xy, box, field = measure.get('xy'), measure.get('box'), measure.get('field')
-        if (xy is None) == (box is None):
-            errs.append(f'check {n}: a ground measure takes a point `xy` or a `box`, one of them')
-        elif xy is not None and field not in GROUND_POINT:
-            errs.append(f"check {n}: a ground measure at a point reads {', '.join(GROUND_POINT)}")
-        elif box is not None and field not in GROUND_BOX:
-            errs.append(f"check {n}: a ground measure over a box reads {', '.join(GROUND_BOX)}")
-        elif box is not None and isinstance(box, list) and len(box) == 4 and not (box[0] < box[2] and box[1] < box[3]):
-            errs.append(f'check {n}: a ground box is [x0, y0, x1, y1] with x0 < x1 and y0 < y1')
-    if probe == 'drawn':
-        near, line, field = measure.get('near'), measure.get('line'), measure.get('field')
-        if (near is None) == (line is None):
-            errs.append(f'check {n}: a drawn measure takes `near` (a point) or a `line`, one of them')
-        elif near is not None and field not in DRAWN_NEAR:
-            errs.append(f"check {n}: a drawn measure near a point reads {', '.join(DRAWN_NEAR)}")
-        elif line is not None and field not in DRAWN_LINE:
-            errs.append(f"check {n}: a drawn measure along a line reads {', '.join(DRAWN_LINE)}")
-    for sel in component_selects(measure):
-        if sel.get('class') is None and sel.get('effect') is None:
-            errs.append(f'check {n}: a components select names its class, or `effect`')
     errs.extend(near_errors(n, [measure, play.get('inputs') if isinstance(play, dict) else None]))
-    if probe == 'ui':
-        sel = measure.get('select') if isinstance(measure.get('select'), dict) else {}
-        if (measure.get('field') == 'text') != (measure.get('match') is not None):
-            errs.append(f'check {n}: a ui measure takes `match` exactly when its field is text')
-        if measure.get('field') == 'signature' and measure.get('agg') not in UI_SIGNATURE_AGGS:
-            errs.append(f'check {n}: a ui signature is read with `agg` changes, any, all or count')
-        for pattern in (measure.get('match'), sel.get('text')):
-            try:
-                re.compile(pattern) if isinstance(pattern, str) else None
-            except re.error as e:
-                errs.append(f"check {n}: {pattern!r} isn't a regular expression ({e})")
-        rect = sel.get('rect')
-        if isinstance(rect, list) and len(rect) == 4 and not (rect[0] < rect[2] and rect[1] < rect[3]):
-            errs.append(f'check {n}: a ui select rect is [x0, y0, x1, y1] with x0 < x1 and y0 < y1')
-        if sel.get('text') is not None and sel.get('kind') not in (None, 'text'):
-            errs.append(f"check {n}: a ui select's `text` picks text elements: its kind is text or unset")
     if probe == 'seen':
         errs.extend(seen_errors(n, measure, play))
-    errs.extend(measure_errors(n, measure))
+    errs.extend(measure_shape_errors(n, measure))
+    errs.extend(since_errors(n, measure))
     if rel and expect.get('op') in ('==', '!='):
         errs.append(f'check {n}: == and != take a literal value, never a calibrated threshold')
     if rel == 'calibrate' and not ref:

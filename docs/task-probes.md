@@ -274,6 +274,19 @@ with a key or the mouse.
 
 - `window`: `[t0, t1]` seconds of play time (ends inclusive), or `at`: `[t, ...]` (the sample nearest each time) or
   `"end"` (the last sample); not both. Default: the whole play.
+- `since` (every measure but `log`, `asset`, `seen` and `trace`): the event the `window` and `at` count from, for a
+  moment whose time varies between builds (a race that ends when it is won, a panel that opens when a wave is
+  cleared): `{"measure": <a measure>, "expect": {"op": ">=", "value": 1}, "within": 30}`. The event's moment is the
+  first sample of the play at which its measure, read as that one sample, meets its `expect`, a literal; `within`
+  (optional, seconds) counts only that much of the play from its start. `"window": [0, 1]` then reads the second from
+  that moment, `"at": [0.5]` the sample half a second after it, `"at": "end"` the last sample when it is not before it,
+  and with neither the samples from that moment on are read. The event's measure is sampled with the play's other
+  measures, so its moment is known to the play's `every` (0.5 s by default; a play of fast events samples every 0.1
+  s). It is one sample of a measure the play samples: it takes no `window`, `at`, `agg` or `since` of its own, and it
+  is never `log`, `asset`, `seen`, `trace`, nor `audio` `sounds` or `repeats` (read over a window). A measure whose
+  event never comes has no value (section 3). Example, a result panel's line read in the second after the race ends,
+  however long the race took: `"since": {"measure": {"probe": "widgets", "select": {"name": "ResultPanel"}, "field":
+  "count"}, "expect": {"op": ">=", "value": 1}}, "window": [0, 1]`.
 - `agg`: how the samples reduce to one number: `min`, `max`, `mean`, `first`, `last`, `delta` (last minus first),
   `any` (1 if any sample is non-zero), `all` (1 if every sample is non-zero), `count` (number of non-zero samples),
   `sum`, `range` (max minus min), `std` (standard deviation), `changes` (how many times the value changes between
@@ -923,6 +936,10 @@ How it is graded, and its limits:
 - **No samples, no pass.** When a play ends early or a measure has no samples in its window (the game quit, crashed or
   never reached that time), the probe fails with "no samples in the window (the play ended at X s)"; when samples exist
   but nothing selected has a value, it fails with "no value in the window".
+- **No event, no value.** A measure whose `since` event never comes (or not within its `within` seconds) has no value:
+  the probe fails with "its event never happened (its <probe> <field> never read <op> <value>[ in the play's first N
+  s])". On the fix, a calibrated threshold then has nothing to anchor on and the check is uncalibrated: the play must
+  bring the event about on the fix.
 - **`needs`** names only earlier checks; check names are unique in the task.
 
 ### 3.1 A start that doesn't compile: `fails_at_start`

@@ -571,7 +571,8 @@ on a control that shows only in some states, such as a confirmation that appears
 unmarked (start the play `fresh` or reach a state where the control always shows; mark the click `optional` only when
 a correct game may or may not show it); a
 window set by round seconds rather than around the moment the event happens on both sides (read when it happens in
-each side's play first, then place the window over it with room either way); a count of the parts a build is made of
+each side's play first, then place the window over it with room either way; when the moment moves between builds, tie
+the window to the event with `since`); a count of the parts a build is made of
 (components, widgets, meshes) where the instruction states no such count.
 
 Read each task this way:

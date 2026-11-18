@@ -138,7 +138,7 @@ def select(s):
 
 
 def measure(m):
-    """A probe's measure with every optional field: window, at, agg, to_angle, to_axis (None when unset), `of`
+    """A probe's measure with every optional field: window, at, agg, to_angle, to_axis, since (None when unset), `of`
     ("count") for selections, `field` ("count") for the log, `to` and `point` with their defaults, a pieces measure's
     `select` ({} when unset), a screen measure's `rect` (the whole frame when unset), an audio measure's `select` ({}
     when unset), a ground measure's `xy`, `box`, `select` (None when unset) and `grid` (8), and a ui measure's `select`
@@ -149,6 +149,7 @@ def measure(m):
     if kind in SAMPLED:
         for k in ("window", "at", "agg", "to_angle", "to_axis"):
             out.setdefault(k, None)
+        out["since"] = event(out["since"]) if out.get("since") is not None else None
         if kind in ("actors", "widgets", "components"):
             out.setdefault("of", "count")
             out.setdefault("match", None)
@@ -187,6 +188,13 @@ def measure(m):
         for k in ("rect", "match", "agg"):
             out.setdefault(k, None)
     return out
+
+
+def event(e):
+    """A measure's `since` event with its measure's defaults filled in and `within` (None when unset): the first
+    sample of the play at which that measure, read as one sample, meets the literal `expect` (probes.event_time)."""
+    return {"measure": measure(e["measure"]), "expect": {"op": e["expect"]["op"], "value": float(e["expect"]["value"])},
+            "within": float(e["within"]) if e.get("within") is not None else None}
 
 
 def spot(value):
