@@ -281,7 +281,9 @@ clearly, fits the style, looks like the thing it is meant to be) gets its own ru
 required `judge` named `looks_as_asked`, with `"before": true` and `"reference": true` when the seed has a reference.
 A judge can misread screenshots, so word each item concretely, decidable from the screenshots alone, so the unchanged
 game scores 0 on it and any solution that meets the brief scores 1: never an empty criterion ("shows what the ticket
-asks"), and no item about "every screen" unless a play opens every screen. What must still look as it did goes in a
+asks"), and no item about "every screen" unless a play opens every screen. **A rubric item quotes the instruction**:
+it takes the words of the sentence it covers and asks no more and nothing other than that sentence (no added detail,
+no stricter bar, no other look), since a judge holds a solution to the item, not to the brief. What must still look as it did goes in a
 required judge in `still_works` the same way. One subject per judge: the brief's looks in `looks_as_asked`, what must
 still look as it did in the `still_works` judge, each taste question in a judge of its own. **Every judge has plays of
 its own that show each rubric item at the moment it can be seen**: a judge without them is shown screenshots of the
@@ -340,6 +342,11 @@ A probe names one measurement and its threshold:
   anything the instruction gives a limit to): teleport what the game moves together, or walk there.
 - **A play never repeats an action that already happened.** No second click on Continue or Retry after the first
   worked: the button is gone, and the click is a miss.
+- **A play needs no state a new game doesn't have, unless the instruction gives it.** An existing save, a profile, an
+  unlocked level, a timer already run out: the instruction states it as a step a player takes, or the play makes it
+  with the player's own steps (or names, in `after`, the play that does). Write each play so it holds whether or not
+  an earlier play of the same side left a save behind: the plays of a side share `Saved/`, so a dialog that only a
+  save brings up may or may not be there, depending on what ran before.
 - `measure.probe`: `pawn` (track: x/y/z/speed/moved/dist), `camera` (distance/height/pitch/fov/occluded/
   pawn_on_screen), `actors` (select by class, tag, name, near; count, transform, extent, hidden, collision, speed,
   `prop:<Component>.<Property>` by reflection), `widgets` (the drawn widgets of a name or class: visible, text, percent, has_brush), `ui` (what the HUD
@@ -442,7 +449,8 @@ whose sides are in `blind\key.json`), with `ask.md` holding the brief, the quest
 `judge <check>: shots saved for start/reference, answer needed`. Before you call a task with a required judge VALID,
 look at the pictures yourself, blind: score every rubric item for A and for B from 0 to 1 first, then open the key.
 The start must fail every required rubric item (below 0.5) and the reference must pass every one; if either doesn't,
-reword the item or fix the plays so the pictures show the state, never by asking less of the solution. Write both
+reword the item or fix the plays so the pictures show the state, never by asking less of the solution. An item the
+pictures can't show scores 0 on that side, never a pass for lack of evidence. Write both
 sides' scores in the task's notes (its `tasks-workflow.jsonl` row).
 
 ### The no-op and the oracle, checked on your own PC
@@ -539,7 +547,17 @@ action already happened; text read in a way that reads nothing on the reference 
 that shows it); a readout drawn in a way no reading sees (read the value the game keeps for it, by a name the start
 already has, moving the way the ask says); `speed` combined by `count` (a count of rows, not a speed: `"of": "max"`);
 a staged foe or target out of reach of the attack the play makes; a literal threshold the reference misses when the
-instruction states no number (calibrate between the start and the reference instead).
+instruction states no number (calibrate between the start and the reference instead); a click at a point of the
+screen where a click by the control's name or on-screen text would do (another layout puts the control elsewhere); a
+press at a point on a control below the visible part of a scrolling list or panel (a tap, a cursor click, or a click
+on a button the game builds in Slate, which is pressed at its centre on the screen: scroll first, with a `cursor` over
+the list, then `wheel` notches, then the press; a click on a UMG button fires the button itself and needs no scroll); a
+click
+on a control that shows only in some states, such as a confirmation that appears only when a save exists (a click is
+never optional: one no button takes is a miss, so reach a state where the control always shows, or leave it out); a
+window set by round seconds rather than around the moment the event happens on both sides (read when it happens in
+each side's play first, then place the window over it with room either way); a count of the parts a build is made of
+(components, widgets, meshes) where the instruction states no such count.
 
 Read each task this way:
 

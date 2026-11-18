@@ -126,7 +126,9 @@ Words used here:
     launches only the probe's own folder is cleared: the rest of the project's `Saved/` folder stays, `SaveGames/`
     among it. So a save one play writes is there for every later play of that side, and every earlier play (the
     boot, `look`, `drive`, other task plays) may have written there too. `after` orders a play after its writer; it
-    never gives it a clean `Saved/` folder. The two sides never share one.
+    never gives it a clean `Saved/` folder. The two sides never share one. Write each play so it holds whether or not
+    an earlier play of its side saved, and never rely on a save, profile or unlock a new game lacks unless the
+    instruction gives it: the play makes it with a player's steps, or names the play that does in `after`.
   - `continues` (optional): the task play whose session this play continues, for what the game keeps across a quit
     and a relaunch (a best score, saved settings, a checkpoint): `{"name": "after_restart", ..., "continues":
     "plays_and_quits"}`. On each side the game's save state is cleared (`Saved/SaveGames` and `Saved/Config` of the
@@ -220,6 +222,13 @@ right and down, spread over `over` seconds) reach the game through Slate as a de
 its text, tag or type. Every input that didn't land (a click no button took, a wheel or move no game viewport
 received, a stage nothing took, a named shot whose file wasn't written) is listed in probe.json `inputs_missed`, and
 `screenshots` lists only files written; two named shots asked in one frame are one capture, the second a copy.
+
+A `click` on a UMG button fires that button's own pressed, released and clicked events, wherever it sits on screen. A
+Slate button, a `tap`, and a mouse button after a `cursor` are pressed at a point of the screen, so a control below
+the visible part of a scrolling list or panel is scrolled into view first: a `cursor` over the list, `wheel` notches,
+then the press. A click is never optional: a click on a control that shows only in some states (a confirmation that
+appears only when a save exists) is a miss whenever it doesn't show, so the play reaches a state where it always shows
+or doesn't click it.
 
 ### 1.5 Touches
 
