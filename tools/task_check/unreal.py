@@ -262,11 +262,13 @@ class Project:
             found.output = f"[task-check] build retried {retries} time(s) for Live Coding\n{found.output}"
         return found
 
-    def play(self, seconds, shots, timeout, map=None, inputs=None, queries=None, args=(), every=None, session=False):
+    def play(self, seconds, shots, timeout, map=None, inputs=None, queries=None, args=(), every=None, session=False,
+             fresh=False):
         """The game for `seconds` of game time through the plugin: offscreen at a fixed 30 fps, `shots` screenshots,
         `inputs` sent at their times, `queries` (probes.query_file) sampled; a Played. `session`: a first session (a
         task play another `continues`): the game's save state (SAVES) is cleared before it, and the Played lists the
-        files it wrote under Saved."""
+        files it wrote under Saved. `fresh`: a task play marked `fresh`: the game's save state (SAVES) is cleared before
+        it too. The probe's misses that an `optional` or `disabled` click allows are kept apart (probes.excused)."""
         out = self.folder / "Saved" / "TaskProbe" / "play"
         shutil.rmtree(out, ignore_errors=True)
         out.mkdir(parents=True)
@@ -296,7 +298,7 @@ class Project:
         if every:
             argv.append(f"-TaskProbeEvery={every:g}")
         argv += list(args)
-        if session:
+        if session or fresh:  # a first session or a fresh play: the game's save state cleared first
             for folder in SAVES:
                 shutil.rmtree(self.folder / folder, ignore_errors=True)
         began = time.time()
@@ -312,7 +314,7 @@ class Project:
         log = log_path.read_bytes().decode("utf-8", errors="replace") if log_path.is_file() else ""
         shutil.rmtree(out, ignore_errors=True)
         return Played(found.exit_code, found.timed_out, found.output, found.seconds,
-                      probes.well_formed(probe), log, files, found.waited, saved)
+                      probes.excused(probes.well_formed(probe), inputs), log, files, found.waited, saved)
 
     def editor_python(self, script, timeout):
         path = self.folder / "Saved" / "TaskProbe" / "editor_script.py"

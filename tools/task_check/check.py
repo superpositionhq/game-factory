@@ -255,15 +255,16 @@ class Side:
             (folder / f).write_bytes(data)
 
     def _play(self, name, seconds, shots, inputs=None, map=None, queries=None, args=(), every=None, waits=0.0,
-              session=False):
+              session=False, fresh=False):
         """A play, once per name; `waits`: the real seconds its waits add (a task play's), which its timeout gets on
-        top; `session`: a continuing play's first session, played on a cleared save (unreal.Project.play)."""
+        top; `session`: a continuing play's first session, played on a cleared save (unreal.Project.play);
+        `fresh`: a task play marked `fresh`, played on a cleared save too."""
         if name not in self.played:
             self.log(f"  {self.name}: playing {name} ({seconds} s" + (f", {waits:g} s waiting" if waits else "") + ")")
             found = self.project.play(seconds, shots, self.timeout + math.ceil(waits),
                                       map=map or self.task.get("play_map"),
                                       inputs=inputs, queries=queries, args=args, every=every,
-                                      **({"session": True} if session else {}))
+                                      **({"session": True} if session else {}), **({"fresh": True} if fresh else {}))
             self.played[name] = found
             waited = getattr(found, "waited", 0.0)
             self.log(f"  {self.name}: played {name} in {found.seconds:.0f} s"
@@ -334,8 +335,10 @@ class Side:
                                args=first["args"], every=first["every"], waits=tasks.waited(first), session=True)
             self.sessions[name] = session(ended, first["name"])
         shots = judges.play_shots(self.task).get(name, 2)  # as the grader plays it: a judge showing it asks more
+        # a `fresh` play starts from a cleared save: what earlier plays of the side saved never changes its start
         return self._play(f"play_{name}", play["seconds"], shots, play["inputs"] or None, map=play["map"],
-                          queries=queries, args=play["args"], every=every, waits=tasks.waited(play))
+                          queries=queries, args=play["args"], every=every, waits=tasks.waited(play),
+                          fresh=play.get("fresh") is True)
 
     def carried(self, play):
         """Why a continuing task play's readings can't stand on the reference, or None: its first session didn't end

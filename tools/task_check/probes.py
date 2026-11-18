@@ -150,6 +150,18 @@ def number(value, match=None):
     return None
 
 
+EXTENTS = ("extent_x", "extent_y", "extent_z")
+
+
+def field_of(row, field):
+    """A selected row's value of `field`: as the plugin wrote it, but a matched actor's or component's extent the
+    plugin wrote null (an empty actor: nothing with bounds, an effect never fired) is 0, as the Lab's game grader reads
+    it since 1.14.0, so a check of "nothing grew" reads 0 there instead of nothing. A row without the field reads
+    nothing, and every other field's null stays nothing."""
+    value = row.get(field)
+    return 0.0 if value is None and field in EXTENTS and field in row else value
+
+
 def combine(values, of):
     """One sample's rows (actors, widgets) combined by `of`; None values left out."""
     found = [v for v in values if v is not None]
@@ -459,7 +471,7 @@ def series(measure, probe):
             elif whole is not ROWS:
                 out.append((s["t"], whole))
             else:
-                out.append((s["t"], combine([angled(measure, number(r.get(field), measure.get("match")))
+                out.append((s["t"], combine([angled(measure, number(field_of(r, field), measure.get("match")))
                                              for r in rows], measure["of"])))
         return out
     values = [(s["t"], s.get("value") if isinstance(s.get("value"), dict) else {}) for s in samples]
@@ -595,7 +607,7 @@ def reads_nothing(measure, probe):
             return None
         rows = [r for s in samples for r in s.get("rows") or [] if isinstance(r, dict)]
         field, match = measure.get("field"), measure.get("match")
-        if rows and (field == "count" or any(number(r.get(field), match) is not None for r in rows)):
+        if rows and (field == "count" or any(number(field_of(r, field), match) is not None for r in rows)):
             return None
         asked = json.dumps(selector(measure), sort_keys=True)
     except MALFORMED:
@@ -645,6 +657,34 @@ def missed(probe):
     if not isinstance(probe, dict) or not isinstance(probe.get("inputs_missed"), list):
         return None
     return [r for r in probe["inputs_missed"] if isinstance(r, dict) and r.get("kind") != "shot"]
+
+
+NOT_SHOWN = "no visible button matches it"  # the plugin's words for a click no button takes (an `optional` click)
+DISABLED = "shown but disabled"  # its words for a click whose button is shown disabled (a `disabled` click)
+
+
+def excused(probe, inputs):
+    """`probe` with the misses its play's own clicks allow taken out of `inputs_missed`, as the Lab's game grader reads
+    a play since 1.14.0: an `optional` click no button matched, a `disabled` click whose button the plugin found shown
+    but disabled; kept apart under `inputs_excused`. Any other click's miss stays one. `inputs`: the play's inputs as
+    sent (tasks.inputs)."""
+    if not isinstance(probe, dict) or not isinstance(probe.get("inputs_missed"), list) or not isinstance(inputs, list):
+        return probe
+    allowed = [(i["t"], i["widget"], i.get("optional") is True, i.get("disabled") is True) for i in inputs
+               if isinstance(i, dict) and i.get("click") is True and isinstance(i.get("widget"), str)
+               and isinstance(i.get("t"), int | float) and (i.get("optional") is True or i.get("disabled") is True)]
+    if not allowed:
+        return probe
+
+    def excuse(row):
+        return isinstance(row, dict) and row.get("kind") == "click" and any(
+            abs(row["t"] - t) < 0.05 and row.get("target") == widget and
+            ((optional and str(row.get("why")).startswith(NOT_SHOWN)) or (disabled and DISABLED in str(row.get("why"))))
+            for t, widget, optional, disabled in allowed)
+
+    rows = probe["inputs_missed"]
+    return {**probe, "inputs_missed": [r for r in rows if not excuse(r)],
+            "inputs_excused": [r for r in rows if excuse(r)]}
 
 
 def missed_text(rows, limit=3):

@@ -96,7 +96,7 @@ sections 1.1 and 1.5). A task play never chooses the renderer or the size itself
 |---|---|
 | `"look"` | 20 s, no input |
 | `"drive"` | 22 s: W 1-6 s, D 6-8 s, W 8-13 s with a jump (SpaceBar) at 9 s, A 13-15 s, W 15-21 s |
-| `{"name": ..., "seconds": ..., "inputs": [...]}` | a task play: keys, axes, widget clicks, cursor moves, teleports and teleports next to an actor at their times, its own `map`, `args` and `every` |
+| `{"name": ..., "seconds": ..., "inputs": [...]}` | a task play: keys, axes, widget clicks, cursor moves, teleports and teleports next to an actor at their times, its own `map`, `args` and `every`; `fresh`: on a cleared save |
 | `"editor"` | one headless editor pass per side over every `asset` measure (the project as saved) |
 | a boot check | `seconds` of play, no input; `log_absent` reads a 60 s boot's log |
 
@@ -107,7 +107,8 @@ are cleared, so what a play saves in the project's `Saved/` folder is there for 
 shares a commit's copy, so that includes plays of earlier tasks on the same commit. A task play that `continues`
 another is played after a first session of its own: the copy's `Saved/SaveGames` and `Saved/Config` are deleted, the
 play it names is played (kept as `play_<name>-first`) and quits, then the play itself starts as a new process on the
-same copy (docs/task-probes.md, section 1.1).
+same copy (docs/task-probes.md, section 1.1). Before a `fresh` task play the copy's `Saved/SaveGames` and
+`Saved/Config` are deleted too, so it starts as a new game does, as on the Lab.
 
 A boot is the same idle game as `"look"`, only longer, so on the side that boots (the reference; a start is never
 booted) one 60 s idle play with look's queries serves both: the boot check reads all of it and `"look"` reads only its
@@ -148,7 +149,8 @@ A task is **VALID** when all of this holds:
   `widgets` reading combined by count, any, all or sum, reads 0 of nothing, which is an answer unless 0 fails the
   threshold on the reference), and a task play whose inputs don't land on the reference (`inputs_missed`: a click no
   button took, a tap no widget, a stage nothing took) or whose first session there doesn't end cleanly or saves nothing
-  (`continues`). The cloud's grade of every run fails while a task holds one. An input the start's play missed while
+  (`continues`). An `optional` click no button took, and a `disabled` click whose button the plugin found shown but
+  disabled, are no misses, as on the Lab. The cloud's grade of every run fails while a task holds one. An input the start's play missed while
   the reference's landed fails that check on the start: the start's play didn't do what the task says.
 
 This is the cloud's own check of every task, by two scripted runs: the **no-op** (the start, untouched) must fail and

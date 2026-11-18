@@ -685,7 +685,8 @@ GRADER_KEYS = ('milestones',)          # the grader's half of a task, with seed.
 PLAY_ARG = re.compile(r'^-([A-Za-z][A-Za-z0-9]{0,40})(=[A-Za-z0-9_.:=,-]{1,60})?$')
 DENIED_PLAY_ARGS = {'execcmds', 'run', 'nullrhi', 'log', 'unattended', 'renderoffscreen', 'resx', 'resy', 'benchmark',
                     'fps', 'game', 'windowed'}
-TASK_PLAY_DEFAULTS = {'inputs': [], 'map': None, 'args': [], 'every': None, 'after': None, 'continues': None}
+TASK_PLAY_DEFAULTS = {'inputs': [], 'map': None, 'args': [], 'every': None, 'after': None, 'continues': None,
+                      'fresh': None}
 
 
 PIECE_TRIANGLES = ('triangles', 'visible_triangles')  # pieces fields whose threshold is never a literal
@@ -886,7 +887,8 @@ def named_shots(play):
 def task_play_errors(n, play, plays):
     """A task play's rules beyond the schema, for check `n` (a probe's `play`, a judge's `plays`): not named
     look/drive/editor/trace, no input at or after its end, no touch that ends after it or begins less than TOUCH_GAP
-    after its finger lifts, no grader flag, waits of at most 300 s in all, its named
+    after its finger lifts, no grader flag, a `fresh` play never with `after` or `continues`, waits of at most 300 s
+    in all, its named
     shots each named once (20 at most), a view's pitch within -89 to 89, and identical to every other task play of its
     name in the task (`plays`: those seen so far, by name)."""
     errs, pname = [], play.get('name')
@@ -907,6 +909,10 @@ def task_play_errors(n, play, plays):
     after = play.get('after') if isinstance(play.get('after'), list) else []
     if len(set(map(str, after))) != len(after):
         errs.append(f'check {n}: play {pname} names a play twice in its after')
+    # a fresh play starts from a cleared save (docs/task-probes.md 1.1), so nothing an earlier play wrote can reach it
+    if play.get('fresh') and (play.get('after') or play.get('continues')):
+        errs.append(f'check {n}: play {pname} starts from a cleared save (fresh), so it runs after no play and '
+                    'continues no session')
     for i in play.get('inputs') or []:
         if isinstance(i, dict) and i.get('wheel') == 0 and not isinstance(i.get('wheel'), bool):
             errs.append(f'check {n}: play {pname}: a wheel input turns at least one notch')

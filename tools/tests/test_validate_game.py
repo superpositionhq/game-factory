@@ -77,6 +77,35 @@ class Units(unittest.TestCase):
         self.assertTrue(list(vg.check_schema({**again, 'continues': 'Not A Name'}, schema['$defs']['TaskPlay'], schema)))
         self.assertIsNone(vg.TASK_PLAY_DEFAULTS['continues'])
 
+    def test_a_fresh_play_starts_alone(self):
+        """`fresh` clears the save before the play, so it runs after no play and continues no session."""
+        schema = vg.SCHEMAS['game-task']
+        fresh = {'name': 'starts', 'seconds': 10, 'fresh': True}
+        self.assertEqual(list(vg.check_schema(fresh, schema['$defs']['TaskPlay'], schema)), [])
+        self.assertTrue(list(vg.check_schema({**fresh, 'fresh': False}, schema['$defs']['TaskPlay'], schema)))
+        self.assertEqual(vg.task_play_errors('c', fresh, {}), [])
+        for more in ({'after': ['other']}, {'continues': 'other'}):
+            self.assertIn('check c: play starts starts from a cleared save (fresh), so it runs after no play and '
+                          'continues no session', vg.task_play_errors('c', {**fresh, **more}, {}))
+        self.assertIsNone(vg.TASK_PLAY_DEFAULTS['fresh'])
+        plays = {}
+        vg.task_play_errors('a', {'name': 'p', 'seconds': 10}, plays)
+        self.assertIn('check b: task play p differs from another play of that name',
+                      vg.task_play_errors('b', {'name': 'p', 'seconds': 10, 'fresh': True}, plays))
+
+    def test_a_click_by_its_text_optional_or_disabled(self):
+        """A click names its button by name, class or on-screen text (spaces and punctuation as shown); `optional`
+        and `disabled` are true or unset."""
+        schema = vg.SCHEMAS['game-task']
+        click = lambda **k: list(vg.check_schema(dict({'t': 1.0, 'widget': 'StartButton', 'click': True}, **k),
+                                                 schema['$defs']['Click'], schema))
+        for ok in ({}, {'widget': 'New expedition'}, {'widget': "Don't save: quit (1/2) & go!"},
+                   {'optional': True}, {'disabled': True}, {'optional': None}):
+            self.assertEqual(click(**ok), [], ok)
+        for bad in ({'widget': ' New'}, {'widget': 'a' * 121}, {'widget': 'New\nexpedition'}, {'widget': 'Größe'},
+                    {'optional': False}, {'disabled': 'yes'}, {'hidden': True}):
+            self.assertTrue(click(**bad), bad)
+
     def test_a_widget_select_may_say_drawn_or_not(self):
         schema = vg.SCHEMAS['game-task']
         for said in (True, False):

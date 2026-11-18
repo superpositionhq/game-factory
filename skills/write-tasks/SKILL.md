@@ -347,6 +347,20 @@ A probe names one measurement and its threshold:
   with the player's own steps (or names, in `after`, the play that does). Write each play so it holds whether or not
   an earlier play of the same side left a save behind: the plays of a side share `Saved/`, so a dialog that only a
   save brings up may or may not be there, depending on what ran before.
+- **A play that must start as a new game is `"fresh": true`.** The game's save state (`Saved/SaveGames`,
+  `Saved/Config`) is cleared before it, so a first-run menu is there and a dialog only a save brings up is not,
+  whatever ran before it. Use it when the play's first steps depend on there being no save; a fresh play never takes
+  `after` or `continues`, which read what another play left (docs/task-probes.md, 1.1).
+- **A click names its button as the player sees it.** `widget` takes the button's name, its class, or its on-screen
+  text exactly as shown, spaces and punctuation included (`"widget": "New expedition"`): the text a player reads is in
+  every build that meets the brief, so the play needs no widget name the instruction would have to give away.
+- **A click is `"optional": true` only when a correct game may or may not show its control** (a confirmation that
+  appears only when a save exists): unmarked, a click no button takes is a miss that fails the play. Never mark a
+  click on a control the task asks for optional: a game without that control would pass. Prefer a `fresh` play, or one
+  that reaches a state where the control always shows, and mark the click optional only when neither will do.
+- **A click on a button the game disables by design (a locked choice) is `"disabled": true`.** It lands when that
+  button is shown but disabled and does nothing, as a player's click on it; unmarked, a click on a disabled button is
+  a miss. Until the probe plugin reports a disabled button, such a click is still a miss (docs/task-probes.md, 1.4).
 - `measure.probe`: `pawn` (track: x/y/z/speed/moved/dist), `camera` (distance/height/pitch/fov/occluded/
   pawn_on_screen), `actors` (select by class, tag, name, near; count, transform, extent, hidden, collision, speed,
   `prop:<Component>.<Property>` by reflection), `widgets` (the drawn widgets of a name or class: visible, text, percent, has_brush), `ui` (what the HUD
@@ -553,8 +567,9 @@ press at a point on a control below the visible part of a scrolling list or pane
 on a button the game builds in Slate, which is pressed at its centre on the screen: scroll first, with a `cursor` over
 the list, then `wheel` notches, then the press; a click on a UMG button fires the button itself and needs no scroll); a
 click
-on a control that shows only in some states, such as a confirmation that appears only when a save exists (a click is
-never optional: one no button takes is a miss, so reach a state where the control always shows, or leave it out); a
+on a control that shows only in some states, such as a confirmation that appears only when a save exists, left
+unmarked (start the play `fresh` or reach a state where the control always shows; mark the click `optional` only when
+a correct game may or may not show it); a
 window set by round seconds rather than around the moment the event happens on both sides (read when it happens in
 each side's play first, then place the window over it with room either way); a count of the parts a build is made of
 (components, widgets, meshes) where the instruction states no such count.

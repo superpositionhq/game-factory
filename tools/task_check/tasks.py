@@ -248,8 +248,9 @@ def inputs(rows):
                     row[k] = float(r[k])
         elif "cursor" in r:
             row.update(cursor=_floats(r["cursor"]))
-        elif "widget" in r:
+        elif "widget" in r:  # a click: `optional` and `disabled` only when set (probes.excused reads them)
             row.update(widget=r["widget"], click=True)
+            row.update({k: True for k in ("optional", "disabled") if r.get(k) is True})
         elif "axis" in r:
             row.update(key=r["key"], axis=float(r["axis"]))
         else:
@@ -267,12 +268,12 @@ def waited(p):
 
 def play(p):
     """A check's play: "look", "drive", "editor", "trace", or a task play with its defaults (inputs, map, args,
-    every, after, continues)."""
+    every, after, continues, fresh)."""
     if isinstance(p, str):
         return p
     return {"name": p["name"], "seconds": int(p["seconds"]), "inputs": inputs(p.get("inputs")), "map": p.get("map"),
             "args": list(p.get("args") or []), "every": float(p["every"]) if p.get("every") is not None else None,
-            "after": list(p.get("after") or []), "continues": p.get("continues")}
+            "after": list(p.get("after") or []), "continues": p.get("continues"), "fresh": p.get("fresh") is True}
 
 
 def task_plays(task):

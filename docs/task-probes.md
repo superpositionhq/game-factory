@@ -78,7 +78,10 @@ Words used here:
     - an axis event: `{"t": 2.0, "key": "MouseX", "axis": 4.0}` (MouseX, MouseY, Gamepad_LeftX, ...; see the lessons
       on mouse axes in section 5);
     - a widget click: `{"t": 6.0, "widget": "RetryButton", "click": true}` clicks the first visible button widget of that
-      name or class, as a player would;
+      name or class, as a player would; `widget` may also be the button's on-screen text exactly as shown, spaces and
+      punctuation included (`"widget": "New expedition"`). `"optional": true`: no miss when no button matches it (a
+      control that shows only in some states, section 1.4). `"disabled": true`: a click on a button the game disables
+      by design (a locked choice); it has landed when that button is shown but disabled, and does nothing;
     - the cursor: `{"t": 1.0, "cursor": [0.5, 0.6]}` moves the mouse cursor to a viewport point (fractions 0-1); a
       following `LeftMouseButton` press clicks there;
     - a teleport: `{"t": 0.2, "teleport": [x, y, z], "yaw": 90}` places the player pawn (cm, facing `yaw`): the way
@@ -129,6 +132,12 @@ Words used here:
     never gives it a clean `Saved/` folder. The two sides never share one. Write each play so it holds whether or not
     an earlier play of its side saved, and never rely on a save, profile or unlock a new game lacks unless the
     instruction gives it: the play makes it with a player's steps, or names the play that does in `after`.
+  - `fresh` (optional): `"fresh": true` clears the game's save state (`Saved/SaveGames` and `Saved/Config` of the
+    copy) before this play starts, so what earlier plays of its side saved never changes how it starts: a play that
+    must start as a new game does (a first-run menu, a dialog only a save brings up kept out). Never together with
+    `after` or `continues` (both read what another play left, which a cleared save removes); `tools/validate-game.py`
+    refuses each. Like a first session, it clears the save for the whole side: plays that run after it find no earlier
+    save.
   - `continues` (optional): the task play whose session this play continues, for what the game keeps across a quit
     and a relaunch (a best score, saved settings, a checkpoint): `{"name": "after_restart", ..., "continues":
     "plays_and_quits"}`. On each side the game's save state is cleared (`Saved/SaveGames` and `Saved/Config` of the
@@ -226,9 +235,13 @@ received, a stage nothing took, a named shot whose file wasn't written) is liste
 A `click` on a UMG button fires that button's own pressed, released and clicked events, wherever it sits on screen. A
 Slate button, a `tap`, and a mouse button after a `cursor` are pressed at a point of the screen, so a control below
 the visible part of a scrolling list or panel is scrolled into view first: a `cursor` over the list, `wheel` notches,
-then the press. A click is never optional: a click on a control that shows only in some states (a confirmation that
-appears only when a save exists) is a miss whenever it doesn't show, so the play reaches a state where it always shows
-or doesn't click it.
+then the press. A click no button takes is a miss, unless it is marked `"optional": true`: mark a click optional only
+when its control may or may not show in a correct game (a confirmation that appears only when a save exists), never to
+cover a control the task asks for, and still prefer a play that reaches a state where it always shows (`fresh`, section
+1.1). A click marked `"disabled": true` is on a button the game disables by design; it also lands when the button is
+shown but disabled (and does nothing, as a player's click on it), and is still a miss when no such button shows.
+Without the mark a click on a disabled button is a miss, as before. The plugin says "shown but disabled" for such a click only from a later plugin version; until then a
+`disabled` click on a disabled button is a miss here too.
 
 ### 1.5 Touches
 
@@ -336,8 +349,9 @@ else first; `pawn_on_screen` = 1 when the pawn's centre projects inside the view
     procedural and dynamic meshes, world-space widgets) that are drawn in game (visible, not hidden in game, not
     editor-only) and have a mesh. Collision shapes (box, sphere, capsule components), lights, audio, effects,
     editor-only and visualization components, empty meshes (no mesh asset, no instances) and child actors' components
-    don't count; no value when the actor draws nothing. World-aligned, so a rotated actor's extent mixes its own axes
-    (an actor turned 90 degrees reports its width as `extent_x`);
+    don't count; an actor the selector matches that draws nothing (the plugin writes null) reads 0, so "nothing
+    grew" reads 0 there instead of nothing. World-aligned, so a rotated actor's extent mixes its own axes (an actor
+    turned 90 degrees reports its width as `extent_x`);
   - `hidden` (hidden in game), `collision` (any primitive component collides), `speed` (velocity length);
   - `spin` (deg/s): how fast the actor turns, the fastest of its mesh parts (as `extent_*` counts them; none: its
     root), each read as a component's `spin` (section 2.5). **Its threshold is calibrated or relative to the start,
@@ -422,8 +436,9 @@ An instanced mesh component is one component however many instances it draws: co
   A part near a point turned to face -90: `{"probe": "components", "select": {"class": "StaticMeshComponent", "near":
   {"point": {"xyz": [x, y, z]}, "radius": r}}, "field": "world_yaw", "to_angle": -90, "of": "max"}` with `<=` a
   tolerance. A turn drawn by bones reads the component, not the bone (`bone:` on actors);
-- `extent_x`, `extent_y`, `extent_z` (a primitive's world bounds half-size, cm) and `simulating` (it simulates
-  physics; a skeletal mesh when any of its bodies does);
+- `extent_x`, `extent_y`, `extent_z` (a primitive's world bounds half-size, cm; a matched component without bounds,
+  which the plugin writes null, reads 0) and `simulating` (it simulates physics; a skeletal mesh when any of its
+  bodies does);
 - `changed`, `bounds_change`, `pose_change`: a primitive against the first sample it was seen in, as an actor's
   (section 2.4) for one part: hidden or shown, its world bounds moved, a skinned mesh's pose moved (`pose_change` has
   no value unless it is skinned);
