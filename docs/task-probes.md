@@ -1041,7 +1041,12 @@ the 6 of `look` and the 8 of `drive` for a check without `plays` (the developer'
 under `<task>\judge-shots\<check>\start\` and `reference\`, named `<play>_<nn>.png` in the order taken, with
 `ask.md` (the brief, the question, the rubric, what each picture is) and a blind copy: `blind\A\` and `blind\B\` hold
 the same pictures, and `blind\key.json` says which side each is. A play a probe names is the same play and is played
-once.
+once. Each side's folder also holds `prompt.md`, the cloud judge's prompt with that side as the developer's game: the
+brief, each play with its inputs, the player's position track and the camera measures read from the play, the question
+and the rubric. Read them with the pictures, as the judge does. A check with `before` or `reference` is shown to the
+judge as panels, each moment's BEFORE (the start), AFTER (the side scored) and REFERENCE (the reference) side by side:
+each side's folder then holds every panel as `<play>_<nn>-1-BEFORE.png`, `-2-AFTER.png` and `-3-REFERENCE.png`, and
+you score each side as AFTER from the whole panel. Those panels show which side is which, to you as to the judge.
 
 Look at them yourself before calling a task with a required judge VALID, blind: score every rubric item for A and for
 B first, then open the key. The start must fail every required rubric item and the reference must pass every one.

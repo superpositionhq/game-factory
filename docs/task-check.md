@@ -195,7 +195,12 @@ A `judge` check is looked at by you instead. The check plays its plays on the st
 cloud's judge would be shown ([task-probes.md](task-probes.md) section 3.2) under
 `<task>\judge-shots\<check>\`: `start\` and `reference\` (`<play>_<nn>.png`, in the order taken), `ask.md` (the
 brief, the question, the rubric and what each picture is) and a blind copy, `blind\A\` and `blind\B\`, whose sides
-are in `blind\key.json`. The task's line in the result and in `progress.txt` says
+are in `blind\key.json`. Each side's folder also holds `prompt.md`, the cloud judge's prompt with that side as the developer's game: the
+brief, each play with its inputs, the player's position track and the camera measures read from the play, the question
+and the rubric. Read them with the pictures, as the judge does. A check with `before` or `reference` is shown to the
+judge as panels, each moment's BEFORE (the start), AFTER (the side scored) and REFERENCE (the reference) side by side:
+each side's folder then holds every panel as `<play>_<nn>-1-BEFORE.png`, `-2-AFTER.png` and `-3-REFERENCE.png`, and
+you score each side as AFTER from the whole panel. Those panels show which side is which, to you as to the judge. The task's line in the result and in `progress.txt` says
 `judge <check>: shots saved for start/reference, answer needed`. Before you call a task with a required judge VALID:
 
 1. Open `ask.md`, then look at `blind\A\` and `blind\B\` and score every rubric item of each from 0 to 1, as if

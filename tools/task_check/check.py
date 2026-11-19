@@ -739,12 +739,14 @@ def start_unbuilt(task, why):
                         "weight": build["weight"], "detail": str(why)[:700], "group": group}], "probes": {}}
 
 
-def save_judge_shots(task, sides, folder, where="", blind=False, log=print, rng=None):
+def save_judge_shots(task, sides, folder, where="", blind=False, log=print, rng=None, compare=None):
     """Play every `judge` check's plays on `sides` ({folder name: Side}, a side that didn't build left out with a note)
     and save the screenshots its judge would see under <folder>/<check>/ (judges.save), with the blind copy when
-    `blind`. Nothing is asked of a model: {check: record}, each "answer needed", its `folder` named as `where` (the
-    folder's place in the results) and the check's name."""
+    `blind`. A comparing check's BEFORE and REFERENCE pictures come from `compare` ({"start": Side, "reference": Side},
+    default `sides`). Nothing is asked of a model: {check: record}, each "answer needed", its `folder` named as `where`
+    (the folder's place in the results) and the check's name."""
     out = {}
+    compare = sides if compare is None else compare
     for found in judges.judges(task):
         played, notes = {}, []
         for label, side in sides.items():
@@ -755,7 +757,20 @@ def save_judge_shots(task, sides, folder, where="", blind=False, log=print, rng=
                 played[label] = side.judge_plays(found)
             except (OSError, RuntimeError, ValueError) as exc:
                 notes.append(f"{label}: the plays failed ({type(exc).__name__}: {str(exc)[:200]})")
-        record = judges.save(task, found, played, folder, blind=blind, notes=notes, rng=rng)
+        shown = {}
+        if found["before"] or found["reference"]:
+            for label, side in compare.items():
+                if label in played:
+                    shown[label] = played[label]
+                elif side is not None and side.built():
+                    try:
+                        shown[label] = side.judge_plays(found)
+                    except (OSError, RuntimeError, ValueError):
+                        pass
+        mobile = next((s.project.mobile() for s in sides.values() if callable(getattr(s.project, "mobile", None))),
+                      None)
+        record = judges.save(task, found, played, folder, blind=blind, notes=notes, rng=rng, compare=shown,
+                             mobile=bool(mobile))
         record["folder"] = f"{where}{found['name']}/"
         log(f"  {judges.line(found['name'], record)}")
         out[found["name"]] = record

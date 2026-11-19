@@ -330,7 +330,8 @@ def try_task(repo, task, raw, scratch, out_dir, agent, exe, runs=1, model=None, 
                 row.update(score(task, grade), checks=grade["checks"])
                 if judge_shots and judges.judges(task):
                     row["judges"] = check.save_judge_shots(task, {"agent": tried}, evidence / label / "judge-shots",
-                                                           f"{name}/{label}/judge-shots/", log=log)
+                                                           f"{name}/{label}/judge-shots/", log=log,
+                                                           compare={"start": start, "reference": reference})
                     result["judges_pending"] = sorted(row["judges"])
             log(f"  {label}: {'SOLVED' if row['solved'] else 'not solved'} "
                 f"({row['required_passed']}/{row['required'] or '?'} required checks"

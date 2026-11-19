@@ -97,9 +97,25 @@ class Saved(unittest.TestCase):
                                              log=lambda *a: None, rng=random.Random(1))
             base = folder / "door_looks_open"
             self.assertEqual(sorted(p.name for p in (base / "start").iterdir()),
-                             [f"open_door_{i:02d}.png" for i in range(1, 7)])
-            self.assertEqual((base / "start" / "open_door_02.png").read_bytes(), b"start:10:shot_door.png",
+                             sorted([f"open_door_{i:02d}-{n}.png" for i in range(1, 7)
+                                     for n in ("1-BEFORE", "2-AFTER")] + ["prompt.md"]),
+                             "a `before` check's panels: each moment's BEFORE beside the side as AFTER")
+            self.assertEqual((base / "start" / "open_door_02-2-AFTER.png").read_bytes(), b"start:10:shot_door.png",
                              "the named shot in the order taken")
+            self.assertEqual((base / "reference" / "open_door_02-1-BEFORE.png").read_bytes(),
+                             b"start:10:shot_door.png", "BEFORE is the start, beside every side")
+            self.assertEqual((base / "reference" / "open_door_02-2-AFTER.png").read_bytes(),
+                             b"reference:10:shot_door.png")
+            said = (base / "reference" / "prompt.md").read_text()
+            for text in ("Keep the hero on the ground.", "- BEFORE: task play open_door, 10 s (screenshots: 6, in the "
+                         "panels below); inputs: 3 scripted input(s), its screenshots in order, about one every 2 s; "
+                         "player position track (seconds, x, y, z in cm): [[0.0, 0.0, 0.0, 0.0]",
+                         "- AFTER: task play open_door, 10 s", "- screenshots 1-6: task play open_door, 10 s: 6 panel(s), "
+                         "one per screenshot in time order, each showing BEFORE, AFTER left to right",
+                         "Plays marked BEFORE are of the game as it was", "The question: Does the door open?",
+                         "- door_open (weight 1, required: below 0.5 fails): The door stands open."):
+                self.assertIn(text, said)
+            self.assertNotIn("REFERENCE", said)
             self.assertEqual(len(sides["start"].project.plays), 1, "the probe's own play is reused")
             key = json.loads((base / "blind" / "key.json").read_text())
             self.assertEqual(sorted(key.values()), ["reference", "start"])
@@ -112,7 +128,8 @@ class Saved(unittest.TestCase):
             self.assertIn("`start/`: 6 picture(s)", (base / "sides.md").read_text())
             for text in ("Does the door open?", "| door_open | yes | 1 | The door stands open. |",
                          "| lit | no | 2 | The room is lit. |", "Keep the hero on the ground.", "blind/key.json",
-                         "start fails every required rubric item", "the start as BEFORE"):
+                         "start fails every required rubric item", "the start as BEFORE", "-1-BEFORE.png",
+                         "prompt.md"):
                 self.assertIn(text, ask)
             record = records["door_looks_open"]
             self.assertEqual(record["status"], "shots saved for start/reference, answer needed")
@@ -131,10 +148,30 @@ class Saved(unittest.TestCase):
             base = Path(tmp) / chk["name"]
             a, b = (sorted(p.name for p in (base / "blind" / x).iterdir()) for x in "AB")
             self.assertEqual(a, b, "both blind folders hold the same picture names")
-            self.assertEqual(len(a), 6 + 5)
+            self.assertEqual(len(a), 2 * (6 + 5) + 1, "BEFORE and AFTER of each moment both have, and prompt.md")
             self.assertTrue(any("left out of the blind copy" in n for n in record["notes"]))
             self.assertNotIn("left out", (base / "ask.md").read_text(), "side notes stay out of the blind ask")
             self.assertIn("left out of the blind copy", (base / "sides.md").read_text())
+
+    def test_the_camera_measures_as_the_cloud_judge_reads_them(self):
+        probe_ = {"track": [[0.0, 0.0, 0.0, 100.0], [0.5, 0.0, 0.0, 100.0]],
+                  "camera": [[0.0, -300.0, 0.0, 300.0, -20.0, 0.0, 90.0], [0.5, -300.0, 0.0, 300.0, -20.0, 0.0, 90.0]]}
+        self.assertEqual(judges.camera_text(probe_), "camera (median of 2 samples): 2.00 m above the player, 3.00 m "
+                                                     "from it horizontally, pitch -20.0°, field of view 90°")
+        self.assertIsNone(judges.camera_text({"camera": []}))
+
+    def test_an_agents_game_is_shown_beside_the_start_and_the_reference(self):
+        """A try's comparing check: the agent's game as AFTER, the start as BEFORE, the reference as REFERENCE."""
+        task = task_with(probe(), judge(before=True, reference=True))
+        chk = next(iter(judges.judges(task)))
+        shots = lambda who: {f"shot_{i:02d}.png": f"{who}{i}".encode() for i in range(6)}
+        made = lambda who: {"look": (None, shots(who)), "drive": (None, {})}
+        with tempfile.TemporaryDirectory() as tmp:
+            judges.save(task, chk, {"agent": made("a")}, tmp, compare={"start": made("s"), "reference": made("r")})
+            base = Path(tmp) / chk["name"] / "agent"
+            self.assertEqual([(base / f"look_01-{n}.png").read_bytes() for n in ("1-BEFORE", "2-AFTER", "3-REFERENCE")],
+                             [b"s0", b"a0", b"r0"])
+            self.assertIn("each showing BEFORE, AFTER, REFERENCE left to right", (base / "prompt.md").read_text())
 
     def test_the_shared_plays_are_played_whole_beside_the_boot(self):
         task = task_with({"kind": "boot", "name": "boots", "seconds": 60}, probe(), judge())
@@ -145,7 +182,7 @@ class Saved(unittest.TestCase):
             check.save_judge_shots(task, {"reference": s}, Path(tmp), log=lambda *a: None)
             saved = sorted(p.name for p in (Path(tmp) / "door_looks_open" / "reference").iterdir())
         self.assertEqual(saved, sorted([f"look_{i:02d}.png" for i in range(1, 7)]
-                                       + [f"drive_{i:02d}.png" for i in range(1, 9)]))
+                                       + [f"drive_{i:02d}.png" for i in range(1, 9)] + ["prompt.md"]))
         self.assertEqual([(p["seconds"], p["shots"]) for p in s.project.plays], [(60, 2), (20, 6), (22, 8)])
 
     def test_a_side_that_didnt_build_is_noted_and_no_blind_copy_is_made(self):
@@ -181,7 +218,15 @@ class Whole(unittest.TestCase):
             self.assertIn("judge door_looks_open: shots saved for start/reference, answer needed", result["notes"])
             base = Path(tmp) / "out" / "probe-task" / "judge-shots" / "door_looks_open"
             for folder in ("start", "reference", "blind/A", "blind/B"):
-                self.assertEqual(len(list((base / folder).iterdir())), 14, folder)
+                self.assertEqual(len(list((base / folder).iterdir())), 2 * 14 + 1, folder)
+            self.assertEqual((base / "start" / "look_01-2-REFERENCE.png").read_bytes(),
+                             (base / "reference" / "look_01-1-AFTER.png").read_bytes(),
+                             "a `reference` check shows the reference as REFERENCE beside each side")
+            said = (base / "start" / "prompt.md").read_text()
+            for text in ("- AFTER: idle play, 20 s, no input (screenshots: 6, in the panels below); inputs: none",
+                         "- REFERENCE: scripted drive, 22 s (screenshots: 8, in the panels below); inputs: W held 1-6 s",
+                         "- screenshots 7-14: scripted drive, 22 s: 8 panel(s)", "Plays marked REFERENCE are of the"):
+                self.assertIn(text, said)
             self.assertTrue((base / "ask.md").is_file())
 
     def test_no_judge_shots_skips_them(self):
@@ -271,7 +316,9 @@ class Try(unittest.TestCase):
             self.assertEqual(result["judges_pending"], ["door_looks_open"])
             base = Path(tmp) / "out" / "probe-task" / "run1" / "judge-shots" / "door_looks_open"
             self.assertEqual(sorted(p.name for p in (base / "agent").iterdir()),
-                             [f"open_door_{i:02d}.png" for i in range(1, 5)])
+                             [f"open_door_{i:02d}.png" for i in range(1, 5)] + ["prompt.md"])
+            self.assertIn("- task play open_door, 10 s (screenshots 1-4); inputs: 3 scripted input(s)",
+                          (base / "agent" / "prompt.md").read_text())
             self.assertFalse((base / "blind").exists())
             self.assertIn("before calling the task too easy or held", (base / "ask.md").read_text())
             self.assertIn("answer needed", trial.line(result))
