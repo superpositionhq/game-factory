@@ -698,6 +698,12 @@ returned games have fewer, and that count is not yours to repair. Fix the tasks 
 tasks to make up the number unless the person asks for one, and say the count in your note. Every other validator
 error on a task the return lists is yours to fix.
 
+**When a game's listed tasks are all VALID, say what is ready to hand back.** One message, plain words: each task
+fixed and what changed in it; whether the game itself changed (the new commits on main and each `starts/<task name>`
+branch) or only its tasks; where everything is on disk (the game's folder, its tasks worktree, the results under
+`.task-checks`); and anything you could not fix, with what you tried. The person hands the work back the way they
+were told to; delete nothing, and push nothing unless they ask.
+
 **A returned task is never "not fixable" for its size.** Its start and reference, rebuilt around a fix, are often
 smaller than the thread the task was written from, and the validator only warns about the size of a span (section 6).
 Give the task's own numbers in your note (`tools/thread-stats.py`) and go on with the fix.
