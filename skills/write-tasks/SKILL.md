@@ -555,7 +555,8 @@ of the task. Step by step:
 5. **Answer what the check can't, then ask the person for each task's scores**: every required `judge`
    (`judge-shots\`, above) and every `seen` probe (`seen-shots\`,
    [docs/task-check.md](../../docs/task-check.md)), blind first. A required judge passes on the oracle only when the
-   reference scores every required item; a required `seen` probe decides nothing until both sides are answered.
+   reference scores every required item; a `seen` probe, required or not, decides nothing until both sides are
+   answered, and a reference answer that reads nothing it reads, or holds a `?`, is a task error.
    Keep each judge's blind 0-1 rubric scores in the task's notes (`tasks-workflow.jsonl`), then copy them by judge
    name, side (`start`, `reference`) and rubric key into `judges` in
    `<GF_ROOT>\games\<slug>\.task-checks\writer-scores.json`. Before packaging, **ask the person** for every task's

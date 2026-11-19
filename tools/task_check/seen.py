@@ -46,6 +46,7 @@ PENDING = "crops saved for {sides}, answer needed"
 ANSWERED = "read from blind/answers.json"
 NEEDED = "not read yet: its crops are saved under seen-shots, answer needed"
 NOT_READ = "not asked: a seen probe is read by a model, which a try never asks"
+NOTHING_ON_REFERENCE = "nothing the check reads was read on the reference"
 SIGNATURE = b"\x89PNG\r\n\x1a\n"
 CHANNELS = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}  # a PNG's colour type: its samples a pixel
 
@@ -316,10 +317,34 @@ def read(check, side, found, kept):
         return None, f"blind/{ANSWERS}: {exc}"
     values = [value(t, measure) for t in texts]
     if side == "reference" and (not all(texts) or any(v is None for v in values)):
-        return None, f"nothing the check reads was read on the reference ({'; '.join(map(json.dumps, texts))})"
+        return None, f"{NOTHING_ON_REFERENCE} ({'; '.join(map(json.dumps, texts))})"
     got = reduce(values, measure)
     return got, None if got is not None else \
         f"nothing read as a {measure['read']} ({'; '.join(map(json.dumps, texts))})"
+
+
+def untrusted(check, side, found, kept):
+    """Why the writer's answer for seen check `check` on a side the Lab reads as trusted (the reference; the start when
+    the threshold is relative to it) makes the check a task error, or None (also while it isn't answered). The Lab
+    reads a trusted side 3 times and needs all 3 the same, and needs the reference to read something the check reads
+    (its seen.settle: a task error otherwise). The checker asks no model, so it holds the writer's answer to that bar:
+    the reference reading nothing the check reads, and, local only, a `?` in a trusted side's answer (a character read
+    for sure by no one is the likeliest to read differently from one sample to the next)."""
+    held = ((kept or {}).get("sides") or {}).get(side) or {}
+    if (kept or {}).get("problem") or held.get("lines") is None \
+            or held.get("crops") != {n: c["sha256"] for n, (c, _) in found.items()}:
+        return None
+    measure = check["measure"]
+    try:
+        texts = [normal(lines) for lines in lines_of(held["lines"], measure)]
+    except ValueError:
+        return None
+    if side == "reference" and (not all(texts) or any(value(t, measure) is None for t in texts)):
+        return f"{NOTHING_ON_REFERENCE} ({'; '.join(map(json.dumps, texts))}): the Lab makes it a task error"
+    if any("?" in t for t in texts):
+        return f"the {side}'s answer holds a `?` ({'; '.join(map(json.dumps, texts))}): the Lab needs the {side} to " \
+               "read the same 3 times out of 3, which a character no one can read for sure won't (local only)"
+    return None
 
 
 # -- saved for the writer --------------------------------------------------------------------------------------------
@@ -402,9 +427,11 @@ def ask_text(task, check, found, blind, notes=()):
                   "Then check the task again: it reads the answers with the Lab's own reduction and uses them as the "
                   "start's and the reference's measures. The task is VALID on this check only when the start fails it "
                   "and the reference passes it. An answer stands while its crop stays the same; a crop that changed "
-                  "needs a new one. The Lab needs the start and the reference to read the same 3 times out of 3: a "
-                  "crop you can read only with a `?` may not, so make the text larger, take the shot at a stiller "
-                  "moment or loosen the rect."]
+                  "needs a new one. The Lab needs the start and the reference to read the same 3 times out of 3, and "
+                  "the reference to read something the check reads, or the check is a task error: here a reference "
+                  "answer that reads nothing the check reads, or a `?` in the reference's answer (or the start's, for "
+                  "a threshold relative to the start), is one (local only for the `?`). Make the text one you can read "
+                  "for sure: larger, at a stiller moment, or a looser rect."]
     else:
         lines += ["There is no blind copy (a side has no crop), so this check can't be answered yet."]
     if notes:

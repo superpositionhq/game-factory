@@ -214,8 +214,8 @@ probe reads, what each picture is), `crops.json` (each crop's sha256) and a blin
 whose sides are in `blind\key.json`. The crops are at the shot's own pixels, a mobile play's shot first kept within
 960x540 (540x960 held upright) as the Lab keeps every play's shots: the Lab also scales them up (`ask.md` says how
 much), which the checker can't do without an image library. Until it is answered, the probe measures nothing
-on either side, the task's line says `seen <check>: crops saved for start/reference, answer needed`, and a task with
-a required `seen` probe is not VALID. To answer:
+on either side, the task's line says `seen <check>: crops saved for start/reference, answer needed`, and the task is
+not VALID, the probe `required` or not (the Lab's reading of an optional one can still be a task error). To answer:
 
 1. Before opening `blind\key.json`, copy every line of text you can read in each crop of `blind\A\` and `blind\B\`,
    top to bottom, exactly as shown (`?` for a character you can't read for sure, `[]` when there is no text), into
@@ -229,16 +229,19 @@ a required `seen` probe is not VALID. To answer:
    `{"A": {"before": ["12"], "after": ["15"]}, "B": {"before": ["12"], "after": ["12"]}}`.
 2. Check the task again. The checker reads the answer with the Lab's own reduction (the `match`, the first number, the
    first time; the `agg` over a list of shots) and uses the values as the start's and the reference's measures, so
-   the probe decides VALID or INVALID like any other. A reference whose answer gives nothing the probe reads is
-   INVALID, as the Lab makes it a task error. The line then says `seen <check>: read from blind/answers.json`.
+   the probe decides VALID or INVALID like any other. A reference whose answer gives nothing the probe reads is a
+   task error, as in the Lab, so the task is INVALID whether the probe is required or not. The line then says
+   `seen <check>: read from blind/answers.json`.
    When the reference's crop doesn't show the text asked, rewrite the play as for a judge (above), never the probe's
    `match`.
 
 The folder is kept from one check to the next, and an answer stands while its crop is the same (`crops.json`); a
 crop that changed (another commit, a play that changed) drops that side's answer, with a note. A start that doesn't
 build by design is never played: only the reference is saved, as `blind\A\`. In the Lab the model must read the start
-and the reference the same 3 times out of 3, which this check can't show: a crop you can read only with a `?`, or
-only at full zoom, may not.
+and the reference the same 3 times out of 3, or the probe is a task error. This check asks no model, so it holds your
+answer to that bar instead (local only): a `?` in the reference's answer, or in the start's when the threshold is
+relative to the start, is a task error. Make the text one you can read for sure (larger, at a stiller moment, a looser
+rect); a crop you can read only at full zoom may not read the same 3 times either.
 
 A task with no reference is checked on its start alone: it must build, fail every required probe outside
 `still_works` (thresholds relative to the start, or literals), and pass its still-works probes. Every shipped task has

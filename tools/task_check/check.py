@@ -486,6 +486,10 @@ class Grade:
         return found
 
     def probe_check(self, check):
+        if seen.is_seen(check):  # a trusted side's reading that the Lab makes a task error
+            broken = self.seen_untrusted(check)
+            if broken:
+                return self.task_error(check, broken)
         try:
             limit, start, fix = self.threshold(check)
         except verdict.Uncalibrated as exc:
@@ -513,6 +517,17 @@ class Grade:
         return passed, verdict.describe(check, value, limit, start, fix, why)
 
     # -- the cloud grader's task errors: a check no version of the game can pass ---------------------------------------
+
+    def seen_untrusted(self, check):
+        """Why seen check `check` is a task error by the writer's answer on a side the Lab reads as trusted (seen.
+        untrusted): the reference, and the start when the threshold is relative to it; None when neither is."""
+        trusted = [s for s in (self.reference, self.start if tasks.relative(check) else None)
+                   if s is not None and s.answers is not None and s.built()]
+        for side in trusted:
+            why = seen.untrusted(check, side.name, side.seen_crops(check), side.answers.get(check["name"]))
+            if why:
+                return why
+        return None
 
     def task_error(self, check, why):
         """(False, its detail) of a check no version of the game can pass: the task's fault, kept in task_errors (a
@@ -904,10 +919,11 @@ def check_task(repo, task, raw, scratch, out_dir, keep=False, direct=False, time
                      and not (label == "start" and build is not None and not start.built())}
             result["seen"] = save_seen_shots(task, shown, evidence / "seen-shots", f"{name}/seen-shots/", held, log=log)
             notes += [seen.line(n, r) for n, r in result["seen"].items()]
-            # a required seen check gates as a probe does, so the task isn't VALID until both sides are answered (an
-            # unanswered start would otherwise read as the start failing it)
+            # a seen check gates as a probe does, so the task isn't VALID until both sides are answered (an unanswered
+            # start would otherwise read as the start failing it)
+            # an optional one too: the Lab's reading of it can still be a task error, which only the answer shows
             waiting = [seen.line(c["name"], result["seen"][c["name"]]) for c in seen.checks(task)
-                       if c["required"] and result["seen"][c["name"]]["status"] != seen.ANSWERED]
+                       if result["seen"][c["name"]]["status"] != seen.ANSWERED]
             valid, why = valid and not waiting, why + waiting
         result.update(probes=probe_values(task, ref_grade, start_grade), start_checks=start_grade["checks"],
                       reference_checks=ref_grade["checks"] if ref_grade else [])

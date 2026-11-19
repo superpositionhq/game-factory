@@ -158,6 +158,21 @@ class Read(unittest.TestCase):
         self.assertIsNone(value)
         self.assertIn("nothing the check reads was read on the reference", why)
 
+    def test_a_trusted_side_that_reads_nothing_or_a_question_mark_is_a_task_error(self):
+        """The Lab reads the reference (and the start of a threshold relative to it) 3 times, all the same, and the
+        reference must read something; a `?` stands for a reading that may not repeat (local only)."""
+        c = tasks.check(seen_probe())
+        found = self.found("combo")
+        self.assertIn("nothing the check reads was read on the reference",
+                      seen.untrusted(c, "reference", found, self.held("reference", ["COMBO"], "combo")))
+        self.assertIn("holds a `?`", seen.untrusted(c, "reference", found, self.held("reference", ["x?3"], "combo")))
+        self.assertIn("the start's answer holds a `?`",
+                      seen.untrusted(c, "start", found, self.held("start", ["x?"], "combo")))
+        self.assertIsNone(seen.untrusted(c, "reference", found, self.held("reference", ["COMBO x3"], "combo")))
+        self.assertIsNone(seen.untrusted(c, "start", found, self.held("start", [], "combo")),
+                          "the start may read nothing")
+        self.assertIsNone(seen.untrusted(c, "reference", found, None), "unanswered: waits for the answer")
+
     def test_no_answer_or_another_crop_reads_nothing(self):
         c = tasks.check(seen_probe())
         self.assertEqual(seen.read(c, "start", self.found("combo"), None), (None, seen.NEEDED))
@@ -248,6 +263,26 @@ class Whole(unittest.TestCase):
             kept = json.loads((base / "blind" / "answers.json").read_text())
             key = json.loads((base / "blind" / "key.json").read_text())
             self.assertEqual({key[k] for k in kept}, {"reference"}, "the reference's answer still stands")
+
+    def test_a_reference_answer_that_reads_nothing_is_a_task_error_required_or_not(self):
+        task = task_with(probe(), seen_probe(required=False))
+        projects = lambda: {"start": Played(1, folder="start", answer=measuring(-5)),
+                            "reference": Played(2, folder="reference", answer=measuring(5))}
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self.run_check(tmp, task, projects())
+            self.assertEqual(first["reasons"], ["seen combo_shows: crops saved for start/reference, answer needed"],
+                             "an optional seen probe waits for its answer too")
+            self.answer(tmp, ["COMBO x0"], ["COMBO"])
+            again = self.run_check(tmp, task, projects())
+            self.assertEqual(again["verdict"], "INVALID")
+            self.assertEqual(len(again["reasons"]), 1)
+            self.assertTrue(again["reasons"][0].startswith("task error in combo_shows: nothing the check reads was "
+                                                           "read on the reference"), again["reasons"])
+            self.answer(tmp, ["COMBO x0"], ["COMBO? x3"])
+            unsure = self.run_check(tmp, task, projects())
+            self.assertIn("holds a `?`", unsure["reasons"][0])
+            self.answer(tmp, ["COMBO x0"], ["COMBO x3"])
+            self.assertEqual(self.run_check(tmp, task, projects())["verdict"], "VALID")
 
     def test_a_shot_the_play_never_took_is_said(self):
         task = task_with(seen_probe())
