@@ -33,6 +33,9 @@ offers one (AGENTS.md, "Only these skills"). Do what they don't cover by hand un
 3. Write the design doc + story bible in game-factory `docs/games/<slug>.md` before building: systems (the core loop and the further ones "Gameplay depth" below asks for), classes, data
    tables, maps, scenarios 1..n (start state + win/lose), art and audio direction, acceptance checklist. Keep its
    status section current. It is the only game-factory file you edit.
+   Open it with a **feel intent** of 3 to 5 sentences (owner, 2026-11-19): the genre, two or three reference games,
+   and what a player should feel moment to moment (weighty and deliberate, quick and floaty, tense, calm). The
+   person's taste judgments (below, "The person's taste") are made against it; change it only when the person does.
 4. Choose the game's art style ("Art style" below) before writing the art direction: the design doc names the style
    and the art, UI and lighting plans follow its guide.
 
@@ -279,25 +282,42 @@ committed shows as a broken image).
 listed file committed (`tools/migrate-assets-manifest.py` converts an older file), `workflow.jsonl` rows, README
 images, no banned names. The dataset adds your design doc and the original brief (`Brief/`) and the full history.
 
-**A person plays every game before it is complete (owner, 2026-11-19).** An AutoPlay recording is not a playtest.
-Once the game builds and plays from start to end, and before any task is written, a person plays it: at least one
-full round, from the title screen to a win or a loss, on the build a player gets (the packaged build; for
-a mobile game, a phone or an emulator). Ask for it through the coordinator (or the person, when you work with them directly) and go on with
-other work while you wait. Until a playtest is recorded, the game is not complete: write no tasks and do not report it
-done.
+**The person's taste (owner, 2026-11-19).** The person who directs the game judges how it looks and feels, alone (no
+second reviewer). Their judgments are part of the dataset, so ask for each in plain words, record it as it happens, and
+never answer one yourself. Each is made against the design doc's feel intent: name it when you ask.
 
-- **What the feedback covers.** At least the feel of the game: controls and response (each press does something at
-  once, and what the player expects), movement and camera, feedback on each event (a hit, a pickup, damage, a win or
-  a loss), difficulty and pacing, how readable the HUD and text are, and what is fun or boring. Each issue is one
-  point, in what the player saw, never a fix.
-- **How it is recorded.** Each issue is its own `user.direction` row with `"target": "playtest"` and, beside
-  `params.direction`, `params.playtest`: `{"round": 1, "build": "packaged" | "phone" | "emulator" | "editor", "minutes": <minutes
-  played>, "result": "win" | "lose" | "quit"}`. A round with nothing to fix is still one row ("played a full round, no
-  issues", with the same `params.playtest`). Write only what the person reported: never a row from your own play, a
-  recording or a guess.
-- **Then fix them.** Each issue in its own commit with its `Direction:` line ("Working with the coordinator", below).
-  These rounds are the best source of the game's tasks (correction threads) and of its taste data, so a second round
-  after the fixes is welcome.
+1. **A full round before the game is complete.** An AutoPlay recording is not a playtest. Once the game builds and
+   plays from start to end, and before any task is written, the person plays it: at least one full round, from the
+   title screen to a win or a loss, on the build a player gets (the packaged build; for a mobile game, a phone or an
+   emulator). Ask for it through the coordinator (or the person, when you work with them directly) and go on with
+   other work while you wait. Until a round is recorded, the game is not complete: write no tasks and do not report it
+   done.
+   - **What the feedback covers.** At least the feel: controls and response (each press does something at once, and
+     what the player expects), movement and camera, feedback on each event (a hit, a pickup, damage, a win or a
+     loss), difficulty and pacing, how readable the HUD and text are, and what is fun or boring. Each issue is one
+     point, in what the player saw, never a fix.
+   - **How it is recorded.** Each issue is its own `user.direction` row with `"target": "playtest"` and, beside
+     `params.direction`, `params.playtest`: `{"round": 1, "build": "packaged" | "phone" | "emulator" | "editor",
+     "minutes": <minutes played>, "result": "win" | "lose" | "quit"}`. A round with nothing to fix is still one row
+     ("played a full round, no issues", with the same `params.playtest`). Write only what the person reported: never
+     a row from your own play, a recording or a guess.
+2. **The three that matter most.** After each round the person names, in order, the three issues they would fix
+   first, each with why. Add `"rank": 1`, `2` or `3` to those rows' `params.playtest` (other issues carry no rank), and
+   fix in that order.
+3. **Two versions to choose from.** When a look or feel direction has more than one good answer (a camera distance, a
+   jump's weight, a colour grade, a hit effect), build both as two commits (A, then B on top), show the person the
+   same moment in each (screenshots or a short capture from the same spot, or both builds to play), and keep the one
+   they pick (revert B when they pick A). Record the pick as a `user.direction` row (its `params.direction` says it in one sentence) with
+   `"target": "choice"` and `params.choice`: `{"of": "<direction id>", "a": "<commit>", "b": "<commit>", "picked": "a" | "b", "why": "<their
+   reason>"}`. Not for a bug or an ask with one right answer.
+4. **A verdict on each fix.** Fix each playtest issue in its own commit with its `Direction:` line ("Working with the
+   coordinator", below). Then the person plays or looks at it and says better, same or worse, with half a sentence
+   why: a `user.direction` row (its `params.direction` says it in one sentence) with `"target": "verdict"` and
+   `params.verdict`: `{"of": "<direction id>", "result":
+   "better" | "same" | "worse", "why": "<their reason>"}`. Same or worse is the issue's next round, not a done fix.
+
+These rounds are the game's best source of tasks (taste threads, write-tasks) and of its taste data, so a second round
+after the fixes is welcome.
 
 **Tasks (write-tasks skill).** A game is complete when its repo has `Tasks/` on the tasks branch: tasks an agent can
 be given on this game, one `Tasks/<game>-<kind>-<slug>.json` each in the task format `GameTask`, at least 5 and up to about 10, at least 4 of them hard (the others may be medium, none easier), every

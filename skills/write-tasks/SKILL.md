@@ -149,6 +149,13 @@ a system and the commits that mended it. Read the whole span before picking its 
 Playtest rows (`"target": "playtest"`) and the commits that answer them are the first place to look: what a
 person felt while playing is what strong agents miss.
 
+**Taste threads (owner, 2026-11-19).** A thread that settled how the game looks or feels (playtest issues, a choice
+between two versions, a look or feel direction) is a taste thread. The person who directed the game picks which
+candidate threads are taste threads and writes or approves each one's brief in a playtester's words (section 3 still
+holds: observations only, nothing quoted from chat). The brief opens with the game's feel intent from the design doc,
+so "better" has a direction. Its reference is a commit the person's verdict called better: a fix they judged same or
+worse is no reference, so extend the thread to the round they called better, or drop it.
+
 ## 2. Picking the commits
 
 ### Starts on the engine (owner's rule, 2026-10-19)
