@@ -739,21 +739,23 @@ game and its words before anything about the task:
    *Words from the task*: the terms of this work you will use, each in a few words (start, reference, check, play,
    the task check, no-op).
 3. **What a task and a check are.** Once, on the first task of a session, in your own plain words and with this
-   game's own example. The person is good at games, not at how we test agents, and the rest makes no sense without
-   this. Say it like this, not in our terms:
-   - *A task* is a piece of work we will give to an AI agent to see whether it can do it: here is a game, make this
-     change. It has three parts. The *instruction* says what to change, the way a player or a tester would describe
-     it. The *start* is the game before the change. The *reference* is the game after the change, made by a person,
-     which proves the change can be made.
-   - *A check* is how we find out, with nobody watching, whether the change was made. It plays the game from a
-     script (a *play*: walk here, press this, wait five seconds), then reads something off the game (where the
-     creature is, what the screen says, what a screenshot shows) and compares it with what the instruction asked.
+   game's own example. The person is good at games, not at how we test, and the rest makes no sense without this.
+   Say it like this. Do not say "agent", "model", "environment", "oracle", "grader" or "eval": say "a coding AI, like
+   the one you are working with now" once, and "it" after that.
+   - *A task* is a job we set to find out how good a coding AI is at game work, the same kind of AI you are working
+     with now. We hand it a game and say: make this change. A task has three parts. The *instruction* says what to
+     change, the way a player or a tester would put it. The *start* is the game before the change. The *reference*
+     is the game after the change, made by a person, so we know the job can be done.
+   - *A check* is an automatic test that tells us whether the change was made, with nobody watching. It plays the
+     game from a script (a *play*: walk here, press this, wait five seconds), then looks at the game (where the
+     creature is, what the screen says, what a screenshot shows) and compares that with what the instruction asked
+     for.
    - *A good task*: every check fails on the start, because the change is not there yet, and passes on the
-     reference, because now it is. The *task check* is the tool that runs all of a task's checks on both versions
-     and says VALID or INVALID.
+     reference, because now it is. The *task check* is the tool that runs all of a task's checks on both versions of
+     the game and says VALID or INVALID.
    - *Why this one came back*: for this task that is not true yet. Say which way, in one sentence about this game
-     ("the check that the creature walks to the radio fails even on the finished game"). The work is to make it true
-     without making the task any easier for the agent.
+     ("the check that the creature walks to the radio fails even on the finished game"). The work is to make it
+     true, without making the job any easier.
 4. **The part of the game this task touches.** The rooms or areas involved and how they connect, and who and what is
    in them (the player, creatures, objects). Keep to the areas the task concerns, not the whole game. Name a thing as
    a player sees it the first time you mention it: "the wireless, a radio on the workshop bench", not "the wireless".
