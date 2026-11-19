@@ -58,13 +58,13 @@ source (config set by hand, config from bootstrap, or computed at run time). The
 | `lib/gf-root.ps1` | `<root>\tools\`, the hooks dir | root/config resolver (also `Get-GFHooksDir`, `Get-GFAgents`), dot-sourced by every script |
 | `lib/codex-hooks.ps1` | | Codex hook trust: the `[hooks.state]` entries Codex needs in `config.toml` before it runs a hook (bootstrap writes, check compares) |
 | `tools/ue-heavy.ps1` | `<root>\tools\ue-heavy.ps1` | machine-wide job limiter: `heavy_slots` general slots + `gpu_slots` GPU slots, one named mutex per slot (`Global\ue-heavy-slot-<n>`, `Global\ue-gpu-slot-<n>`: a killed job leaks none; VRAM guard; a recording takes all GPU slots), counts from the config or the hardware formula above, `-Low` for background work, yields to `builds\_queue\_recording-wants-gpu`, log `.recording\_heavy-jobs.jsonl`. Installed next to a copy of `lib\gf-root.ps1` |
-| `hooks/record-action.ps1` | the hooks dir | the agent hook (Claude Code: PostToolUse / PostToolUseFailure / Stop, and UserPromptSubmit / SessionEnd with `-Messages`; Codex: PostToolUse / Stop / UserPromptSubmit / SessionEnd with `-Agent codex`): every prompt and reply of a game session to `.recording\<project>\messages.jsonl` (read from the transcript, see Recording), every tool call to `.recording\<project>\actions.jsonl` (earlier calls backfilled from the transcript, see Recording); Stop auto-commits leftovers as `WIP` |
+| `hooks/record-action.ps1` | the hooks dir | the agent hook (Claude Code: PostToolUse / PostToolUseFailure / Stop, and UserPromptSubmit / SessionEnd with `-Messages`; Codex: PostToolUse / Stop / SubagentStop / UserPromptSubmit / SessionEnd with `-Agent codex`): every prompt and reply of a game session to `.recording\<project>\messages.jsonl` (read from the transcript, see Recording), every tool call to `.recording\<project>\actions.jsonl` (earlier calls backfilled from the transcript, see Recording); Stop auto-commits leftovers as `WIP` |
 | `hooks/record-commit.ps1` | the hooks dir | called by each game repo's post-commit hook: `.recording\<repo>\commits.jsonl` |
 | `hooks/settings-hooks.json` | merged into `~\.claude\settings.json` | Claude Code: the three hook entries (`{{HOOKS_DIR}}` filled in) |
-| `hooks/codex-hooks.json` | merged into `~\.codex\hooks.json` | Codex: the two hook entries (`{{HOOKS_DIR}}` filled in), trusted in `~\.codex\config.toml` |
+| `hooks/codex-hooks.json` | merged into `~\.codex\hooks.json` | Codex: the five hook entries (PostToolUse, Stop, SubagentStop, UserPromptSubmit, SessionEnd; `{{HOOKS_DIR}}` filled in), trusted in `~\.codex\config.toml` |
 | `hooks/recording-exclude.txt` | the hooks dir (once) | session ids never recorded (the coordinator) |
 | `install-git-hook.ps1` | `<game>\.git\hooks\post-commit` | appends the commit recorder after Git LFS's own lines |
-| `tests/test-recording.ps1` | | the recording hook and the reasoning-summary settings on made-up transcripts in a scratch folder under `%TEMP%` (whole tool results, the cut at 1,000,000 characters, picture markers, a saved command output, `thinking` rows of both agents, `-Backfill`, `config.toml`): `powershell -NoProfile -ExecutionPolicy Bypass -File machine\tests\test-recording.ps1`; exit code = failed checks |
+| `tests/test-recording.ps1` | | the recording hook and the reasoning-summary settings on made-up transcripts in a scratch folder under `%TEMP%` (whole tool results, the cut at 1,000,000 characters, picture markers, a saved command output, `thinking` rows of both agents, subagents of both agents, `-Backfill`, `config.toml`): `powershell -NoProfile -ExecutionPolicy Bypass -File machine\tests\test-recording.ps1`; exit code = failed checks |
 
 The hooks dir is `hooks_dir` in the config: `~\.claude\hooks\` on machines set up before Codex support (their game
 repos' post-commit hooks point there), else `~\.game-factory\hooks\`. One copy serves both agents.
@@ -79,8 +79,9 @@ hooks and never overwrites it.
   `-Path <root>\games\<slug>`, and that call maps a new game's session.
 - **Backfill.** At that first mapping the hook imports the session's earlier tool calls (reading docs, drafting the
   design) from its transcript (`transcript_path` in the hook input; Claude Code: plus `<session>\subagents\*.jsonl`
-  beside it; Codex: the rollout file's completed shell, file-change and MCP items, shell calls as `Bash` with the
-  command, file changes as `apply_patch` with `input.changes` since the rollout keeps no patch text). They
+  beside it; Codex: the rollout file's completed shell, file-change and MCP items and those of its subagents'
+  rollouts, shell calls as `Bash` with the command, file changes as `apply_patch` with `input.changes` since the
+  rollout keeps no patch text; see Subagents). They
   are written in order, just before the mapping call's own row, with `"status": "from_transcript"` and the transcript's
   times (`time` = the call, `result_time` = its result). Only calls with a result, logged under this session id and no
   older than the transcript file are imported (a fork's copied context predates the file). Each session is backfilled
@@ -91,13 +92,22 @@ hooks and never overwrites it.
   `actions.jsonl` (finds the transcript under `~\.claude\projects\`, or `~\.codex\sessions\` with `-Agent codex`,
   when not given); a second run does nothing.
 - Live rows carry no `status`; every row of a backfill carries `from_transcript`, so the two are never confused.
+- **Subagents.** A subagent's tool calls and messages are filed under its session, each row with `subagent`: Claude
+  Code `agent-<agent_id>` (its transcript `<session>\subagents\agent-<agent_id>.jsonl`), Codex its thread id (its own
+  rollout `rollout-<time>-<thread id>.jsonl`, named in the parent's rollout by `SubAgentActivity` items). A live row
+  takes it from the hook input's `agent_id` and also carries `agent_type`. Codex: the subagent's messages are read from
+  its rollout at `SubagentStop` (`agent_transcript_path`) and whenever the parent's rollout names it; the context copied
+  from the parent at its start is left out (its items carry the parent's thread id). Codex encrypts the task and every
+  other message one agent sends another, so such a message is a `user` row with only its readable header (message
+  type, task name, sender) and `encrypted` true. When a subagent's call maps the session (its hook names its own rollout
+  as `transcript_path`), the backfill reads the session's rollout and every subagent's.
 - **Prompts, replies and reasoning summaries.** `messages.jsonl` next to `actions.jsonl` holds every prompt the person typed, every
   reply the model wrote and every reasoning summary the agent saved in a session mapped to the project, one row each (`"schema": "superposition.agent-message/v0"`:
   `time`, `project`, `session_id`, `agent`, `role` `user`, `assistant` or `thinking`, `message_id`, `text`; `model`; `images` for
   pictures attached to a prompt; `mid_turn` for a prompt typed while the model was working; Codex `phase`; `subagent`
-  for a Claude Code subagent's transcript, where `user` is the prompt the session gave it). The hook reads them from
+  and `encrypted` for a subagent's messages, see Subagents). The hook reads them from
   the session's transcript, never from its own input, so each is written once with the transcript's id and time: every
-  Stop, UserPromptSubmit and SessionEnd reads what the transcript gained since the last read
+  Stop, SubagentStop, UserPromptSubmit and SessionEnd reads what the transcript gained since the last read
   (`recording-messages.json` next to the hooks: transcript file, bytes read), so a session mapped late gets its
   earlier messages too. In it, a `thinking` row is a reasoning summary the agent saved for a turn (`redacted` true and no text when the agent saved it without readable text); `machine/bootstrap.ps1` turns the summaries on for both agents (Claude Code `showThinkingSummaries` and `alwaysThinkingEnabled` in `settings.json`; Codex `model_reasoning_summary = "detailed"` and `hide_agent_reasoning = false` in `config.toml`) and `machine/check.ps1` checks them; a Codex model that gives no summaries leaves only the textless rows. Not recorded here: tool calls and results (`actions.jsonl`, each call with its whole result (up to 1,000,000 characters, `response_chars` and `response_truncated` on a longer one; a picture or other binary payload as a short marker)), text the agent
   tool puts into a turn itself (meta rows, compaction summaries, background-task notices, API error notices) and a

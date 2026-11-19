@@ -256,7 +256,7 @@ if ($Agents -contains 'claude') {
         elseif ($p.Value -ne $true) { $p.Value = $true; $claudeChanged = $true }
     }
 }
-# Codex: ~\.codex\hooks.json gets PostToolUse, Stop, UserPromptSubmit and SessionEnd (Codex has no PostToolUseFailure),
+# Codex: ~\.codex\hooks.json gets PostToolUse, Stop, SubagentStop, UserPromptSubmit and SessionEnd (Codex has no PostToolUseFailure),
 # and config.toml the trust
 # entries for exactly those handlers (machine/lib/codex-hooks.ps1: Codex skips an untrusted hook silently).
 $codexChanged = $false; $codexTrustChanged = $false; $codexTrust = @(); $codexSummaryChanged = $false
@@ -285,7 +285,7 @@ if (($claudeChanged -or $codexChanged -or $codexTrustChanged -or $codexSummaryCh
     Write-Host "  About to add the game-factory recording hooks (a backup .bak-$stamp of each file is kept):" -ForegroundColor Yellow
     if ($claudeChanged) { Write-Host "    - Claude Code: PostToolUse, PostToolUseFailure, Stop, UserPromptSubmit and SessionEnd in $ClaudeDir\settings.json" }
     if ($claudeChanged) { Write-Host "      and its reasoning summaries turned on there (showThinkingSummaries, alwaysThinkingEnabled)" }
-    if ($codexChanged -or $codexTrustChanged) { Write-Host "    - Codex: PostToolUse, Stop, UserPromptSubmit and SessionEnd in $CodexDir\hooks.json, marked trusted in $CodexDir\config.toml" }
+    if ($codexChanged -or $codexTrustChanged) { Write-Host "    - Codex: PostToolUse, Stop, SubagentStop, UserPromptSubmit and SessionEnd in $CodexDir\hooks.json, marked trusted in $CodexDir\config.toml" }
     if ($codexSummaryChanged) { Write-Host "    - Codex: its reasoning summaries turned on in $CodexDir\config.toml (model_reasoning_summary, hide_agent_reasoning)" }
     Write-Host "    They run $hooksDir\record-action.ps1 after every tool call, at every prompt and at the end of every turn and"
     Write-Host "    session, for every session of that agent on this account."
@@ -315,7 +315,7 @@ if ($claudeChanged) {
 if ($codexChanged) {
     if (Test-Path -LiteralPath $codexHooksPath) { Copy-Item -LiteralPath $codexHooksPath "$codexHooksPath.bak-$stamp" }
     Write-JsonFile $codexHooksPath $codexHooks
-    Note changed 'Codex hooks' "hooks.json PostToolUse/Stop/UserPromptSubmit/SessionEnd -> $hooksDir\record-action.ps1 -Agent codex (backup .bak-$stamp)"
+    Note changed 'Codex hooks' "hooks.json PostToolUse/Stop/SubagentStop/UserPromptSubmit/SessionEnd -> $hooksDir\record-action.ps1 -Agent codex (backup .bak-$stamp)"
 } elseif ($Agents -contains 'codex' -and -not $hooksDeclined) { Note ok 'Codex hooks' }
 if ($codexTrustChanged) {
     if (Test-Path -LiteralPath $codexToml) { Copy-Item -LiteralPath $codexToml "$codexToml.bak-$stamp" }
