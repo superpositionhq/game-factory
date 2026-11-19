@@ -148,7 +148,9 @@ files (`git log --format=%h -- <path>` piled up in a short window), several `use
 (the workflow rows' `"direction"` links), fixes followed by "still", "again", "regressed" or a revert, ports that broke
 a system and the commits that mended it. Read the whole span before picking its ends.
 Playtest rows (`"target": "playtest"`) and the commits that answer them are the first place to look: what a
-person felt while playing is what strong agents miss.
+person felt while playing is what strong agents miss. For a game built since 2026-11-19, the closed task threads
+(`task.open` and `task.close` rows, commits marked `Task:`) are the tasks: write each from its plan when it closes
+(game-session, "Task threads"). A thread's own commits still have to meet the floors.
 
 **Taste threads (owner, 2026-11-19).** A thread that settled how the game looks or feels (playtest issues, a choice
 between two versions, a look or feel direction) is a taste thread. The person who directed the game picks which

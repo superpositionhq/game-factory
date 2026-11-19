@@ -342,6 +342,28 @@ never answer one yourself. Each is made against the design doc's feel intent: na
 These rounds are the game's best source of tasks (taste threads, write-tasks) and of its taste data, so a second round
 after the fixes is welcome.
 
+**Task threads, opened while the game is built (owner, 2026-11-19).** A game's tasks come out of how it was really
+built, never out of a count made at the end, so mark them as the work happens:
+
+- **Open.** When a direction or a playtest issue will clearly take several rounds, ask the person in one line: "This
+  will take several rounds: track it as a task?" On yes, append a `task.open` row (`actor` agent): `target` the
+  thread's slug, `params`: `{"direction": "<its user.direction row id>", "ask": "<what is wanted, in a player's
+  words>", "start": "<current commit>", "plan": "<what a player will see when it is done, and which probe or judge
+  reads it>"}`. A thread opens only on the person's direction or playtest issue, never on your own idea, and never
+  after the fact.
+- **Plan before the fix.** Write the plan before any code of the fix exists, so the check cannot lean on names,
+  places or timings the fix will invent.
+- **Work.** Each commit on the thread carries `Task: <slug>` beside its `Direction:` line.
+- **Close.** When the person's verdict calls it better, append `task.close` (`target` the slug, `params`:
+  `{"reference": "<commit>"}`), then write the task from its plan (write-tasks) and run its check on the start and the
+  reference now, while the work is fresh.
+
+**The person never has to remember these steps: you ask, at the moment each is due** (a full round is ready to play;
+two versions to choose from; a fix to judge; a direction worth tracking as a task). After each playtest round, verdict
+and closed thread, show a short progress card in plain words: task threads open and closed (closed out of 5),
+playtest rounds played, issues still open, and what comes next. A game that nears the end with fewer than 5 closed
+threads needs more real work, not tasks made up at the end.
+
 **Feel words and starting numbers (owner, 2026-11-19).** When the person's words describe feel, look first where the
 word points:
 
