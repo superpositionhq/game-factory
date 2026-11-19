@@ -754,8 +754,34 @@ error on a task the return lists is yours to fix.
 **When a game's listed tasks are all VALID, say what is ready to hand back.** One message, plain words: each task
 fixed and what changed in it; whether the game itself changed (the new commits on main and each `starts/<task name>`
 branch) or only its tasks; where everything is on disk (the game's folder, its tasks worktree, the results under
-`.task-checks`); and anything you could not fix, with what you tried. The person hands the work back the way they
-were told to; delete nothing, and push nothing unless they ask.
+`.task-checks`); and anything you could not fix, with what you tried. Then pack it ("Handing a fixed game back",
+below); delete nothing, and push nothing unless they ask.
+
+**Handing a fixed game back (owner, 2026-11-19).** One zip per game, made by the pack's own tool, never by hand: a
+zip of the game's folder is many gigabytes and leaves out what we need. When the person asks how to submit, send
+back or hand in their work, this is the answer.
+
+1. Every task the return lists for this game says VALID in its latest task check, the person has scored every
+   judge and `seen` picture it asked for (`.task-checks\writer-scores.json`), and everything is committed: the game
+   on main and its `starts/<task name>` branches, the tasks in the tasks worktree.
+2. Run, with one `--task` for each task the return lists:
+   `python <GF_ROOT>\game-factory\tools\pack-return.py <game repo> --task <name> --task <name>`
+   It writes `<game>-return-<date>-<time>.zip` in a `returns` folder beside the game's folder and prints its path and
+   size. It refuses uncommitted changes, a listed task that is not VALID and an LFS object missing from this PC, and
+   says which: fix that and run it again, never work around it.
+3. The zip holds only what the fix added, so it is small: the new commits of main, of every `starts/` branch and of
+   the tasks branch (one git bundle), the LFS files those commits added, each task's task check result and the
+   person's scores, and `return.json` listing them. Add nothing to it and take nothing out.
+4. Tell the person, in plain words: where the zip is and how big; that they upload that one file to a Google Drive
+   folder and share the folder with the people named in the instructions they were sent (the addresses are in those
+   instructions, not here: if they don't have them, they ask us); and that a game is sent as soon as it is done, not
+   held until the whole batch is. You do not upload or share anything yourself.
+5. Nothing under the game's folder, its tasks worktree or `.task-checks` is deleted after sending. We check every
+   fix and some come back for rework; the person keeps it all until we tell them the game is approved.
+
+A game with a task you could not fix is not ready to send: say which task and what you tried, and the person tells
+us ("Never offer the person an eased check as a choice", above). Run without `--task` only when they ask to send
+work in progress for us to look at; the tool then reports each verdict and packs it as it is.
 
 **A returned task is never "not fixable" for its size.** Its start and reference, rebuilt around a fix, are often
 smaller than the thread the task was written from, and the validator only warns about the size of a span (section 6).
