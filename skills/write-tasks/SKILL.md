@@ -146,6 +146,8 @@ checklist) lengthens a run without changing what it misses.
 files (`git log --format=%h -- <path>` piled up in a short window), several `user.direction` rows on one topic
 (the workflow rows' `"direction"` links), fixes followed by "still", "again", "regressed" or a revert, ports that broke
 a system and the commits that mended it. Read the whole span before picking its ends.
+Playtest rows (`"target": "playtest"`) and the commits that answer them are the first place to look: what a
+person felt while playing is what strong agents miss.
 
 ## 2. Picking the commits
 
