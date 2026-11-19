@@ -287,6 +287,14 @@ against the repo's committed files, so no browser check is needed.
 listed file committed (`tools/migrate-assets-manifest.py` converts an older file), `workflow.jsonl` rows, README
 images, no banned names. The dataset adds your design doc and the original brief (`Brief/`) and the full history.
 
+**One game, one main thread (owner, 2026-11-19).** A game is made in one main session at a time: the session the
+person talks to, where every direction, playtest round, choice and verdict happens. A later session (the next day,
+after a restart or a full context) continues that same thread: it reads the design doc's status and the latest
+`workflow.jsonl` rows and goes on. Subagents are welcome for bounded jobs (find assets, write a shader, look into a
+bug): the main session gives the job and takes the result back, and their work is recorded under it. Never start a
+second independent session on the same game while one is open (another agent tool, another terminal, another
+machine); a coordinator may relay directions and review commits, but never edits the game itself.
+
 **The person's taste (owner, 2026-11-19).** The person who directs the game judges how it looks and feels, alone (no
 second reviewer). Their judgments are part of the dataset, so ask for each in plain words, record it as it happens, and
 never answer one yourself. Each is made against the design doc's feel intent: name it when you ask.
