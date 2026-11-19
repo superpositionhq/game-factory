@@ -267,11 +267,12 @@ results.
 
 What ships is what matters, in this order: the game plays; the game builds (editor and packaged Shipping); the dataset holds the replay scripts and the git log. The AutoPlay bot should still play like a human (human-like input, aim and camera), but bot work never blocks a release: one recording per scenario that shows the game running is enough, whatever the result (win/lose/timeout is metadata). No tuning for win rates, seed sweeps or "clean" runs, and no re-runs or re-recordings to improve how the bot plays. No retest loops: every GPU or editor run costs about 30 minutes of the shared machine and holds up delivery, so run the minimum once and report; re-run only when the user asks. Game-session work never blocks dataset packaging or sharing.
 
-## Dataset (layout v1.1)
+## Dataset (layout v1.3)
 
-A finished game ships as: `README.md, git.log, workflow.jsonl, UEProject/, ReplayScripts/,
-Gameplay/<slug>_S<n>.mp4, Screenshots/, Build/, manifest.json`. The repo's `Dataset/` folder holds the same minus
-`UEProject/` and `Build/`; the packager produces it and you commit it. The full dataset zip is `Dataset.zip` in
+A finished game ships as: `README.md, git.log, workflow.jsonl, Brief/, History/, Tasks/, Checks/, UEProject/,
+ReplayScripts/, Gameplay/<slug>_S<n>.mp4, Screenshots/, Build/, manifest.json` (docs/game-format.md). The repo's
+`Dataset/` folder holds the same minus `History/`, `Tasks/`, `Checks/`, `UEProject/` and `Build/`; the packager
+produces it and you commit it. The full dataset zip is `Dataset.zip` in
 the game folder, next to `Dataset/`: git-ignored (with `.dataset/`, the packager's scratch), never committed.
 
 **README screenshots (user rule; required before the game is called content-complete).** `Docs/screenshots/` holds

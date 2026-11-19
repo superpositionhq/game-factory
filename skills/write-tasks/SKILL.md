@@ -96,8 +96,9 @@ A thread qualifies only when all of these hold (the validator measures the numbe
    sits in another (a HUD symptom from a data asset, a camera symptom from collision channels, a crash only in the
    packaged build, an intermittent or timing bug, a regression from an earlier change).
 5. **Checkable by the grader.** Every required outcome is measurable in the grader's own plays: a scenario
-   (`play_map` options at the seed) that triggers the moment, or a task play whose scripted keys reach it (key names,
-   mouse buttons included, but no mouse movement). A thread no probe can measure is not a task.
+   (`play_map` options at the seed) that triggers the moment, or a task play whose scripted inputs reach it (keys and
+   mouse buttons, mouse movement, the cursor and the wheel, clicks on what is shown, touches: docs/task-probes.md,
+   section 1). A thread no probe can measure is not a task.
 
 **Never make a task easier (owner, 2026-11-04; permanent).** After a task is first written, these are banned if they
 lower the bar: widening a threshold or window, making a required probe optional, removing a probe, removing a
@@ -257,8 +258,8 @@ issues are related. Leave out the play_map line, which the harness adds.
 
 ## 4. `play_map`
 
-The game's default map is usually a title menu that simulated keys cannot leave, so a task almost always needs
-`play_map`: the map path and URL options that start straight in the gameplay where the issue shows (e.g.
+The game's default map is usually a title menu, so a task almost always needs `play_map`: the map path and URL
+options that start straight in the gameplay where the issue shows (e.g.
 `/Game/Maps/L_Level?Scenario=2`). Read the GameMode's option parsing at `seed.commit` and check the map exists there.
 Every grader play opens it (boots, idle and drive, the route, the before and reference plays).
 
