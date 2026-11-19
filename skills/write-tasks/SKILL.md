@@ -470,8 +470,13 @@ and on the reference and saves the screenshots the cloud's judge would be shown 
 whose sides are in `blind\key.json`), with `ask.md` holding the brief, the question and the rubric; `progress.txt` says
 `judge <check>: shots saved for start/reference, answer needed`. Before you call a task with a required judge VALID,
 look at the pictures yourself, blind: score every rubric item for A and for B from 0 to 1 first, then open the key.
-The start must fail every required rubric item (below 0.5) and the reference must pass every one; if either doesn't,
-reword the item or fix the plays so the pictures show the state, never by asking less of the solution. An item the
+The start must fail every required rubric item (below 0.5) and the reference must pass every one. **When a picture
+does not show what an item asks, rewrite the play, never the check** (owner, 2026-11-18): change its inputs and the
+moments its screenshots are taken (a named `shot` tied to the event with `when` where the moment moves between builds)
+until it shows that state on every run, or edit the game itself so the asked thing really appears on screen. Never
+drop the item, point it at something else, or loosen it or its wording to get a pass (no "wording may vary" against an
+instruction that names the wording): a check eased until the reference passes no longer asks what the instruction
+asks, and passes builds that don't do it. The same holds for a `seen` probe. An item the
 pictures can't show scores 0 on that side, never a pass for lack of evidence. Write both
 sides' scores in the task's notes (its `tasks-workflow.jsonl` row).
 
@@ -550,6 +555,7 @@ What each failure means and what to do (never by asking less of the solution, se
 | `uncalibrated: ... both measure X` | start and reference read the same: nothing to put a threshold between | measure something the change moves, or a literal for a count or a boolean |
 | a value that differs between two runs of the same commit, or a reference just past its threshold | a flaky reading: a window at the edge of the event, a sample at a moment that moves, a threshold with no room | widen the window around the event so it holds on both sides, read a quantity with a clear gap between start and reference, calibrate between them; never ease what the instruction asks |
 | `judge X: shots saved ..., answer needed` / `seen X: crops saved ..., answer needed` | the check can't decide it without you | answer it (step 5), then check again |
+| the reference fails a required judge item or `seen` probe because its pictures don't show what is asked | the play never put that state on screen when its shots were taken | rewrite the play: its inputs and the moments of its shots (`when` on a shot whose moment moves between builds), or edit the game so the asked thing appears on screen; never drop, repurpose or loosen the check or its rubric |
 
 The full list of reasons and their fixes is in [docs/task-check.md](../../docs/task-check.md), "Common reasons and
 fixes".
@@ -560,6 +566,16 @@ Before the game is packaged, read each task you wrote, its instruction against i
 this for you. Every submitted task is read the same way, and a task is not accepted as it is when an ask has no
 required check, when a check is tied to the reference (it relies on something the instruction doesn't give and the
 start doesn't have), or when the reference doesn't do an ask. Fix what you find before it is packed.
+
+### Fixing a task that came back
+
+A task sent back for fixing is fixed from its files as they came back: that is the current version, and an older copy
+of your own may lack changes made since, which editing it would undo. Change only the tasks the return lists; every
+other task stays exactly as it is, since each change needs its own check run and review. Hand each fixed task back
+with a note of what changed and why (also in its `tasks-workflow.jsonl` row), so the reviewer can check the change
+against what was asked. Every rule of this skill holds as for a new task: a visual check that failed is fixed in its
+play or in the game, never by easing the check (above, "The check asks no model"), and nothing is made easier
+(section 1).
 
 Each of these is a mistake in a check, to avoid when writing it: a play staged otherwise than with the steps the
 instruction gives a player; a window or a judge's frames away from the moment the event happens; a selector aimed at

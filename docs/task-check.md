@@ -177,8 +177,12 @@ are in `blind\key.json`. The task's line in the result and in `progress.txt` say
    each were the developer's game, before opening `blind\key.json` and `sides.md`. The blind folders hold only the
    pictures both sides have and the same names in each; each side's own count and notes (a play cut short) are in
    `sides.md`, read with the key.
-2. The start must fail every required rubric item (below 0.5) and the reference must pass every one. If not, fix the
-   rubric or the plays (never by easing what the task asks), and check again.
+2. The start must fail every required rubric item (below 0.5) and the reference must pass every one. When a picture
+   doesn't show what an item asks, rewrite the play: its inputs and the moments its shots are taken (a named shot's
+   `when`, tied to the event, where the moment moves between builds), or edit the game so the asked thing really
+   appears on screen. Never drop the item, point it at something else, or loosen it or its wording to get a pass (no
+   "wording may vary" against an instruction that names the wording): an eased check no longer asks what the
+   instruction asks. Then check again.
 3. Write both sides' scores in the task's notes (its `tasks-workflow.jsonl` row on the tasks branch), by judge name
    and rubric key. Copy those same scores into `.task-checks\writer-scores.json` before packaging ("Writer scores
    and delivery", below); never invent or infer missing blind scores.
@@ -210,6 +214,8 @@ a required `seen` probe is not VALID. To answer:
    first time; the `agg` over a list of shots) and uses the values as the start's and the reference's measures, so
    the probe decides VALID or INVALID like any other. A reference whose answer gives nothing the probe reads is
    INVALID, as the Lab makes it a task error. The line then says `seen <check>: read from blind/answers.json`.
+   When the reference's crop doesn't show the text asked, rewrite the play as for a judge (above), never the probe's
+   `match`.
 
 The folder is kept from one check to the next, and an answer stands while its crop is the same (`crops.json`); a
 crop that changed (another commit, a play that changed) drops that side's answer, with a note. A start that doesn't
