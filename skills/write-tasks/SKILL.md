@@ -77,7 +77,7 @@ place, in minutes, however long the original took; such a task is worthless to u
 rejected. Four is the floor, not a target: pick threads that make every task hard, and call a task medium only when
 its thread is.
 
-A thread qualifies only when all of these hold (the validator measures the numbers, section 6):
+A thread qualifies only when all of these hold (the validator measures the numbers and warns when a span is short, never rejecting the task: section 6):
 
 1. **Many edits.** From `seed.commit` to `seed.reference`, at least 4 commits change the game itself (`Source/`,
    `Content/`, `Config/`, `Plugins/`, the `.uproject`), and the reference changes at least 5 game files against the
