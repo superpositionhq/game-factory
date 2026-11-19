@@ -162,6 +162,17 @@ Words used here:
     `-unattended` flag every other play gets. A game may read that flag as an automated run and hide its menus or skip
     its saves; mark a play attended only when the game does so and the play needs what it hides or skips. When a play
     `continues` an attended play, that play's first session is launched attended too.
+  - `first_on_start` (optional, with `continues`): `"first_on_start": true` plays the sessions this play continues on
+    the start (the game as the task began), and the save state they leave (`Saved/SaveGames` and `Saved/Config`) is
+    put in place of the side's own before this play launches, on every side: the game loads a save its older version
+    wrote. Use it for an ask about older saves ("saves from before this change load safely"). Never on a task whose
+    start doesn't build (`fails_at_start`); `tools/validate-game.py` refuses it there and without `continues`.
+  - `saves` (optional): the game's save files as the play finds them at its launch, after whatever its `continues`,
+    `after` or `fresh` left. `"unreadable"`: each file of `Saved/SaveGames` is overwritten with bytes that are no save
+    (as long as it was, 64 bytes at least), for an ask about a corrupt or unreadable save; a play that finds no save
+    file there has nothing to test. `"unwritable"`: `Saved/SaveGames` (made when missing) and its files are read-only
+    for the play, so every save the game tries fails, for an ask about a save that fails; the folder is writable again
+    after the play.
   - `continues` (optional): the task play whose session this play continues, for what the game keeps across a quit
     and a relaunch (a best score, saved settings, a checkpoint): `{"name": "after_restart", ..., "continues":
     "plays_and_quits"}`. On each side the game's save state is cleared (`Saved/SaveGames` and `Saved/Config` of the

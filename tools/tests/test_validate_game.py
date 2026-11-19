@@ -170,6 +170,20 @@ class Units(unittest.TestCase):
             self.assertTrue(list(vg.check_schema(bad, click, schema)), bad)
         self.assertIsNone(vg.TASK_PLAY_DEFAULTS['continues'])
 
+    def test_a_play_on_the_start_continues_a_session_and_saves_take_two_stages(self):
+        """`first_on_start` plays the sessions a play continues on the start, so it names one; `saves` is unreadable
+        or unwritable."""
+        schema, defs = vg.SCHEMAS['game-task'], vg.SCHEMAS['game-task']['$defs']['TaskPlay']
+        old = {'name': 'loads', 'seconds': 10, 'continues': 'saves', 'first_on_start': True}
+        self.assertEqual(list(vg.check_schema(old, defs, schema)), [])
+        self.assertEqual(vg.task_play_errors('c', old, {}), [])
+        self.assertIn('check c: play loads plays its first session on the start, so it continues a session: name it '
+                      'in `continues`', vg.task_play_errors('c', {**old, 'continues': None}, {}))
+        for stage in ('unreadable', 'unwritable'):
+            self.assertEqual(list(vg.check_schema({'name': 's', 'seconds': 10, 'saves': stage}, defs, schema)), [])
+        self.assertTrue(list(vg.check_schema({'name': 's', 'seconds': 10, 'saves': 'deleted'}, defs, schema)))
+        self.assertIsNone(vg.TASK_PLAY_DEFAULTS['first_on_start'])
+
     def test_a_fresh_play_starts_alone(self):
         """`fresh` clears the save before the play, so it runs after no play and continues no session."""
         schema = vg.SCHEMAS['game-task']

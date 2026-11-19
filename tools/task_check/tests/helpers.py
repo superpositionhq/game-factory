@@ -79,13 +79,17 @@ class FakeProject:
         return unreal.Result(self.build_exit, "error C2065" if self.build_exit else "built", 1.0)
 
     def play(self, seconds, shots, timeout, map=None, inputs=None, queries=None, args=(), every=None, session=False,
-             fresh=False, attended=False):
+             fresh=False, attended=False, saves=None, stage=None, keep_saves=False):
         self.plays.append({"seconds": seconds, "shots": shots, "map": map, "inputs": inputs, "queries": queries,
                            "args": list(args), "every": every, "session": session, "fresh": fresh,
-                           "attended": attended, "timeout": timeout})
+                           "attended": attended, "timeout": timeout, "saves": saves, "stage": stage,
+                           "keep_saves": keep_saves})
         probe, log = self.answer(seconds, shots, queries) if self.answer else (None, "")
         files = {"probe.json": json.dumps(probe).encode()} if probe is not None else {}
-        return unreal.Played(0, False, "", 1.0, probe, log, files, saved=list(self.saved) if session else None)
+        return unreal.Played(0, False, "", 1.0, probe, log, files, saved=list(self.saved) if session else None,
+                             staged=[] if stage else None,
+                             saves={p: b"saved by " + str(self.folder).encode() for p in self.saved}
+                             if keep_saves else None)
 
     def warm(self, seconds, timeout, map=None):
         self.warms.append({"seconds": seconds, "timeout": timeout, "map": map})

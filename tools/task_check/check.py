@@ -108,7 +108,11 @@ def session_unclean(found):
 
 def session_empty(found):
     """Why a continuing play's first session (session) left nothing to load: it wrote no file under the game's Saved
-    folder; None when it wrote one, or the listing can't tell."""
+    folder, or, played on the start (first_on_start), it left no save state to carry; None when it wrote one, or the
+    listing can't tell."""
+    if found["clean"] and found.get("carried") == []:
+        return f"its first session (play {found['play']}) left no save state (the game's SaveGames and Config), so " \
+               "the game had no older save to load"
     if not found["clean"] or found["saved"] != []:
         return None
     return f"its first session (play {found['play']}) wrote nothing under the game's Saved folder, so the " \
@@ -203,6 +207,11 @@ class Side:
         self._build = None
         self.played = {}  # play name -> unreal.Played
         self.sessions = {}  # a continuing task play's name -> what its first session left (session)
+        # the start's side, for a play whose first sessions are played on the start (first_on_start); None: this side
+        # is the start's, or none was given (its sessions are then played on this side)
+        self.start = None
+        self.kept_saves = {}  # (on the start's side) a first_on_start play's name -> the save state its sessions left
+        self.carried_saves = {}  # a first_on_start play's name -> the start's save state this side starts it from
         self._editor = None
         self.crops = {}  # a seen check's name -> its crops on this side (seen.crops)
         # what the writer answered for seen checks (seen.kept), set by the task check; None: no answer is read here (a
@@ -254,11 +263,12 @@ class Side:
         self.project.warm(WARM_SECONDS, WARM_TIMEOUT, map)
 
     def _play(self, name, seconds, shots, inputs=None, map=None, queries=None, args=(), every=None, waits=0.0,
-              session=False, fresh=False, attended=False):
+              session=False, fresh=False, attended=False, saves=None, stage=None, keep_saves=False):
         """A play, once per name, after its map's warm-up; it may take its own seconds, PLAY_MARGIN and `waits` (the
         real seconds a task play's waits add), as in the cloud; `session`: a continuing play's first session,
         played on a cleared save (unreal.Project.play); `fresh`: a task play marked `fresh`, played on a cleared save
-        too; `attended`: a task play marked `attended`, launched without -unattended."""
+        too; `attended`: a task play marked `attended`, launched without -unattended; `saves`, `stage` and
+        `keep_saves`: a play's save fixtures (unreal.Project.play)."""
         if name not in self.played:
             map = map or self.task.get("play_map")
             self.warm(map)
@@ -267,6 +277,9 @@ class Side:
                                       inputs=inputs, queries=queries, args=args, every=every,
                                       **({"session": True} if session else {}), **({"fresh": True} if fresh else {}),
                                       **({"attended": True} if attended else {}),
+                                      **({"saves": saves} if saves is not None else {}),
+                                      **({"stage": stage} if stage else {}),
+                                      **({"keep_saves": True} if keep_saves else {}),
                                       **({"watch": True} if name == self.watching else {}))
             self.played[name] = found
             waited = getattr(found, "waited", 0.0)
@@ -319,6 +332,13 @@ class Side:
         # the play it continues may itself continue another: the sessions are played earliest first, the first on a
         # cleared save, each later one launched on what the one before left; the session said is the last one, unclean
         # when any did not end cleanly (the earliest such named)
+        # a play with `first_on_start`: its sessions are played on the start's side, and the save state they left is
+        # what it starts from here (docs/task-probes.md 1.1); on the start's own side they are played as any session
+        on_start = bool(play.get("first_on_start") and play.get("continues") and self.start is not None
+                        and self.start is not self)
+        if on_start and name not in self.sessions:
+            saves, said = self.start.start_saves(play)
+            self.carried_saves[name], self.sessions[name] = saves, said
         if play.get("continues") and name not in self.sessions:
             chain, why = tasks.validator().session_chain(named, name)
             if why:
@@ -329,9 +349,12 @@ class Side:
                 ended = self._play(f"play_{name}-first" if last else f"play_{name}-first-{len(chain) - i}",
                                    first["seconds"], 1, first["inputs"] or None, map=first["map"],
                                    args=first["args"], every=first["every"], waits=tasks.waited(first),
-                                   session=i == 0, attended=first.get("attended") is True)
+                                   session=i == 0, attended=first.get("attended") is True,
+                                   keep_saves=bool(last and play.get("first_on_start")))
                 said = session(ended, first["name"])
                 unclean = unclean or (None if said["clean"] else said)
+                if last and play.get("first_on_start"):
+                    self.kept_saves[name] = ended.saves or {}
             self.sessions[name] = said if unclean is None else {**said, "clean": False, "play": unclean["play"],
                                                                 "text": unclean["text"]}
         shots = judges.play_shots(self.task).get(name, 2)  # as the grader plays it: a judge showing it asks more
@@ -340,7 +363,25 @@ class Side:
         # a `fresh` play starts from a cleared save: what earlier plays of the side saved never changes its start
         return self._play(f"play_{name}", play["seconds"], shots, play["inputs"] or None, map=play["map"],
                           queries=queries, args=play["args"], every=every, waits=tasks.waited(play),
-                          fresh=play.get("fresh") is True, attended=play.get("attended") is True)
+                          fresh=play.get("fresh") is True, attended=play.get("attended") is True,
+                          saves=self.carried_saves.get(name) if on_start else None, stage=play.get("saves"))
+
+    def start_saves(self, play):
+        """(on the start's side) ({path: bytes} of the save state task play `play`'s sessions left here, their session
+        with `carried`: those paths), the play played here first when it wasn't (first_on_start)."""
+        self.probe_play(play)
+        saves = self.kept_saves.get(play["name"], {})
+        said = self.sessions[play["name"]]
+        return saves, {**said, "play": f"{said['play']} on the start", "carried": sorted(saves)}
+
+    def staged_empty(self, play):
+        """Why a task play whose save files were to be made unreadable found none there on this side, or None."""
+        if isinstance(play, str) or play.get("saves") != "unreadable":
+            return None
+        found = self.played.get(f"play_{play['name']}")
+        if found is None or found.staged != []:
+            return None
+        return "the game's SaveGames folder held no save file when the play began, so none was made unreadable"
 
     def carried(self, play):
         """Why a continuing task play's readings can't stand on the reference, or None: its first session didn't end
@@ -348,9 +389,12 @@ class Side:
         play is read as it measured, as the cloud grader reads it: its threshold made from the start's reading, and its
         check failed by Grade.landing when the first session didn't end cleanly."""
         found = None if isinstance(play, str) else self.sessions.get(play["name"])
-        if found is None or self.name != "reference":
+        if self.name != "reference":
             return None
-        why = session_unclean(found) or session_empty(found)
+        if found is None:  # (a staged play's save that wasn't there is the task's too)
+            why = self.staged_empty(play)
+            return why and f"in the reference's play {play['name']}, {why}"
+        why = session_unclean(found) or session_empty(found) or self.staged_empty(play)
         return why and f"in the reference's play {play['name']}, {why}: the task's own fix carries nothing over " \
                        "to the next session"
 
@@ -901,6 +945,8 @@ def check_task(repo, task, raw, scratch, out_dir, keep=False, direct=False, time
             sides[side].answers = held
             result[side] = {"commit": sha, **info, "missing_packages": map_gaps(repo, sha, task)}
         start, reference = sides["start"], sides.get("reference")
+        for each in sides.values():  # a first_on_start play's sessions are the start's on every side
+            each.start = start
         build = tasks.fails_at_start(task)
         if not start.built():
             result["start"]["built"] = False

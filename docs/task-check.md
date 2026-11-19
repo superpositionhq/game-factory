@@ -122,7 +122,10 @@ left; the earlier ones are kept as `play_<name>-first-<n>`) of its own: the copy
 play it names is played (kept as `play_<name>-first`) and quits, then the play itself starts as a new process on the
 same copy (docs/task-probes.md, section 1.1). Before a `fresh` task play the copy's `Saved/SaveGames` and
 `Saved/Config` are deleted too, so it starts as a new game does, as on the Lab. An `attended` task play is launched
-without `-unattended`, as a player launches the game. A task play may last up to 1200 s.
+without `-unattended`, as a player launches the game. A task play may last up to 1200 s. A `first_on_start` task
+play's sessions are played on the start's copy, and the save state they leave is copied into the side's copy before
+the play launches (on the start's own copy they are played as any session); a play's `saves` makes the copy's save
+files unreadable or its save folder read-only (on Windows its writes denied to you too) for that play alone.
 
 As in the cloud, each map a side plays is first played once, 10 s and ungraded (it may take up to 40 minutes), so its
 shaders are compiled before a graded play of it; a copy shared by several tasks of a run is warmed once per map. Every

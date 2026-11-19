@@ -686,7 +686,7 @@ PLAY_ARG = re.compile(r'^-([A-Za-z][A-Za-z0-9]{0,40})(=[A-Za-z0-9_.:=,-]{1,60})?
 DENIED_PLAY_ARGS = {'execcmds', 'run', 'nullrhi', 'log', 'unattended', 'renderoffscreen', 'resx', 'resy', 'benchmark',
                     'fps', 'game', 'windowed'}
 TASK_PLAY_DEFAULTS = {'inputs': [], 'map': None, 'args': [], 'every': None, 'after': None, 'continues': None,
-                      'fresh': None, 'attended': None}
+                      'fresh': None, 'attended': None, 'first_on_start': None, 'saves': None}
 
 
 PIECE_TRIANGLES = ('triangles', 'visible_triangles')  # pieces fields whose threshold is never a literal
@@ -916,6 +916,10 @@ def task_play_errors(n, play, plays):
     if play.get('fresh') and (play.get('after') or play.get('continues')):
         errs.append(f'check {n}: play {pname} starts from a cleared save (fresh), so it runs after no play and '
                     'continues no session')
+    # a play whose sessions are played on the start continues a session (docs/task-probes.md 1.1)
+    if play.get('first_on_start') and not play.get('continues'):
+        errs.append(f'check {n}: play {pname} plays its first session on the start, so it continues a session: name '
+                    'it in `continues`')
     for i in play.get('inputs') or []:
         if isinstance(i, dict) and i.get('wheel') == 0 and not isinstance(i.get('wheel'), bool):
             errs.append(f'check {n}: play {pname}: a wheel input turns at least one notch')
@@ -1234,6 +1238,10 @@ def task_semantic_errors(t):
                 if broken and relative:
                     errs.append(f"check {n}: its threshold is relative to the start ({relative[0]}), but the start "
                                 f"doesn't build ({broken}: fails_at_start), so it is never played; use a literal value")
+            own_plays = [c.get('play')] if k == 'probe' else (c.get('plays') or [] if k == 'judge' else [])
+            if broken and any(isinstance(p, dict) and p.get('first_on_start') for p in own_plays):
+                errs.append(f"check {n}: a play plays its first session on the start (first_on_start), but the start "
+                            f"doesn't build ({broken}: fails_at_start), so it is never played")
             if k == 'judge' and c.get('before') and broken:
                 errs.append(f"check {n} compares with the start (before: true), but the start doesn't build "
                             f"({broken}: fails_at_start), so it is never played")

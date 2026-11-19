@@ -16,6 +16,7 @@ The engine is the one the machine config gives for the project's EngineAssociati
   play measures audio (probes.sound_flags: muted, with -benchmark's fixed step);
 - editor_python: UnrealEditor-Cmd.exe <uproject> -run=pythonscript -script=<file>."""
 
+import getpass
 import json
 import os
 import shutil
@@ -55,6 +56,14 @@ SAVES = ("Saved/SaveGames", "Saved/Config")
 # and crash reports, under Saved
 NOT_SAVES = ("Saved/TaskProbe", "Saved/Logs", "Saved/Crashes")
 SAVED_LISTED = 200  # files a first session's Played.saved lists at most
+# The game's save files (SaveGameToSlot writes Saved/SaveGames/<slot>.sav), what a play's `saves` stages before its
+# launch: "unreadable", each file overwritten with UNREADABLE's line repeated to its length (64 bytes at least);
+# "unwritable", the folder (made when missing) and its files made read-only for the play, and on Windows the folder's
+# writes denied to the user too (a read-only folder there still takes new files), so every save the game tries fails;
+# writable again after it
+SAVE_GAMES = "Saved/SaveGames"
+UNREADABLE = "TaskProbe: an unreadable save\n"
+SAVES_FILES, SAVES_BYTES = 200, 64 * 1024 * 1024  # a save state carried from the start, at most
 FATAL = r"Fatal error|Assertion failed|Unhandled Exception"
 
 
@@ -78,6 +87,94 @@ class Played:
     files: dict = field(default_factory=dict)  # what the play wrote (probe.json, screenshots) by name
     waited: float = 0.0  # of `seconds`, waiting for a machine slot
     saved: list | None = None  # a first session's (Project.play session=True): the files it wrote under Saved
+    # a play's `saves` stage (Project.play stage=...): the save files it acted on; None: no stage
+    staged: list | None = None
+    # a play's save state as it left it (Project.play keep_saves=True): {path relative to the project: bytes}
+    saves: dict | None = None
+
+
+def take_saves(project):
+    """{path: bytes} of the project's save state (SAVES: its regular files, never through a link); {} past SAVES_FILES
+    or SAVES_BYTES."""
+    found, total = {}, 0
+    for top in SAVES:
+        root = project / top
+        if root.is_symlink() or not root.is_dir():
+            continue
+        for folder, dirs, names in os.walk(root):
+            dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(folder, d))]
+            for name in names:
+                path = Path(folder, name)
+                if path.is_symlink() or not path.is_file():
+                    continue
+                data = path.read_bytes()
+                total += len(data)
+                if len(found) >= SAVES_FILES or total > SAVES_BYTES:
+                    return {}
+                found[path.relative_to(project).as_posix()] = data
+    return found
+
+
+def put_saves(project, saves):
+    """The save state `saves` ({path under SAVES: bytes}) written into the project, whose own was cleared."""
+    for rel, data in sorted((saves or {}).items()):
+        parts = rel.split("/")
+        if not any(rel.startswith(top + "/") for top in SAVES) or any(p in ("", ".", "..") for p in parts):
+            raise ValueError(f"{rel} is no file of the game's save state")
+        path = project / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+
+
+def _save_files(project):
+    root = project / SAVE_GAMES
+    if root.is_symlink() or not root.is_dir():
+        return []
+    found = []
+    for folder, dirs, names in os.walk(root):
+        dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(folder, d))]
+        found += [Path(folder, n) for n in names if not Path(folder, n).is_symlink() and Path(folder, n).is_file()]
+    return sorted(found)
+
+
+def _deny_writes(folder, deny):
+    """Windows: the user's writes to `folder` (and what it holds) denied, or that denial taken off again."""
+    if os.name != "nt":
+        return
+    user = os.environ.get("USERNAME") or getpass.getuser()
+    if deny:
+        subprocess.run(["icacls", str(folder), "/deny", f"{user}:(OI)(CI)(W,AD,WD,DC)"], check=True,
+                       capture_output=True)
+    else:
+        subprocess.run(["icacls", str(folder), "/remove:d", user], capture_output=True)
+
+
+def stage_saves(project, stage):
+    """The save files as a play's `stage` leaves them: the paths it acted on, relative to the project."""
+    files = _save_files(project)
+    if stage == "unreadable":
+        line = UNREADABLE.encode()
+        for path in files:
+            size = max(64, path.stat().st_size)
+            path.write_bytes((line * (size // len(line) + 1))[:size])
+    elif stage == "unwritable":
+        folder = project / SAVE_GAMES
+        folder.mkdir(parents=True, exist_ok=True)
+        for path in [*files, folder]:
+            path.chmod(path.stat().st_mode & ~0o222)
+        _deny_writes(folder, True)
+    else:
+        raise ValueError(f"no save stage {stage}")
+    return [p.relative_to(project).as_posix() for p in files][:SAVED_LISTED]
+
+
+def unlock_saves(project):
+    """The save folder writable again after an "unwritable" play."""
+    folder = project / SAVE_GAMES
+    if folder.is_dir() and not folder.is_symlink():
+        _deny_writes(folder, False)
+        for path in [folder, *_save_files(project)]:
+            path.chmod(path.stat().st_mode | 0o200)
 
 
 def _saved(project, began):
@@ -263,7 +360,7 @@ class Project:
         return found
 
     def play(self, seconds, shots, timeout, map=None, inputs=None, queries=None, args=(), every=None, session=False,
-             fresh=False, attended=False, watch=False):
+             fresh=False, attended=False, watch=False, saves=None, stage=None, keep_saves=False):
         """The game for `seconds` of game time through the plugin: offscreen at a fixed 30 fps, `shots` screenshots,
         `inputs` sent at their times, `queries` (probes.query_file) sampled; a Played. `session`: a first session (a
         task play another `continues`): the game's save state (SAVES) is cleared before it, and the Played lists the
@@ -272,7 +369,10 @@ class Project:
         (a game may read -unattended as an automated run and hide its menus or skip its saves). The probe's misses
         that an `optional` or `disabled` click allows are kept apart (probes.excused).
         `watch`: the play in a window at the game's own speed, for a person to look at (task-check.py --watch): no
-        fixed step, so what it measures is never a reading of the check."""
+        fixed step, so what it measures is never a reading of the check. `saves`: the save state the play starts from
+        ({path under SAVES: bytes}, a session the start played: first_on_start), put in place of the copy's own;
+        `stage`: what a play's `saves` does to the save files before its launch ("unreadable", "unwritable");
+        `keep_saves`: the save state the play leaves returned in Played.saves."""
         out = self.folder / "Saved" / "TaskProbe" / "play"
         shutil.rmtree(out, ignore_errors=True)
         out.mkdir(parents=True)
@@ -304,12 +404,20 @@ class Project:
         if every:
             argv.append(f"-TaskProbeEvery={every:g}")
         argv += list(args)
-        if session or fresh:  # a first session or a fresh play: the game's save state cleared first
+        if session or fresh or saves is not None:  # the game's save state cleared first (and then given)
             for folder in SAVES:
                 shutil.rmtree(self.folder / folder, ignore_errors=True)
+        if saves is not None:
+            put_saves(self.folder, saves)
+        staged = stage_saves(self.folder, stage) if stage else None
         began = time.time()
-        found = self.machine.job(f"task-check play {self.label}", argv, self.folder, timeout)
+        try:
+            found = self.machine.job(f"task-check play {self.label}", argv, self.folder, timeout)
+        finally:
+            if stage == "unwritable":
+                unlock_saves(self.folder)
         saved = _saved(self.folder, began) if session else None
+        kept = take_saves(self.folder) if keep_saves else None
         files = {p.name: p.read_bytes() for p in out.iterdir() if p.is_file()} if out.is_dir() else {}
         probe = None
         if "probe.json" in files:
@@ -320,7 +428,7 @@ class Project:
         log = log_path.read_bytes().decode("utf-8", errors="replace") if log_path.is_file() else ""
         shutil.rmtree(out, ignore_errors=True)
         return Played(found.exit_code, found.timed_out, found.output, found.seconds,
-                      probes.excused(probes.well_formed(probe), inputs), log, files, found.waited, saved)
+                      probes.excused(probes.well_formed(probe), inputs), log, files, found.waited, saved, staged, kept)
 
     def warm(self, seconds, timeout, map=None):
         """`map` played `seconds` with no queries and one screenshot, its result read by nothing: its shaders compiled
