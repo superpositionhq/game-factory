@@ -278,9 +278,9 @@ the game folder, next to `Dataset/`: git-ignored (with `.dataset/`, the packager
 **README screenshots (user rule; required before the game is called content-complete).** `Docs/screenshots/` holds
 5-7 real gameplay stills (JPG, in Git LFS; from validated recordings' stills or the framing-gate screenshots, not
 from extra GPU launches; no editor views, debug overlays or placeholder art). The README shows them as a hero image
-plus a captioned gallery (one line per image saying what it shows). Every image the README links must be committed:
-after pushing, open the repo page on github.com and check that each image renders (a link to a file that was never
-committed shows as a broken image).
+plus a captioned gallery (one line per image saying what it shows). Every image the README links must be committed
+(a link to a file that was never committed shows as a broken image): `tools/validate-game.py` checks each linked file
+against the repo's committed files, so no browser check is needed.
 
 **Game format (docs/game-format.md).** Before calling the game content-complete, `python <GF_ROOT>/game-factory/tools/validate-game.py
 <GF_ROOT>/games/<slug>` must say VALID: required files, `assets.manifest.json` in `assets-manifest/v1` with every
