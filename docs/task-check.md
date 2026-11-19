@@ -247,7 +247,8 @@ not VALID, the probe `required` or not (the Lab's reading of an optional one can
 2. Check the task again. The checker reads the answer with the Lab's own reduction (the `match`, the first number, the
    first time; the `agg` over a list of shots) and uses the values as the start's and the reference's measures, so
    the probe decides VALID or INVALID like any other. A reference whose answer gives nothing the probe reads is a
-   task error, as in the Lab, so the task is INVALID whether the probe is required or not. The line then says
+   task error (as in the Lab for a calibrated threshold; for a literal one the Lab fails the check on every run, local
+   only as a task error), so the task is INVALID whether the probe is required or not. The line then says
    `seen <check>: read from blind/answers.json`.
    When the reference's crop doesn't show the text asked, rewrite the play as for a judge (above), never the probe's
    `match`.

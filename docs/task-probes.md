@@ -968,8 +968,9 @@ How it is graded, and its limits:
   it (section 3).
 - **The local task check asks no model.** It saves the crops of the start and the reference, and the task's writer
   reads them blind ([task-check.md](task-check.md)): their answer is the two sides' measures, reduced the way the Lab
-  reduces a reading. A reference answer that reads nothing the check reads is a task error, as in the Lab; so is a
-  `?` in the reference's answer, or in the start's when the threshold is relative to it (local only: the stand-in for
+  reduces a reading. A reference answer that reads nothing the check reads is a task error, as in the Lab for a
+  threshold made from the reference (for a literal one the Lab fails the check on every run instead; a task error here,
+  local only); so is a `?` in the reference's answer, or in the start's when the threshold is relative to it (local only: the stand-in for
   a reading that won't repeat 3 times out of 3). Until both sides are answered the task isn't VALID, the check
   `required` or not.
 
