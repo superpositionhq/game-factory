@@ -397,6 +397,11 @@ A probe names one measurement and its threshold:
   read those words, because a click on words shown twice can't tell which one the player meant: the click is then a
   miss that names both places, so name the control by words only it shows (a row's words read joined left to right
   count, "1 BUY RANK 300 PT").
+- **A touch names its control as the player sees it too** (a mobile game's `tap` and `drag` spots,
+  docs/task-probes.md 1.5): `{"widget": ...}` with the words a button shows, or a name or class the start
+  (`seed.commit`) already has; never a widget name the task's thread creates, which another fair build names
+  otherwise. A control that shows no words and that the thread adds is reached by its place on screen where the
+  instruction or the start fixes it.
 - **A click is `"optional": true` only when a correct game may or may not show its control** (a confirmation that
   appears only when a save exists): unmarked, a click no button takes is a miss that fails the play. Never mark a
   click on a control the task asks for optional: a game without that control would pass. Prefer a `fresh` play, or one

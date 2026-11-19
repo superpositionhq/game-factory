@@ -294,8 +294,10 @@ A task play may touch the screen as a phone's player does. Two inputs, each with
 
 A spot is a point of the screen `[fx, fy]` in fractions 0-1 from its top left, or `{"widget": "<name>"}`: the centre
 of the first visible, laid-out UMG widget of that name (a wildcard) or class, whatever its kind (a button, a stick, a
-panel), else of a Slate button as a click finds one. Name the widget where you can: its place differs between
-landscape and portrait, its name does not.
+panel), else of a Slate button as a click finds one (by its caption: the words it shows, matched as a click
+matches them). Name the control by the words it shows where it shows some, else by a name or class the start
+(`seed.commit`) already has; never by a name only the reference has (a control the task's thread adds is named
+otherwise in another fair build). A point is the last resort: its place differs between landscape and portrait.
 
 Touches of different fingers may overlap in time (a stick held while a button is tapped, two fingers pinching). One
 finger's touches are at least 0.1 s apart, from one's lift to the next one's start, and every touch is over by the

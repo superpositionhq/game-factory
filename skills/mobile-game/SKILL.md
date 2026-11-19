@@ -45,8 +45,12 @@ applies.
 
 - **Touch only.** Everything the player does is done with fingers on the screen: on-screen buttons, a virtual stick,
   taps, drags and swipes on the world. Nothing in the game is reachable only by a key, a mouse button, mouse movement
-  or a gamepad. Build the controls as UMG widgets with names of their own, so a task can press a control by its
-  widget name.
+  or a gamepad. Build the controls as UMG widgets. A task presses a control by what a player sees on it: a button
+  that shows words is tapped by those words (its caption, a text block inside the button), so give every button that
+  means something a caption a player can read. A task names a control by its widget name or class only when that
+  widget already exists at the task's start (`seed.commit`), as a desktop click does: a control a task's thread adds
+  has another name in another fair build, so its name is never one a task may rely on (write-tasks, "A click names
+  its button as the player sees it").
 - **The AutoPlay bot plays by touch too.** Your game has the mobile drop-in (`Source/<Project>/AutoPlay/`, from
   `tools/ue-pipeline/autoplay-mobile/`): the bot calls `AP->Touch(Finger, ViewportPos)` every frame a finger is on
   the screen, at the place of the control it uses (a button's centre, a point on the stick), and the touch reaches the
