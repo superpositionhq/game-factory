@@ -2,7 +2,7 @@
 .SYNOPSIS
   Check that this machine can run game-factory sessions; prints a PASS / WARN / FAIL report. Read-only.
 .DESCRIPTION
-  Toolchain: UE 5.7 (and 5.3 for games made on it), MSVC 14.44, Windows SDK, .NET Framework 4.8.1 SDK, git + Git LFS, gh (logged in, can see the
+  Toolchain: UE 5.7 (the only engine), MSVC 14.44, Windows SDK, .NET Framework 4.8.1 SDK, git + Git LFS, gh (logged in, can see the
   org's repos), Python. Recording: NVIDIA driver >= 617 (NVENC with the pinned ffmpeg), refresh rate, display sleep
   off, the pinned ffmpeg. Space: free disk on the root's drive. Content: the asset library against
   docs/asset-library.md and docs/asset-library-fab-ue.tsv when the repo has them. Agents (the config's "agents": Claude Code and/or Codex):
@@ -61,14 +61,6 @@ Try-Check 'Unreal Engine 5.7' {
     $v = Get-Content $ver -Raw | ConvertFrom-Json
     if ($v.MajorVersion -eq 5 -and $v.MinorVersion -eq 7) { Add-Result PASS 'Unreal Engine 5.7' "5.7.$($v.PatchVersion) at $($cfg.engine)" }
     else { Add-Result FAIL 'Unreal Engine 5.7' "found $($v.MajorVersion).$($v.MinorVersion) at $($cfg.engine)" 'point "engine" at a 5.7 install; new games and the template target 5.7' }
-}
-# Games made on 5.3 build, record and replay on 5.3 (their EngineAssociation; Get-GFEngine finds the install).
-Try-Check 'Unreal Engine 5.3 (older games)' {
-    $e53 = Get-GFEngineForVersion '5.3' $cfg
-    $v53 = Join-Path $e53 'Engine\Build\Build.version'
-    $is53 = (Test-Path $v53) -and ((Get-Content $v53 -Raw | ConvertFrom-Json).MinorVersion -eq 3)
-    if ($is53 -and (Test-Path (Join-Path $e53 'Engine\Binaries\Win64\UnrealEditor.exe'))) { Add-Result PASS 'Unreal Engine 5.3 (older games)' $e53 }
-    else { Add-Result WARN 'Unreal Engine 5.3 (older games)' 'not installed' 'needed only to rebuild, record or replay a game whose .uproject names 5.3 (Library > + > 5.3.x, or "engines" in the config)' }
 }
 
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"

@@ -26,7 +26,7 @@ DEFAULT_ENGINE = "C:/Program Files/Epic Games/UE_5.7"
 
 
 def engine_association(project):
-    """The EngineAssociation ("5.3", "5.7", ...) of a .uproject or of the first .uproject in a folder; "" without one."""
+    """The EngineAssociation ("5.7") of a .uproject or of the first .uproject in a folder; "" without one."""
     up = project
     if project and os.path.isdir(project):
         found = sorted(f for f in os.listdir(project) if f.lower().endswith(".uproject"))

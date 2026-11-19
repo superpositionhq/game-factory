@@ -26,14 +26,14 @@ through Enhanced Input, see [autoplay-contract.md](autoplay-contract.md)) as gam
 
 `%GF_ROOT%` is the machine root: env `GF_ROOT`, else `root` in `%USERPROFILE%\.game-factory\config.json`
 (written by `machine/bootstrap.ps1`), else `%USERPROFILE%\Work`; `machine/lib/gf-root.ps1` resolves it, and the
-same file gives `ueb` (default `C:\UEB`) and `engine` (UE 5.7, for new games; each project builds, records and
-replays on the engine its `.uproject` names, `Get-GFEngine`, so the 5.3 games stay on 5.3). See
+same file gives `ueb` (default `C:\UEB`) and `engine` (UE 5.7, the only engine; `Get-GFEngine` finds the install
+the project's `.uproject` names). See
 [../machine/README.md](../machine/README.md).
 
 ```
 %GF_ROOT%\
   games\<game>\                     the game repos (read only for the pipeline)
-  games\_pipeline-test\             throwaway UE 5.3 Third Person project used to test the pipeline (not data)
+  games\_pipeline-test\             throwaway UE Third Person project used to test the pipeline (not data)
   C:\UEB\src\<game>\                private clone the pipeline builds from (never the game's working copy); outside
                                     C:\Users so the user name isn't compiled into the exe (__FILE__, PDB paths)
   builds\<game>\<short-sha>\        packaged build: Windows\<Project>.exe, build_info.json, logs\
@@ -185,7 +185,7 @@ A desktop game goes through every step exactly as before: none of its files gain
 
 **Recording config (v1.3):** `-Config auto` (default) packages **Shipping** when the game's `Config/DefaultEngine.ini`
 at that commit sets `bAllowHighDPIInGameMode=True`, else Development. Shipping compiles out UE's trace runtime, whose
-TCP listener (`TraceLog` control, bound to 0.0.0.0 in Development/Test, no runtime switch in 5.3) makes Windows
+TCP listener (`TraceLog` control, bound to 0.0.0.0 in Development/Test, no runtime switch) makes Windows
 Firewall prompt for every new exe path; Shipping ignores command-line `-ini:` overrides, hence the config requirement.
 Shipping builds go to `builds\<game>\<short-sha>-shipping\` (exe `<Project>-Win64-Shipping.exe`), `build_info.json`
 records `config`. Shipping runs have no `raw\game.log` (nothing needs it); `bUseLoggingInShipping` must not be set with the launcher-installed engine (its Shipping libraries lack the log symbols, so the link fails).
@@ -519,7 +519,7 @@ powershell -ExecutionPolicy Bypass -File scrub-history.ps1 <game> -StripAgentTra
   default; with the opt-ins 0 Claude lines, 0 row ids, the dropped file gone.
 ## Pipeline test project
 
-`games\_pipeline-test` (not data): UE 5.3 Third Person C++ template + the AutoPlay drop-in + a test bot that walks,
+`games\_pipeline-test` (not data): UE Third Person C++ template + the AutoPlay drop-in + a test bot that walks,
 turns and jumps via Enhanced Input for 20 s (`-TestRunSeconds=n`), beeps (procedural 880 Hz) and lights a white
 64x64 square in the top-left corner on every jump, plus `TP_ThirdPerson.Smoke.MapAndAutoPlay`. Tag
 `milestone/autoplay-1`. `sync-check.ps1` measures marker lag in its bundles.
@@ -533,7 +533,7 @@ turns and jumps via Enhanced Input for 20 s (`-TestRunSeconds=n`), beeps (proced
 
 ## Known issues
 
-- **GPU hang/crash on frame 1 (UE 5.3 Lumen + virtual shadow maps).** The D3D12 device can be lost on
+- **GPU hang/crash on frame 1 (Lumen + virtual shadow maps).** The D3D12 device can be lost on
   the first frame: GPU breadcrumbs end in Lumen `ScreenProbeGather` on async compute while virtual shadow maps
   initialise (seen in tower-defense and siege-catapult). Fix in the game: `r.RDG.AsyncCompute=0` under
   `[SystemSettings]` in `Config/DefaultEngine.ini`. record.ps1 classifies such runs as `gpu_crash` (evidence from

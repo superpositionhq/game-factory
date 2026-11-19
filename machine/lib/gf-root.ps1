@@ -7,7 +7,7 @@
 #   3. %USERPROFILE%\Work (the original machine's layout)
 # The same config file also holds "ueb" (private build clones, outside the user profile so the user name is not compiled
 # into Shipping exes), "engine" (the UE root new games use; Get-GFEngine picks each project's own), optional "engines"
-# ({"5.3": "<UE root>", ...}) and "record_extra_projects" (top-level folders under the root that the recording hooks
+# ({"5.7": "<UE root>", ...}) and "record_extra_projects" (top-level folders under the root that the recording hooks
 # treat as projects besides games\<slug>), and "github_org" (the GitHub organisation or user that owns game-factory and
 # the private game-<slug> repos; Get-GFOrg), "agents" (the coding agents bootstrap.ps1 wired up: "claude", "codex") and
 # "hooks_dir" (where the recording hooks live, shared by both agents; Get-GFHooksDir). Installed copies of the hooks and
@@ -64,9 +64,8 @@ function Get-GFHooksDir($Cfg = (Get-GFConfig)) {
     return (Join-Path $env:USERPROFILE '.game-factory\hooks')
 }
 
-# The UE root for a project: its .uproject's EngineAssociation ("5.3", "5.7", ...) picks the install, so a game made on
-# an older engine keeps building, recording and replaying on it. Order: "engines" in the config, then the UE_<version>
-# folder next to "engine", then the Epic Games Launcher's registry entry, then "engine". $Project is a .uproject or the
+# The UE root for a project: its .uproject's EngineAssociation ("5.7", the only engine) picks the install. Order:
+# "engines" in the config, then the UE_<version> folder next to "engine", then the Epic Games Launcher's registry entry, then "engine". $Project is a .uproject or the
 # folder holding one; without one, or without a version-number association, the answer is "engine".
 function Get-GFEngine([string]$Project, $Cfg = (Get-GFConfig)) {
     $assoc = ''
@@ -79,7 +78,7 @@ function Get-GFEngine([string]$Project, $Cfg = (Get-GFConfig)) {
     return (Get-GFEngineForVersion $assoc $Cfg)
 }
 
-# The UE root for an engine version ("5.3"): the same order as Get-GFEngine; "engine" when nothing else names one.
+# The UE root for an engine version ("5.7"): the same order as Get-GFEngine; "engine" when nothing else names one.
 function Get-GFEngineForVersion([string]$Version, $Cfg = (Get-GFConfig)) {
     if ($Version -notmatch '^\d+\.\d+$') { return $Cfg.engine }
     if ($Cfg.PSObject.Properties['engines'] -and $Cfg.engines -and $Cfg.engines.PSObject.Properties[$Version]) {

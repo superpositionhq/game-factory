@@ -62,16 +62,14 @@ offers one (AGENTS.md, "Only these skills"). Do what they don't cover by hand un
   `EngineIncludeOrderVersion.Unreal5_7` and must not set `bOverrideBuildEnvironment` (the installed engine refuses the
   target). UBT editor targets need the .NET 4.8.1 SDK. Shipping recording builds need
   `bAllowHighDPIInGameMode=True`; never set `bUseLoggingInShipping`. A packaged game started outside its own folder can
-  fail on libvorbis: give it the build folder as working directory. `r.RDG.AsyncCompute=0` avoided a first-frame
-  Lumen + VSM GPU hang on 5.3.
+  fail on libvorbis: give it the build folder as working directory.
 - Never edit anything under `<GF_ROOT>\.recording\`.
 
 ## Engine and content
 
-- UE 5.7 for every new game (`EngineAssociation` 5.7). The first games are UE 5.3 projects and stay on 5.3; the tools
-  pick each project's engine from its `.uproject`. C++ for gameplay logic; Blueprint subclasses and data assets/DataTables for tuning; editor work through
+- UE 5.7 is the only engine (`EngineAssociation` 5.7): every game is built, fixed, checked and packaged on 5.7. C++ for gameplay logic; Blueprint subclasses and data assets/DataTables for tuning; editor work through
   UE Python scripts in `Scripts/` (run headless via UnrealEditor-Cmd `-run=pythonscript`), never hand-edited `.uasset`.
-- UE Python gotcha (5.3 and 5.7): positional `unreal.Color(r, g, b, a)` fills B, G, R, A, so red and blue come out swapped (light
+- UE Python gotcha: positional `unreal.Color(r, g, b, a)` fills B, G, R, A, so red and blue come out swapped (light
   colours, tints). Always pass keywords, `unreal.Color(r=..., g=..., b=..., a=...)`, or use `unreal.LinearColor`.
 - Additive animation clips (most Paragon hit reactions, aim offsets, Infima additive poses) are never played as a full
   pose by a native anim instance or proxy: the mesh collapses to a point or the arms leave the view (blade-duel hitstun,

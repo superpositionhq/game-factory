@@ -29,7 +29,7 @@ What the skeleton carries, and why:
 
 | File | Why |
 |---|---|
-| `Source/<P>.Target.cs`, `<P>Editor.Target.cs` | `BuildSettingsVersion.V6` + `EngineIncludeOrderVersion.Unreal5_7`. No `bOverrideBuildEnvironment` (the installed 5.7 refuses a target that changes the shared build environment; the 5.3 games carry it with `PLATFORM_HAS_ASAN_INCLUDE=0` for MSVC 14.4x). No `bUseLoggingInShipping` (breaks the Shipping link with the launcher engine). |
+| `Source/<P>.Target.cs`, `<P>Editor.Target.cs` | `BuildSettingsVersion.V6` + `EngineIncludeOrderVersion.Unreal5_7`. No `bOverrideBuildEnvironment` (the installed 5.7 refuses a target that changes the shared build environment). No `bUseLoggingInShipping` (breaks the Shipping link with the launcher engine). |
 | `Source/<P>/<P>.Build.cs` | EnhancedInput, UMG; Slate/SlateCore/AudioMixer for the AutoPlay drop-in; flat include paths |
 | `Source/<P>/<P>GameInstance.*` | AutoPlay wiring: `StartScenario(n)` opens `ScenarioMaps[n-1]` (from `DefaultGame.ini`) |
 | `Config/DefaultEngine.ini` | GameInstance class, Enhanced Input classes, `bAllowHighDPIInGameMode=True` (Shipping recording builds; the pipeline packages Development without it), DX12 SM6, Lumen + VSM, `r.RDG.AsyncCompute=0` (first-frame GPU hang) |

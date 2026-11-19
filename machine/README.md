@@ -23,9 +23,9 @@ and `record_extra_projects` (default `[]`: extra top-level folders the recording
 packages, tens of GB per game, so point it at a roomy drive) and `min_free_gb` (env `GF_MIN_FREE_GB`, default 50:
 packaging and creation replay refuse to start on a drive with less free).
 
-Engine per project: a project's `.uproject` names its engine (`EngineAssociation`, e.g. `5.3` for the first games,
-`5.7` for new ones), and the build, script, recording and replay tools use that install (`lib/gf-root.ps1`
-`Get-GFEngine`, `lib/gfroot.py` `engine`): `engines` in the config (`{"5.3": "D:\\UE_5.3"}`) if set, else the
+Engine: UE 5.7 is the only engine (`EngineAssociation` 5.7 in every game's `.uproject`). The build, script, recording
+and replay tools find the install the `.uproject` names (`lib/gf-root.ps1` `Get-GFEngine`, `lib/gfroot.py` `engine`):
+`engines` in the config (`{"5.7": "D:\\UE_5.7"}`) if set, else the
 `UE_<version>` folder next to `engine`, else the Epic Games Launcher's registry entry, else `engine`.
 
 Job slots (ue-heavy.ps1, docs/ue-pipeline.md "Machine-wide slots"):

@@ -51,7 +51,7 @@ Displays often run above 100 % scaling: the ini override makes the game DPI-awar
 pixels (otherwise Windows stretches the window, e.g. to 2880x1620 at 150 %). No `-unattended`: UE skips DPI awareness when unattended.
 
 **Recording builds are Shipping (v1.3).** Development and Test builds contain UE's trace runtime, which listens on a TCP
-port (0.0.0.0, no runtime switch in 5.3), so Windows Firewall shows a "Windows Security" prompt for every new exe path;
+port (0.0.0.0, no runtime switch), so Windows Firewall shows a "Windows Security" prompt for every new exe path;
 unanswered prompts dim the screen and block recordings. Shipping compiles the trace runtime out. Shipping ignores
 command-line `-ini:` overrides, so put the DPI setting in your game's config:
 
@@ -67,7 +67,7 @@ and that's expected: the pipeline doesn't need one (`raw\game.log` is simply abs
 symbols and the Shipping link fails (found by horror-escape; it only works with a source-built engine). The drop-in
 works the same in Shipping (scalability is set through the Scalability API, not a console command).
 
-**Known issue: GPU hang/crash on frame 1 (Lumen + virtual shadow maps).** UE 5.3 can lose the D3D12
+**Known issue: GPU hang/crash on frame 1 (Lumen + virtual shadow maps).** The engine can lose the D3D12
 device on the first frame: GPU breadcrumbs end in Lumen `ScreenProbeGather` on async compute while virtual shadow
 maps initialise (seen in tower-defense and siege-catapult). Fix in your game, then rebuild:
 
@@ -207,7 +207,7 @@ without braces, built with `JsonStr` / `JsonNum` / `JsonVec`):
 {"schema":"autoplay-outcome/2","autoplay_version":3,"game":"TowerDefense","run_id":"...","scenario":2,"scenario_name":"Canyon","seed":7,
  "skill":0.6,"max_seconds":600,"qpc_frequency":10000000,"build_commit":"a1b2c3d","result":"win",
  "score":1840,"duration_s":512.3,"run_duration_s":514.9,"go_qpc":...,"scenario_start_qpc":...,"scenario_end_qpc":...,
- "frames":30893,"inputs_injected":20411,"go_timed_out":false,"build_config":"Development","engine_version":"5.3.2-...",
+ "frames":30893,"inputs_injected":20411,"go_timed_out":false,"build_config":"Development","engine_version":"5.7.1-...",
  "extra":{"stars":2,"lives":14}}
 ```
 

@@ -72,7 +72,7 @@ Setup prints these as TODOs and detects them on the next run.
 
 | Step | How | Detected by |
 |---|---|---|
-| Unreal Engine 5.7 | Open the Epic Games Launcher, sign in (create an account if needed, accept the EULA), **Unreal Engine > Library > Engine Versions > + > 5.7 > Install** to `C:\Program Files\Epic Games\UE_5.7` (another folder works: set `engine` in the config). Games made on 5.3 also need 5.3 next to it (`UE_5.3`, or `"engines": {"5.3": "<folder>"}` in the config). | `Engine\Build\Build.version` |
+| Unreal Engine 5.7 | Open the Epic Games Launcher, sign in (create an account if needed, accept the EULA), **Unreal Engine > Library > Engine Versions > + > 5.7 > Install** to `C:\Program Files\Epic Games\UE_5.7` (another folder works: set `engine` in the config). 5.7 is the only engine the games use. | `Engine\Build\Build.version` |
 | NVIDIA driver (if you have an NVIDIA GPU) | the current Game Ready or Studio driver, 610 or newer, from nvidia.com/drivers or the NVIDIA app | `nvidia-smi` |
 | Display (for recording) | a multiple of 60 Hz (60/120/240) and a primary display that holds a 1920x1080 window: Settings > System > Display | `check.ps1` |
 | Fab sign-in | only to download store packs for a **new** game: sign in at fab.com with the Epic account that owns the packs, in your browser. Purchases and licence choices stay with their owner. | (not detectable) |
@@ -134,7 +134,7 @@ for Codex, trusted). Details of every file: [../machine/README.md](../machine/RE
 
 - MSVC must be **14.44** (`VC\Tools\MSVC\14.44.*`) with VS 2022 17.14 kept updated: UE 5.7 bans compiler versions
   14.44.0-14.44.35210, and an updated 17.14 puts a newer compiler in that folder (UBT's log line "Using Visual Studio
-  2022 14.44.35229 toolchain" shows it). Games made on UE 5.3 carry the fix 5.3 needs in their Target.cs. If the
+  2022 14.44.35229 toolchain" shows it). If the
   installer also puts a newer MSVC next to it, pin UBT in `%APPDATA%\Unreal Engine\UnrealBuildTool\BuildConfiguration.xml`:
   `<WindowsPlatform><CompilerVersion>14.44.35207</CompilerVersion></WindowsPlatform>`.
 - The .NET Framework **4.8.1** SDK is required: without `Windows Kits\NETFXSDK\4.8.1` UBT cannot build editor targets.

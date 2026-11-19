@@ -38,7 +38,7 @@ Everything needed to rebuild the game from the repo alone, tracked in git (binar
 
 | Path | Rule |
 |---|---|
-| `<Project>.uproject` | one, `EngineAssociation` 5.7 (5.3 for the first games) |
+| `<Project>.uproject` | one, `EngineAssociation` 5.7, the only engine |
 | `Source/<Project>/AutoPlay/AutoPlaySubsystem.h/.cpp` | the AutoPlay drop-in ([autoplay-contract.md](autoplay-contract.md)) |
 | `Config/`, `Content/` | project config; all game content, store packs included |
 | `Scripts/` | every editor script that was run, kept unchanged |
