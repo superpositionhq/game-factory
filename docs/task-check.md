@@ -154,14 +154,16 @@ A task is **VALID** when all of this holds:
   checker runs: probes, `log_absent` and `file_exists` (the cloud's oracle must pass every required check);
 - no probe is uncalibrated, on either side, `required` or not (Thresholds, above);
 - the start fails every required probe outside `still_works` (or doesn't build by design): each is one issue of the
-  thread, and one the start already passes rewards no work. A required check of `"weight": 0` rewards nothing, so the
+  thread, and one the start already passes rewards no work (local only: the cloud needs the start to fail one of
+  them; every one is the owner's rule for a task, write-tasks section 5). A required check of `"weight": 0` rewards nothing, so the
   check doesn't refuse a start that passes one; but weight 0 belongs only in `builds`, `boots` and `still_works`
   (write-tasks section 5): a probe in any other milestone carries weight 1 or more, and a check the start already
   passes is a keep that goes in `still_works`;
 - every required probe in the `still_works` milestone already passes at the start. What must keep working has to work
   before the change, or the probe is broken and would fail every correct solution. A still-works probe the start
   measured nothing for (its play crashed, which is often the task's own bug) doesn't count against it;
-- a no-op scores zero: no check the start passes carries weight, so build, boot and `still_works` checks take
+- a no-op scores zero (local only: the cloud scores the no-op but doesn't refuse it; earning nothing is the owner's
+  rule, write-tasks section 5): no check the start passes carries weight, so build, boot and `still_works` checks take
   `"weight": 0`. As the cloud's no-op is graded on every check, a weighted `log_absent` or `file_exists` is measured
   on the start too (a 60 s boot of the start for the log), and a weighted `package` check counts as passed on a start
   that builds (local only: the checker never packages). Judges aren't measured here, so a judge's weight isn't
@@ -180,8 +182,10 @@ A task is **VALID** when all of this holds:
   check's own play is read the same way before its pictures are saved: a missed input on the reference fails the
   judge there (a task error when the input missed for good), as the cloud fails it before asking its judge.
 
-This is the cloud's own check of every task, by two scripted runs: the **no-op** (the start, untouched) must fail and
-earn nothing, and the **oracle** (the reference) must pass. VALID here is both of them as they must be; the write-tasks
+This is the cloud's own check of every task, by two scripted runs: the **no-op** (the start, untouched) must fail,
+and the **oracle** (the reference) must pass; the rules marked local only above are stricter than the cloud, and the
+checker never asks a model (judges, `seen` probes: you answer them, below; the cloud's judge reads 3 samples and takes
+the majority, which an answer of yours stands in for). VALID here is both of them as they must be; the write-tasks
 skill (section 5, "The no-op and the oracle") walks through it step by step.
 
 Never decided by the check: judges (`judge`, `code_judge`: no model is asked; you answer them, below), `package`
