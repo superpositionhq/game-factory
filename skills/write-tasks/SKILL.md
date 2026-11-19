@@ -717,27 +717,51 @@ worktree or `.task-checks`: we check every fix, and some come back as `Needs rew
 **Brief the person, then go straight on (owner, 2026-11-18).** The person steering the fix may never have seen this
 game. As your first message on a task, write this in the chat, in plain words and without task jargon. It is context
 for them to read while you work, not a question: do not wait for an answer, ask whether to proceed or offer a choice
-of approaches. They have no basis yet to choose one. Start the investigation in the same turn:
+of approaches. They have no basis yet to choose one. Start the investigation in the same turn. In this order, the
+game and its words before anything about the task:
 
 1. **The game.** What it is and its genre, in a sentence or two; whether it has one level or several; how a player
-   wins and loses.
-2. **The part of the game this task touches.** The rooms or areas involved and how they connect, and who and what is
+   wins and loses. **Show it, don't only describe it:** give two or three pictures of the game with a line under
+   each saying what it shows ("the workshop: the bench with the radio on the left, the boiler room door at the
+   back"). Use what is already on disk, so this costs no build: the game's own screenshots (`Docs\screenshots`, the
+   pictures its README shows), then, once a task check has run, a play's screenshots of the area the task touches
+   (`.task-checks\<task>\reference\<play>\`). Give each picture's full path and open it for the person
+   (`start "" "<path>"`). No pictures on disk yet is no reason to wait: say so, and show them after the first task
+   check.
+2. **The words.** Two short lists, so the person can tell them apart, before you use any of them. *Words from the
+   game*: every object, place, creature or mechanic you will mention, with what it is and where ("the wireless: a
+   radio on the workshop bench; pressing it makes a noise", "the cot: a folding bed by the boiler room door").
+   *Words from the task*: the terms of this work you will use, each in a few words (start, reference, check, play,
+   the task check, no-op).
+3. **What a task and a check are.** Once, on the first task of a session, in your own plain words and with this
+   game's own example. The person is good at games, not at how we test agents, and the rest makes no sense without
+   this. Say it like this, not in our terms:
+   - *A task* is a piece of work we will give to an AI agent to see whether it can do it: here is a game, make this
+     change. It has three parts. The *instruction* says what to change, the way a player or a tester would describe
+     it. The *start* is the game before the change. The *reference* is the game after the change, made by a person,
+     which proves the change can be made.
+   - *A check* is how we find out, with nobody watching, whether the change was made. It plays the game from a
+     script (a *play*: walk here, press this, wait five seconds), then reads something off the game (where the
+     creature is, what the screen says, what a screenshot shows) and compares it with what the instruction asked.
+   - *A good task*: every check fails on the start, because the change is not there yet, and passes on the
+     reference, because now it is. The *task check* is the tool that runs all of a task's checks on both versions
+     and says VALID or INVALID.
+   - *Why this one came back*: for this task that is not true yet. Say which way, in one sentence about this game
+     ("the check that the creature walks to the radio fails even on the finished game"). The work is to make it true
+     without making the task any easier for the agent.
+4. **The part of the game this task touches.** The rooms or areas involved and how they connect, and who and what is
    in them (the player, creatures, objects). Keep to the areas the task concerns, not the whole game. Name a thing as
    a player sees it the first time you mention it: "the wireless, a radio on the workshop bench", not "the wireless".
-3. **The controls.** What a player can press and what each input does, and what can be interacted with in those
+5. **The controls.** What a player can press and what each input does, and what can be interacted with in those
    areas.
-4. **The task.** Its instruction in full, what the game does at the start, and what the reference is meant to change.
-5. **The checks.** Each check of the task in one line: what its play does, what it measures or shows, and its
+6. **The task.** Its instruction in full, what the game does at the start, and what the reference is meant to change.
+7. **The checks.** Each check of the task in one line: what its play does, what it measures or shows, and its
    threshold.
-6. **What may be wrong.** The reason the return gives and, where the return has one, its detail (the `Detail (internal)`
-   column of the tasks list, which the tool prints as Detail), in the return's own words and then in plain words: which check it names and what
-   it says happened. Present it as what was flagged, a hypothesis to test, not as the cause: say plainly that it may
-   be wrong, may be out of date, or may be one of several things wrong with the task.
-
-7. **The words.** Two short lists, so the person can tell them apart. *Words from the game*: every object, place,
-   creature or mechanic you will mention, with what it is and where ("the wireless: a radio on the workshop bench;
-   pressing it makes a noise", "the cot: a folding bed by the boiler room door"). *Words from the task*: the terms of
-   this work you will use, each in a few words (start, reference, check, play, the task check, no-op).
+8. **What may be wrong.** The reason the return gives and, where the return has one, its detail (the
+   `Detail (internal)` column of the tasks list, which the tool prints as Detail), in the return's own words and then
+   in plain words: which check it names and what it says happened. Present it as what was flagged, a hypothesis to
+   test, not as the cause: say plainly that it may be wrong, may be out of date, or may be one of several things
+   wrong with the task.
 
 **Write every message so someone who has never seen the game can follow it (owner, 2026-11-18).** The person reads
 your messages as you work, and a word they can't place stops them following: "use the wireless" could be an object
@@ -758,7 +782,15 @@ in the game or a term of ours. In everything you write to them, the brief and ev
 After every task check run, give a short table of every check, pass or fail on the start and on the reference, and
 one line on what you will try next, and carry on. Use the names from the brief, so the person can follow and step
 in. Stop for the person only where this skill says to: a judge's or a `seen` probe's pictures to score, a play you
-have offered to show them ("Showing a play to the person", below), or a task you cannot fix.
+have offered to show them ("Showing a play to the person", below), a task's scores before it is handed back
+("Asking the person for a task's scores", below), or a task you cannot fix.
+
+**Never ask leave to do the next step of the job (owner, 2026-11-19).** Running the task check, running it again
+after a change, validating, building, committing your own change and moving on to the game's next listed task are
+the work the person asked for when they started the session: do them, and say that you are doing them. "Shall I run
+the task check now?" and "Do you want me to continue?" cost the person a reply they have no way to weigh, and the
+session sits idle until they notice. A task check is long: say roughly how long before you start it, so they know
+to leave it running, and carry on when it ends. Ask only where the paragraph above says to stop.
 
 **The return's detail is a lead, not a finding.** It is what our own check of the task flagged, often one check's
 name and a reading, written before anyone looked at the game. Start there, and test it:
@@ -837,6 +869,23 @@ fixed and what changed in it; whether the game itself changed (the new commits o
 branch) or only its tasks; where everything is on disk (the game's folder, its tasks worktree, the results under
 `.task-checks`); and anything you could not fix, with what you tried. Then pack it ("Handing a fixed game back",
 below); delete nothing, and push nothing unless they ask.
+
+**Asking the person for a task's scores (owner, 2026-11-19).** Before a game is handed back, each task you fixed
+needs four answers from the person (section 5's step "ask the person for each task's scores"; they go in
+`.task-checks\writer-scores.json`, and they are theirs to give, never yours to fill in). Someone who did not write
+the task has never been asked this, so ask once per game, all tasks together in one table, and say in plain words
+what each answer is for:
+
+- **Difficulty** (`hard` or `medium`): how hard this task would be for an AI agent to do from the instruction alone.
+  Say which the task is marked as now; it has to match.
+- **Quality** (1 to 5): how good a test this task is. 5 is a real, sizeable piece of work where every thing the
+  instruction asks for is checked and a correct solution would pass; 1 is thin, unfair or checks little.
+- **Minutes**: their guess at how long a strong AI agent would need to solve it. A rough number is fine.
+- **A one-line note**: anything a reviewer should know about the task, in a sentence.
+
+Give them what they need to answer: for each task, one line on what the agent has to do and how much of the game it
+touches, and what you changed in it. Do not suggest the numbers. These four are separate from scoring a judge's
+pictures, which is asked when the task check produces them.
 
 **Handing a fixed game back (owner, 2026-11-19).** One zip per game, made by the pack's own tool, never by hand: a
 zip of the game's folder is many gigabytes and leaves out what we need. When the person asks how to submit, send
