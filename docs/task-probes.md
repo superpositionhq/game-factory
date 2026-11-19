@@ -10,7 +10,10 @@ from the running game or from the project: `build`, `boot`, `log_absent` and `pr
 pass/fail, and nothing is graded from pixel statistics of the game's frames except one: the frame's mean luminance
 (`screen`, section 2.15; the owner, 2026-11-06), whose threshold is always calibrated or relative to the start, so the
 same machine measures both sides. Judges (`judge`, `code_judge`) stay as **non-gating** quality checks
-(`"required": false`). One probe is read by a model: `seen` (section 2.22, Lab game grader 1.13.0), text the visual
+(`"required": false`), but for the one judge of the brief's looks, `looks_as_asked` (the owner, 2026-11-19; write-tasks
+section 5): required when the brief asks for a look or names a look to keep, each rubric key marked `asked_` (a look
+the brief asks for) or `keep_` (a look that must stay as it was); with an asked item it sits in the outcome milestone
+with weight, with keep items only in `still_works` with weight 0. One probe is read by a model: `seen` (section 2.22, Lab game grader 1.13.0), text the visual
 checks' model reads from a screenshot, for text nothing else in the game gives; it is a visual check, counted and
 switched with the judges, and a task never gates on it alone. Nothing in a task reads the agent's tool calls: a task is graded on the game's outcome
 alone. Retired (the owner, 2026-11-13): `actions_judge` checks and `trace` probes; never add one, take them out of a
@@ -244,7 +247,7 @@ reference misses too):
   combat contract, where TakeDamage returns the damage actually applied, what a hit did; actors `focus_player` (1 when
   its AI controller watches the player).
 
-**What it looks like** (sparks, colours, glow, readability) goes to the required `looks_as_asked` judge with its own
+**What it looks like** (sparks, colours, glow, readability) goes to an `asked_` item of the required `looks_as_asked` judge with its own
 play staged the same way and named `shot` frames a few hundredths of a second apart across the contact. A pose may be
 an extra rubric item, never the only check of a behaviour.
 

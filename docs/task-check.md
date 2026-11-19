@@ -325,8 +325,8 @@ section 6 helps that discussion; it is not a cut-off. Record their answers in
       "minutes_to_solve_estimate": 45,
       "judges": {
         "looks_as_asked": {
-          "start": {"clear_feedback": 0},
-          "reference": {"clear_feedback": 1}
+          "start": {"asked_clear_feedback": 0, "keep_hud_layout": 1},
+          "reference": {"asked_clear_feedback": 1, "keep_hud_layout": 1}
         }
       },
       "notes": "Several interacting changes; each requested outcome has a check."

@@ -1,6 +1,6 @@
 ---
 name: write-tasks
-description: How to write the tasks a game ships with (Tasks/ on the repo's orphan tasks branch, never on main, one GameTask JSON per task, at least 5 and up to about 10 per game, at least 4 of them hard and the others medium) so an agent can be given them in the game-creation environment: the tasks branch and its worktree, the one bar every task meets (a long thread of multiple edits from the game's real history: many commits, many files, several systems, every task medium or hard, never easy or a single fix), the four kinds as where a thread comes from, picking seed.commit (the parent of the thread's first attempt) and seed.reference (its final accepted fix), observation-only briefs, play_map, milestones and deterministic probe checks (pass/fail never by pixels; judges only for asked looks; one required probe per issue), limits, and what keeps a task gradable and unleaked. Use when a game session writes, moves or reviews tasks, and before calling a game complete.
+description: How to write the tasks a game ships with (Tasks/ on the repo's orphan tasks branch, never on main, one GameTask JSON per task, at least 5 and up to about 10 per game, at least 4 of them hard and the others medium) so an agent can be given them in the game-creation environment: the tasks branch and its worktree, the one bar every task meets (a long thread of multiple edits from the game's real history: many commits, many files, several systems, every task medium or hard, never easy or a single fix), the four kinds as where a thread comes from, picking seed.commit (the parent of the thread's first attempt) and seed.reference (its final accepted fix), observation-only briefs, play_map, milestones and deterministic probe checks (pass/fail never by pixels; one judge for the looks asked and kept; one required probe per issue), limits, and what keeps a task gradable and unleaked. Use when a game session writes, moves or reviews tasks, and before calling a game complete.
 ---
 
 # Writing a game's tasks
@@ -161,7 +161,7 @@ reference is a commit the person's verdict called better: a fix they judged same
 the thread to the round they called better, or drop it. A game made before these rules has no verdict rows: its
 taste threads take their reference as any other thread does (section 2).
 What the design doc's keep list holds must still hold, so a solution that spoils it fails: a keep line a still frame
-can show goes to the `still_works` look judge, and a keep line about feel gets a `still_works` probe of what the
+can show goes to the `looks_as_asked` judge as a `keep_` item, and a keep line about feel gets a `still_works` probe of what the
 player meets. A feel probe's threshold comes from this game's own start and the reference the person approved (as
 the threshold rules above say for its kind of ask), or from a number the brief states, never from the starting
 numbers in the game-session skill: each game is judged by its own feel, so the games don't all drift toward one.
@@ -285,10 +285,10 @@ seconds"), since an option that jumps there skips what is asked.
 **Pass/fail is decided by checks the grader computes itself** (the owner, 2026-10-19): `build`, `boot`, `log_absent` and
 **`probe`** checks, and nothing is graded from pixel statistics of the game's frames except the frame's mean luminance
 (`screen`, the owner, 2026-11-06), whose threshold is always calibrated or relative to the start, and whose `rect` is
-`[x0, y0, x1, y1]` with x0 < x1 and y0 < y1, since a reversed area holds no pixels to measure. Two judges are
-required (the owner, 2026-11-11): `looks_as_asked`, whose rubric items are the brief's own look-and-feel asks, and one
-in `still_works` of what must still look as it did (below). Every other judge (`judge`, `code_judge`: taste,
-readability, code review) stays a `"required": false` quality check. Nothing in a task reads the agent's tool calls: a
+`[x0, y0, x1, y1]` with x0 < x1 and y0 < y1, since a reversed area holds no pixels to measure. One judge covers the
+brief's looks (the owner, 2026-11-19): `looks_as_asked`, required whenever the brief asks for a look or names a look to
+keep, and absent otherwise (below). Every other judge (`judge`, `code_judge`: taste, readability, code review) stays a
+`"required": false` quality check. Nothing in a task reads the agent's tool calls: a
 task is graded on the game's outcome alone. Retired (the owner, 2026-11-13): `actions_judge` checks and `trace` probes;
 never add one, take them out of a task you edit. A task still needs required probes the grader decides without a judge
 (section 6). The probe language, every play, measure and threshold with the rules that gate a task, is the task author's
@@ -309,33 +309,44 @@ in `still_works` with weight 0, never as a weight-0 probe beside the outcomes. T
 3. `fixed` (bug_fix, correction) / `done` (feature, change): `probe` checks of the reported outcomes, `required`,
    `needs` `boots_clean`: at least 3, one per issue the thread settled (split them over several milestones, e.g.
    `fixed_hud`, `fixed_camera`, when the issues are separable). Each one fails at the start for the reported reason
-   and passes on the reference. The required `looks_as_asked` judge goes here when the brief asks for a look.
+   and passes on the reference. The required `looks_as_asked` judge goes here, with weight, when the brief asks for
+   a look.
 4. `still_works`: probes that what must keep working still does (the player still moves, the HUD still shows, the
-   level still loads its scenario), and a required judge with `"before": true` for what must still look as it did.
+   level still loads its scenario); the `looks_as_asked` judge goes here, weight 0, only when the brief asks for no
+   look but names a look to keep.
 5. `quality` (optional, never required): a `judge` for taste items no probe can capture ("reads as a castle",
    readability of text over the scene), and a `code_judge` for code quality.
 
-**Every look-and-feel ask in the brief gets a required `looks_as_asked` rubric item** (such an ask gates the task, like
-any other). Go through the brief ask by ask: what a probe can measure gets a probe; what only an eye can tell (reads
-clearly, fits the style, looks like the thing it is meant to be) gets its own rubric item, `"required": true`, in one
-required `judge` named `looks_as_asked`, with `"before": true` and `"reference": true` when the seed has a reference.
+**Every look the brief asks for or names to keep gets a required `looks_as_asked` rubric item** (such an ask gates
+the task, like any other). Go through the brief ask by ask: what a probe can measure gets a probe; what only an eye can
+tell (reads clearly, fits the style, looks like the thing it is meant to be, still looks as it did) gets its own rubric
+item, `"required": true`, in the one required `judge` named `looks_as_asked`, with `"before": true`, and
+`"reference": true` when the seed has a reference. **Each item's key is marked**: `asked_...` for a look the brief
+asks for, `keep_...` for a look that must stay as it was (`asked_costs_legible`, `keep_square_look`; no other field
+marks it). **With at least one asked item the judge sits in the outcome milestone (`fixed`, `done`) and carries
+weight**: the untouched start fails an asked item, so a no-op earns nothing from it. **With only keep items it sits in
+`still_works` with `"weight": 0`**, since a no-op passes them. A brief that asks for no look and names none to keep
+gets no judge. `validate-game.py` refuses an unmarked item beside marked ones, a marked key on any other judge, an
+asked item outside an outcome milestone or without weight, a judge of keep items only that carries weight or sits
+outside `still_works`, and a second required judge in `still_works` beside it. Tasks written before 2026-11-19 keep
+their two judges (`looks_as_asked` and a judge in `still_works`, keys unmarked) and stay valid.
 A judge can misread screenshots, so word each item concretely, decidable from the screenshots alone, so the unchanged
 game scores 0 on it and any solution that meets the brief scores 1: never an empty criterion ("shows what the ticket
 asks"), and no item about "every screen" unless a play opens every screen. **A rubric item quotes the instruction**:
 it takes the words of the sentence it covers and asks no more and nothing other than that sentence (no added detail,
-no stricter bar, no other look), since a judge holds a solution to the item, not to the brief. What must still look as it did goes in a
-required judge in `still_works` the same way. One subject per judge: the brief's looks in `looks_as_asked`, what must
-still look as it did in the `still_works` judge, each taste question in a judge of its own. **Every judge has plays of
+no stricter bar, no other look), since a judge holds a solution to the item, not to the brief; a keep item quotes the
+keep sentence the same way. One subject per judge: the brief's looks, asked and kept, in `looks_as_asked`, each taste
+question in a judge of its own. **Every judge has plays of
 its own that show each rubric item at the moment it can be seen**: a judge without them is shown screenshots of the
 idle `look` and the `drive` on `play_map` and nothing else, never a task-specific key, another scenario or level, or
 what lies past a title screen. Give the check `plays`: up to 4 task plays that reach that state (when a probe's play
 already does, reuse it under its name, written identically):
 
 ```json
-{"name": "looks_as_asked", "kind": "judge", "required": true, "needs": ["boots_clean"], "before": true,
+{"name": "looks_as_asked", "kind": "judge", "required": true, "weight": 1, "needs": ["boots_clean"], "before": true,
  "reference": true,
  "question": "With the upgrade menu open, does it read the way the request asks?",
- "rubric": [{"key": "costs_legible", "criterion": "Each upgrade's cost is legible against the panel behind it.",
+ "rubric": [{"key": "asked_costs_legible", "criterion": "Each upgrade's cost is legible against the panel behind it.",
              "required": true}],
  "plays": [{"name": "open_upgrades", "seconds": 10,
             "inputs": [{"t": 0.5, "key": "U", "press": true}, {"t": 0.7, "key": "U", "press": false}]}]}
@@ -899,10 +910,10 @@ Read each task this way:
   "Every" or "each" means each case it lists gets a check of its own.
 - **Every ask has a check that would fail if that ask alone were not done**: a required probe for each key, direction,
   scenario or case it lists; a number it states held on both sides; a look-and-feel ask as a required
-  `looks_as_asked` rubric item in the ask's own words, with the judge's own `plays` when the state must be reached
+  `looks_as_asked` rubric item keyed `asked_` in the ask's own words, with the judge's own `plays` when the state must be reached
   first; motion as a probe sampled every 0.1 s with `agg` `step`, or a required judge with a run of `shots`.
 - **A keep that names a thing** ("the boss bar still starts full") has a required `still_works` check reading that
-  thing; a bare "everything else keeps working" is covered by any required `still_works` check.
+  thing, or, for a look only an eye can tell, a `keep_` item of `looks_as_asked`; a bare "everything else keeps working" is covered by any required `still_works` check.
 - **Never cover an ask with an optional probe, a `build` or `boot` check, or a `"required": false` quality check alone.**
 - **An ask that shows only after a contact** (a blow landing, getting hit, a stun, the last foe of a group falling) is
   staged, never left out because "no fixed play guarantees the contact": `pin` the foe or target ahead of the player
@@ -914,7 +925,7 @@ Read each task this way:
   where the ticket itself says so, by `world` `time_dilation`, and never by `time_dilation` where a fair build could
   freeze the actors instead (freezing them leaves time dilation untouched); a stagger, knock-back or interrupted
   action by `montage`, the actor unable to move, or its distance from the attacker, never a judge. What it looks like (sparks, colours, glow)
-  goes to the required visual judge on named frames across the contact. Names come from the start commit; `set` and
+  goes to the required `looks_as_asked` judge on named frames across the contact. Names come from the start commit; `set` and
   `where` only on members the task does not ask to change. Where the nearest movable thing is not surely the target,
   the ask is listed as not testable.
 - **Hints, never answers (owner, 2026-11-11).** An instruction may hint, in the ticket's own words, at what a player
@@ -939,7 +950,7 @@ Read each task this way:
   (game-session skill), so every sound has an asset name. A sound the game's own characters hear and react to (guards
   hearing footsteps, a door that alerts) is a gameplay ask: its check reads the reaction or the state it changes, not
   only a sound starting.
-- **A look described by a list of items** gets those items named in the `looks_as_asked` rubric, an item each where
+- **A look described by a list of items** gets those items named in the `looks_as_asked` rubric (`asked_` items), an item each where
   the instruction asks for each on its own (its own sentence or numbered point): a judge asked only about the whole
   look can pass a build that leaves one out.
 - **An ask about how the work is built or documented needs no check** ("fix it at its cause", "keep it in a data
@@ -1008,9 +1019,9 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 |---|---|
 | checks or log patterns shown in the brief | the agent gets the brief only |
 | an ask in the brief that no check reads, so Lab sends the game back | read each task against its checks before packing (section 5, "Every ask has a check") |
-| a model judge misread screenshots and failed a correct fix (or passed a wrong one) | required probes for what can be measured; only the brief's own looks in a required judge (`looks_as_asked`, still-looks in `still_works`), each item concrete and decidable from the screenshots; every other judge `"required": false` |
+| a model judge misread screenshots and failed a correct fix (or passed a wrong one) | required probes for what can be measured; only the brief's own looks in the one required judge (`looks_as_asked`, items keyed `asked_` or `keep_`), each item concrete and decidable from the screenshots; every other judge `"required": false` |
 | a judge was shown only the title screen, or never the state a task's own key opens | the `judge` check names its own `plays` that reach it (section 5) |
-| five stills couldn't show whether a move eased or feet slid | a number: a probe sampled every 0.1 s with `agg` `step`; only seen: a `looks_as_asked` item with a short play and `shots` (section 5) |
+| five stills couldn't show whether a move eased or feet slid | a number: a probe sampled every 0.1 s with `agg` `step`; only seen: an `asked_` item of `looks_as_asked` with a short play and `shots` (section 5) |
 | a fix made only in binary assets failed the code review | the cause is checked by its measured effect (a probe), never by reading the diff |
 | a pixel threshold moved between GPUs | light and colour from the engine (`light`, `grading`); the frame's luminance (`screen`) only calibrated or relative to the start, never a literal |
 | a level dressed with instanced meshes counted as one actor | count placed pieces (`pieces`), not actors or components |
@@ -1091,11 +1102,12 @@ valid as the rules change.
   at the start sprinting is walking speed, so 1.5 times the start is 1.5 times walking), the bottom of the screen
   updating while sprinting (`ui` by a rect, so any build's readout counts, relative to the start), and the camera never
   occluded on the cellar stairs (a fact, a literal). The cellar play reaches the stairs by a tag the start has.
-- **`looks_as_asked`** (section 5): one required item per look sentence of the brief, in the brief's own words, with
-  plays that show the lit path and the readout on screen; `before` and `reference` for like-for-like pictures.
-- **`still_works`**: one check per keep the brief names, every one weight 0: the coin counter (a probe, a literal),
-  walking (a probe, relative to the start: a keep never calibrates) and the square's look (a required judge with
-  `before`, its item the keep sentence's words, its play a `teleport_to` the well the start has).
+- **`looks_as_asked`** (section 5), the one looks judge, in `fixed` with weight 1 since it has asked items: one
+  required item per look sentence of the brief, in the brief's own words, keyed `asked_`, and the square's look as a
+  `keep_` item in the keep sentence's words; plays that show the lit path, the readout and the square (a
+  `teleport_to` the well the start has); `before` and `reference` for like-for-like pictures.
+- **`still_works`**: one probe per other keep the brief names, every one weight 0: the coin counter (a literal) and
+  walking (relative to the start: a keep never calibrates).
 - **Nothing only the reference has**: every select, map and option exists at `seed.commit`; the new
   stamina HUD is read by where it is on screen, never by its widget's name.
 
@@ -1148,19 +1160,24 @@ valid as the rules change.
        "expect": {"op": "<", "value": 1}},
       {"name": "looks_as_asked", "kind": "judge", "required": true, "weight": 1, "needs": ["boots_clean"],
        "before": true, "reference": true,
-       "question": "Walking and sprinting at night with the lantern, does the game look the way the request asks?",
+       "question": "Walking and sprinting at night with the lantern, and beside the well, does the game look the way the request asks?",
        "rubric": [
-         {"key": "warm_amber_pool", "required": true,
+         {"key": "asked_warm_amber_pool", "required": true,
           "criterion": "The lantern's light falls as a warm amber pool on the ground ahead, not a white glare."},
-         {"key": "stamina_amber_style", "required": true,
-          "criterion": "The stamina readout uses the same amber style as the coin counter."}],
+         {"key": "asked_stamina_amber_style", "required": true,
+          "criterion": "The stamina readout uses the same amber style as the coin counter."},
+         {"key": "keep_square_look", "required": true,
+          "criterion": "The village square keeps its look, lamp-lit houses around the well."}],
        "plays": [
          {"name": "lantern_path", "seconds": 10,
           "inputs": [{"t": 1.0, "key": "W", "press": true}, {"t": 6.0, "key": "W", "press": false},
                      {"t": 7.0, "shot": "lantern_ahead"}]},
          {"name": "sprint_with_lantern", "seconds": 12,
           "inputs": [{"t": 1.0, "key": "W", "press": true}, {"t": 2.0, "key": "LeftShift", "press": true},
-                     {"t": 9.0, "key": "LeftShift", "press": false}, {"t": 10.0, "key": "W", "press": false}]}]}]},
+                     {"t": 9.0, "key": "LeftShift", "press": false}, {"t": 10.0, "key": "W", "press": false}]},
+         {"name": "village_square", "seconds": 8,
+          "inputs": [{"t": 0.5, "teleport_to": {"tag": "VillageWell"}, "distance": 800},
+                     {"t": 3.0, "shot": "square"}]}]}]},
     {"name": "still_works", "checks": [
       {"name": "coin_counter_still_shows", "kind": "probe", "required": true, "weight": 0, "needs": ["boots_clean"],
        "describe": "The coin counter in the top-left corner still shows a number.",
@@ -1172,17 +1189,7 @@ valid as the rules change.
        "describe": "Walking with W, A, S and D still moves the player about as far as at the start.",
        "play": "drive",
        "measure": {"probe": "pawn", "field": "moved", "agg": "max"},
-       "expect": {"op": ">=", "start_times": 0.8}},
-      {"name": "square_unchanged", "kind": "judge", "required": true, "weight": 0, "needs": ["boots_clean"],
-       "before": true,
-       "question": "Seen from beside the well, does the village square look as it did?",
-       "rubric": [
-         {"key": "square_keeps_its_look", "required": true,
-          "criterion": "The village square keeps its look, lamp-lit houses around the well."}],
-       "plays": [
-         {"name": "village_square", "seconds": 8,
-          "inputs": [{"t": 0.5, "teleport_to": {"tag": "VillageWell"}, "distance": 800},
-                     {"t": 3.0, "shot": "square"}]}]}]}
+       "expect": {"op": ">=", "start_times": 0.8}}]}
   ]
 }
 ```
