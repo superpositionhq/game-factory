@@ -385,6 +385,8 @@ private:
 		FString SpawnClass;
 		int32 Spawned = 0;
 		int32 Destroyed = 0;
+		bool bPlaces = false;  // spawns (1.28.0): where and when each was spawned, listed with the next sample
+		TArray<TSharedPtr<FJsonValue>> Places;  // spawns: [t, x, y, z] of each since the previous sample (MaxPlaces at most)
 		double Rect[4] = {0.0, 0.0, 1.0, 1.0};  // screen: [x0, y0, x1, y1] in viewport fractions
 		double Ground[4] = {0.0, 0.0, 0.0, 0.0};  // ground: [x0, y0, x1, y1] (cm; a point: x0 = x1, y0 = y1)
 		bool bGroundBox = false;  // ground: a box sampled on a grid, else one point
@@ -460,6 +462,7 @@ private:
 	TSet<FObjectKey> SpinRead;  // spin: the components read this sample
 	TMap<FObjectKey, TaskProbe::FStillTrack> Stills;  // frozen: the actors read last sample, their stillness since
 	TSet<FObjectKey> StillRead;  // frozen: the actors read this sample
+	double PlayT = 0.0;  // the play's time this frame (Listen), which a spawn's place is stamped with
 	double MinDilation = -1.0;  // world: the lowest global time dilation since the previous sample (-1: no frame yet)
 	bool bPausedSince = false;  // world: the game was paused in a frame since the previous sample
 	bool bHasWorld = false;  // a world query is asked for: only then is the world read every frame

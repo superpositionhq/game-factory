@@ -72,8 +72,13 @@ def needs(measure):
         return [{"kind": "drawn", **place, "fields": [field]}]
     if probe == "grading":  # a post: field is asked for by name; the colour pipeline's settings always come
         return [{"kind": "grading", "fields": [field] if field.startswith("post:") else []}]
-    if probe == "spawns":
-        return [{"kind": "spawns", "class": measure["class"]}]
+    if probe == "spawns":  # (Lab game grader 1.28.0) where and when each was spawned, only for a measure that reads them
+        near = measure.get("near")
+        placed = near is not None or field == "salvos"
+        point = near["point"] if near is not None else None
+        return [{"kind": "spawns", "class": measure["class"], **({"places": True} if placed else {})},
+                *([{"kind": "actors", "select": point["actor"], "fields": ["x", "y", "z"]}]
+                  if isinstance(point, dict) and "actor" in point else [])]
     if probe == "world":
         return [{"kind": "world", "fields": [field]}]
     if probe == "render":
@@ -461,7 +466,10 @@ def angled(measure, value):
     if to_axis is not None:
         apart = abs(normal(value - to_axis))
         return min(apart, 180.0 - apart)
-    return abs(normal(value - to_angle)) if to_angle is not None else normal(value)
+    if to_angle is not None:  # (Lab game grader 1.28.0) `signed`: the signed distance, a heading apart from its opposite
+        apart = normal(value - to_angle)
+        return apart if measure.get("signed") else abs(apart)
+    return normal(value)
 
 
 def pick(series, measure, since=None):
@@ -595,7 +603,9 @@ def series(measure, probe):
             else:  # height
                 out.append((t, row[3] - pawn[3]))
         return out
-    (query,) = needs(measure)
+    if probe_kind == "spawns" and (measure.get("near") is not None or field == "salvos"):
+        return _placed_spawns(measure, probe)
+    (query,) = needs(measure)[:1]
     samples = _samples(probe, query_id(query))
     if probe_kind in ("actors", "widgets", "components", "ui"):
         out, turned = [], measure.get("to_angle") is not None or measure.get("to_axis") is not None
@@ -675,6 +685,47 @@ def heard_series(field, values):
         started = loud >= ONSET_FLOOR and rise >= ONSET_RISE and (last is None or t - last >= ONSET_GAP - 1e-9)
         last = t if started else last
         out.append((t, 1.0 if started else 0.0))
+SALVO_GAP = 0.5  # (s) spawns of a `salvos` reading less than this apart are one salvo (Lab: checks.SALVO_GAP)
+
+
+def _placed_spawns(measure, probe):
+    """[(t, value or None)] of a spawns measure that reads where or when each actor was spawned (Lab game grader
+    1.28.0): the spawns `near` keeps, or their salvos, in each sample's interval; a sample without the places the
+    plugin lists has no value."""
+    near, placed = measure.get("near"), []
+    for s in _samples(probe, query_id(needs(measure)[0])):
+        listed = s["value"].get("places") if isinstance(s.get("value"), dict) else None
+        if not isinstance(listed, list):
+            placed.append((s["t"], None))
+            continue
+        kept = []
+        for row in listed:
+            if not (isinstance(row, list) and len(row) == 4 and all(
+                    isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v) for v in row)):
+                continue
+            if near is not None:
+                centre = point_at(near["point"], row[0], probe)
+                if centre is None or _distance(row[1:4], centre) > near["radius"]:
+                    continue
+                base = centre[2] if near.get("z_relative") else 0.0
+                if (near.get("z_min") is not None and row[3] < base + near["z_min"]) or \
+                        (near.get("z_max") is not None and row[3] > base + near["z_max"]):
+                    continue
+            kept.append(float(row[0]))
+        placed.append((s["t"], kept))
+    if measure["field"] == "spawned":
+        return [(t, None if kept is None else float(len(kept))) for t, kept in placed]
+    out, last = [], None
+    for t, kept in placed:
+        if kept is None:
+            out.append((t, None))
+            continue
+        starts = 0
+        for when in sorted(kept):
+            if last is None or when - last >= SALVO_GAP:
+                starts += 1
+            last = when
+        out.append((t, float(starts)))
     return out
 
 
@@ -813,6 +864,24 @@ def zero_when_none(measure):
     "not shown" check expects)."""
     return measure.get("field") == "count" or (measure["probe"] == "widgets"
                                                and measure.get("of") in ("count", "any", "all", "sum"))
+
+
+ZERO_OF = ("count", "any", "all", "sum")  # the `of`s that combine no rows into 0 (combine)
+
+
+def zero_of_nothing(measure, probe):
+    """Whether a selecting measure's 0 of no match in play `probe` is an answer (Lab game grader 1.28.0):
+    zero_when_none's measures, and also an actors or components measure combined by count, any, all or sum whose
+    selector matched no row in any sample of a play that sampled it. Never when it matched rows with no value."""
+    if zero_when_none(measure):
+        return True
+    if measure["probe"] not in ("actors", "components") or measure.get("of") not in ZERO_OF:
+        return False
+    try:
+        samples = _samples(probe, query_id(needs(measure)[0]))
+        return bool(samples) and not any(isinstance(r, dict) for s in samples for r in s.get("rows") or [])
+    except MALFORMED:
+        return False
 
 
 def reads_nothing(measure, probe):

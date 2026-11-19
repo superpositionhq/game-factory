@@ -830,6 +830,10 @@ def measure_errors(n, measure):
             and not 0 <= window[0] < window[1] <= PLAY_SECONDS:
         errs.append(f'check {n}: a window is [t0, t1] with 0 <= t0 < t1 <= {PLAY_SECONDS}')
     to_angle, to_axis = measure.get('to_angle'), measure.get('to_axis')
+    if measure.get('signed') and to_angle is None:  # (Lab game grader 1.28.0)
+        errs.append(f'check {n}: `signed` goes with `to_angle`: the angle\'s signed distance to it')
+    if probe == 'spawns' and measure.get('near') is not None and field == 'destroyed':
+        errs.append(f'check {n}: a spawns `near` keeps the actors spawned near it: it reads `spawned` or `salvos`')
     if to_angle is not None and to_axis is not None:
         errs.append(f'check {n}: a measure takes `to_angle` or `to_axis`, not both')
     elif to_angle is not None or to_axis is not None:

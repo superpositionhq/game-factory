@@ -6886,6 +6886,7 @@ void FTaskProbeQueries::Load(const FString& Path)
 		if (Q.Kind == TEXT("spawns"))
 		{
 			Q.Def->TryGetStringField(TEXT("class"), Q.SpawnClass);
+			Q.Def->TryGetBoolField(TEXT("places"), Q.bPlaces);
 			bHasSpawns = true;
 		}
 		if (Q.Kind == TEXT("audio") && !SoundStarts.IsValid())
@@ -7034,6 +7035,15 @@ void FTaskProbeQueries::OnSpawned(AActor* Actor)
 		if (Q.Kind == TEXT("spawns") && ClassMatches(Actor->GetClass(), Q.SpawnClass))
 		{
 			++Q.Spawned;
+			// (1.28.0) where and when it appeared, for a measure that keeps those spawned near a point or counts salvos
+			static constexpr int32 MaxPlaces = 500;
+			if (Q.bPlaces && Q.Places.Num() < MaxPlaces)
+			{
+				const FVector At = Actor->GetActorLocation();
+				Q.Places.Add(MakeShared<FJsonValueArray>(TArray<TSharedPtr<FJsonValue>>{
+					MakeShared<FJsonValueNumber>(PlayT), MakeShared<FJsonValueNumber>(At.X), MakeShared<FJsonValueNumber>(At.Y),
+					MakeShared<FJsonValueNumber>(At.Z)}));
+			}
 		}
 	}
 }
@@ -7140,6 +7150,11 @@ void FTaskProbeQueries::Sample(UWorld* World, APlayerController* PC, double T)
 			const TSharedRef<FJsonObject> V = MakeShared<FJsonObject>();
 			V->SetNumberField(TEXT("spawned"), Q.Spawned);
 			V->SetNumberField(TEXT("destroyed"), Q.Destroyed);
+			if (Q.bPlaces)
+			{
+				V->SetArrayField(TEXT("places"), Q.Places);
+				Q.Places.Reset();
+			}
 			S->SetObjectField(TEXT("value"), V);
 		}
 		else
@@ -7440,6 +7455,10 @@ void FTaskProbeQueries::SampleWidgets(FQuery& Q, UWorld* World, FJsonObject& Out
 		ViewportWidgets(World, Tops);
 		// class alone: the widget's own class; class with name: the widget's class or an enclosing user widget's
 		const bool bWithOwners = !Name.IsEmpty();
+		// select.text (1.28.0): a UMG widget's own text (a TextBlock's or a RichTextBlock's, as the `text` field reads it)
+		// must match it too, as a Slate select's does; before, a UMG select's text was left out, so it matched every
+		// widget of its class
+		const TOptional<FRegexPattern> UmgPattern = TextRegex.IsEmpty() ? TOptional<FRegexPattern>() : TOptional<FRegexPattern>(FRegexPattern(TextRegex));
 		TArray<UWidget*> Found;
 		auto Visit = [&](UWidget* W)
 		{
@@ -7447,6 +7466,27 @@ void FTaskProbeQueries::SampleWidgets(FQuery& Q, UWorld* World, FJsonObject& Out
 				(bOnScreen && !WidgetVisible(W)))
 			{
 				return;
+			}
+			if (UmgPattern.IsSet())
+			{
+				FString Shown;
+				if (const UTextBlock* T = Cast<UTextBlock>(W))
+				{
+					Shown = T->GetText().ToString();
+				}
+				else if (const URichTextBlock* RT = Cast<URichTextBlock>(W))
+				{
+					Shown = RT->GetText().ToString();
+				}
+				else
+				{
+					return;
+				}
+				FRegexMatcher Matcher(UmgPattern.GetValue(), Shown);
+				if (!Matcher.FindNext())
+				{
+					return;
+				}
 			}
 			++Total;
 			Found.AddUnique(W);
@@ -8108,6 +8148,7 @@ void FTaskProbeQueries::FillUi()
 
 void FTaskProbeQueries::Listen(UWorld* World, double T)
 {
+	PlayT = T;
 	// audio's started fields: once a frame, before the world ticks, the audio thread looks at every active sound. A sound
 	// stays active from its start until its source has played out, at least one audio update, so none slips between two
 	// looks however short it is; one the engine never starts (out of voices, too far to hear and not virtualized) is

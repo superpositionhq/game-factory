@@ -531,8 +531,9 @@ class Grade:
             return self.task_error(check, broken) if broken else (False, f"{check['describe']} | {said}")
         passed = value is not None and verdict.passes(value, check["expect"]["op"], limit)
         # a selector that matched nothing in the graded play: the game's doing, or the task's when the reference's play
-        # matches nothing either (a 0 of nothing that passes is an answer, never checked: probes.zero_when_none)
-        if self.read_nothing(check, self.side) and (not passed or not probes.zero_when_none(check["measure"])):
+        # matches nothing either (a 0 of nothing that passes is an answer, never checked: probes.zero_of_nothing)
+        if self.read_nothing(check, self.side) and (not passed or not probes.zero_of_nothing(
+                check["measure"], self.side.probe_play(check["play"]).probe)):
             broken = self.unreadable(check, limit)
             if broken:
                 return self.task_error(check, broken)
@@ -614,11 +615,11 @@ class Grade:
             return None
         play = ref.probe_play(check["play"])
         why = probes.reads_nothing(check["measure"], play.probe) if self.finished(play) else None
-        if why is None or (probes.zero_when_none(check["measure"]) and limit is not None
-                           and verdict.passes(0.0, check["expect"]["op"], limit)):
+        zero = probes.zero_of_nothing(check["measure"], play.probe)
+        if why is None or (zero and limit is not None and verdict.passes(0.0, check["expect"]["op"], limit)):
             return None
         name = tasks.play_name(check)
-        said = "the task's own fix fails it" if probes.zero_when_none(check["measure"]) else \
+        said = "the task's own fix fails it" if zero else \
             "the check reads nothing even on the task's own fix"
         return f"in the reference's {name if name in ('look', 'drive') else 'play ' + name}, {why}: {said}"
 

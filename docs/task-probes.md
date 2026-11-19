@@ -366,6 +366,9 @@ with a key or the mouse.
   holds an angle): angles are normalised to (-180, 180]. `"to_angle": -90` turns the field into its shortest absolute angular
   distance to that angle, 0-180 (so 270 and -90 are the same). `"to_axis": 90` turns it into the distance to that axis,
   0-90: a direction and its opposite are one axis (a straight road piece turned 90 or -90). One or the other, not both.
+- `signed` (with `to_angle`, Lab game grader 1.28.0): the angle's signed distance to it, -180 to 180, so a heading and its
+  opposite read apart: darts crossing a corridor both ways, `"to_angle": 90, "signed": true`, read -90 and 90 (without
+  it, 90 and 90).
 - `match` (string values: text, names, enum-like strings, brush paths): a regular expression; the value is 1 when it
   matches, 0 when not. A string without `match` has no value.
 
@@ -620,6 +623,10 @@ light's colour: `grey` = the resulting luminance; `cast` = its chroma (0 = neutr
 
 `{"probe": "spawns", "class": "SCProjectile", "field": "spawned|destroyed", "window": [0, 22]}`: how many appeared or
 disappeared in each sample's interval; the default `agg` is `sum` (the count in the window).
+`near` (Lab game grader 1.28.0) keeps the actors spawned within it, each where it appeared:
+`{"probe": "spawns", "class": "BBShell", "field": "spawned", "near": {"point": {"xyz": [...]}, "radius": 1500}}` counts
+one battery's shells, not every ship's. `"field": "salvos"` counts the separate moments they were spawned, spawns less
+than 0.5 s apart one salvo ("no more than five separate salvos over 30 s"). Neither goes with `destroyed`.
 
 ### 2.10 `log`: the play's game log
 
