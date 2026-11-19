@@ -77,6 +77,34 @@ class Units(unittest.TestCase):
             {'name': 'still_works', 'checks': [judge('hud_unchanged'), judge('code', 'code_judge')]}]}
         self.assertEqual(vg.required_quality_judges(t), ['reads_well', 'looks_as_asked', 'code'])
 
+    def test_one_looks_judge(self):
+        """One `looks_as_asked` judge, its items keyed asked_ or keep_ (the owner, 2026-11-19): with an asked item in
+        an outcome milestone with weight, with keep items only in still_works with weight 0, required, every item
+        marked, no other required judge in still_works beside it; the marks on no other judge. A task written before
+        the merge (no marks, a second judge in still_works) is left as it was."""
+        def judge(keys, name='looks_as_asked', **over):
+            return {'name': name, 'kind': 'judge', 'question': 'q',
+                    'rubric': [{'key': k, 'criterion': 'c'} for k in keys], **over}
+
+        def task(done=(), still=()):
+            return {'milestones': [{'name': 'done', 'checks': list(done)},
+                                   {'name': 'still_works', 'checks': list(still)}]}
+        ok = vg.looks_judge_errors
+        self.assertEqual(ok(task([judge(['asked_amber', 'keep_square'])])), [])
+        self.assertEqual(ok(task(still=[judge(['keep_square'], weight=0)])), [])
+        self.assertEqual(ok(task([judge(['amber'])], [judge(['square'], 'square_unchanged', weight=0)])), [])
+        self.assertIn('in still_works', ok(task(still=[judge(['asked_amber'], weight=0)]))[0])
+        self.assertIn('carries weight', ok(task([judge(['asked_amber'], weight=0)]))[0])
+        weighted = 'has only keep items, which a no-op passes: it goes in still_works with "weight": 0'
+        self.assertIn(weighted, ok(task([judge(['keep_square'])]))[0])
+        self.assertIn(weighted, ok(task(still=[judge(['keep_square'], weight=1)]))[0])
+        self.assertIn('carry no mark', ok(task([judge(['asked_amber', 'square'])]))[0])
+        self.assertIn('is required', ok(task([judge(['asked_amber'], required=False)]))[0])
+        self.assertIn('belong only on the looks_as_asked judge', ok(task([judge(['asked_amber'], 'lit')]))[0])
+        self.assertIn('one looks judge', ok(task([judge(['asked_amber'])],
+                                                 [judge(['square'], 'square_unchanged', weight=0)]))[0])
+        self.assertEqual(ok(task([judge(['asked_amber'])], [judge(['square'], 'tidy', weight=0, required=False)])), [])
+
     def test_retired_checks(self):
         """`actions_judge` checks and `trace` probes are retired: a task that still carries one matches the schema and
         is only warned about; a task without one has nothing to warn of. A trace probe never counted as a required

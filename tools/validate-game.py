@@ -1263,7 +1263,59 @@ def task_semantic_errors(t):
             if missing:
                 errs.append(f'check {n} needs {missing}, which come later or do not exist')
             seen.add(n)
-    return errs + play_after_errors(checks) + play_continues_errors(checks) + render_errors(checks)
+    return errs + play_after_errors(checks) + play_continues_errors(checks) + render_errors(checks) \
+        + looks_judge_errors(t)
+
+
+LOOKS_JUDGE = 'looks_as_asked'     # the one judge of the brief's looks (write-tasks section 5)
+ASKED, KEEP = 'asked_', 'keep_'    # its rubric keys' marks: a look the brief asks for, a look that must stay as it was
+NOT_OUTCOME = ('builds', 'boots', 'still_works', 'quality')   # milestones that hold no outcome
+
+
+def looks_judge_errors(t):
+    """The one looks judge's rules (the owner, 2026-11-19; write-tasks section 5): a `judge` named `looks_as_asked`
+    whose rubric keys are marked `asked_` (a look the brief asks for) or `keep_` (a look that must stay as it was).
+    Every item marked, the marks on that judge only, the judge required; with an asked item it sits in an outcome
+    milestone and carries weight (the start fails an asked item, so a no-op earns nothing), with keep items only in
+    `still_works` with weight 0; and no other required judge in `still_works` beside it. A task whose judge carries no
+    marks (written before the merge, with a second judge in `still_works`) is left as it was."""
+    errs = []
+    for m in t.get('milestones') or []:
+        for c in (m.get('checks') or []) if isinstance(m, dict) else []:
+            if not isinstance(c, dict) or c.get('kind') != 'judge':
+                continue
+            n = c.get('name')
+            keys = [str(i.get('key', '')) for i in c.get('rubric') or [] if isinstance(i, dict)]
+            asked = [k for k in keys if k.startswith(ASKED)]
+            keep = [k for k in keys if k.startswith(KEEP)]
+            if not (asked or keep):
+                continue
+            if n != LOOKS_JUDGE:
+                errs.append(f'judge check {n}: rubric keys marked {ASKED!r} or {KEEP!r} belong only on the '
+                            f'{LOOKS_JUDGE} judge')
+                continue
+            ms = m.get('name')
+            plain = [k for k in keys if k not in asked and k not in keep]
+            if plain:
+                errs.append(f'judge check {n}: rubric item(s) {plain} carry no mark: key each {ASKED}... (a look the '
+                            f'brief asks for) or {KEEP}... (a look that must stay as it was)')
+            if c.get('required', True) is False:
+                errs.append(f'judge check {n}: the looks judge is required')
+            if asked and ms in NOT_OUTCOME:
+                errs.append(f'judge check {n} has asked item(s) {asked}, so it goes in the outcome milestone '
+                            f'with weight, not in {ms}')
+            elif asked and c.get('weight', 1) <= 0:
+                errs.append(f'judge check {n} has asked item(s) {asked}: it carries weight (1 or more)')
+            if not asked and (ms != 'still_works' or c.get('weight', 1) != 0):
+                errs.append(f'judge check {n} has only keep items, which a no-op passes: it goes in still_works '
+                            'with "weight": 0')
+            others = [o.get('name') for mm in t.get('milestones') or [] if isinstance(mm, dict)
+                      and mm.get('name') == 'still_works' for o in mm.get('checks') or []
+                      if isinstance(o, dict) and o.get('kind') == 'judge' and o is not c and o.get('required', True)]
+            if others:
+                errs.append(f'judge check(s) {others} in still_works beside {n}: one looks judge, so a look to keep '
+                            f'is a {KEEP}... item of {n}')
+    return errs
 
 
 def play_after_errors(checks):
@@ -1501,8 +1553,9 @@ RETIRED_KINDS = ('actions_judge',)   # check kinds no new task carries, and with
 
 
 def required_quality_judges(t):
-    """The required judge checks that should be optional quality checks: every required judge but the ones covering
-    the brief's looks, a `judge` named `looks_as_asked` and a `judge` in the `still_works` milestone."""
+    """The required judge checks that should be optional quality checks: every required judge but the one covering
+    the brief's looks, a `judge` named `looks_as_asked`, and a `judge` in the `still_works` milestone (a task written
+    before the two looks judges were merged, 2026-11-19)."""
     return [c.get('name') for m in t.get('milestones') or [] if isinstance(m, dict) for c in m.get('checks') or []
             if isinstance(c, dict) and c.get('kind') in ('judge', 'code_judge')
             and c.get('required', True) and not (c.get('kind') == 'judge' and (
@@ -1536,9 +1589,8 @@ def check_task(rep, a, label, t, game, has_commit):
     for e in thread_errors(t, len(outcome_probes(t))):
         rep.error(a, f'{label}: {e} (write-tasks section 1: only long threads of multiple edits)')
     if judged:
-        rep.note(a, f'{label}: required judge check(s) {judged}: only a judge of the brief\'s looks is required '
-                    '(`looks_as_asked`, or a judge in `still_works`); other judges should be "required": false '
-                    'quality checks')
+        rep.note(a, f'{label}: required judge check(s) {judged}: only the judge of the brief\'s looks is required '
+                    '(`looks_as_asked`); other judges should be "required": false quality checks')
     s = t.get('seed')
     if isinstance(s, dict):
         if s.get('game') != game:
