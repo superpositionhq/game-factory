@@ -55,11 +55,14 @@ argument for the harness, repeatable), `--keep` (keep the workspaces and the bui
 5. Plays each `judge` check's plays on the agent's game and saves the screenshots the cloud's judge would be shown
    under `<task>\run<N>\judge-shots\<check>\agent\`, with `ask.md` ([task-check.md](task-check.md), VALID and
    INVALID). No model is asked: the run's number leaves judges out, and the result lists them in `judges_pending`.
+   A required judge (or `seen` probe) the try didn't ask is never counted as passed: a run that passes every other
+   required check is not `solved`, and lists the check in its `pending`.
    `--no-judge-shots` skips this.
 
 Results: `<repo>\.task-tries\<task>.json` (format `task-try/1`): per run `solved` (every required check passed),
 `required_passed` of `required`, `milestones` reached, `seconds`, `timed_out`, `turns` and `usd` when the harness
-reports them, the `checks` rows, and `peeked`. Each run's transcript is `<task>\run<N>\transcript.jsonl`, its plays
+reports them, the `checks` rows, `pending` (the required judges and `seen` probes a run that passes every other
+required check still waits on), and `peeked`. Each run's transcript is `<task>\run<N>\transcript.jsonl`, its plays
 beside it, and the brief the agent read `<task>\brief.md`.
 
 ## Reading the result
@@ -68,7 +71,8 @@ beside it, and the brief the agent read `<task>\brief.md`.
   the agent doesn't solve is a good task at any length. The printed line notes it. A run that hit its own
   time limit or crashed says nothing about length.
 - **`judges_pending` lists a check:** look at its pictures and answer `ask.md` before you call the task too easy or
-  held. A run that passes every probe but fails a required judge isn't solved.
+  held. A run that passes every probe is solved only if your answer passes every required judge; the line says
+  `N more solved if <checks> pass`.
 - **Solved in any run, quickly:** too easy. Extend the thread back to an earlier attempt, merge it with its
   neighbouring issues, or drop it (write-tasks section 6).
 - **Never solved, but some required checks pass:** what a hard task looks like. Read the transcript: the agent should

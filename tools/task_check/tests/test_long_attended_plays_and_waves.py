@@ -26,15 +26,21 @@ def reading(name, of):
 
 
 class LongPlays(unittest.TestCase):
-    def test_a_long_play_gets_at_least_its_own_seconds_and_a_margin(self):
-        task = task_with(reading("late", play("dawn", 1200)), reading("soon", play("start", 20)))
-        for timeout, short in ((60, 20 + check.PLAY_MARGIN), (1800, 1800)):
+    def test_a_play_gets_its_own_seconds_and_the_margin_after_its_map_is_warmed_up(self):
+        """As the cloud's grade gives it (Li, 2026-11-19): each map played once ungraded on a copy first, then every
+        play its own seconds and PLAY_MARGIN, whatever --timeout says (that is the editor pass's)."""
+        task = task_with(reading("late", play("dawn", 1200)), reading("soon", play("start", 20, map="/Game/Maps/L_B")))
+        for timeout in (60, 1800):
             project = FakeProject(measuring(5))
             s = check.Side("reference", project, task, timeout, 60, None, lambda *a: None)
             for _, c in tasks.checks(task):
                 s.value(c)
             self.assertEqual([(p["seconds"], p["timeout"]) for p in project.plays],
-                             [(1200, max(timeout, 1200 + check.PLAY_MARGIN)), (20, short)], timeout)
+                             [(1200, 1200 + check.PLAY_MARGIN), (20, 20 + check.PLAY_MARGIN)], timeout)
+            self.assertEqual(project.warms, [{"seconds": check.WARM_SECONDS, "timeout": check.WARM_TIMEOUT,
+                                              "map": None},
+                                             {"seconds": check.WARM_SECONDS, "timeout": check.WARM_TIMEOUT,
+                                              "map": "/Game/Maps/L_B"}], "once per map")
 
 
 class AttendedPlays(unittest.TestCase):

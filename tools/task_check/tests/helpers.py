@@ -72,7 +72,7 @@ class FakeProject:
         self.answer, self.build_exit, self.editor = answer, build_exit, editor
         self.saved = list(saved)  # what a first session (session=True) is said to have written under Saved
         self.folder = __import__("pathlib").Path(folder)
-        self.plays, self.builds, self.scripts, self.files = [], 0, [], {}
+        self.plays, self.builds, self.scripts, self.files, self.warms = [], 0, [], {}, []
 
     def build(self, timeout):
         self.builds += 1
@@ -86,6 +86,9 @@ class FakeProject:
         probe, log = self.answer(seconds, shots, queries) if self.answer else (None, "")
         files = {"probe.json": json.dumps(probe).encode()} if probe is not None else {}
         return unreal.Played(0, False, "", 1.0, probe, log, files, saved=list(self.saved) if session else None)
+
+    def warm(self, seconds, timeout, map=None):
+        self.warms.append({"seconds": seconds, "timeout": timeout, "map": map})
 
     def editor_python(self, script, timeout):
         self.scripts.append(script)

@@ -219,20 +219,24 @@ def outside(path, folders):
 def score(task, grade):
     """What a run reached: solved (every required check passed), its score (the weighted share of checks passed, as the
     cloud scores it, judges and seen probes left out since a try asks no model), required checks passed, milestones
-    reached. A task error (a check no version of the game can pass: check.Grade.task_error) is left out of the score
-    and no run with one is solved, as the cloud grades it."""
+    reached. A required judge or seen probe the try didn't ask is `pending`, never a pass: a run that passes every other
+    required check isn't solved until its answer says so. A task error (a check no version of the game can pass:
+    check.Grade.task_error) is left out of the score and no run with one is solved, as the cloud grades it."""
     errors = grade.get("task_errors") or {}
     rows = [r for r in grade["checks"] if r["name"] not in errors]
+    unasked = [r for r in rows if r.get("detail") in (check.NOT_JUDGED, seen.NOT_READ)]
     weighed = [r for r in rows if r.get("kind") not in verdict.JUDGES and r.get("detail") != seen.NOT_READ]
     total = sum(r.get("weight", 1) for r in weighed)
     earned = sum(r.get("weight", 1) for r in weighed if r["passed"])
-    required = [r for r in rows if r["required"]]
+    pending = [r["name"] for r in unasked if r["required"]]
+    required = [r for r in rows if r["required"] and r["name"] not in pending]
     groups = {}
     for r in required:
         groups.setdefault(r["group"], []).append(r["passed"])
-    return {"solved": bool(required) and all(r["passed"] for r in required) and not errors, "score": round(earned / total, 3) if total else 0.0,
-            "required_passed": sum(r["passed"] for r in required),
-            "required": len(required), "milestones": {g: all(v) for g, v in groups.items()}}
+    measured = bool(required) and all(r["passed"] for r in required) and not errors
+    return {"solved": measured and not pending, "score": round(earned / total, 3) if total else 0.0,
+            "required_passed": sum(r["passed"] for r in required), "required": len(required),
+            "pending": pending if measured else [], "milestones": {g: all(v) for g, v in groups.items()}}
 
 
 def side(name, folder, task, direct, timeout, build_timeout, evidence, log):
@@ -318,7 +322,8 @@ def try_task(repo, task, raw, scratch, out_dir, agent, exe, runs=1, model=None, 
             try:
                 tried, _ = side(label, folder, task, direct, timeout, build_timeout, evidence, log)
             except (seeds.WrongEngine, FileNotFoundError) as exc:  # the agent changed the engine or removed the project
-                row.update(solved=False, score=0.0, required_passed=0, required=None, milestones={}, checks=[],
+                row.update(solved=False, score=0.0, required_passed=0, required=None, pending=[], milestones={},
+                           checks=[],
                            why=str(exc))
             else:
                 grade = check.Grade(task, "reference", start, reference, thresholds, side=tried).run()
@@ -328,7 +333,9 @@ def try_task(repo, task, raw, scratch, out_dir, agent, exe, runs=1, model=None, 
                                                            f"{name}/{label}/judge-shots/", log=log)
                     result["judges_pending"] = sorted(row["judges"])
             log(f"  {label}: {'SOLVED' if row['solved'] else 'not solved'} "
-                f"({row['required_passed']}/{row['required'] or '?'} required checks)")
+                f"({row['required_passed']}/{row['required'] or '?'} required checks"
+                + (f"; solved if {', '.join(row['pending'])} pass, which you answer" if row.get("pending") else "")
+                + ")")
             result["runs"].append(row)
             if not keep:
                 seeds.remove(scratch / label)
@@ -349,6 +356,9 @@ def line(result):
     best = max((r["required_passed"] for r in runs), default=0)
     total = next((r["required"] for r in runs if r["required"]), "?")
     tail = f"  (best {best}/{total} required checks"
+    held = [r for r in runs if r.get("pending")]
+    if held:
+        tail += f"; {len(held)} more solved if {', '.join(sorted({n for r in held for n in r['pending']}))} pass"
     peeks = sorted({p for r in runs for p in r["peeked"]})
     tail += f"; transcript names {', '.join(peeks)}: it may have read the answer)" if peeks else ")"
     if result.get("judges_pending"):
@@ -391,7 +401,8 @@ def main(argv=None):
     parser.add_argument("--scratch", help="where workspaces go (default: <repo's drive>\\.task-try)")
     parser.add_argument("--direct", action="store_true",
                         help="run Unreal directly, not through the machine's ue-heavy.ps1 slots")
-    parser.add_argument("--timeout", type=int, default=1800, help="seconds a play or the editor pass may run")
+    parser.add_argument("--timeout", type=int, default=1800,
+                        help="seconds the editor pass may run (a play gets its own seconds and 600 s, as in the cloud)")
     parser.add_argument("--build-timeout", type=int, default=3600, help="seconds a build may run")
     parser.add_argument("--no-judge-shots", dest="judge_shots", action="store_false",
                         help="don't play judge checks' plays or save their screenshots (by default each judge check's "

@@ -136,7 +136,7 @@ class Saved(unittest.TestCase):
             self.assertNotIn("left out", (base / "ask.md").read_text(), "side notes stay out of the blind ask")
             self.assertIn("left out of the blind copy", (base / "sides.md").read_text())
 
-    def test_the_shared_plays_are_played_whole_not_cut_from_the_boot(self):
+    def test_the_shared_plays_are_played_whole_beside_the_boot(self):
         task = task_with({"kind": "boot", "name": "boots", "seconds": 60}, probe(), judge())
         s = side("reference", Shooting(folder="reference"), task)
         s.boot(60)
@@ -146,7 +146,7 @@ class Saved(unittest.TestCase):
             saved = sorted(p.name for p in (Path(tmp) / "door_looks_open" / "reference").iterdir())
         self.assertEqual(saved, sorted([f"look_{i:02d}.png" for i in range(1, 7)]
                                        + [f"drive_{i:02d}.png" for i in range(1, 9)]))
-        self.assertEqual([(p["seconds"], p["shots"]) for p in s.project.plays], [(60, 6), (20, 6), (22, 8)])
+        self.assertEqual([(p["seconds"], p["shots"]) for p in s.project.plays], [(60, 2), (20, 6), (22, 8)])
 
     def test_a_side_that_didnt_build_is_noted_and_no_blind_copy_is_made(self):
         task = task_with(judge())
@@ -265,7 +265,8 @@ class Try(unittest.TestCase):
                                       classmethod(lambda cls, p, d=False: cls(Path(p), None))):
                 result = trial.try_task(repo, task, json.dumps(task).encode(), Path(tmp) / "scratch",
                                         Path(tmp) / "out", "claude", "claude", places=[repo], log=lambda *a: None)
-            self.assertEqual((result["status"], result["solved"]), ("DONE", 1))
+            self.assertEqual((result["status"], result["solved"]), ("DONE", 0), "a required judge is no pass")
+            self.assertEqual(result["runs"][0]["pending"], ["door_looks_open"])
             self.assertEqual(result["runs"][0]["score"], 1.0, "the number leaves judges out")
             self.assertEqual(result["judges_pending"], ["door_looks_open"])
             base = Path(tmp) / "out" / "probe-task" / "run1" / "judge-shots" / "door_looks_open"

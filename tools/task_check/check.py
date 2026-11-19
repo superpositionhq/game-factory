@@ -22,10 +22,10 @@ The plays a probe names: "look", the idle play (20 s, no input, 6 screenshots); 
 map, args and sampling; 2 screenshots, or the most a judge check showing it asks); "editor", one headless editor pass per side over every asset measure. Each is
 played once per side, with the plugin's queries for every probe it serves; a task play whose `after` names other task
 plays is played after them on the same side (they run first, a failed one too), as the Lab's grader plays it. A boot check plays boot_<seconds>s (2
-screenshots, no queries). Every task's boot is a 60 s idle play and "look" is the first 20 s of the same idle game, so
-when no look probe reads the log, a side that boots (the reference; a start is never booted) plays one 60 s idle play
-with look's queries for both (Side.idle): the boot check reads it whole, and look reads its first 20 s only
-(first_seconds), one game launch instead of two. Judges, trace probes and packaging never decide a task check: a
+screenshots, no queries), a play of its own as in the cloud. As the cloud's grade plays them, each map a side plays is
+first played once ungraded (WARM_SECONDS, given WARM_TIMEOUT), so its shaders are compiled before a graded play of
+it, and every graded play may then take its own seconds and PLAY_MARGIN (and its waits) before it is stopped.
+Judges, trace probes and packaging never decide a task check: a
 `judge` check's plays are played on both sides and the screenshots its judge would see are saved under
 <name>/judge-shots/<check>/ (judges.py) for whoever runs the check to look at and answer (`judge_shots`). A `seen`
 probe (text the Lab's visual model reads from a named shot) is read by the task's writer instead: its crops are saved
@@ -49,9 +49,12 @@ DRIVE = [{"t": 1.0, "key": "W", "press": True}, {"t": 6.0, "key": "W", "press": 
          {"t": 13.0, "key": "A", "press": True}, {"t": 15.0, "key": "A", "press": False},
          {"t": 15.0, "key": "W", "press": True}, {"t": 21.0, "key": "W", "press": False}]
 PLAYS = {"look": (20, 6, None), "drive": (22, 8, DRIVE)}  # seconds, screenshots, inputs
-# seconds a play may run past its own seconds (boot, shader compiles) when that is longer than --timeout: a task play
-# may last up to 1200 s (validate-game.py PLAY_SECONDS)
+# seconds a play may run past its own seconds (the game's load, its map warmed up first), as the cloud's grade gives
+# it (runs.PLAY_MARGIN); a task play may last up to 1200 s (validate-game.py PLAY_SECONDS)
 PLAY_MARGIN = 600
+# each map's ungraded first play on a side, before a graded play of it (the cloud's Grader.warm): its seconds, and how
+# long it may take (a fresh shader cache's first compile)
+WARM_SECONDS, WARM_TIMEOUT = 10, 40 * 60
 # A mobile game's drive (docs/task-probes.md, section 1.1): the same route by touch, a left thumb pushing where a virtual
 # stick usually is (down at its middle, over to a side, held there) and a right thumb's tap for the jump.
 STICK = [0.15, 0.75]
@@ -114,27 +117,6 @@ def session_empty(found):
 
 def fatal(log):
     return bool(re.search(unreal.FATAL, log or ""))
-
-
-def first_seconds(probe, seconds):
-    """`probe` (a play's probe.json) as a play of only its first `seconds` would have written it: rows and samples after
-    that dropped, its length cut to them."""
-    if not isinstance(probe, dict):
-        return probe
-    cut = dict(probe)
-    for name in ("track", "camera"):
-        rows = probe.get(name)
-        if isinstance(rows, list):
-            cut[name] = [r for r in rows if not (isinstance(r, list) and r and isinstance(r[0], int | float)
-                                                 and r[0] > seconds + 1e-6)]
-    if isinstance(probe.get("measures"), dict):
-        cut["measures"] = {q: [s for s in samples if not (isinstance(s, dict) and isinstance(s.get("t"), int | float)
-                                                          and s["t"] > seconds + 1e-6)] if isinstance(samples, list)
-                           else samples for q, samples in probe["measures"].items()}
-    length = probe.get("seconds")
-    if isinstance(length, int | float) and not isinstance(length, bool) and length >= seconds - 1e-6:
-        cut["seconds"], cut["ended"] = float(seconds), "time"
-    return cut
 
 
 class Built:
@@ -261,16 +243,27 @@ class Side:
         for f, data in files.items():
             (folder / f).write_bytes(data)
 
+    def warm(self, map):
+        """`map` played once ungraded on this side's copy before its first graded play (WARM_SECONDS), as the cloud's
+        grade warms each map of a copy: a copy shared by several tasks of a run is warmed once."""
+        warmed = vars(self.project).setdefault("warmed_maps", set())
+        if map in warmed:
+            return
+        warmed.add(map)
+        self.log(f"  {self.name}: warming up {map or 'the default map'} ({WARM_SECONDS} s, ungraded)")
+        self.project.warm(WARM_SECONDS, WARM_TIMEOUT, map)
+
     def _play(self, name, seconds, shots, inputs=None, map=None, queries=None, args=(), every=None, waits=0.0,
               session=False, fresh=False, attended=False):
-        """A play, once per name; `waits`: the real seconds its waits add (a task play's), which its timeout gets on
-        top, and a long play at least its own seconds and PLAY_MARGIN; `session`: a continuing play's first session,
+        """A play, once per name, after its map's warm-up; it may take its own seconds, PLAY_MARGIN and `waits` (the
+        real seconds a task play's waits add), as in the cloud; `session`: a continuing play's first session,
         played on a cleared save (unreal.Project.play); `fresh`: a task play marked `fresh`, played on a cleared save
         too; `attended`: a task play marked `attended`, launched without -unattended."""
         if name not in self.played:
+            map = map or self.task.get("play_map")
+            self.warm(map)
             self.log(f"  {self.name}: playing {name} ({seconds} s" + (f", {waits:g} s waiting" if waits else "") + ")")
-            found = self.project.play(seconds, shots, max(self.timeout, seconds + PLAY_MARGIN) + math.ceil(waits),
-                                      map=map or self.task.get("play_map"),
+            found = self.project.play(seconds, shots, seconds + PLAY_MARGIN + math.ceil(waits), map=map,
                                       inputs=inputs, queries=queries, args=args, every=every,
                                       **({"session": True} if session else {}), **({"fresh": True} if fresh else {}),
                                       **({"attended": True} if attended else {}),
@@ -287,7 +280,7 @@ class Side:
     def judge_plays(self, check):
         """{play name: (probe dict or None, {file: bytes})} of every play judge check `check` is shown on this side:
         its own task plays (the probes' own when they name the same play, which is the same play), else the idle play
-        and the drive, each played whole (never the boot cut to look's seconds, whose screenshots span the boot)."""
+        and the drive."""
         out = {}
         for play, _, _ in judges.plays(check):
             if isinstance(play, str):
@@ -298,20 +291,10 @@ class Side:
             out[play if isinstance(play, str) else play["name"]] = (p.probe, p.files)
         return out
 
-    def idle(self, seconds):
-        """Whether the boot play of `seconds` also serves "look": look is the first part of the same idle game, so one
-        play does when the boot is at least as long and no look probe reads the play's log (a log covers the whole
-        play, so it can't be cut to look's seconds)."""
-        return "look" in self.plan and seconds >= PLAYS["look"][0] and not any(
-            tasks.play_name(c) == "look" and c["measure"]["probe"] == "log" for c in probes.probes(self.task))
-
     def boot(self, seconds):
-        """The boot play of `seconds`: {ok, crashed, timed_out, log}."""
-        if self.idle(seconds) and "look" not in self.played:
-            p = self._play(f"boot_{seconds}s", seconds, PLAYS["look"][1],
-                           queries=probes.query_file(self.plan["look"]))
-        else:
-            p = self._play(f"boot_{seconds}s", seconds, 2)
+        """The boot play of `seconds` (2 screenshots, no queries, a play of its own as in the cloud): {ok, crashed,
+        timed_out, log}."""
+        p = self._play(f"boot_{seconds}s", seconds, 2)
         crashed = fatal(p.log)
         return {"ok": p.probe is not None and p.probe.get("ended") == "time" and not crashed, "crashed": crashed,
                 "timed_out": p.timed_out, "log": p.log}
@@ -324,12 +307,6 @@ class Side:
         queries = probes.query_file(self.plan.get(name, []), every)
         if isinstance(play, str):
             seconds, shots, inputs = own_play(play, self.project)
-            booted = next((b for b in self.boots() if play == "look" and self.idle(b)
-                           and f"boot_{b}s" in self.played), None)
-            if booted is not None:
-                p = self.played[f"boot_{booted}s"]
-                return unreal.Played(p.exit_code, p.timed_out, p.output, p.seconds, first_seconds(p.probe, seconds),
-                                     p.log, p.files)
             return self._play(name, seconds, shots, inputs, queries=queries)
         # every play it names in `after` played on this copy first, and ended, a failed one too (docs/task-probes.md
         # 1.1): a side's plays share the copy's Saved folder, so a play that reads a save another writes finds it
@@ -381,15 +358,6 @@ class Side:
         """Why a continuing task play's first session on this side didn't end cleanly, or None."""
         found = None if isinstance(play, str) else self.sessions.get(play["name"])
         return session_unclean(found) if found is not None else None
-
-    def boots(self):
-        """The boot plays this task's checks run (seconds): its boot checks, and 60 s for a log_absent check."""
-        found = []
-        for _, check in tasks.checks(self.task):
-            seconds = check.get("seconds") if check["kind"] == "boot" else 60 if check["kind"] == "log_absent" else None
-            if seconds is not None and seconds not in found:
-                found.append(seconds)
-        return found
 
     def editor(self):
         """(the editor pass's results {measure id: result} or None; why none): one pass over every asset measure."""

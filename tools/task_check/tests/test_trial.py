@@ -14,7 +14,7 @@ from unittest import mock
 from helpers import FakeProject, checked, measuring, probe, task_with
 from test_check import make_game
 
-from task_check import trial, unreal
+from task_check import check, trial, unreal
 
 
 def git(repo, *args):
@@ -107,9 +107,22 @@ class Score(unittest.TestCase):
                             dict(checked("camera", "probe", False), required=True, group="fixed"),
                             dict(checked("taste", "judge", False), required=False, group="quality")]}
         self.assertEqual(trial.score(None, grade), {"solved": False, "score": 0.667, "required_passed": 2, "required": 3,
-                                                    "milestones": {"builds": True, "fixed": False}})
+                                                    "pending": [], "milestones": {"builds": True, "fixed": False}})
         grade["checks"][2]["passed"] = True
         self.assertTrue(trial.score(None, grade)["solved"])
+
+    def test_a_required_judge_the_try_didnt_ask_is_pending_never_a_pass(self):
+        """A try asks no model, so a required judge's row is no pass (Li, 2026-11-19)."""
+        grade = {"checks": [dict(checked("hud", "probe", True), required=True, group="fixed"),
+                            dict(checked("looks_as_asked", "judge", True, check.NOT_JUDGED), required=True,
+                                 group="fixed")]}
+        found = trial.score(None, grade)
+        self.assertEqual((found["solved"], found["pending"], found["required"]), (False, ["looks_as_asked"], 1))
+        self.assertIn("1 more solved if looks_as_asked pass",
+                      trial.line({"status": "DONE", "task": "t", "solved": 0,
+                                  "runs": [{**found, "peeked": [], "seconds": 3600}]}))
+        grade["checks"][0]["passed"] = False
+        self.assertEqual(trial.score(None, grade)["pending"], [], "pending only when the rest is solved")
 
 
 class Workspace(unittest.TestCase):

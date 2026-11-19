@@ -131,7 +131,8 @@ def main(argv=None):
                              "files are hardlinked)")
     parser.add_argument("--direct", action="store_true",
                         help="run Unreal directly, not through the machine's ue-heavy.ps1 slots")
-    parser.add_argument("--timeout", type=int, default=1800, help="seconds a play or the editor pass may run")
+    parser.add_argument("--timeout", type=int, default=1800,
+                        help="seconds the editor pass may run (a play gets its own seconds and 600 s, as in the cloud)")
     parser.add_argument("--build-timeout", type=int, default=3600, help="seconds a build may run")
     parser.add_argument("--no-judge-shots", dest="judge_shots", action="store_false",
                         help="don't play judge checks' plays or save their screenshots (by default each judge check's "

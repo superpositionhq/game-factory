@@ -428,27 +428,15 @@ def rising(log="LogInit: ready\n"):
 class IdlePlay(unittest.TestCase):
     BOOT = {"kind": "boot", "name": "boots_clean", "seconds": 60, "weight": 0}
 
-    def test_the_60_s_boot_serves_look_and_look_sees_only_its_first_20_s(self):
+    def test_look_is_a_play_of_its_own_beside_the_boot(self):
+        """As the cloud plays them (Li, 2026-11-19): the boot (2 screenshots, no queries) and the 20 s idle look."""
         task = task_with(self.BOOT, probe("highest", measure={"probe": "pawn", "field": "z", "agg": "max"},
                                           expect={"op": ">=", "value": 0}, needs=["boots_clean"]))
         game = FakeProject(rising())
         found = grade(task, "reference", side("start", FakeProject(), task), side("reference", game, task))
         self.assertTrue(all(c["passed"] for c in found["checks"]), found["checks"])
-        self.assertEqual([(p["seconds"], p["shots"]) for p in game.plays], [(60, 6)], "one launch for both")
-        self.assertEqual(found["probes"]["highest"]["value"], 200.0, "the highest point of the first 20 s, not 300")
-
-    def test_a_look_probe_reading_the_log_keeps_its_own_play(self):
-        task = task_with(self.BOOT, probe("no_warnings", measure={"probe": "log", "pattern": "Warning"},
-                                          expect={"op": "==", "value": 0}, needs=["boots_clean"]))
-        game = FakeProject(rising())
-        grade(task, "reference", side("start", FakeProject(), task), side("reference", game, task))
-        self.assertEqual([p["seconds"] for p in game.plays], [60, 20], "a log covers the whole play")
-
-    def test_a_boot_shorter_than_look_keeps_its_own_play(self):
-        task = task_with({**self.BOOT, "seconds": 10}, probe(needs=["boots_clean"]))
-        game = FakeProject(rising())
-        grade(task, "reference", side("start", FakeProject(), task), side("reference", game, task))
-        self.assertEqual([p["seconds"] for p in game.plays], [10, 20])
+        self.assertEqual([(p["seconds"], p["shots"]) for p in game.plays], [(60, 2), (20, 6)])
+        self.assertEqual(found["probes"]["highest"]["value"], 200.0)
 
     def test_a_play_logs_its_time_and_the_wait_for_a_slot(self):
         task = task_with(probe())
@@ -456,18 +444,9 @@ class IdlePlay(unittest.TestCase):
         game.play = lambda *a, **k: unreal.Played(0, False, "", 95.0, None, "", {}, 40.0)
         said = []
         check.Side("reference", game, task, 60, 60, None, said.append).probe_play("look")
-        self.assertEqual(said, ["  reference: playing look (20 s)",
+        self.assertEqual(said, ["  reference: warming up the default map (10 s, ungraded)",
+                                "  reference: playing look (20 s)",
                                 "  reference: played look in 95 s (40 s of it waiting for a machine slot)"])
-
-    def test_first_seconds_cuts_rows_samples_and_length(self):
-        probe_ = {"seconds": 60.0, "ended": "time", "track": [[0.0, 0, 0, 1], [20.0, 0, 0, 2], [20.5, 0, 0, 3]],
-                  "camera": [], "measures": {"q": [{"t": 19.5, "value": 1}, {"t": 30, "value": 2}]}}
-        cut = check.first_seconds(probe_, 20)
-        self.assertEqual((cut["seconds"], cut["ended"], len(cut["track"]), cut["measures"]["q"]),
-                         (20.0, "time", 2, [{"t": 19.5, "value": 1}]))
-        self.assertEqual(probe_["seconds"], 60.0, "the boot's own probe is left whole")
-        crashed = check.first_seconds({"seconds": 12.0, "ended": "crash", "track": []}, 20)
-        self.assertEqual((crashed["seconds"], crashed["ended"]), (12.0, "crash"), "a play that ended early stays so")
 
 
 class Plays(unittest.TestCase):

@@ -36,7 +36,7 @@ INVALID <game>-fix-<slug>: start already passes every required probe
 
 Options: `--keep` keeps the built copies (to look at a build or rerun a play by hand), `--out DIR` puts the results
 elsewhere, `--scratch DIR` puts the copies elsewhere, `--direct` runs Unreal without the machine's job slots,
-`--timeout S` (a play or the editor pass, default 1800) and `--build-timeout S` (default 3600).
+`--timeout S` (the editor pass, default 1800) and `--build-timeout S` (default 3600).
 
 `--watch PLAY` (with one `--task`, and `--side start` or `--side reference`, the default) doesn't check anything: it
 builds that one side and shows that one play in a game window at the game's own speed, for a person to watch and say
@@ -122,15 +122,16 @@ left; the earlier ones are kept as `play_<name>-first-<n>`) of its own: the copy
 play it names is played (kept as `play_<name>-first`) and quits, then the play itself starts as a new process on the
 same copy (docs/task-probes.md, section 1.1). Before a `fresh` task play the copy's `Saved/SaveGames` and
 `Saved/Config` are deleted too, so it starts as a new game does, as on the Lab. An `attended` task play is launched
-without `-unattended`, as a player launches the game. A task play may last up to 1200 s; a play gets at least its own
-seconds and 600 s more to run, however low `--timeout` is.
+without `-unattended`, as a player launches the game. A task play may last up to 1200 s.
 
-A boot is the same idle game as `"look"`, only longer, so on the side that boots (the reference; a start is never
-booted) one 60 s idle play with look's queries serves both: the boot check reads all of it and `"look"` reads only its
-first 20 s, exactly what a 20 s play would have measured. That saves a game launch per task, and each launch costs
-minutes beyond its scripted seconds. A look probe that reads the log (`"probe": "log"`) keeps its own 20 s play,
-because a log covers the whole play. The kept files are then under `boot_60s\`, not `look\`. Each play's progress
-line says how long it took, and how much of that it waited for a machine slot (`ue-heavy.ps1`).
+As in the cloud, each map a side plays is first played once, 10 s and ungraded (it may take up to 40 minutes), so its
+shaders are compiled before a graded play of it; a copy shared by several tasks of a run is warmed once per map. Every
+graded play then gets its own seconds, its waits and 600 s more, and is stopped there: a play that takes longer here
+times out in the cloud too.
+
+A boot check is a play of its own (2 screenshots, no queries), and `"look"` is its own 20 s idle play with 6
+screenshots, as the cloud plays them. Each play's progress line says how long it took, and how much of that it waited
+for a machine slot (`ue-heavy.ps1`).
 
 ### Thresholds
 

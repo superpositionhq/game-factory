@@ -322,6 +322,11 @@ class Project:
         return Played(found.exit_code, found.timed_out, found.output, found.seconds,
                       probes.excused(probes.well_formed(probe), inputs), log, files, found.waited, saved)
 
+    def warm(self, seconds, timeout, map=None):
+        """`map` played `seconds` with no queries and one screenshot, its result read by nothing: its shaders compiled
+        before a graded play of it (check.Side.warm)."""
+        return self.play(seconds, 1, timeout, map=map)
+
     def editor_python(self, script, timeout):
         path = self.folder / "Saved" / "TaskProbe" / "editor_script.py"
         path.parent.mkdir(parents=True, exist_ok=True)
