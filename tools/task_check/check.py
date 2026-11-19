@@ -49,6 +49,9 @@ DRIVE = [{"t": 1.0, "key": "W", "press": True}, {"t": 6.0, "key": "W", "press": 
          {"t": 13.0, "key": "A", "press": True}, {"t": 15.0, "key": "A", "press": False},
          {"t": 15.0, "key": "W", "press": True}, {"t": 21.0, "key": "W", "press": False}]
 PLAYS = {"look": (20, 6, None), "drive": (22, 8, DRIVE)}  # seconds, screenshots, inputs
+# seconds a play may run past its own seconds (boot, shader compiles) when that is longer than --timeout: a task play
+# may last up to 1200 s (validate-game.py PLAY_SECONDS)
+PLAY_MARGIN = 600
 # A mobile game's drive (docs/task-probes.md, section 1.1): the same route by touch, a left thumb pushing where a virtual
 # stick usually is (down at its middle, over to a side, held there) and a right thumb's tap for the jump.
 STICK = [0.15, 0.75]
@@ -256,16 +259,18 @@ class Side:
             (folder / f).write_bytes(data)
 
     def _play(self, name, seconds, shots, inputs=None, map=None, queries=None, args=(), every=None, waits=0.0,
-              session=False, fresh=False):
+              session=False, fresh=False, attended=False):
         """A play, once per name; `waits`: the real seconds its waits add (a task play's), which its timeout gets on
-        top; `session`: a continuing play's first session, played on a cleared save (unreal.Project.play);
-        `fresh`: a task play marked `fresh`, played on a cleared save too."""
+        top, and a long play at least its own seconds and PLAY_MARGIN; `session`: a continuing play's first session,
+        played on a cleared save (unreal.Project.play); `fresh`: a task play marked `fresh`, played on a cleared save
+        too; `attended`: a task play marked `attended`, launched without -unattended."""
         if name not in self.played:
             self.log(f"  {self.name}: playing {name} ({seconds} s" + (f", {waits:g} s waiting" if waits else "") + ")")
-            found = self.project.play(seconds, shots, self.timeout + math.ceil(waits),
+            found = self.project.play(seconds, shots, max(self.timeout, seconds + PLAY_MARGIN) + math.ceil(waits),
                                       map=map or self.task.get("play_map"),
                                       inputs=inputs, queries=queries, args=args, every=every,
                                       **({"session": True} if session else {}), **({"fresh": True} if fresh else {}),
+                                      **({"attended": True} if attended else {}),
                                       **({"watch": True} if name == self.watching else {}))
             self.played[name] = found
             waited = getattr(found, "waited", 0.0)
@@ -334,7 +339,8 @@ class Side:
         if play.get("continues") and name not in self.sessions:
             first = named[play["continues"]]
             ended = self._play(f"play_{name}-first", first["seconds"], 1, first["inputs"] or None, map=first["map"],
-                               args=first["args"], every=first["every"], waits=tasks.waited(first), session=True)
+                               args=first["args"], every=first["every"], waits=tasks.waited(first), session=True,
+                               attended=first.get("attended") is True)
             self.sessions[name] = session(ended, first["name"])
         shots = judges.play_shots(self.task).get(name, 2)  # as the grader plays it: a judge showing it asks more
         if self.watching == f"play_{name}":
@@ -342,7 +348,7 @@ class Side:
         # a `fresh` play starts from a cleared save: what earlier plays of the side saved never changes its start
         return self._play(f"play_{name}", play["seconds"], shots, play["inputs"] or None, map=play["map"],
                           queries=queries, args=play["args"], every=every, waits=tasks.waited(play),
-                          fresh=play.get("fresh") is True)
+                          fresh=play.get("fresh") is True, attended=play.get("attended") is True)
 
     def carried(self, play):
         """Why a continuing task play's readings can't stand on the reference, or None: its first session didn't end

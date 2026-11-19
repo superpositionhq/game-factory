@@ -102,6 +102,7 @@ private:
 		int32 Finger = 0;  // tap, drag: the touch index, 0-9 (several fingers at once by their numbers)
 		double Press = 0.0;  // tap: seconds the finger stays down; drag: seconds it stays at the last place before it lifts
 		bool bScrolled = false;  // click: made again after its scroll areas were scrolled to its control (no second scroll)
+		int32 TextFrames = -1;  // click: frames it has waited for the screen's texts (-1: not looked for by its text yet)
 		TSharedPtr<class FJsonObject> When;  // shot: its event, as the grader hands it ({query, field, of, match, op, value, within})
 	};
 
@@ -159,6 +160,11 @@ private:
 	void Stage(const FScriptedKey& K, UWorld* World, class APlayerController* PC);
 	void PinActor(const FScriptedKey& K, UWorld* World, class APlayerController* PC);
 	bool ClickSlate(const FScriptedKey& K);
+	/** A click no button takes, made on its text as shown (game grader 1.18.0): true when it is done with (pressed,
+	 *  missed, or made again next frame while the screen's texts are read). */
+	bool ClickText(const FScriptedKey& K, class APlayerController* PC);
+	/** The pointer moved to a viewport point (fractions) as a cursor input moves it: Slate's and the player's mouse. */
+	bool MoveCursor(double Fx, double Fy, class APlayerController* PC, FVector2D& OutAbsolute);
 	/** A click's control scrolled into its scroll areas' view, or found covered: true when the click is done with
 	 *  (made again next frame, or listed as a miss); false: press it now. */
 	bool ScrolledOrCovered(const FScriptedKey& K, const TSharedPtr<class SWidget>& Control, const FString& Label);
@@ -199,6 +205,7 @@ private:
 	TArray<FScriptedKey> Again;  // clicks made again next frame, their control scrolled into view (the inputs after them wait)
 	TArray<FWatch> Watches;  // shots waiting for their event
 	TSharedPtr<class FTaskProbeQueries> Watcher;  // reads a shot's event (only with a shot that names one)
+	TSharedPtr<class FTaskProbeQueries> Texts;  // reads the texts on screen for a click by its text (only with a click)
 	TSharedPtr<class FTaskProbeQueries> Queries;  // only with -TaskProbeQueries
 	bool bDone = false;
 	bool bStarted = false;  // the first world has begun play: the clock runs from then on

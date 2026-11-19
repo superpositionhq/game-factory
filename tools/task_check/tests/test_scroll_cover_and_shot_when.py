@@ -2,7 +2,8 @@
 something else is drawn over is a miss, "covered by another control", that neither `optional` nor `disabled` excuses;
 a widgets measure may read `covered`; a shot may say `when`, an event the probe reads itself every frame (widgets
 count or visible, actors count, x, y, z, hidden or a prop: member), handed to it as one query, and a shot whose event
-never came is a missed input of kind shot_when; and a task play may last up to 300 s, every time in it up to 300 s."""
+never came is a missed input of kind shot_when; and a task play may last up to 1200 s (1.18.0; 300 s in 1.17.0),
+every time in it up to 1200 s."""
 
 import json
 import tempfile
@@ -106,14 +107,14 @@ class Covered(unittest.TestCase):
 
 
 class LongPlays(unittest.TestCase):
-    def test_a_play_may_last_up_to_300_s_and_no_longer(self):
-        task_with(reading([{"t": 299, "shot": "late"}, {"t": 10, "teleport": [0, 0, 0], "hold": 290}], seconds=300))
-        task_with(probe(name="late", play=play([{"t": 1, "key": "E", "press": True}], 300),
+    def test_a_play_may_last_up_to_1200_s_and_no_longer(self):
+        task_with(reading([{"t": 1199, "shot": "late"}, {"t": 10, "teleport": [0, 0, 0], "hold": 1190}], seconds=1200))
+        task_with(probe(name="late", play=play([{"t": 1, "key": "E", "press": True}], 1200),
                         measure={"probe": "actors", "select": {"class": "Boss"}, "field": "count",
-                                 "window": [200, 299]}))
-        for bad in (reading([{"t": 1, "key": "E", "press": True}], seconds=301),
-                    reading([{"t": 301, "key": "E", "press": True}], seconds=300),
-                    reading([{"t": 1, "shot": "s", "when": {**EVENT, "within": 301}}])):
+                                 "window": [900, 1199]}))
+        for bad in (reading([{"t": 1, "key": "E", "press": True}], seconds=1201),
+                    reading([{"t": 1201, "key": "E", "press": True}], seconds=1200),
+                    reading([{"t": 1, "shot": "s", "when": {**EVENT, "within": 1201}}])):
             with self.assertRaises(ValueError):
                 task_with(bad)
 

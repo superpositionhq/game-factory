@@ -20,7 +20,7 @@ RUNTIME = ("pawn", "camera", "actors", "widgets", "components", "pieces", "scree
 SAMPLED = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns",
            "audio", "ground", "ui", "drawn", "world", "render")
 AUDIO_STARTED = ("started", "started_audible")  # counted per sample's interval, summed by default (as spawns)
-AUDIO_NAMED = ("sounds", "repeats")  # read from the names of the sounds that started (probes._heard_names)
+AUDIO_NAMED = ("sounds", "repeats", "waves")  # read from the rows of the sounds that started (probes._heard_names)
 WHOLE_SCREEN = [0.0, 0.0, 1.0, 1.0]
 ANGLES = ("yaw", "pitch", "roll", "world_yaw", "world_pitch")  # world_yaw, world_pitch: components fields
 ANGLE_PREFIXES = ("rel_yaw:", "world_yaw:", "world_pitch:", "world_roll:")
@@ -278,12 +278,13 @@ def waited(p):
 
 def play(p):
     """A check's play: "look", "drive", "editor", "trace", or a task play with its defaults (inputs, map, args,
-    every, after, continues, fresh)."""
+    every, after, continues, fresh, attended)."""
     if isinstance(p, str):
         return p
     return {"name": p["name"], "seconds": int(p["seconds"]), "inputs": inputs(p.get("inputs")), "map": p.get("map"),
             "args": list(p.get("args") or []), "every": float(p["every"]) if p.get("every") is not None else None,
-            "after": list(p.get("after") or []), "continues": p.get("continues"), "fresh": p.get("fresh") is True}
+            "after": list(p.get("after") or []), "continues": p.get("continues"), "fresh": p.get("fresh") is True,
+            "attended": p.get("attended") is True}
 
 
 def task_plays(task):

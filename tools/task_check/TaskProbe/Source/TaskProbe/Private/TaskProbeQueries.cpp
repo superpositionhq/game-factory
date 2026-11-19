@@ -2084,6 +2084,100 @@ FString LabelKey(const FString& Text)
 	return Out;
 }
 
+bool FindShownText(const TArray<FUiElement>& Shown, const FString& Want, double& OutX, double& OutY, FString& OutLabel,
+	int32& OutMatches)
+{
+	OutMatches = 0;
+	const FString Key = LabelKey(Want);
+	if (Key.IsEmpty())
+	{
+		return false;
+	}
+	// the texts with a place on screen, left to right within a line (a line: their heights overlap by half)
+	TArray<const FUiElement*> Texts;
+	for (const FUiElement& E : Shown)
+	{
+		if (E.Kind == TEXT("text") && E.bHasRect && E.W > 0.0 && E.H > 0.0 && !LabelKey(E.Text).IsEmpty())
+		{
+			Texts.Add(&E);
+		}
+	}
+	Texts.Sort([](const FUiElement& A, const FUiElement& B) { return A.Y + A.H / 2.0 != B.Y + B.H / 2.0 ? A.Y + A.H / 2.0 < B.Y + B.H / 2.0 : A.X < B.X; });
+	struct FHit
+	{
+		FBox2D Box;
+		FString Text;
+	};
+	TArray<FHit> Hits;
+	auto Add = [&Hits](const FBox2D& Box, const FString& Text)
+	{
+		// the same place read twice (a text and its own shadow, a UMG text and its Slate text) is one place
+		for (const FHit& H : Hits)
+		{
+			const FVector2D D = (H.Box.GetCenter() - Box.GetCenter()).GetAbs();
+			if (D.X <= FMath::Max(H.Box.GetSize().X, Box.GetSize().X) / 2.0 && D.Y <= FMath::Max(H.Box.GetSize().Y, Box.GetSize().Y) / 2.0)
+			{
+				return;
+			}
+		}
+		Hits.Add({Box, Text});
+	};
+	for (int32 i = 0; i < Texts.Num(); ++i)
+	{
+		const FUiElement& A = *Texts[i];
+		FBox2D Box(FVector2D(A.X, A.Y), FVector2D(A.X + A.W, A.Y + A.H));
+		FString Joined = A.Text;
+		if (LabelKey(Joined) == Key)
+		{
+			Add(Box, Joined);
+			continue;
+		}
+		// a label drawn in pieces on one line ("1", "BUY RANK", "300 PT"): the pieces to its right, nearest first,
+		// joined while the key still begins with what they read
+		TArray<const FUiElement*> Right;
+		for (int32 j = 0; j < Texts.Num(); ++j)
+		{
+			const FUiElement& B = *Texts[j];
+			const double Overlap = FMath::Min(A.Y + A.H, B.Y + B.H) - FMath::Max(A.Y, B.Y);
+			if (j != i && B.X > A.X && Overlap >= 0.5 * FMath::Min(A.H, B.H))
+			{
+				Right.Add(&B);
+			}
+		}
+		Right.Sort([](const FUiElement& P, const FUiElement& Q) { return P.X < Q.X; });
+		for (const FUiElement* B : Right)
+		{
+			if (!Key.StartsWith(LabelKey(Joined)))
+			{
+				break;
+			}
+			// a gap wider than a few of the line's heights is another column, not the next piece of the label
+			if (B->X - Box.Max.X > 6.0 * FMath::Max(A.H, B->H))
+			{
+				break;
+			}
+			Joined += TEXT(" ") + B->Text;
+			Box += FBox2D(FVector2D(B->X, B->Y), FVector2D(B->X + B->W, B->Y + B->H));
+			if (LabelKey(Joined) == Key)
+			{
+				Add(Box, Joined);
+				break;
+			}
+		}
+	}
+	OutMatches = Hits.Num();
+	if (Hits.Num() != 1)
+	{
+		OutLabel = FString::JoinBy(Hits, TEXT("; "), [](const FHit& H) { return FString::Printf(TEXT("\"%s\" at (%.3f, %.3f)"), *H.Text,
+			H.Box.GetCenter().X, H.Box.GetCenter().Y); });
+		return false;
+	}
+	OutX = Hits[0].Box.GetCenter().X;
+	OutY = Hits[0].Box.GetCenter().Y;
+	OutLabel = FString::Printf(TEXT("text \"%s\""), *Hits[0].Text);
+	return true;
+}
+
 static TSharedPtr<SWidget> FindSlateButtonIn(const FString& Want, bool bEnabled, FVector2D& OutCentre, FString& OutLabel);
 
 /** The scroll boxes above `W` whose view leaves the point `At` (Slate's absolute space) out, innermost first. */
@@ -6350,6 +6444,7 @@ struct FSoundStart
 	double T = 0.0;
 	double AudibleT = -1.0;  // -1: never yet
 	double Peak = 0.0;  // its loudest at the listener so far
+	TArray<FString> Waves;  // the recordings it played (its wave instances' waves, in the order first heard; game grader 1.18.0)
 };
 
 /** Every sound that starts in the play (FTaskProbeQueries::Listen), followed on the audio thread and read on the game
@@ -6455,6 +6550,73 @@ static double HeardVolume(const FActiveSound& Active)
 		}
 	}
 	return Volume;
+}
+
+/** Where one playing layer of a sound (a wave instance) is played from, when the engine spatializes it and lets the
+ *  plugin read it (a member private or gone reads as no place, as PlaceOf's). */
+template <typename W>
+static bool WaveInstancePlace(const W& Wave, FVector& Out)
+{
+	bool bSpatial = false;
+	if constexpr (requires(const W& X) { (bool)X.GetUseSpatialization(); })
+	{
+		bSpatial = Wave.GetUseSpatialization();
+	}
+	else if constexpr (requires(const W& X) { (bool)X.bUseSpatialization; })
+	{
+		bSpatial = Wave.bUseSpatialization;
+	}
+	if constexpr (requires(const W& X) { X.Location.X; })
+	{
+		if (bSpatial)
+		{
+			Out = FVector(Wave.Location);
+			return true;
+		}
+	}
+	return false;
+}
+
+/** The recording one playing layer plays, by name (empty when the engine doesn't say). */
+template <typename W>
+static FString WaveInstanceName(const W& Wave)
+{
+	if constexpr (requires(const W& X) { X.WaveData->GetName(); })
+	{
+		return Wave.WaveData ? Wave.WaveData->GetName() : FString();
+	}
+	else
+	{
+		return FString();
+	}
+}
+
+/** Where a sound is played from, read from its playing layers (its wave instances, game grader 1.18.0): the place of the
+ *  first one the engine spatializes. For a sound whose own members don't say (PlaceOf), or don't yet at its start (a
+ *  sound played at a location gets its wave instances at the audio device's next update). The audio thread's. */
+static bool WavePlaceOf(const FActiveSound& Active, FVector& Out)
+{
+	for (const TPair<UPTRINT, FWaveInstance*>& W : Active.GetWaveInstances())
+	{
+		if (W.Value && WaveInstancePlace(*W.Value, Out))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+/** The recordings a sound is playing (its wave instances' waves, by name), added to `Out` once each, 8 at most. */
+static void WavesOf(const FActiveSound& Active, TArray<FString>& Out)
+{
+	for (const TPair<UPTRINT, FWaveInstance*>& W : Active.GetWaveInstances())
+	{
+		const FString Name = W.Value ? WaveInstanceName(*W.Value) : FString();
+		if (!Name.IsEmpty() && Out.Num() < 8)
+		{
+			Out.AddUnique(Name);
+		}
+	}
 }
 
 /** A sound's sound class and its parents, by name. */
@@ -6725,25 +6887,7 @@ void FTaskProbeQueries::Load(const FString& Path)
 				Q.bOcr = UiKind == TEXT("text") || (UiKind.IsEmpty() && !UiText.IsEmpty());
 			}
 			// filled in from the next frame the viewport draws: what the HUD canvas held, the Slate tree then
-			if (!ViewportHandle.IsValid())
-			{
-				ViewportHandle = UGameViewportClient::OnViewportRendered().AddRaw(this, &FTaskProbeQueries::OnViewportRendered);
-			}
-			if (!HudHandle.IsValid())
-			{
-				HudHandle = AHUD::OnHUDPostRender.AddRaw(this, &FTaskProbeQueries::OnHudPostRender);
-			}
-#if WITH_SLATE_DEBUGGING
-			// what widgets paint themselves: the game window's draw elements as each paint makes them
-			if (!PaintHandles[0].IsValid())
-			{
-				PaintHandles[0] = FSlateDebugging::BeginWindow.AddRaw(this, &FTaskProbeQueries::OnPaintBeginWindow);
-				PaintHandles[1] = FSlateDebugging::EndWindow.AddRaw(this, &FTaskProbeQueries::OnPaintEndWindow);
-				PaintHandles[2] = FSlateDebugging::BeginWidgetPaint.AddRaw(this, &FTaskProbeQueries::OnPaintBeginWidget);
-				PaintHandles[3] = FSlateDebugging::EndWidgetPaint.AddRaw(this, &FTaskProbeQueries::OnPaintEndWidget);
-				PaintHandles[4] = FSlateDebugging::ElementTypeAdded.AddRaw(this, &FTaskProbeQueries::OnPaintElement);
-			}
-#endif
+			HookUi();
 		}
 		if (Q.Kind == TEXT("ground"))
 		{
@@ -7710,6 +7854,29 @@ void FTaskProbeQueries::ReadScreen(FViewport* Viewport)
 	}
 }
 
+void FTaskProbeQueries::HookUi()
+{
+	if (!ViewportHandle.IsValid())
+	{
+		ViewportHandle = UGameViewportClient::OnViewportRendered().AddRaw(this, &FTaskProbeQueries::OnViewportRendered);
+	}
+	if (!HudHandle.IsValid())
+	{
+		HudHandle = AHUD::OnHUDPostRender.AddRaw(this, &FTaskProbeQueries::OnHudPostRender);
+	}
+#if WITH_SLATE_DEBUGGING
+	// what widgets paint themselves: the game window's draw elements as each paint makes them
+	if (!PaintHandles[0].IsValid())
+	{
+		PaintHandles[0] = FSlateDebugging::BeginWindow.AddRaw(this, &FTaskProbeQueries::OnPaintBeginWindow);
+		PaintHandles[1] = FSlateDebugging::EndWindow.AddRaw(this, &FTaskProbeQueries::OnPaintEndWindow);
+		PaintHandles[2] = FSlateDebugging::BeginWidgetPaint.AddRaw(this, &FTaskProbeQueries::OnPaintBeginWidget);
+		PaintHandles[3] = FSlateDebugging::EndWidgetPaint.AddRaw(this, &FTaskProbeQueries::OnPaintEndWidget);
+		PaintHandles[4] = FSlateDebugging::ElementTypeAdded.AddRaw(this, &FTaskProbeQueries::OnPaintElement);
+	}
+#endif
+}
+
 void FTaskProbeQueries::OnHudPostRender(AHUD* Hud, UCanvas* DebugCanvas)
 {
 	// when a HUD has drawn, its canvas holds every draw of the frame's HUDs (split screen: each HUD after the one before)
@@ -7746,6 +7913,13 @@ void FTaskProbeQueries::FillUi()
 	if (PaintFrame > 0 && PaintFrame + 2 >= GFrameCounter)
 	{
 		Found.Append(PaintNow);
+	}
+	// a click's text (game grader 1.18.0): everything found, kept for TakeText
+	if (bWantText)
+	{
+		TextNow = Found;
+		bWantText = false;
+		bTextReady = true;
 	}
 	// the frame as drawn, captured once and only when a query asks for text in a rect (UiOcr)
 	TArray<FColor> Frame;
@@ -7930,6 +8104,11 @@ void FTaskProbeQueries::Listen(UWorld* World, double T)
 			if (Now.Index != INDEX_NONE)
 			{
 				FSoundStart& Start = Followed->Starts[Now.Index];
+				if (!Start.bPlaced)  // a place its own members didn't give at its start (game grader 1.18.0)
+				{
+					Start.bPlaced = WavePlaceOf(*Active, Start.Location);
+				}
+				WavesOf(*Active, Start.Waves);
 				const double Volume = HeardVolume(*Active);
 				Start.Peak = FMath::Max(Start.Peak, Volume);
 				if (Start.AudibleT < 0.0 && Volume >= AudibleVolume)
@@ -8086,6 +8265,12 @@ void FTaskProbeQueries::SampleAudio(FQuery& Q, UWorld* World, APlayerController*
 				R->SetField(TEXT("y"), St.bPlaced ? Num(St.Location.Y) : Null());
 				R->SetField(TEXT("z"), St.bPlaced ? Num(St.Location.Z) : Null());
 				R->SetField(TEXT("peak"), Num(St.Peak));
+				TArray<TSharedPtr<FJsonValue>> Waves;
+				for (const FString& W : St.Waves)
+				{
+					Waves.Add(MakeShared<FJsonValueString>(W));
+				}
+				R->SetArrayField(TEXT("waves"), Waves);
 				Rows.Add(MakeShared<FJsonValueObject>(R));
 			}
 		}

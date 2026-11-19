@@ -686,7 +686,7 @@ PLAY_ARG = re.compile(r'^-([A-Za-z][A-Za-z0-9]{0,40})(=[A-Za-z0-9_.:=,-]{1,60})?
 DENIED_PLAY_ARGS = {'execcmds', 'run', 'nullrhi', 'log', 'unattended', 'renderoffscreen', 'resx', 'resy', 'benchmark',
                     'fps', 'game', 'windowed'}
 TASK_PLAY_DEFAULTS = {'inputs': [], 'map': None, 'args': [], 'every': None, 'after': None, 'continues': None,
-                      'fresh': None}
+                      'fresh': None, 'attended': None}
 
 
 PIECE_TRIANGLES = ('triangles', 'visible_triangles')  # pieces fields whose threshold is never a literal
@@ -707,7 +707,7 @@ DRAWN_LINE = ('drawn', 'reach', 'length')    # a drawn measure along a line
 WAITS = 300   # seconds of real time a task play's waits add at most
 # the longest task play (s), and so every time in one: an input's t, a hold, a move's spread, a window, an event's
 # within (the schema's maxima say the same; a task whose asked moment comes late in a long play needs the room)
-PLAY_SECONDS = 300
+PLAY_SECONDS = 1200
 # seconds a finger stays up before it goes down again (docs/task-probes.md, section 1.5): the probe lifts a finger a
 # frame after its touch is over, so a touch that began sooner would find its finger still down and miss on every run
 TOUCH_GAP = 0.1
@@ -805,8 +805,8 @@ def regex_errors(n, patterns):
 
 ANGLE_FIELDS = ('yaw', 'pitch', 'roll', 'world_yaw', 'world_pitch')
 ANGLE_FIELD_PREFIXES = ('rel_yaw:', 'world_yaw:', 'world_pitch:', 'world_roll:')
-AUDIO_STARTS = ('started', 'started_audible', 'sounds', 'repeats')  # read over the sounds that started
-AUDIO_NAMES = ('sounds', 'repeats')
+AUDIO_STARTS = ('started', 'started_audible', 'sounds', 'repeats', 'waves')  # read over the sounds that started
+AUDIO_NAMES = ('sounds', 'repeats', 'waves')  # read over the starts' own rows (names, recordings), never one sample
 
 
 def measure_errors(n, measure):
@@ -1102,14 +1102,14 @@ EVENT_UNSAMPLED = ('log', 'asset', 'seen', 'trace')  # measures no sample of the
 def event_errors(n, event):
     """An event's rules beyond the schema, for check `n` (a measure's `since`, a shot's `when`): the event is the first
     moment its measure meets its literal expect, so that measure is one the play samples (never log, asset, seen or
-    trace, nor audio sounds or repeats, which are read over a window) and takes no window, at, agg or since of its own;
+    trace, nor audio sounds, repeats or waves, which are read over a window) and takes no window, at, agg or since of its own;
     and it keeps every shape rule of a measure (measure_shape_errors)."""
     if not isinstance(event, dict) or not isinstance(event.get('measure'), dict):
         return []
     errs, inner = [], event['measure']
     if inner.get('probe') in EVENT_UNSAMPLED or (inner.get('probe') == 'audio' and inner.get('field') in AUDIO_NAMES):
         errs.append(f"check {n}: an event's measure is read from samples of the play, so it is one the probe samples "
-                    '(never log, asset, seen or trace, nor audio sounds or repeats)')
+                    '(never log, asset, seen or trace, nor audio sounds, repeats or waves)')
     own = [k for k in ('window', 'at', 'agg', 'since') if inner.get(k) is not None]
     if own:
         errs.append(f"check {n}: an event's measure takes no {', '.join(own)} of its own: the event is the first "

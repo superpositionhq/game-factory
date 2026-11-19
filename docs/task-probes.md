@@ -64,8 +64,9 @@ Words used here:
               {"t": 8.0, "widget": "RetryButton", "click": true}]}
   ```
   - `name`: not `look`, `drive`, `editor` or `trace`. Plays with the same name in one task must be identical.
-  - `seconds`: 5-300. No input at or after the end; every time in a play (an input's `t`, a hold, a move's or a
-    drag's spread, a window, an event's `within`) is at most 300 s too.
+  - `seconds`: 5-1200. No input at or after the end; every time in a play (an input's `t`, a hold, a move's or a
+    drag's spread, a window, an event's `within`) is at most 1200 s too. A moment a player reaches only after many
+    minutes of one uninterrupted play (a dawn, the last wave of a night) is played to, not skipped to.
   - `every`: the sampling step, 0.1-1.0 s (default 0.5).
   - `map` (optional): the map and URL options this play opens instead of the task's `play_map`.
   - `args` (optional): game flags on the play's command line, `-Name` or `-Name=value` (name: letters and digits;
@@ -86,7 +87,8 @@ Words used here:
       control that shows only in some states, section 1.4). `"disabled": true`: a click on a button the game disables
       by design (a locked choice); it has landed when that button is shown but disabled, and does nothing. A button
       outside its own scroll box's view is scrolled to first, and a button something else is drawn over is not
-      pressed: a miss (section 1.4);
+      pressed: a miss (section 1.4). A click no button takes is made on its words as shown, when exactly one place
+      on screen reads them: a menu row the game builds itself, a menu drawn on the HUD (section 1.4);
     - the cursor: `{"t": 1.0, "cursor": [0.5, 0.6]}` moves the mouse cursor to a viewport point (fractions 0-1), both
       the pointer the UI sees and the game's own mouse position; a following `LeftMouseButton` press clicks there,
       whether the UI's button or a hit box the game paints itself (a canvas menu, a HUD);
@@ -107,7 +109,7 @@ Words used here:
       keeps running, paced to real time (each frame waits for the wall clock to catch up with the game's own time),
       until `wait` real seconds and `wait` seconds of game time have both passed; nothing is sampled, sent or
       screenshot meanwhile; then the play goes on from `t`. A play's waits add at most 300 s in all, and its timeout
-      grows by them; `seconds`, windows and `at` stay in play time, within 300 s;
+      grows by them; `seconds`, windows and `at` stay in play time, within 1200 s;
     - a named screenshot: `{"t": 6.0, "shot": "pause_menu"}` (a letter or `_` first, then letters, digits, `_`; up to
       32) takes `shot_pause_menu.png` at that moment, with the UI, beside the evenly spaced ones. Each name once in a
       play, 20 at most. A picture never passes or fails anything by itself: it is for a judge (section 3.2), for a
@@ -152,6 +154,10 @@ Words used here:
     `after` or `continues` (both read what another play left, which a cleared save removes); `tools/validate-game.py`
     refuses each. Like a first session, it clears the save for the whole side: plays that run after it find no earlier
     save.
+  - `attended` (optional): `"attended": true` launches the play as a player launches the game, without the
+    `-unattended` flag every other play gets. A game may read that flag as an automated run and hide its menus or skip
+    its saves; mark a play attended only when the game does so and the play needs what it hides or skips. When a play
+    `continues` an attended play, that play's first session is launched attended too.
   - `continues` (optional): the task play whose session this play continues, for what the game keeps across a quit
     and a relaunch (a best score, saved settings, a checkpoint): `{"name": "after_restart", ..., "continues":
     "plays_and_quits"}`. On each side the game's save state is cleared (`Saved/SaveGames` and `Saved/Config` of the
@@ -262,6 +268,14 @@ true` is on a button the game disables by design: it lands when the button is sh
 a player's click on it, and it is still a miss when no such button shows. Without the mark a click on a disabled button
 is a miss: a click the task relies on must reach a control that works.
 
+A click no button takes is made on its text as shown, as a player clicks the words they see. The plugin reads every
+text on screen in the next frame drawn, whatever drew it (a UMG or Slate text, a row the game builds of its own
+widgets, the HUD's canvas, a widget's own paint), and also texts side by side on one line read joined (a row drawn
+as `1`, `BUY RANK`, `300 PT` reads "1 BUY RANK 300 PT"); `widget` is compared with them as a button's caption is.
+Exactly one place must read it: the pointer goes to its centre as a `cursor` input moves it, the left button goes
+down in the next frame and up 0.1 s later, and the inputs after the click wait for it. A text shown in two places or
+more is a miss that names them: name the control by words only it shows. No text that reads it is the miss it was.
+
 ### 1.5 Touches
 
 A task play may touch the screen as a phone's player does. Two inputs, each with a `finger` (the touch index, 0 to 9,
@@ -302,7 +316,7 @@ with a key or the mouse.
   and with neither the samples from that moment on are read. The event's measure is sampled with the play's other
   measures, so its moment is known to the play's `every` (0.5 s by default; a play of fast events samples every 0.1
   s). It is one sample of a measure the play samples: it takes no `window`, `at`, `agg` or `since` of its own, and it
-  is never `log`, `asset`, `seen`, `trace`, nor `audio` `sounds` or `repeats` (read over a window). A measure whose
+  is never `log`, `asset`, `seen`, `trace`, nor `audio` `sounds`, `repeats` or `waves` (read over a window). A measure whose
   event never comes has no value (section 3). Example, a result panel's line read in the second after the race ends,
   however long the race took: `"since": {"measure": {"probe": "widgets", "select": {"name": "ResultPanel"}, "field":
   "count"}, "expect": {"op": ">=", "value": 1}}, "window": [0, 1]`.
@@ -703,10 +717,14 @@ music; so ambience a game drives from code reads as well as an `AmbientSound` ac
   sum), `max_volume` (the loudest); and the sounds that **start**, every one however short, seen once a frame:
   `started` and `started_audible` (how many started, and how many became audible, in each sample's interval; summed by
   default), `sounds` (how many differently named sounds started) and `repeats` (how often a sound started right after
-  itself; "never the same take twice"). `sounds` and `repeats` read sound asset names: a sound made at run time has
-  none, and the read is missing.
+  itself; "never the same take twice"), and `waves` (how many different recordings the starts played: a cue that
+  picks one of several recordings plays a different one each time under the same sound name, so `waves` counts the
+  variants a player hears of a sound that repeats). `sounds` and `repeats` read sound asset names: a sound made at
+  run time has none, and the read is missing. `waves` reads the recordings the engine played: a start it played none
+  for leaves the read missing. All three are read over the window, never as an event, and take no `agg`.
 - `select.near` (a point and radius): only sounds played at a place within it (where it plays, or for the started
-  fields where it started); a 2D sound is near nothing. A sound ask reads "a sound starts when the event happens":
+  fields where it started, read from the sound itself or from the recordings it plays, so a sound played at a location
+  is found too); a 2D sound is near nothing. A sound ask reads "a sound starts when the event happens":
   `started_audible` near the source, in a window right after the event; what the sound is, how it sounds, is never
   checked.
 - **A `volume` or `max_volume` threshold is calibrated or relative to the start, never a literal value**: how loud

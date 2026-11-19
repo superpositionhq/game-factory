@@ -1101,7 +1101,7 @@ class OutcomeReadings(unittest.TestCase):
         self.assertEqual(tasks.play({"name": "tp", "seconds": 9, "inputs": [{"t": 1, "teleport": [0, 0, 0]}]})["inputs"],
                          [{"t": 1.0, "teleport": [0.0, 0.0, 0.0], "yaw": 0.0}], "sent as before")
         for bad in ([{"t": 1, "wait": 200}, {"t": 2, "wait": 150}], [{"t": 1, "wait": 0}], [{"t": 1, "wait": 301}],
-                    [{"t": 1, "teleport": [0, 0, 0], "hold": 0}], [{"t": 1, "teleport": [0, 0, 0], "hold": 301}]):  # the play cap, 300 s
+                    [{"t": 1, "teleport": [0, 0, 0], "hold": 0}], [{"t": 1, "teleport": [0, 0, 0], "hold": 1201}]):  # waits: 300 s; a hold: the play cap, 1200 s
             with self.assertRaises(ValueError, msg=str(bad)):
                 task_with(probe(play={**play, "inputs": bad}, measure={"probe": "pawn", "field": "z"}))
 

@@ -528,9 +528,10 @@ def default_agg(measure):
 
 
 def _heard_names(measure, probe, since=None):
-    """(audio `sounds` or `repeats` over the samples `measure` picks, or None; why none): the names of the sounds that
-    started in those samples' intervals, in the order they started (each sample's `starts` rows: the plugin lists at
-    most 64 a sample and says how many there were)."""
+    """(audio `sounds`, `repeats` or `waves` over the samples `measure` picks, or None; why none): the names of the
+    sounds that started in those samples' intervals, in the order they started (each sample's `starts` rows: the plugin
+    lists at most 64 a sample and says how many there were); `waves`: how many different recordings they played (each
+    row's `waves`, the plugin's since Lab game grader 1.18.0)."""
     (query,) = needs(measure)
     picked = pick([(s["t"], s.get("value")) for s in _samples(probe, query_id(query))], measure, since)
     if not picked:
@@ -544,6 +545,10 @@ def _heard_names(measure, probe, since=None):
         if value.get("starts_capped") is True or (_count(total) and total > len(listed)):
             return None, "more sounds started than the plugin lists, so their names can't all be read"
         rows += listed
+    if measure["field"] == "waves":
+        if any(not isinstance(r.get("waves"), list) or not r["waves"] for r in rows):
+            return None, "a sound that started played no recording the plugin could name"
+        return float(len({w for r in rows for w in r["waves"] if isinstance(w, str)})), None
     if any(r.get("named") is not True or not isinstance(r.get("sound"), str) for r in rows):
         return None, "a sound that started was made at run time (not a saved asset): no name tells it apart"
     names = [r["sound"] for r in sorted(rows, key=lambda r: r["t"] if _count(r.get("t")) else 0.0)]

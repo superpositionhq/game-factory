@@ -263,12 +263,14 @@ class Project:
         return found
 
     def play(self, seconds, shots, timeout, map=None, inputs=None, queries=None, args=(), every=None, session=False,
-             fresh=False, watch=False):
+             fresh=False, attended=False, watch=False):
         """The game for `seconds` of game time through the plugin: offscreen at a fixed 30 fps, `shots` screenshots,
         `inputs` sent at their times, `queries` (probes.query_file) sampled; a Played. `session`: a first session (a
         task play another `continues`): the game's save state (SAVES) is cleared before it, and the Played lists the
         files it wrote under Saved. `fresh`: a task play marked `fresh`: the game's save state (SAVES) is cleared before
-        it too. The probe's misses that an `optional` or `disabled` click allows are kept apart (probes.excused).
+        it too. `attended`: a task play marked `attended`: launched without -unattended, as a player launches the game
+        (a game may read -unattended as an automated run and hide its menus or skip its saves). The probe's misses
+        that an `optional` or `disabled` click allows are kept apart (probes.excused).
         `watch`: the play in a window at the game's own speed, for a person to look at (task-check.py --watch): no
         fixed step, so what it measures is never a reading of the check."""
         out = self.folder / "Saved" / "TaskProbe" / "play"
@@ -288,7 +290,7 @@ class Project:
         # watched: a window a person sees, in real time (no fixed step, no fixed frame rate); else offscreen at 30 fps
         view, pace = (["-windowed"], []) if watch else (["-RenderOffscreen"], [*step, "-fps=30"])
         argv += ["-game", *view, *(MOBILE_FLAGS if mobile else []), f"-ResX={width}", f"-ResY={height}",
-                 "-unattended", NO_LIVE_CODING,
+                 *([] if attended else ["-unattended"]), NO_LIVE_CODING,
                  *sound, "-nosplash", *pace, "-TaskProbe", f"-TaskProbeOut={out}",
                  f"-TaskProbeSeconds={seconds}", f"-TaskProbeShots={shots}", f"-log={LOG_NAME}"]
         if inputs:

@@ -81,7 +81,8 @@ Run `measure` on every clip you keep and reject or trim what is wrong for its cu
   `ISoundGenerator` or `OnGenerateAudio`, and no MetaSound oscillator or generator standing in for a clip (a MetaSound
   that plays imported waves is fine). `tools/validate-game.py` checks the code (rule `sound`).
 - A cue that repeats (footsteps, hits, gunfire) gets 3 to 5 clips in a random Sound Cue or MetaSound, with slight pitch
-  variation, so it never sounds like a loop. World sounds get an attenuation setting.
+  variation, so it never sounds like a loop. Each clip stays its own imported Sound Wave, because a task's audio
+  `waves` counts the different recordings a repeating sound played. World sounds get an attenuation setting.
 - Every sound goes through a Sound Class (at least UI, SFX, Ambience), so the settings menu's volume controls it.
 
 ## 6. Record and ask

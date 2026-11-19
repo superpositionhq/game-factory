@@ -325,6 +325,9 @@ A probe names one measurement and its threshold:
 - `play`: `look` (20 s idle), `drive` (22 s: W 1-6 s, D 6-8 s, W 8-13 s with a jump at 9 s, A 13-15 s, W 15-21 s),
   a task play `{"name": ..., "seconds": ..., "inputs": [{"t", "key", "press"}]}` when the outcome needs other keys
   (F2, a fire button, a menu key), or `editor` for asset facts.
+- **A play may last up to 1200 seconds.** A moment a player reaches only after many minutes of one uninterrupted play
+  (a dawn, a night's last wave, the morning after) is played to in one play of that length, because skipping time
+  with flags or teleports tests something other than what the player sees.
 - **A play that reads what another play writes names it in `after`. Never rely on the grader's order.** A task play
   that reads a save (a level reached, a profile filled in) lists the plays that write it:
   `"after": ["<writer's name>"]`. On each side they run, and end, first; the plays of a side share the game's
@@ -351,9 +354,19 @@ A probe names one measurement and its threshold:
   `Saved/Config`) is cleared before it, so a first-run menu is there and a dialog only a save brings up is not,
   whatever ran before it. Use it when the play's first steps depend on there being no save; a fresh play never takes
   `after` or `continues`, which read what another play left (docs/task-probes.md, 1.1).
+- **Launch a play `"attended": true` only when the game hides menus or skips saves in automated runs.** Every other
+  play is launched with `-unattended`, which a game may read as an automated run; an attended play is launched as a
+  player launches the game. Mark it only when the play needs what the game hides or skips for that flag, because the
+  plain launch is the one every grader run makes.
 - **A click names its button as the player sees it.** `widget` takes the button's name, its class, or its on-screen
   text exactly as shown, spaces and punctuation included (`"widget": "New expedition"`): the text a player reads is in
   every build that meets the brief, so the play needs no widget name the instruction would have to give away.
+- **A click names a control by the words shown on it, even when the control is not a button** (a menu row the game
+  builds itself, a menu drawn on the HUD). A click no button takes is made on its text as shown, as a player clicks
+  the words they see: the pointer goes there and the left button goes down and up. Exactly one place on screen may
+  read those words, because a click on words shown twice can't tell which one the player meant: the click is then a
+  miss that names both places, so name the control by words only it shows (a row's words read joined left to right
+  count, "1 BUY RANK 300 PT").
 - **A click is `"optional": true` only when a correct game may or may not show its control** (a confirmation that
   appears only when a save exists): unmarked, a click no button takes is a miss that fails the play. Never mark a
   click on a control the task asks for optional: a game without that control would pass. Prefer a `fresh` play, or one
@@ -366,7 +379,7 @@ A probe names one measurement and its threshold:
   over is not pressed: the click is a miss, "covered by another control", that no option excuses, because a player's
   press there would not reach it either. Close what covers it in the play first, the way a player would.
 - **A shot of a moment whose time varies between builds says `when`** (an event as `since` takes one; within the
-  play's 300 s): the picture is taken in the first frame the event holds, so a judge sees the moment on every build.
+  play's 1200 s): the picture is taken in the first frame the event holds, so a judge sees the moment on every build.
   Its event reads widgets `count` or `visible`, or actors `count`, `x`, `y`, `z`, `hidden` or a `prop:` member, which
   the probe can read every frame; a shot whose event never comes is a missed input (docs/task-probes.md, 1.1).
 - `measure.probe`: `pawn` (track: x/y/z/speed/moved/dist), `camera` (distance/height/pitch/fov/occluded/
@@ -785,7 +798,8 @@ Read each task this way:
   damage events, the words on a new screen) is one short sentence.
 - **A sound ask** is checked by a sound starting when the event happens: `audio` `started_audible` near the source,
   in a window right after the event; `sounds` or `repeats` (by asset name) when the ticket asks for distinct sounds,
-  "each gun has its own sound". What the sound is, how it sounds, is never checked. New games import every sound
+  "each gun has its own sound"; audio `waves` counts the different recordings a repeating sound played, for an ask
+  that a sound varies each time it plays (a cue that picks one of several recordings). What the sound is, how it sounds, is never checked. New games import every sound
   (game-session skill), so every sound has an asset name. A sound the game's own characters hear and react to (guards
   hearing footsteps, a door that alerts) is a gameplay ask: its check reads the reaction or the state it changes, not
   only a sound starting.
@@ -824,7 +838,7 @@ Read each task this way:
   don't write a task you know is under them. A warning on a task that came back is no reason to stop, to call the task
   unfixable or to drop it ("Fixing a task that came back", section 5): say the numbers in your note and carry on.
   It also refuses every shape the cloud grader refuses: a select that names
-  nothing to pick by, a window outside 0-300 s, `to_angle` on a field that isn't an angle, `match` on a field that
+  nothing to pick by, a window outside 0-1200 s, `to_angle` on a field that isn't an angle, `match` on a field that
   holds no text, a regular expression that doesn't compile, a wheel or mouse move that moves nothing, and the like;
   its message says which.
 - **Judge difficulty in the session; never run the task with another agent** (owner, 2026-11-05: the try took up to

@@ -79,9 +79,10 @@ class FakeProject:
         return unreal.Result(self.build_exit, "error C2065" if self.build_exit else "built", 1.0)
 
     def play(self, seconds, shots, timeout, map=None, inputs=None, queries=None, args=(), every=None, session=False,
-             fresh=False):
+             fresh=False, attended=False):
         self.plays.append({"seconds": seconds, "shots": shots, "map": map, "inputs": inputs, "queries": queries,
-                           "args": list(args), "every": every, "session": session, "fresh": fresh})
+                           "args": list(args), "every": every, "session": session, "fresh": fresh,
+                           "attended": attended, "timeout": timeout})
         probe, log = self.answer(seconds, shots, queries) if self.answer else (None, "")
         files = {"probe.json": json.dumps(probe).encode()} if probe is not None else {}
         return unreal.Played(0, False, "", 1.0, probe, log, files, saved=list(self.saved) if session else None)

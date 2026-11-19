@@ -94,7 +94,7 @@ void UTaskProbe::Initialize(FSubsystemCollectionBase& Collection)
 	FParse::Value(FCommandLine::Get(), TEXT("-TaskProbeSeconds="), Seconds);
 	FParse::Value(FCommandLine::Get(), TEXT("-TaskProbeShots="), Shots);
 	FParse::Value(FCommandLine::Get(), TEXT("-TaskProbeEvery="), Every);
-	Seconds = FMath::Clamp(Seconds, 1.0, 600.0);
+	Seconds = FMath::Clamp(Seconds, 1.0, 1200.0);  // a play's seconds, up to checks.PLAY_SECONDS (game grader 1.18.0)
 	Every = FMath::Clamp(Every, 0.1, 1.0);
 	Shots = FMath::Clamp(Shots, 0, 64);
 	if (FParse::Param(FCommandLine::Get(), TEXT("TaskProbeSound")))
@@ -245,9 +245,9 @@ void UTaskProbe::LoadInputs(const FString& Path)
 				continue;
 			}
 			(*Obj)->TryGetNumberField(TEXT("hold"), K.Press);
-			K.Press = FMath::Clamp(K.Press, 0.0, 300.0);
+			K.Press = FMath::Clamp(K.Press, 0.0, 1200.0);
 			(*Obj)->TryGetNumberField(TEXT("over"), K.Over);
-			K.Over = FMath::Clamp(K.Over, 0.0, 300.0);
+			K.Over = FMath::Clamp(K.Over, 0.0, 1200.0);
 		}
 		else if ((*Obj)->TryGetObjectField(TEXT("pin"), Target) && Target->IsValid())
 		{
@@ -286,6 +286,11 @@ void UTaskProbe::LoadInputs(const FString& Path)
 		else if ((*Obj)->TryGetStringField(TEXT("widget"), K.Widget) && (*Obj)->TryGetBoolField(TEXT("click"), bClick) && bClick && !K.Widget.IsEmpty())
 		{
 			K.Kind = EScriptedKind::Click;
+			if (!Texts)
+			{
+				Texts = MakeShared<FTaskProbeQueries>();
+				Texts->HookUi();
+			}
 		}
 		else if (ReadNumbers(*Obj, TEXT("cursor"), 2, Numbers))
 		{
@@ -372,7 +377,7 @@ void UTaskProbe::LoadInputs(const FString& Path)
 			K.Kind = EScriptedKind::Move;
 			K.Move = FVector2D(FMath::Clamp(By[0], -5000.0, 5000.0), FMath::Clamp(By[1], -5000.0, 5000.0));
 			(*Obj)->TryGetNumberField(TEXT("over"), K.Over);
-			K.Over = FMath::Clamp(K.Over, 0.0, 300.0);
+			K.Over = FMath::Clamp(K.Over, 0.0, 1200.0);
 		}
 		else if ((*Obj)->TryGetStringField(TEXT("key"), Name))
 		{
@@ -396,7 +401,7 @@ void UTaskProbe::LoadInputs(const FString& Path)
 		{
 			continue;
 		}
-		K.Hold = FMath::Clamp(K.Hold, 0.0, 600.0);
+		K.Hold = FMath::Clamp(K.Hold, 0.0, 1200.0);
 		Inputs.Add(K);
 	}
 	Inputs.StableSort([](const FScriptedKey& A, const FScriptedKey& B) { return A.Time < B.Time; });
@@ -532,7 +537,7 @@ void UTaskProbe::SendInput(const FScriptedKey& K, UWorld* World, APlayerControll
 				UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: button %s matches '%s' but is disabled"), *Disabled, *K.Widget);
 				Missed(K, TEXT("click"), K.Widget, FString::Printf(TEXT("a button matches it (%s), shown but disabled: the click does nothing"), *Disabled));
 			}
-			else
+			else if (!ClickText(K, PC))
 			{
 				UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: no visible button matches '%s'"), *K.Widget);
 				Missed(K, TEXT("click"), K.Widget, TEXT("no visible button matches it, UMG or Slate"));
@@ -542,35 +547,11 @@ void UTaskProbe::SendInput(const FScriptedKey& K, UWorld* World, APlayerControll
 	case EScriptedKind::Cursor:
 	{
 		FVector2D Absolute;
-		if (!TaskProbe::ViewportPoint(K.Cursor.X, K.Cursor.Y, Absolute) || !FSlateApplication::IsInitialized())
+		if (!MoveCursor(K.Cursor.X, K.Cursor.Y, PC, Absolute))
 		{
 			UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: cursor move skipped (no game viewport)"));
 			Missed(K, TEXT("cursor"), FString::Printf(TEXT("%.3f, %.3f"), K.Cursor.X, K.Cursor.Y), TEXT("no game viewport"));
-			break;
 		}
-		// a synthetic mouse move at that point: Slate's pointer position and the viewport's mouse position follow it
-		// (the OS cursor is not moved)
-		const FVector2D Last = bCursorSet ? CursorAbsolute : Absolute;
-		const TSet<FKey> NoButtons;
-		const FPointerEvent Move(FSlateApplication::CursorPointerIndex, Absolute, Last, NoButtons, EKeys::Invalid, 0.f, FModifierKeysState());
-		const bool bHandled = FSlateApplication::Get().ProcessMouseMoveEvent(Move);
-		CursorAbsolute = Absolute;
-		bCursorSet = true;
-		// the viewport's own mouse position too (game grader 1.17.0): a game that reads where the mouse is from its
-		// player controller (a HUD's hit boxes, a menu painted on a canvas) found it at 0,0 when Slate's move didn't
-		// reach the viewport
-		if (const UGameViewportClient* GVC = GEngine ? GEngine->GameViewport.Get() : nullptr)
-		{
-			if (GVC->Viewport)
-			{
-				const FIntPoint Size = GVC->Viewport->GetSizeXY();
-				PC->SetMouseLocation(FMath::RoundToInt(K.Cursor.X * Size.X), FMath::RoundToInt(K.Cursor.Y * Size.Y));
-			}
-		}
-		float MX = -1.f, MY = -1.f;
-		const bool bMouse = PC->GetMousePosition(MX, MY);
-		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: cursor to (%.3f, %.3f) = absolute (%.0f, %.0f), Slate %s, player mouse %s (%.0f, %.0f)"),
-			K.Cursor.X, K.Cursor.Y, Absolute.X, Absolute.Y, bHandled ? TEXT("handled") : TEXT("unhandled"), bMouse ? TEXT("at") : TEXT("unknown"), MX, MY);
 		break;
 	}
 	case EScriptedKind::Teleport:
@@ -859,6 +840,106 @@ bool UTaskProbe::ShotWritten(const FString& File) const
 bool UTaskProbe::ShotsWritten() const
 {
 	return ShotFrame.IsEmpty() && !ShotsAsked.ContainsByPredicate([this](const FShotAsked& S) { return !ShotWritten(S.Source); });
+}
+
+bool UTaskProbe::MoveCursor(double Fx, double Fy, APlayerController* PC, FVector2D& Absolute)
+{
+	if (!TaskProbe::ViewportPoint(Fx, Fy, Absolute) || !FSlateApplication::IsInitialized())
+	{
+		return false;
+	}
+	// a synthetic mouse move at that point: Slate's pointer position and the viewport's mouse position follow it
+	// (the OS cursor is not moved)
+	const FVector2D Last = bCursorSet ? CursorAbsolute : Absolute;
+	const TSet<FKey> NoButtons;
+	const FPointerEvent Move(FSlateApplication::CursorPointerIndex, Absolute, Last, NoButtons, EKeys::Invalid, 0.f, FModifierKeysState());
+	const bool bHandled = FSlateApplication::Get().ProcessMouseMoveEvent(Move);
+	CursorAbsolute = Absolute;
+	bCursorSet = true;
+	// the viewport's own mouse position too (game grader 1.17.0): a game that reads where the mouse is from its
+	// player controller (a HUD's hit boxes, a menu painted on a canvas) found it at 0,0 when Slate's move didn't
+	// reach the viewport
+	if (const UGameViewportClient* GVC = GEngine ? GEngine->GameViewport.Get() : nullptr)
+	{
+		if (GVC->Viewport)
+		{
+			const FIntPoint Size = GVC->Viewport->GetSizeXY();
+			PC->SetMouseLocation(FMath::RoundToInt(Fx * Size.X), FMath::RoundToInt(Fy * Size.Y));
+		}
+	}
+	float MX = -1.f, MY = -1.f;
+	const bool bMouse = PC->GetMousePosition(MX, MY);
+	UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: cursor to (%.3f, %.3f) = absolute (%.0f, %.0f), Slate %s, player mouse %s (%.0f, %.0f)"),
+		Fx, Fy, Absolute.X, Absolute.Y, bHandled ? TEXT("handled") : TEXT("unhandled"), bMouse ? TEXT("at") : TEXT("unknown"), MX, MY);
+	return true;
+}
+
+bool UTaskProbe::ClickText(const FScriptedKey& K, APlayerController* PC)
+{
+	// no button takes the click: the player clicks the words they see (game grader 1.18.0), whatever drew them (a UMG
+	// text in a row of the game's own, a menu painted on the HUD's canvas, a widget's own paint). The screen's texts
+	// are read from the next frame drawn (the inputs after the click wait for it); exactly one place must read the
+	// click's text. The pointer goes there as a cursor input moves it, the left button goes down in the next frame and
+	// comes up 0.1 s later through the way a cursor's button goes (Slate at the cursor, else the player controller),
+	// so a menu that hit-tests the mouse, one that reads the button's state each frame and a widget's own handler all
+	// get a player's click
+	static constexpr int32 TextFramesMax = 10;  // frames a click waits for a drawn frame's texts
+	if (!Texts.IsValid() || !PC)
+	{
+		return false;
+	}
+	FScriptedKey Next = K;
+	TArray<TaskProbe::FUiElement> Shown;
+	if (K.TextFrames < 0)
+	{
+		Texts->WantText();
+		Next.TextFrames = 0;
+		Again.Add(Next);
+		return true;
+	}
+	if (!Texts->TakeText(Shown))
+	{
+		if (K.TextFrames >= TextFramesMax)
+		{
+			Missed(K, TEXT("click"), K.Widget, TEXT("no visible button matches it, UMG or Slate, and no frame was drawn to read its text in"));
+			return true;
+		}
+		Next.TextFrames = K.TextFrames + 1;
+		Again.Add(Next);
+		return true;
+	}
+	double X = 0.0, Y = 0.0;
+	FString Label;
+	int32 Matches = 0;
+	if (!TaskProbe::FindShownText(Shown, K.Widget, X, Y, Label, Matches))
+	{
+		if (Matches == 0)
+		{
+			return false;  // the plain miss
+		}
+		UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: '%s' is shown in %d places: %s"), *K.Widget, Matches, *Label);
+		Missed(K, TEXT("click"), K.Widget, FString::Printf(TEXT("no visible button matches it, UMG or Slate, and its text is shown in %d places, not one: %s"),
+			Matches, *Label));
+		return true;
+	}
+	FVector2D At;
+	if (!MoveCursor(X, Y, PC, At))
+	{
+		return false;
+	}
+	UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: clicking %s at (%.3f, %.3f) for '%s'"), *Label, X, Y, *K.Widget);
+	// the press in the next frame and the release 0.1 s after it, before every later input
+	FScriptedKey Press;
+	Press.Kind = EScriptedKind::Key;
+	Press.Key = EKeys::LeftMouseButton;
+	Press.bPress = true;
+	Press.Time = Elapsed + 1e-6;
+	FScriptedKey Release = Press;
+	Release.bPress = false;
+	Release.Time = Elapsed + 0.1;
+	Inputs.Insert(Release, NextInput);
+	Inputs.Insert(Press, NextInput);
+	return true;
 }
 
 bool UTaskProbe::ClickSlate(const FScriptedKey& K)

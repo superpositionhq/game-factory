@@ -116,7 +116,7 @@ class Shape(unittest.TestCase):
             ({**EVENT, "measure": {"probe": "widgets", "select": {}, "field": "count"}}, "names its class, its name"),
             ({**EVENT, "expect": {"op": ">=", "calibrate": 0.5}}, "since"),
             ({**EVENT, "within": 0}, "within"),
-            ({**EVENT, "within": 301}, "within"),
+            ({**EVENT, "within": 1201}, "within"),
             ({**EVENT, "after": 2}, "since"),
         ]
         for since, said in bad:

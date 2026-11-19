@@ -1,5 +1,5 @@
 {
-  "$comment": "game-factory's task format, GameTask (game-task/1): one task a game ships with, on its orphan tasks branch (Tasks/<name>.json) and, split into the agent's and the grader's parts, in its dataset. The deterministic `probe` check kind is described for task authors in docs/task-probes.md, and every task is seeded; a build check's `fails_at_start` marks a start that doesn't compile. tools/validate-game.py checks every task in a game repo's tasks branch and in a dataset against this schema and the rules it cannot express. Since 2026-11-11 (Lab game grader 1.5.0) a task play may turn the mouse wheel (`wheel`), move the mouse (`move`) and stage a contact (`pin`, `damage`, `set`); an actor select may filter by a reflected property (`where`) or leave the player out (`player` false); a probe may read the world's lowest time dilation and pause (`world`), an actor's short stops, montage, damage taken and AI focus (`frozen`, `montage`, `damage_taken`, `focus_player`), and the sounds that start (`started`, `started_audible`, `sounds`, `repeats`, a select `near` a point). Since 2026-11-12 (Lab game grader 1.7.0) a task play may name the task plays that run before it on the same side (`after`), for a play that reads what another writes. Since 2026-11-12 (Lab game grader 1.8.0) a task play may send touches (`tap`, `drag`: a finger down at a point of the screen or a widget's centre, held, moved, several fingers at once), and a probe may read what the renderer drew (`render`: draw calls, triangles, texture memory). A code judge may name the files its question is about (`focus`), as the Lab's grader takes it. Since 2026-11-16 a widgets select matches only the widgets drawn unless it says `visible` false (Lab game grader 1.9.0; before, a select without `visible` matched them drawn or not), and a task play may continue another task play's session (`continues`, Lab game grader 1.10.0), for a play that reads what the game kept across a quit and a relaunch. Since 2026-11-17 (Lab game grader 1.13.0) a probe may read text from a named shot of its own task play by the visual checks' model (`seen`: `shot`, a name or a list of 2 to 4, `rect`, `read` text, number or clock, `match`, `agg`); it is a visual check, counted and switched with the judges. Since 2026-11-18 (Lab game grader 1.14.0) a click may name its button by the on-screen text as shown, spaces and punctuation included, and may be `optional` (no miss when no button matches it) or `disabled` (landed when its button is shown but disabled); a task play may be `fresh` (the game's save state cleared before it, never with `after` or `continues`); and a matched actor's or component's extent the plugin writes null reads 0. Since 2026-11-18 (Lab game grader 1.15.0) a sampled measure may say `since`, an event (`measure`, one sample of a measure the play samples; a literal `expect`; an optional `within` in seconds): its `window` and `at` count from the first sample at which the event holds, with neither the samples from it on are read, and a measure whose event never comes has no value (\"its event never happened\").",
+  "$comment": "game-factory's task format, GameTask (game-task/1): one task a game ships with, on its orphan tasks branch (Tasks/<name>.json) and, split into the agent's and the grader's parts, in its dataset. The deterministic `probe` check kind is described for task authors in docs/task-probes.md, and every task is seeded; a build check's `fails_at_start` marks a start that doesn't compile. tools/validate-game.py checks every task in a game repo's tasks branch and in a dataset against this schema and the rules it cannot express. Since 2026-11-11 (Lab game grader 1.5.0) a task play may turn the mouse wheel (`wheel`), move the mouse (`move`) and stage a contact (`pin`, `damage`, `set`); an actor select may filter by a reflected property (`where`) or leave the player out (`player` false); a probe may read the world's lowest time dilation and pause (`world`), an actor's short stops, montage, damage taken and AI focus (`frozen`, `montage`, `damage_taken`, `focus_player`), and the sounds that start (`started`, `started_audible`, `sounds`, `repeats`, a select `near` a point). Since 2026-11-12 (Lab game grader 1.7.0) a task play may name the task plays that run before it on the same side (`after`), for a play that reads what another writes. Since 2026-11-12 (Lab game grader 1.8.0) a task play may send touches (`tap`, `drag`: a finger down at a point of the screen or a widget's centre, held, moved, several fingers at once), and a probe may read what the renderer drew (`render`: draw calls, triangles, texture memory). A code judge may name the files its question is about (`focus`), as the Lab's grader takes it. Since 2026-11-16 a widgets select matches only the widgets drawn unless it says `visible` false (Lab game grader 1.9.0; before, a select without `visible` matched them drawn or not), and a task play may continue another task play's session (`continues`, Lab game grader 1.10.0), for a play that reads what the game kept across a quit and a relaunch. Since 2026-11-17 (Lab game grader 1.13.0) a probe may read text from a named shot of its own task play by the visual checks' model (`seen`: `shot`, a name or a list of 2 to 4, `rect`, `read` text, number or clock, `match`, `agg`); it is a visual check, counted and switched with the judges. Since 2026-11-18 (Lab game grader 1.14.0) a click may name its button by the on-screen text as shown, spaces and punctuation included, and may be `optional` (no miss when no button matches it) or `disabled` (landed when its button is shown but disabled); a task play may be `fresh` (the game's save state cleared before it, never with `after` or `continues`); and a matched actor's or component's extent the plugin writes null reads 0. Since 2026-11-18 (Lab game grader 1.15.0) a sampled measure may say `since`, an event (`measure`, one sample of a measure the play samples; a literal `expect`; an optional `within` in seconds): its `window` and `at` count from the first sample at which the event holds, with neither the samples from it on are read, and a measure whose event never comes has no value (\"its event never happened\"). Since 2026-11-19 (Lab game grader 1.18.0) a task play may last up to 1200 s (every time in one too); a click no button takes is made on its text as shown, when exactly one place on screen reads it (a UMG or Slate text, the HUD's canvas text, a widget's own paint, or pieces side by side on one line); a task play may be `attended` (launched without -unattended); an audio start's place is also read from its playing recordings, so `near` finds a sound played at a location; and the audio field `waves` counts the different recordings the selected starts played.",
   "$defs": {
     "ActionsJudge": {
       "additionalProperties": false,
@@ -96,7 +96,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 300,
+                "maximum": 1200,
                 "minimum": 0,
                 "type": "number"
               },
@@ -431,7 +431,7 @@
     },
     "AudioMeasure": {
       "additionalProperties": false,
-      "description": "What the player hears (probes.md 2d): the sounds playing that `select` matches, each at its volume at the\nlistener (its own volume, its class's and mixes', times its distance and occlusion attenuation; the output's\nmaster volume left out): `count` (how many), `audible` (how many at 0.001, -60 dB, or louder), `volume` (their sum),\n`max_volume` (the loudest). A play with an audio measure runs with sound (muted). The volumes' threshold is\ncalibrated or relative to the start, never a literal (_probe).\n\nThe sounds that start (docs/planning/2026-11-11_game-grader-audio/spec.md), every one however short, seen once a\nframe: `started` (how many started in each sample's interval, summed over the samples picked by default),\n`started_audible` (how many became audible at the listener, counted in the interval where they first did), each\nstart selected once, at the sample after it (so never by `owner`), and from the starts'\nown names in the order they started, over the samples picked: `sounds` (how many different sound assets),\n`repeats` (how many started with the same sound as the start just before them). `sounds` and `repeats` read\nnothing when a start's sound was made at run time (a procedural wave has no name to tell it by); they take no\n`agg`.",
+      "description": "What the player hears (probes.md 2d): the sounds playing that `select` matches, each at its volume at the\nlistener (its own volume, its class's and mixes', times its distance and occlusion attenuation; the output's\nmaster volume left out): `count` (how many), `audible` (how many at 0.001, -60 dB, or louder), `volume` (their sum),\n`max_volume` (the loudest). A play with an audio measure runs with sound (muted). The volumes' threshold is\ncalibrated or relative to the start, never a literal (_probe).\n\nThe sounds that start (docs/planning/2026-11-11_game-grader-audio/spec.md), every one however short, seen once a\nframe: `started` (how many started in each sample's interval, summed over the samples picked by default),\n`started_audible` (how many became audible at the listener, counted in the interval where they first did), each\nstart selected once, at the sample after it (so never by `owner`), and from the starts'\nown names in the order they started, over the samples picked: `sounds` (how many different sound assets),\n`repeats` (how many started with the same sound as the start just before them). `sounds` and `repeats` read\nnothing when a start's sound was made at run time (a procedural wave has no name to tell it by); they take no\n`agg`. `waves` (game grader 1.18.0): how many different recordings those starts played, by the waves the engine\nplayed for each (a sound cue that picks one of several recordings plays a different wave, under the same sound):\nthe variants a player hears of a sound that repeats; it reads nothing when a start's recording can't be told\n(a start the engine never played a wave for).",
       "properties": {
         "agg": {
           "anyOf": [
@@ -467,7 +467,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 300,
+                "maximum": 1200,
                 "minimum": 0,
                 "type": "number"
               },
@@ -495,7 +495,8 @@
             "started",
             "started_audible",
             "sounds",
-            "repeats"
+            "repeats",
+            "waves"
           ],
           "title": "Field",
           "type": "string"
@@ -644,7 +645,7 @@
           "type": "string"
         },
         "t": {
-          "maximum": 300,
+          "maximum": 1200,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -819,7 +820,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 300,
+                "maximum": 1200,
                 "minimum": 0,
                 "type": "number"
               },
@@ -922,7 +923,7 @@
     },
     "Click": {
       "additionalProperties": false,
-      "description": "A click on the first visible button widget of that name or class, as a player would: a UMG button by its name or\nclass, else a Slate button (a game's own `SNew(SButton)` UI) by its text, tag or type, names and captions compared\nalike in lower case with every run of other characters one `_` (\"New_expedition\" clicks a button reading \"New\nexpedition\"), pressed at its centre through Slate (probes.md 2m). A click no button takes is a miss the play\nreports. Since 1.14.0 `widget` may be the button's on-screen text as shown,\nspaces and punctuation included (\"New expedition\"); `optional`: a click whose button may not be shown (a\nconfirmation that appears only when a save exists) is no miss when no button matches it; `disabled`: a click on a\nbutton the game disables by design (a locked choice) has landed when that button is shown disabled (the plugin\nsays so: \"shown but disabled\"), and does nothing, as a player's click on it.\nSince 1.16.0 a button scrolled out of its own scroll boxes' view is scrolled into it first and clicked in the next\nframe, as a player scrolls to it; one something else is drawn over, where a press at its centre would land on that\ninstead, is not clicked: a miss, \"covered by another control\", that neither option excuses.",
+      "description": "A click on the first visible button widget of that name or class, as a player would: a UMG button by its name or\nclass, else a Slate button (a game's own `SNew(SButton)` UI) by its text, tag or type, names and captions compared\nalike in lower case with every run of other characters one `_` (\"New_expedition\" clicks a button reading \"New\nexpedition\"), pressed at its centre through Slate (probes.md 2m). A click no button takes is a miss the play\nreports. Since 1.14.0 `widget` may be the button's on-screen text as shown,\nspaces and punctuation included (\"New expedition\"); `optional`: a click whose button may not be shown (a\nconfirmation that appears only when a save exists) is no miss when no button matches it; `disabled`: a click on a\nbutton the game disables by design (a locked choice) has landed when that button is shown disabled (the plugin\nsays so: \"shown but disabled\"), and does nothing, as a player's click on it.\nSince 1.16.0 a button scrolled out of its own scroll boxes' view is scrolled into it first and clicked in the next\nframe, as a player scrolls to it; one something else is drawn over, where a press at its centre would land on that\ninstead, is not clicked: a miss, \"covered by another control\", that neither option excuses. Since 1.18.0 a click no button\ntakes is made on its text as shown, when exactly one place on screen reads it (compared as names are): a UMG or\nSlate text (a row of the game's own), the HUD's canvas text, a widget's own paint, or texts side by side on one line\nthat read it joined (\"1    BUY RANK   300 PT\"). The screen's texts are read from the next frame drawn (the inputs\nafter the click wait for it), the pointer goes to the text's centre as a `cursor` input moves it, and the left\nbutton goes down the frame after and up 0.1 s later, the way a cursor's button goes: as a player clicks the words\nthey see. Text shown in two places or more is a miss that names them; no text that reads it is the miss it was.",
       "properties": {
         "click": {
           "const": true,
@@ -956,7 +957,7 @@
           "title": "Optional"
         },
         "t": {
-          "maximum": 300,
+          "maximum": 1200,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -1175,7 +1176,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 300,
+                "maximum": 1200,
                 "minimum": 0,
                 "type": "number"
               },
@@ -1325,7 +1326,7 @@
           "type": "array"
         },
         "t": {
-          "maximum": 300,
+          "maximum": 1200,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -1360,7 +1361,7 @@
           "default": null
         },
         "t": {
-          "maximum": 300,
+          "maximum": 1200,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -1422,7 +1423,7 @@
           "anyOf": [
             {
               "exclusiveMinimum": 0,
-              "maximum": 300,
+              "maximum": 1200,
               "type": "number"
             },
             {
@@ -1436,7 +1437,7 @@
           "anyOf": [
             {
               "exclusiveMinimum": 0,
-              "maximum": 300,
+              "maximum": 1200,
               "type": "number"
             },
             {
@@ -1447,7 +1448,7 @@
           "title": "Over"
         },
         "t": {
-          "maximum": 300,
+          "maximum": 1200,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -1498,7 +1499,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 300,
+                "maximum": 1200,
                 "minimum": 0,
                 "type": "number"
               },
@@ -1719,7 +1720,7 @@
           "anyOf": [
             {
               "exclusiveMinimum": 0,
-              "maximum": 300,
+              "maximum": 1200,
               "type": "number"
             },
             {
@@ -1828,7 +1829,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 300,
+                "maximum": 1200,
                 "minimum": 0,
                 "type": "number"
               },
@@ -1974,7 +1975,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 300,
+                "maximum": 1200,
                 "minimum": 0,
                 "type": "number"
               },
@@ -2323,7 +2324,7 @@
           "type": "boolean"
         },
         "t": {
-          "maximum": 300,
+          "maximum": 1200,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -2374,7 +2375,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 300,
+                "maximum": 1200,
                 "minimum": 0,
                 "type": "number"
               },
@@ -2740,7 +2741,7 @@
           "anyOf": [
             {
               "exclusiveMinimum": 0,
-              "maximum": 300,
+              "maximum": 1200,
               "type": "number"
             },
             {
@@ -2751,7 +2752,7 @@
           "title": "Over"
         },
         "t": {
-          "maximum": 300,
+          "maximum": 1200,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -2934,7 +2935,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 300,
+                "maximum": 1200,
                 "minimum": 0,
                 "type": "number"
               },
@@ -3162,7 +3163,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 300,
+                "maximum": 1200,
                 "minimum": 0,
                 "type": "number"
               },
@@ -3306,7 +3307,7 @@
         },
         "hold": {
           "exclusiveMinimum": 0,
-          "maximum": 300,
+          "maximum": 1200,
           "title": "Hold",
           "type": "number"
         },
@@ -3323,7 +3324,7 @@
           "$ref": "#/$defs/Select"
         },
         "t": {
-          "maximum": 300,
+          "maximum": 1200,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -3550,7 +3551,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 300,
+                "maximum": 1200,
                 "minimum": 0,
                 "type": "number"
               },
@@ -3719,7 +3720,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 300,
+                "maximum": 1200,
                 "minimum": 0,
                 "type": "number"
               },
@@ -4096,7 +4097,7 @@
           "type": "string"
         },
         "t": {
-          "maximum": 300,
+          "maximum": 1200,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -4136,7 +4137,7 @@
           "type": "string"
         },
         "t": {
-          "maximum": 300,
+          "maximum": 1200,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -4197,7 +4198,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 300,
+                "maximum": 1200,
                 "minimum": 0,
                 "type": "number"
               },
@@ -4379,7 +4380,7 @@
           "anyOf": [
             {
               "exclusiveMinimum": 0,
-              "maximum": 300,
+              "maximum": 1200,
               "type": "number"
             },
             {
@@ -4390,7 +4391,7 @@
           "title": "Hold"
         },
         "t": {
-          "maximum": 300,
+          "maximum": 1200,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -4423,7 +4424,7 @@
     },
     "TaskPlay": {
       "additionalProperties": false,
-      "description": "A task-defined scripted play: `inputs` (keys, axes, widget clicks, wheel notches, mouse movement, ...; and the\ngrader's stages of a contact: pin, damage, set) sent at their times during `seconds` (a move spread over time\nends by then too); its\nown `map` (with URL options) instead of the task's play_map, `args` on its command line (game flags, -Name or\n-Name=value, but never the grader's own: DENIED_ARGS, -GameEnv*), and samples every `every` seconds (default\n0.5). `after`: the task plays (probe or judge plays of the task) that run and end on the same side before it\nstarts, for a play that reads what another writes (a save: a side's plays share the game's Saved folder); one that\nfailed still counts as run. `continues`: the task play whose session it continues, for a play that reads what the\ngame kept across a quit and a relaunch (a best score, saved settings, a checkpoint): on each side the game's save\nstate is cleared, that play is played as a first session and quits, and this play is launched after it as a new\nprocess on the same copy; a first session that didn't end cleanly fails the check. `fresh` (1.14.0): the game's\nsave state (Saved/SaveGames and Saved/Config) cleared before this play starts, so what earlier plays of the side saved never changes its\nstarting state; never with `after` or `continues`.",
+      "description": "A task-defined scripted play: `inputs` (keys, axes, widget clicks, wheel notches, mouse movement, ...; and the\ngrader's stages of a contact: pin, damage, set) sent at their times during `seconds` (a move spread over time\nends by then too); its\nown `map` (with URL options) instead of the task's play_map, `args` on its command line (game flags, -Name or\n-Name=value, but never the grader's own: DENIED_ARGS, -GameEnv*), and samples every `every` seconds (default\n0.5). `after`: the task plays (probe or judge plays of the task) that run and end on the same side before it\nstarts, for a play that reads what another writes (a save: a side's plays share the game's Saved folder); one that\nfailed still counts as run. `continues`: the task play whose session it continues, for a play that reads what the\ngame kept across a quit and a relaunch (a best score, saved settings, a checkpoint): on each side the game's save\nstate is cleared, that play is played as a first session and quits, and this play is launched after it as a new\nprocess on the same copy; a first session that didn't end cleanly fails the check. `fresh` (1.14.0): the game's\nsave state (Saved/SaveGames and Saved/Config) cleared before this play starts, so what earlier plays of the side saved never changes its\nstarting state; never with `after` or `continues`.\n`attended` (1.18.0): launched as a player launches the game, without the checker's -unattended, which a game may\nread (FApp::IsUnattended) as an automated run and hide its menus or skip its saves for.",
       "properties": {
         "after": {
           "anyOf": [
@@ -4451,6 +4452,19 @@
           "maxItems": 8,
           "title": "Args",
           "type": "array"
+        },
+        "attended": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Attended"
         },
         "continues": {
           "anyOf": [
@@ -4572,7 +4586,7 @@
           "type": "string"
         },
         "seconds": {
-          "maximum": 300,
+          "maximum": 1200,
           "minimum": 5,
           "title": "Seconds",
           "type": "integer"
@@ -4593,7 +4607,7 @@
           "anyOf": [
             {
               "exclusiveMinimum": 0,
-              "maximum": 300,
+              "maximum": 1200,
               "type": "number"
             },
             {
@@ -4604,7 +4618,7 @@
           "title": "Hold"
         },
         "t": {
-          "maximum": 300,
+          "maximum": 1200,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -4669,7 +4683,7 @@
           "anyOf": [
             {
               "exclusiveMinimum": 0,
-              "maximum": 300,
+              "maximum": 1200,
               "type": "number"
             },
             {
@@ -4689,7 +4703,7 @@
           "type": "array"
         },
         "t": {
-          "maximum": 300,
+          "maximum": 1200,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -4744,7 +4758,7 @@
           "type": "string"
         },
         "t": {
-          "maximum": 300,
+          "maximum": 1200,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -4795,7 +4809,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 300,
+                "maximum": 1200,
                 "minimum": 0,
                 "type": "number"
               },
@@ -5022,7 +5036,7 @@
       "description": "At `t` the player's view turns to `view` [pitch, yaw] in degrees (the control rotation; pitch -89 to 89), for a\nshot that faces a given way (docs/task-probes.md, section 1.1).",
       "properties": {
         "t": {
-          "maximum": 300,
+          "maximum": 1200,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -5049,7 +5063,7 @@
       "description": "At `t` the play's clock holds for `wait` seconds of real time while the game runs on, paced to real time (each\nframe waits for the wall clock to catch up with the game's own time), for what runs on the wall clock (a menu that\npages on real time). No samples, inputs or screenshots meanwhile; then the play goes on from `t` (docs/task-probes.md, section 1.1).",
       "properties": {
         "t": {
-          "maximum": 300,
+          "maximum": 1200,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -5073,7 +5087,7 @@
       "description": "Mouse wheel notches at the cursor (the viewport's centre before any cursor move), positive away from the player\n(scroll up), sent through Slate as a wheel's are: the UI under the cursor or the game viewport takes them, which\ngives the engine's MouseWheelAxis and MouseScrollUp/MouseScrollDown, to legacy mappings and Enhanced Input alike\n(probes.md 2m). A wheel no game viewport receives is a miss the play reports.",
       "properties": {
         "t": {
-          "maximum": 300,
+          "maximum": 1200,
           "minimum": 0,
           "title": "T",
           "type": "number"
@@ -5246,7 +5260,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 300,
+                "maximum": 1200,
                 "minimum": 0,
                 "type": "number"
               },
@@ -5422,7 +5436,7 @@
           "anyOf": [
             {
               "items": {
-                "maximum": 300,
+                "maximum": 1200,
                 "minimum": 0,
                 "type": "number"
               },

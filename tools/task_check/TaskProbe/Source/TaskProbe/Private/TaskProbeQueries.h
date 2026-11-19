@@ -256,6 +256,13 @@ struct FUiElement
 	double X = 0.0, Y = 0.0, W = 0.0, H = 0.0;
 };
 
+/** A click's text as shown (game grader 1.18.0): the centre, in viewport fractions, of the one text on screen that
+ *  reads `Want` as a click compares names (LabelKey), whatever drew it (a UMG or Slate text, the HUD's canvas, a
+ *  widget's own paint); or of a run of texts side by side on one line that reads it joined. OutMatches: how many
+ *  places read it (two places further apart than a text's own size are two); true only for exactly one. */
+bool FindShownText(const TArray<FUiElement>& Shown, const FString& Want, double& OutX, double& OutY, FString& OutLabel,
+	int32& OutMatches);
+
 /** An element a widget painted itself (ui, source "paint"): its draw element's type and index in the game window's
  *  element list, and the type of the widget that was painting it. */
 struct FPaintRecord
@@ -327,8 +334,28 @@ public:
 	 *  sum, min, max, mean, first of the rows' values; text by `Match`). False when it reads no value. */
 	bool ReadNow(const TSharedPtr<FJsonObject>& Def, const FString& Field, const FString& Of, const FString& Match,
 		UWorld* World, APlayerController* PC, double& OutValue);
+	/** Reads what is on screen from the next frame on, as a ui query does (the HUD canvas, the paint), for a click's
+	 *  text (game grader 1.18.0). */
+	void HookUi();
+	/** Every text on screen in the next frame the viewport draws (TakeText). */
+	void WantText() { bWantUi = true; bWantText = true; bTextReady = false; }
+	/** What WantText asked for, once that frame has been drawn: false until then. */
+	bool TakeText(TArray<TaskProbe::FUiElement>& Out)
+	{
+		if (!bTextReady)
+		{
+			return false;
+		}
+		Out = MoveTemp(TextNow);
+		TextNow.Reset();
+		bTextReady = false;
+		return true;
+	}
 
 private:
+	bool bWantText = false;  // a click's text: the next FillUi keeps every element it found (TextNow)
+	bool bTextReady = false;
+	TArray<TaskProbe::FUiElement> TextNow;
 	struct FQuery
 	{
 		FString Id;

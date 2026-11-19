@@ -107,7 +107,7 @@ sections 1.1 and 1.5). A task play never chooses the renderer or the size itself
 |---|---|
 | `"look"` | 20 s, no input |
 | `"drive"` | 22 s: W 1-6 s, D 6-8 s, W 8-13 s with a jump (SpaceBar) at 9 s, A 13-15 s, W 15-21 s |
-| `{"name": ..., "seconds": ..., "inputs": [...]}` | a task play: keys, axes, widget clicks, cursor moves, teleports and teleports next to an actor at their times, its own `map`, `args` and `every`; `fresh`: on a cleared save |
+| `{"name": ..., "seconds": ..., "inputs": [...]}` | a task play: keys, axes, widget clicks, cursor moves, teleports and teleports next to an actor at their times, its own `map`, `args` and `every`; `fresh`: on a cleared save; `attended`: launched without `-unattended` |
 | `"editor"` | one headless editor pass per side over every `asset` measure (the project as saved) |
 | a boot check | `seconds` of play, no input; `log_absent` reads a 60 s boot's log |
 
@@ -119,7 +119,9 @@ shares a commit's copy, so that includes plays of earlier tasks on the same comm
 another is played after a first session of its own: the copy's `Saved/SaveGames` and `Saved/Config` are deleted, the
 play it names is played (kept as `play_<name>-first`) and quits, then the play itself starts as a new process on the
 same copy (docs/task-probes.md, section 1.1). Before a `fresh` task play the copy's `Saved/SaveGames` and
-`Saved/Config` are deleted too, so it starts as a new game does, as on the Lab.
+`Saved/Config` are deleted too, so it starts as a new game does, as on the Lab. An `attended` task play is launched
+without `-unattended`, as a player launches the game. A task play may last up to 1200 s; a play gets at least its own
+seconds and 600 s more to run, however low `--timeout` is.
 
 A boot is the same idle game as `"look"`, only longer, so on the side that boots (the reference; a start is never
 booted) one 60 s idle play with look's queries serves both: the boot check reads all of it and `"look"` reads only its

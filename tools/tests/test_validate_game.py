@@ -95,18 +95,19 @@ class Units(unittest.TestCase):
 
     def test_a_window_tied_to_its_event(self):
         """A sampled measure's `since` names an event: one sample of a measure the play samples (no window, at, agg or
-        since of its own; never log, asset, seen, trace, audio sounds or repeats), a literal expect, an optional
-        `within` (0 < s <= 300); the event's measure keeps a measure's shape rules."""
+        since of its own; never log, asset, seen, trace, audio sounds, repeats or waves), a literal expect, an
+        optional `within` (0 < s <= 1200); the event's measure keeps a measure's shape rules."""
         schema = vg.SCHEMAS['game-task']
         event = {'measure': {'probe': 'widgets', 'select': {'name': 'ResultPanel'}, 'field': 'count'},
                  'expect': {'op': '>=', 'value': 1}}
         tied = {'probe': 'pawn', 'field': 'x', 'since': event, 'window': [0, 1]}
         fits = lambda m: list(vg.check_schema(m, schema['$defs']['PawnMeasure'], schema))  # noqa: E731
-        for ok in (tied, {**tied, 'since': {**event, 'within': 30}}, {**tied, 'since': None}):
+        for ok in (tied, {**tied, 'since': {**event, 'within': 30}}, {**tied, 'since': {**event, 'within': 1200}},
+                   {**tied, 'since': None}):
             self.assertEqual(fits(ok), [], ok)
             self.assertEqual(vg.since_errors('c', ok), [])
         for bad in ({**event, 'expect': {'op': '>=', 'calibrate': 0.5}}, {**event, 'within': 0},
-                    {**event, 'within': 301}, {'measure': event['measure']}, {**event, 'at': 2}):
+                    {**event, 'within': 1201}, {'measure': event['measure']}, {**event, 'at': 2}):
             self.assertTrue(fits({**tied, 'since': bad}), bad)
         self.assertTrue(list(vg.check_schema({'probe': 'log', 'pattern': 'x', 'since': event},
                                              schema['$defs']['LogMeasure'], schema)))
@@ -114,6 +115,7 @@ class Units(unittest.TestCase):
                             ({'agg': 'max'}, 'takes no agg'), ({'since': event}, 'takes no since'),
                             ({'probe': 'log', 'pattern': 'x'}, 'one the probe samples'),
                             ({'probe': 'audio', 'field': 'repeats'}, 'one the probe samples'),
+                            ({'probe': 'audio', 'field': 'waves'}, 'one the probe samples'),
                             ({'select': {}}, 'a widget select names its class, its name or its Slate type')):
             found = vg.since_errors('c', {**tied, 'since': {**event, 'measure': {**event['measure'], **inner}}})
             self.assertTrue(any(said in e for e in found), (inner, found))
@@ -341,10 +343,10 @@ class Shapes(unittest.TestCase):
                      {'probe': 'widgets', 'select': {'class': 'W', 'slate': 'STextBlock'}, 'field': 'visible', 'of': 'any'})
 
     def test_times_and_angles(self):
-        self.refused('a window is [t0, t1] with 0 <= t0 < t1 <= 300',
-                     {'probe': 'pawn', 'field': 'z', 'window': [3, 310], 'agg': 'min'})
-        self.assertEqual(self.errors({'probe': 'pawn', 'field': 'z', 'window': [130, 299], 'agg': 'min'}), [],
-                         'a play lasts up to 300 s, and its windows with it')
+        self.refused('a window is [t0, t1] with 0 <= t0 < t1 <= 1200',
+                     {'probe': 'pawn', 'field': 'z', 'window': [3, 1210], 'agg': 'min'})
+        self.assertEqual(self.errors({'probe': 'pawn', 'field': 'z', 'window': [130, 1199], 'agg': 'min'}), [],
+                         'a play lasts up to 1200 s, and its windows with it')
         self.refused('a window is [t0, t1]', {'probe': 'camera', 'field': 'yaw', 'window': [5, 5], 'agg': 'min'})
         self.refused('a measure takes `to_angle` or `to_axis`, not both',
                      {'probe': 'camera', 'field': 'yaw', 'window': [3, 18], 'agg': 'min', 'to_angle': 1, 'to_axis': 1})
@@ -364,7 +366,7 @@ class Shapes(unittest.TestCase):
                      {'probe': 'widgets', 'select': {'class': 'W'}, 'field': 'text', 'match': '(', 'of': 'any'})
         self.refused("isn't a regular expression",
                      {'probe': 'actors', 'select': {'class': 'W'}, 'field': 'prop:Name', 'match': '[', 'of': 'any'})
-        for field in ('sounds', 'repeats'):
+        for field in ('sounds', 'repeats', 'waves'):
             self.refused(f'audio `{field}` is read over the starts of every sample picked, so it takes no agg',
                          {'probe': 'audio', 'field': field, 'agg': 'max'})
         self.refused('audio `started` takes no `owner`',
@@ -401,15 +403,15 @@ class Shapes(unittest.TestCase):
     def test_a_shots_when_and_a_widgets_covered(self):
         """A shot may say `when`, an event the probe reads itself every frame: widgets count or visible, or actors
         count, x, y, z, hidden or a prop: member, no to_angle or to_axis, no has.lit, and every rule of an event; a
-        widgets measure may read `covered`; a play lasts up to 300 s."""
+        widgets measure may read `covered`; a play lasts up to 1200 s."""
         def shot(measure, **more):
-            return {'name': 'p', 'seconds': 300, 'inputs': [
+            return {'name': 'p', 'seconds': 1200, 'inputs': [
                 {'t': 1, 'shot': 's', 'when': {'measure': measure, 'expect': {'op': '>=', 'value': 1}, **more}}]}
         for measure in ({'probe': 'widgets', 'select': {'name': 'Result'}, 'field': 'count'},
                         {'probe': 'widgets', 'select': {'name': 'Result'}, 'field': 'visible', 'of': 'any'},
                         {'probe': 'actors', 'select': {'class': 'Boat'}, 'field': 'z', 'of': 'max'},
                         {'probe': 'actors', 'select': {'class': 'Boat'}, 'field': 'prop:Health', 'of': 'min'}):
-            self.assertEqual(self.errors(play=shot(measure, within=299)), [], measure)
+            self.assertEqual(self.errors(play=shot(measure, within=1199)), [], measure)
         for measure, said in (({'probe': 'ui', 'field': 'count'}, 'reads widgets count or visible'),
                               ({'probe': 'widgets', 'select': {'name': 'W'}, 'field': 'text', 'match': 'x'},
                                'reads widgets count or visible'),
@@ -423,9 +425,9 @@ class Shapes(unittest.TestCase):
                               ({'probe': 'widgets', 'select': {'name': 'W'}, 'field': 'count', 'window': [0, 1]},
                                'takes no window of its own')):
             self.refused(said, play=shot(measure))
-        found = self.errors(play=shot({'probe': 'widgets', 'select': {'name': 'W'}, 'field': 'count'}, within=301))
-        self.assertTrue(found, 'within is at most 300 s')
-        self.assertTrue(self.errors(play={'name': 'p', 'seconds': 301, 'inputs': []}), 'a play lasts at most 300 s')
+        found = self.errors(play=shot({'probe': 'widgets', 'select': {'name': 'W'}, 'field': 'count'}, within=1201))
+        self.assertTrue(found, 'within is at most 1200 s')
+        self.assertTrue(self.errors(play={'name': 'p', 'seconds': 1201, 'inputs': []}), 'a play lasts at most 1200 s')
         self.assertEqual(self.errors({'probe': 'widgets', 'select': {'name': 'Buy'}, 'field': 'covered', 'of': 'any',
                                       'at': 'end'}), [])
 
