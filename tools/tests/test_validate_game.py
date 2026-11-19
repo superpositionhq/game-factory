@@ -139,6 +139,28 @@ class Units(unittest.TestCase):
                                                   schema)), [])
         self.assertTrue(list(vg.check_schema({'name': 'Warn*', 'visible': 1}, schema['$defs']['WidgetSelect'], schema)))
 
+    def test_a_short_span_warns_and_never_rejects(self):
+        """The size of a span is a soft bar: a start and a reference one small commit apart (a returned task rebuilt
+        around a fix of the game) get a warning for each number they are under, and no error."""
+        repo = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, repo, True)
+        def git(*args):
+            return subprocess.run(['git', '-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@t', *args],
+                                  capture_output=True, check=True).stdout.decode().strip()
+        git('init', '-q')
+        os.makedirs(os.path.join(repo, 'Source'))
+        for text in ('int Door = 1;\n', 'int Door = 2;\n'):
+            with open(os.path.join(repo, 'Source', 'Door.cpp'), 'w') as f:
+                f.write(text)
+            git('add', '-A')
+            git('commit', '-q', '-m', 'door')
+        seed = {'commit': git('rev-parse', 'HEAD~1'), 'reference': git('rev-parse', 'HEAD')}
+        self.assertEqual(len(vg.thread_span_errors(repo, seed, True)), 4, 'files, code lines, systems and commits')
+        rep = vg.Report()
+        vg.report_thread_span(rep, 'tasks', 'game-fix-door', repo, seed, True)
+        self.assertEqual([sev for sev, _, _ in rep.items], ['warning'] * 4)
+        self.assertTrue(all('soft bar' in msg for _, _, msg in rep.items))
+
     def test_task_bar(self):
         """A game's bar: at least 5 tasks, at least 4 of them hard; the others may be medium (what a task that names
         none is), none easier."""
