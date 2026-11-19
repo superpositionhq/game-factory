@@ -350,7 +350,8 @@ word points:
 Starting points, only to begin from: a press shows a response within about 0.1 s; a hit pause of about 0.03 s
 (light) to 0.12 s (heavy); a screen shake of 0.1 to 0.3 s that decays; time to the top of a jump of about 0.3 to
 0.5 s; coyote time and input buffering of about 0.1 s. Choose by the feel intent and leave these ranges on purpose
-when it asks for it: they are a vocabulary, never a target. Graders never use them (write-tasks, "Taste threads").
+when it asks for it: they are a vocabulary, never a target, and no task threshold comes from them (write-tasks,
+"Taste threads").
 
 **Tasks (write-tasks skill).** A game is complete when its repo has `Tasks/` on the tasks branch: tasks an agent can
 be given on this game, one `Tasks/<game>-<kind>-<slug>.json` each in the task format `GameTask`, at least 5 and up to about 10, at least 4 of them hard (the others may be medium, none easier), every

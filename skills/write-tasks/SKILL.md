@@ -153,21 +153,27 @@ person felt while playing is what strong agents miss.
 between two versions, a look or feel direction) is a taste thread. The person who directed the game picks which
 candidate threads are taste threads and writes or approves each one's brief in a playtester's words (section 3 still
 holds: observations only, nothing quoted from chat). The brief opens with the game's feel intent from the design doc,
-so "better" has a direction. Its reference is a commit the person's verdict called better: a fix they judged same or
-worse is no reference, so extend the thread to the round they called better, or drop it.
-What the design doc's keep list holds is what the task's `still_works` look judge checks, so a solution that spoils
-it fails. A feel probe's threshold is calibrated between the start and the reference the person approved (or taken
-from a number the brief states), never from the starting numbers in the game-session skill: each game is judged by
-its own feel, so the games don't all drift toward one.
+so "better" has a direction; those sentences are context, like the game's description, and ask for nothing. Its
+reference is a commit the person's verdict called better: a fix they judged same or worse is no reference, so extend
+the thread to the round they called better, or drop it. A game made before these rules has no verdict rows: its
+taste threads take their reference as any other thread does (section 2).
+What the design doc's keep list holds must still hold, so a solution that spoils it fails: a keep line a still frame
+can show goes to the `still_works` look judge, and a keep line about feel gets a `still_works` probe of what the
+player meets. A feel probe's threshold comes from this game's own start and the reference the person approved (as
+the threshold rules above say for its kind of ask), or from a number the brief states, never from the starting
+numbers in the game-session skill: each game is judged by its own feel, so the games don't all drift toward one.
 
 **Fixed framings for look judges (owner, 2026-11-19).** A judge compares sides like for like, so its plays show each
 asked look from fixed framings, the same on the start, the reference and the agent's build: for a 3D game, from above
-the area (layout, overlap), at eye level (looks), and from the player's own view during the action (feel); for a 2D or
+the area (layout, overlap), at eye level (looks), and from the player's own view during the action (feel), as far as
+the play's inputs can stage them (a view or teleport onto something the start has; where no input reaches a framing,
+use the nearest one that does); for a 2D or
 2.5D game, the whole play area, a close-up of the subject, and the player's view during the action. Reach each
 framing through something the start already has (an actor, a tag, a control the instruction names), never through
-raw coordinates of the reference's level. The model judge (game-judge/6) gives nothing for more than an item asks
-(extra features, effects or decoration), and still frames cannot show how controls feel: write a feel ask as a probe
-(the game-session skill's feel words point at what to measure), and a judge item only for what a frame can show.
+raw coordinates of the reference's level. A judge item asks only what its sentence asks, so extra features, effects or
+decoration earn nothing, and still frames cannot show how controls feel: write a feel ask as a probe of what the
+player meets (the game-session skill's feel words point at what to measure), and a judge item only for what a frame
+can show.
 
 ## 2. Picking the commits
 
