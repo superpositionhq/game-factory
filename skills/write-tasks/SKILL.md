@@ -416,6 +416,9 @@ A probe names one measurement and its threshold:
   session is played on the start, so the save is one the old game really wrote. An ask about an unreadable save is
   `"saves": "unreadable"` on a play that continues or runs after one that saved; an ask about a save that fails is
   `"saves": "unwritable"`. Check only what the instruction asks of that save, the way a player sees it.
+- **What the game writes to disk is read by a `files` measure.** It reads what a play wrote under `Saved/`: a save's
+  text, an AutoPlay run's telemetry, pictures a QA flag exports, or a save the play must leave untouched (`written` 0).
+  A flag that takes a folder names it `{saved}/<folder>` in the play's args (docs/task-probes.md, 2.23).
 - **A click names its button as the player sees it.** `widget` takes the button's name, its class, or its on-screen
   text exactly as shown, spaces and punctuation included (`"widget": "New expedition"`): the text a player reads is in
   every build that meets the brief, so the play needs no widget name the instruction would have to give away.

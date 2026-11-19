@@ -91,6 +91,9 @@ class Played:
     staged: list | None = None
     # a play's save state as it left it (Project.play keep_saves=True): {path relative to the project: bytes}
     saves: dict | None = None
+    # a play's files measures' files (Project.play `files`; Lab game grader 1.24.0): [{path, bytes, written, data}]
+    # under Saved (but NOT_SAVES) its globs match, data the bytes of each it wrote within FILE_BYTES / FILES_BYTES
+    game_files: list | None = None
 
 
 def take_saves(project):
@@ -191,6 +194,44 @@ def _saved(project, began):
             except OSError:
                 continue
     return sorted(found)[:SAVED_LISTED]
+
+
+FILES_LISTED = 200  # a play's files measures' files listed at most
+FILE_BYTES = 16 * 1024 * 1024  # a file the play wrote is read when it is at most this big
+FILES_BYTES = 32 * 1024 * 1024  # and the ones read before it with it
+SAVED_ARG = "{saved}"  # a task play's arg naming a folder under the copy's Saved (-DTPlates={saved}/Plates)
+
+
+def _game_files(project, globs, began):
+    """A play's files measures' files: every plain file under the project's Saved (but NOT_SAVES, never through a
+    link) one of `globs` matches (probes.glob_match), by path, the bytes of those modified since `began` read."""
+    from . import probes
+
+    root, skipped, found = project / "Saved", {project / p for p in NOT_SAVES}, {}
+    for folder, dirs, names in os.walk(root):
+        dirs[:] = [d for d in dirs if Path(folder, d) not in skipped and not os.path.islink(os.path.join(folder, d))]
+        for name in names:
+            path = Path(folder, name)
+            try:
+                if path.is_symlink() or not path.is_file():
+                    continue
+                rel = path.relative_to(project).as_posix()
+                if any(probes.glob_match(g, rel) for g in globs):
+                    found[rel] = (path, path.stat())
+            except OSError:
+                continue
+    rows, total = [], 0
+    for rel in sorted(found)[:FILES_LISTED]:
+        path, stat = found[rel]
+        written, data = stat.st_mtime >= began, None
+        if written and stat.st_size <= FILE_BYTES and total + stat.st_size <= FILES_BYTES:
+            try:
+                data = path.read_bytes()
+                total += len(data)
+            except OSError:
+                data = None
+        rows.append({"path": rel, "bytes": stat.st_size, "written": written, "data": data})
+    return rows
 
 
 def cut(text, limit=OUTPUT_CHARS):
@@ -360,14 +401,16 @@ class Project:
         return found
 
     def play(self, seconds, shots, timeout, map=None, inputs=None, queries=None, args=(), every=None, session=False,
-             fresh=False, attended=False, watch=False, saves=None, stage=None, keep_saves=False):
+             fresh=False, attended=False, watch=False, saves=None, stage=None, keep_saves=False, files=()):
         """The game for `seconds` of game time through the plugin: offscreen at a fixed 30 fps, `shots` screenshots,
         `inputs` sent at their times, `queries` (probes.query_file) sampled; a Played. `session`: a first session (a
         task play another `continues`): the game's save state (SAVES) is cleared before it, and the Played lists the
         files it wrote under Saved. `fresh`: a task play marked `fresh`: the game's save state (SAVES) is cleared before
         it too. `attended`: a task play marked `attended`: launched without -unattended, as a player launches the game
         (a game may read -unattended as an automated run and hide its menus or skip its saves). The probe's misses
-        that an `optional` or `disabled` click allows are kept apart (probes.excused).
+        that an `optional` or `disabled` click allows are kept apart (probes.excused). `files`: the globs of the play's
+        files measures: what they match under Saved is listed when it ends (Played.game_files); a {saved} in `args` is
+        the copy's own Saved folder.
         `watch`: the play in a window at the game's own speed, for a person to look at (task-check.py --watch): no
         fixed step, so what it measures is never a reading of the check. `saves`: the save state the play starts from
         ({path under SAVES: bytes}, a session the start played: first_on_start), put in place of the copy's own;
@@ -403,7 +446,7 @@ class Project:
             argv.append(f"-TaskProbeQueries={asked}")
         if every:
             argv.append(f"-TaskProbeEvery={every:g}")
-        argv += list(args)
+        argv += [a.replace(SAVED_ARG, str(self.folder / "Saved")) for a in args]
         if session or fresh or saves is not None:  # the game's save state cleared first (and then given)
             for folder in SAVES:
                 shutil.rmtree(self.folder / folder, ignore_errors=True)
@@ -418,6 +461,7 @@ class Project:
                 unlock_saves(self.folder)
         saved = _saved(self.folder, began) if session else None
         kept = take_saves(self.folder) if keep_saves else None
+        game_files = _game_files(self.folder, files, began) if files else None
         files = {p.name: p.read_bytes() for p in out.iterdir() if p.is_file()} if out.is_dir() else {}
         probe = None
         if "probe.json" in files:
@@ -428,7 +472,8 @@ class Project:
         log = log_path.read_bytes().decode("utf-8", errors="replace") if log_path.is_file() else ""
         shutil.rmtree(out, ignore_errors=True)
         return Played(found.exit_code, found.timed_out, found.output, found.seconds,
-                      probes.excused(probes.well_formed(probe), inputs), log, files, found.waited, saved, staged, kept)
+                      probes.excused(probes.well_formed(probe), inputs), log, files, found.waited, saved, staged, kept,
+                      game_files)
 
     def warm(self, seconds, timeout, map=None):
         """`map` played `seconds` with no queries and one screenshot, its result read by nothing: its shaders compiled

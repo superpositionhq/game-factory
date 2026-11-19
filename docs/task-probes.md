@@ -991,6 +991,37 @@ How it is graded, and its limits:
 
 `tools/validate-game.py` checks the rules above: a task play, shots it takes, the rect's size, `match` and `agg`.
 
+### 2.23 `files`: what the game wrote under Saved during the play
+
+Lab game grader 1.24.0. Read once the play ends, from the files under the project's `Saved` folder that `select.glob`
+matches. The glob is relative to the project and starts with `Saved/`: `*` and `?` match within one folder name, and a
+`**` segment matches any number of folders. It never matches `Saved/TaskProbe`, `Saved/Logs`, `Saved/Crashes`, or
+anything outside `Saved`, so the game's source is never read. A task play of its own only.
+
+| field | reads |
+|---|---|
+| `count` | every file the glob matches, whoever wrote it (an earlier play of the side, a session it `continues`) |
+| `written` | the files this play made or changed: a save it never touched reads 0 |
+| `bytes` | the size of the files this play wrote |
+| `lines` | the text lines of the files this play wrote that match `match` (searched) |
+| `number` | `match`'s first capture group on each such line, as a number, reduced by `agg` (default `last`) |
+| `pictures` | the files this play wrote that are PNG or JPEG pictures at least `size` [w, h] pixels (default 16 x 16) and not one flat colour |
+
+- A file's text lines: a text file's own lines (UTF-8). For a binary file such as a save game, the lines are its runs
+  of printable text, read as bytes (an ASCII FString) and as UTF-16 (a string that isn't ASCII).
+- A file is read only if it is at most 16 MB, and the play's files together at most 32 MB. A measure that needs the
+  text or picture of a written file over those limits reads nothing.
+- A file the game only read is not told apart from one it never touched. "Never loads the save" is not a files
+  reading; "never writes the save" is `written` 0.
+- A flag that takes a folder names it under the copy's Saved as `{saved}` in the play's `args`, for example
+  `-DTPlates={saved}/Plates`, read by `Saved/Plates/*.png`. A relative folder would resolve under the engine's
+  binaries, outside the project.
+
+```json
+{"probe": "files", "select": {"glob": "Saved/AutoPlay/*/telemetry.jsonl"}, "field": "number",
+ "match": "\"event\":\"scenario_end\".*\"score\":(-?[0-9.]+)"}
+```
+
 ## 3. What gates, and how a probe fails
 
 - **At least one required probe.** Every task has at least one `probe` check with `"required": true` (the default);

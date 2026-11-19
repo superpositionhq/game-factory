@@ -1,5 +1,5 @@
 {
-  "$comment": "game-factory's task format, GameTask (game-task/1): one task a game ships with, on its orphan tasks branch (Tasks/<name>.json) and, split into the agent's and the grader's parts, in its dataset. The deterministic `probe` check kind is described for task authors in docs/task-probes.md, and every task is seeded; a build check's `fails_at_start` marks a start that doesn't compile. tools/validate-game.py checks every task in a game repo's tasks branch and in a dataset against this schema and the rules it cannot express. Since 2026-11-11 (Lab game grader 1.5.0) a task play may turn the mouse wheel (`wheel`), move the mouse (`move`) and stage a contact (`pin`, `damage`, `set`); an actor select may filter by a reflected property (`where`) or leave the player out (`player` false); a probe may read the world's lowest time dilation and pause (`world`), an actor's short stops, montage, damage taken and AI focus (`frozen`, `montage`, `damage_taken`, `focus_player`), and the sounds that start (`started`, `started_audible`, `sounds`, `repeats`, a select `near` a point). Since 2026-11-12 (Lab game grader 1.7.0) a task play may name the task plays that run before it on the same side (`after`), for a play that reads what another writes. Since 2026-11-12 (Lab game grader 1.8.0) a task play may send touches (`tap`, `drag`: a finger down at a point of the screen or a widget's centre, held, moved, several fingers at once), and a probe may read what the renderer drew (`render`: draw calls, triangles, texture memory). A code judge may name the files its question is about (`focus`), as the Lab's grader takes it. Since 2026-11-16 a widgets select matches only the widgets drawn unless it says `visible` false (Lab game grader 1.9.0; before, a select without `visible` matched them drawn or not), and a task play may continue another task play's session (`continues`, Lab game grader 1.10.0), for a play that reads what the game kept across a quit and a relaunch. Since 2026-11-17 (Lab game grader 1.13.0) a probe may read text from a named shot of its own task play by the visual checks' model (`seen`: `shot`, a name or a list of 2 to 4, `rect`, `read` text, number or clock, `match`, `agg`); it is a visual check, counted and switched with the judges. Since 2026-11-18 (Lab game grader 1.14.0) a click may name its button by the on-screen text as shown, spaces and punctuation included, and may be `optional` (no miss when no button matches it) or `disabled` (landed when its button is shown but disabled); a task play may be `fresh` (the game's save state cleared before it, never with `after` or `continues`); and a matched actor's or component's extent the plugin writes null reads 0. Since 2026-11-18 (Lab game grader 1.15.0) a sampled measure may say `since`, an event (`measure`, one sample of a measure the play samples; a literal `expect`; an optional `within` in seconds): its `window` and `at` count from the first sample at which the event holds, with neither the samples from it on are read, and a measure whose event never comes has no value (\"its event never happened\"). Since 2026-11-19 (Lab game grader 1.18.0) a task play may last up to 1200 s (every time in one too); a click no button takes is made on its text as shown, when exactly one place on screen reads it (a UMG or Slate text, the HUD's canvas text, a widget's own paint, or pieces side by side on one line); a task play may be `attended` (launched without -unattended); an audio start's place is also read from its playing recordings, so `near` finds a sound played at a location; and the audio field `waves` counts the different recordings the selected starts played. Since 2026-11-19 (Lab game grader 1.21.0) a task play that continues a session may have its sessions played on the start (`first_on_start`: it starts from the save the game as the task began left, for an ask about older saves), and a task play may find the game's save files `unreadable` (overwritten with bytes that are no save) or `unwritable` (the save folder read-only for the play, so every save the game tries fails) with `saves`. Since 2026-11-19 (Lab game grader 1.23.0) a build check may set `shadow_errors`: every build of the task is made with -ShadowVariableErrors, for a task whose reported compile error is a shadowing one.",
+  "$comment": "game-factory's task format, GameTask (game-task/1): one task a game ships with, on its orphan tasks branch (Tasks/<name>.json) and, split into the agent's and the grader's parts, in its dataset. The deterministic `probe` check kind is described for task authors in docs/task-probes.md, and every task is seeded; a build check's `fails_at_start` marks a start that doesn't compile. tools/validate-game.py checks every task in a game repo's tasks branch and in a dataset against this schema and the rules it cannot express. Since 2026-11-11 (Lab game grader 1.5.0) a task play may turn the mouse wheel (`wheel`), move the mouse (`move`) and stage a contact (`pin`, `damage`, `set`); an actor select may filter by a reflected property (`where`) or leave the player out (`player` false); a probe may read the world's lowest time dilation and pause (`world`), an actor's short stops, montage, damage taken and AI focus (`frozen`, `montage`, `damage_taken`, `focus_player`), and the sounds that start (`started`, `started_audible`, `sounds`, `repeats`, a select `near` a point). Since 2026-11-12 (Lab game grader 1.7.0) a task play may name the task plays that run before it on the same side (`after`), for a play that reads what another writes. Since 2026-11-12 (Lab game grader 1.8.0) a task play may send touches (`tap`, `drag`: a finger down at a point of the screen or a widget's centre, held, moved, several fingers at once), and a probe may read what the renderer drew (`render`: draw calls, triangles, texture memory). A code judge may name the files its question is about (`focus`), as the Lab's grader takes it. Since 2026-11-16 a widgets select matches only the widgets drawn unless it says `visible` false (Lab game grader 1.9.0; before, a select without `visible` matched them drawn or not), and a task play may continue another task play's session (`continues`, Lab game grader 1.10.0), for a play that reads what the game kept across a quit and a relaunch. Since 2026-11-17 (Lab game grader 1.13.0) a probe may read text from a named shot of its own task play by the visual checks' model (`seen`: `shot`, a name or a list of 2 to 4, `rect`, `read` text, number or clock, `match`, `agg`); it is a visual check, counted and switched with the judges. Since 2026-11-18 (Lab game grader 1.14.0) a click may name its button by the on-screen text as shown, spaces and punctuation included, and may be `optional` (no miss when no button matches it) or `disabled` (landed when its button is shown but disabled); a task play may be `fresh` (the game's save state cleared before it, never with `after` or `continues`); and a matched actor's or component's extent the plugin writes null reads 0. Since 2026-11-18 (Lab game grader 1.15.0) a sampled measure may say `since`, an event (`measure`, one sample of a measure the play samples; a literal `expect`; an optional `within` in seconds): its `window` and `at` count from the first sample at which the event holds, with neither the samples from it on are read, and a measure whose event never comes has no value (\"its event never happened\"). Since 2026-11-19 (Lab game grader 1.18.0) a task play may last up to 1200 s (every time in one too); a click no button takes is made on its text as shown, when exactly one place on screen reads it (a UMG or Slate text, the HUD's canvas text, a widget's own paint, or pieces side by side on one line); a task play may be `attended` (launched without -unattended); an audio start's place is also read from its playing recordings, so `near` finds a sound played at a location; and the audio field `waves` counts the different recordings the selected starts played. Since 2026-11-19 (Lab game grader 1.21.0) a task play that continues a session may have its sessions played on the start (`first_on_start`: it starts from the save the game as the task began left, for an ask about older saves), and a task play may find the game's save files `unreadable` (overwritten with bytes that are no save) or `unwritable` (the save folder read-only for the play, so every save the game tries fails) with `saves`. Since 2026-11-19 (Lab game grader 1.23.0) a build check may set `shadow_errors`: every build of the task is made with -ShadowVariableErrors, for a task whose reported compile error is a shadowing one. Since 2026-11-19 (Lab game grader 1.24.0) a probe may read what the game wrote under the project's Saved during a task play (`files`: a glob's files counted, written, their bytes, text lines matching a pattern, a number from them, pictures), and a task play's args may name a folder under the copy's Saved as {saved}.",
   "$defs": {
     "ActionsJudge": {
       "additionalProperties": false,
@@ -1644,6 +1644,7 @@
               "camera": "#/$defs/CameraMeasure",
               "components": "#/$defs/ComponentsMeasure",
               "drawn": "#/$defs/DrawnMeasure",
+              "files": "#/$defs/FilesMeasure",
               "grading": "#/$defs/GradingMeasure",
               "ground": "#/$defs/GroundMeasure",
               "light": "#/$defs/LightMeasure",
@@ -1717,6 +1718,9 @@
             },
             {
               "$ref": "#/$defs/SeenMeasure"
+            },
+            {
+              "$ref": "#/$defs/FilesMeasure"
             }
           ],
           "title": "Measure"
@@ -1795,6 +1799,111 @@
         "glob"
       ],
       "title": "FileExists",
+      "type": "object"
+    },
+    "FilesMeasure": {
+      "additionalProperties": false,
+      "description": "(Lab game grader 1.24.0) What the game itself wrote to disk during a task play, read once the play ends: files under the project's Saved folder `select.glob` matches (never Saved/TaskProbe, Saved/Logs, Saved/Crashes, nor anything outside Saved). `count`: every file it matches; `written`: those this play made or changed (a save it never touched reads 0; a file only read is not told apart); `bytes`, `lines` (text lines matching `match`; a binary save's text read as bytes and as UTF-16), `number` (`match`'s first capture group on each line, reduced by `agg`, default last) and `pictures` (PNG or JPEG, at least `size` pixels, not one flat colour) read only the files this play wrote. A flag that takes a folder names one under the copy's Saved as {saved} in the play's args (-DTPlates={saved}/Plates). docs/task-probes.md, `files`.",
+      "properties": {
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "sum",
+                "count",
+                "range"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "field": {
+          "enum": [
+            "count",
+            "written",
+            "bytes",
+            "lines",
+            "number",
+            "pictures"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "match": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Match"
+        },
+        "probe": {
+          "const": "files",
+          "title": "Probe",
+          "type": "string"
+        },
+        "select": {
+          "$ref": "#/$defs/FilesSelect"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 16384,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Size"
+        }
+      },
+      "required": [
+        "probe",
+        "select",
+        "field"
+      ],
+      "title": "FilesMeasure",
+      "type": "object"
+    },
+    "FilesSelect": {
+      "additionalProperties": false,
+      "description": "The files a files measure reads: `glob`, relative to the project, under its Saved folder (FILES_GLOB).",
+      "properties": {
+        "glob": {
+          "maxLength": 300,
+          "pattern": "^Saved(/([A-Za-z0-9_*?-][A-Za-z0-9_.*?-]{0,63}|\\*\\*)){1,8}$",
+          "title": "Glob",
+          "type": "string"
+        }
+      },
+      "required": [
+        "glob"
+      ],
+      "title": "FilesSelect",
       "type": "object"
     },
     "GradingMeasure": {
@@ -3385,6 +3494,7 @@
               "camera": "#/$defs/CameraMeasure",
               "components": "#/$defs/ComponentsMeasure",
               "drawn": "#/$defs/DrawnMeasure",
+              "files": "#/$defs/FilesMeasure",
               "grading": "#/$defs/GradingMeasure",
               "ground": "#/$defs/GroundMeasure",
               "light": "#/$defs/LightMeasure",
@@ -3462,6 +3572,9 @@
             },
             {
               "$ref": "#/$defs/SeenMeasure"
+            },
+            {
+              "$ref": "#/$defs/FilesMeasure"
             }
           ],
           "title": "Measure"
@@ -4451,7 +4564,7 @@
         },
         "args": {
           "items": {
-            "pattern": "^-([A-Za-z][A-Za-z0-9]{0,40})(=[A-Za-z0-9_.:=,-]{1,60})?$",
+            "pattern": "^-([A-Za-z][A-Za-z0-9]{0,40})(=([A-Za-z0-9_.:=,-]{1,60}|\\{saved\\}(/[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}){0,6}))?$",
             "type": "string"
           },
           "maxItems": 8,

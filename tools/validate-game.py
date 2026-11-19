@@ -682,7 +682,9 @@ GRADER_KEYS = ('milestones',)          # the grader's half of a task, with seed.
 
 
 # A task play's command-line flags (docs/task-probes.md, section 1.1): never the checker's own.
-PLAY_ARG = re.compile(r'^-([A-Za-z][A-Za-z0-9]{0,40})(=[A-Za-z0-9_.:=,-]{1,60})?$')
+# a value may be a folder under the copy's Saved, {saved} and its subfolders (-DTPlates={saved}/Plates; Lab game
+# grader 1.24.0): the checker writes the copy's own Saved folder in its place, where a files measure reads it
+PLAY_ARG = re.compile(r'^-([A-Za-z][A-Za-z0-9]{0,40})(=([A-Za-z0-9_.:=,-]{1,60}|\{saved\}(/[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}){0,6}))?$')
 DENIED_PLAY_ARGS = {'execcmds', 'run', 'nullrhi', 'log', 'unattended', 'renderoffscreen', 'resx', 'resy', 'benchmark',
                     'fps', 'game', 'windowed'}
 TASK_PLAY_DEFAULTS = {'inputs': [], 'map': None, 'args': [], 'every': None, 'after': None, 'continues': None,
@@ -876,9 +878,41 @@ def measure_errors(n, measure):
                             '`player`')
         if measure.get('match') is not None and not field.startswith(('prop:', 'material:')):
             errs.append(f'check {n}: `match` goes with a prop: or material: field')
-    if probe in ('actors', 'widgets', 'components', 'asset', 'log'):
+    if probe == 'files':
+        errs.extend(files_errors(n, measure))
+    if probe in ('actors', 'widgets', 'components', 'asset', 'log', 'files'):
         errs.extend(regex_errors(n, [measure.get('match'), measure.get('pattern')]))
     errs.extend(select_errors(n, None, measure))
+    return errs
+
+
+FILES_NOT_READ = ('TaskProbe', 'GameEnv', 'GameEnvCache', 'GameEnvPackage', 'Logs', 'Crashes')  # Saved/<these>
+
+
+def files_errors(n, measure):
+    """A files measure's rules beyond the schema (Lab game grader 1.24.0), for check `n`: its glob is under Saved but
+    never the checker's or the engine's own folders there (FILES_NOT_READ); lines and number read a `match`, number's
+    with a capture group; `match` goes only with those, `agg` only with number, `size` only with pictures."""
+    errs, field = [], measure.get('field')
+    glob = (measure.get('select') or {}).get('glob') if isinstance(measure.get('select'), dict) else None
+    if isinstance(glob, str) and len(glob.split('/')) > 1 and glob.split('/')[1] in FILES_NOT_READ:
+        errs.append(f"check {n}: Saved/{glob.split('/')[1]} is the checker's or the engine's own folder, never one a "
+                    'files measure reads')
+    match = measure.get('match')
+    if field in ('lines', 'number') and match is None:
+        errs.append(f"check {n}: a files measure's {field} reads the lines that match its `match`")
+    if field not in ('lines', 'number') and match is not None:
+        errs.append(f"check {n}: `match` goes with a files measure's lines or number")
+    if field == 'number' and isinstance(match, str):
+        try:
+            if re.compile(match).groups < 1:
+                errs.append(f"check {n}: a files measure's number is `match`'s first capture group: give it one")
+        except re.error:
+            pass  # said by regex_errors
+    if measure.get('agg') is not None and field != 'number':
+        errs.append(f'check {n}: `agg` goes with a files measure\'s number')
+    if measure.get('size') is not None and field != 'pictures':
+        errs.append(f"check {n}: `size` goes with a files measure's pictures")
     return errs
 
 
@@ -1100,7 +1134,7 @@ def measure_shape_errors(n, measure):
     return errs
 
 
-EVENT_UNSAMPLED = ('log', 'asset', 'seen', 'trace')  # measures no sample of the play holds
+EVENT_UNSAMPLED = ('log', 'asset', 'seen', 'trace', 'files')  # measures no sample of the play holds
 
 
 def event_errors(n, event):
@@ -1178,6 +1212,8 @@ def probe_errors(c, seed, ref, plays):
     pname = play if isinstance(play, str) else (play.get('name') if isinstance(play, dict) else None)
     if (probe == 'asset') != (pname == 'editor'):
         errs.append(f'check {n}: asset measures are taken by the editor pass (play "editor"), and it takes nothing else')
+    if probe == 'files' and not isinstance(play, dict):
+        errs.append(f"check {n}: a files measure reads what a task play of its own wrote, never {pname}'s")
     if (probe == 'trace') != (pname == 'trace'):
         errs.append(f'check {n}: trace measures are read from the trace (play "trace"), and it gives nothing else')
     if probe == 'asset' and isinstance(measure.get('select'), dict) and measure['select'].get('has') is not None:

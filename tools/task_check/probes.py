@@ -124,6 +124,114 @@ def plan(task):
     return {name: [merged[q] for q in sorted(merged)] for name, merged in out.items()}
 
 
+def files_plan(task):
+    """{task play name: [glob, ...]} of the `files` measures of `task`'s probes, each glob once, sorted: the files
+    listed and read under the project's Saved when that play ends (unreal.Project.play `files`; Lab game grader
+    1.20.0)."""
+    out = {}
+    for check in probes(task):
+        if check["measure"]["probe"] == "files":
+            out.setdefault(tasks.play_name(check), set()).add(check["measure"]["select"]["glob"])
+    return {name: sorted(globs) for name, globs in sorted(out.items())}
+
+
+# -- files measures: what the game wrote under Saved, read once its play ends (docs/task-probes.md, `files`) ----------
+
+TEXT_RUN = 4  # a binary file's printable run is a line when it holds this many characters at least
+PICTURE = [16, 16]  # a picture's least width and height (pixels), by default
+
+
+def glob_match(glob, path):
+    """Whether project-relative `path` matches a files measure's glob: * and ? within one folder name, a ** segment
+    any number of folders (none too)."""
+    out, last = [], glob.count("/")
+    for i, part in enumerate(glob.split("/")):
+        if part == "**":
+            out.append("(?:[^/]+/)*" if i < last else ".+")
+            continue
+        out.append("".join("[^/]*" if c == "*" else "[^/]" if c == "?" else re.escape(c) for c in part)
+                   + ("/" if i < last else ""))
+    return re.fullmatch("".join(out), path) is not None
+
+
+def file_lines(data):
+    """A file's text lines: a text file's own lines (UTF-8, no NUL byte), else a binary file's runs of at least
+    TEXT_RUN printable characters, read as bytes (an ASCII FString in an Unreal save) and as UTF-16 at either byte (one
+    that isn't ASCII), in that order."""
+    if b"\0" not in data:
+        try:
+            return data.decode("utf-8").splitlines()
+        except UnicodeDecodeError:
+            pass
+    runs = [m.group(0).decode("ascii") for m in re.finditer(rb"[\x20-\x7e\t]{%d,}" % TEXT_RUN, data)]
+    for start in (0, 1):
+        text = data[start:len(data) - (len(data) - start) % 2].decode("utf-16-le", errors="replace")
+        runs += [r for r in re.findall(r"[^\x00-\x1f\x7f�]{%d,}" % TEXT_RUN, text)
+                 if any(ord(c) > 0x7e for c in r) or r.isascii() and r.encode("utf-16-le") in data]
+    return runs
+
+
+def picture_size(data, least):
+    """(width, height) of `data` when it is a PNG or a JPEG at least `least` [w, h] pixels and not one flat colour,
+    else None."""
+    import io
+
+    from PIL import Image
+
+    if not data.startswith((b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff")):
+        return None
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            if img.format not in ("PNG", "JPEG") or img.width < least[0] or img.height < least[1]:
+                return None
+            if img.width * img.height > 64_000_000:
+                return None
+            bands = img.convert("RGB").getextrema()
+    except Exception:  # noqa: BLE001 (a file the game wrote: whatever PIL can't read is no picture)
+        return None
+    return None if all(lo == hi for lo, hi in bands) else (img.width, img.height)
+
+
+def files_value(measure, files):
+    """(a files measure of one play as one number, or None; why none), from what unreal.Project.play listed when the
+    play ended: [{path, bytes, written, data}] (data None: not read, over the limits), None when not listed. `count`
+    reads every file the glob matches; `written` those the play wrote; every other field only those."""
+    if files is None:
+        return None, "the play's files were not listed"
+    files = [f for f in files if glob_match(measure["select"]["glob"], f["path"])]
+    field = measure["field"]
+    if field == "count":
+        return float(len(files)), None
+    if field == "written":
+        return float(sum(1 for f in files if f["written"])), None
+    mine = [f for f in files if f["written"]]
+    if field == "bytes":
+        return float(sum(f["bytes"] for f in mine)), None
+    unread = [f["path"] for f in mine if f["data"] is None]
+    if unread:
+        return None, f"{unread[0]} was written but not read (over the checker's limits)"
+    if field == "pictures":
+        return float(sum(1 for f in mine if picture_size(f["data"], measure.get("size") or PICTURE) is not None)), None
+    pattern = re.compile(measure["match"])
+    lines = [line for f in mine for line in file_lines(f["data"])]
+    if field == "lines":
+        return float(sum(1 for line in lines if pattern.search(line))), None
+    values = []
+    for line in lines:
+        found = pattern.search(line)
+        if found and found.group(1) is not None:
+            try:
+                value = float(found.group(1))
+            except ValueError:
+                continue
+            if math.isfinite(value):
+                values.append(value)
+    if not values:
+        return None, f"no line of the files the play wrote matching {measure['select']['glob']} gave a number"
+    agg = measure.get("agg") or "last"
+    return (float(len(values)) if agg == "count" else aggregate(values, agg)), None
+
+
 def query_file(queries, every=None):
     """The plugin's query file (-TaskProbeQueries) for one play's queries (sampled every `every` s, default 0.5), or
     None when it has none."""

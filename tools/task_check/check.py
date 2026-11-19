@@ -204,6 +204,7 @@ class Side:
         self.timeout, self.build_timeout = timeout, build_timeout
         self.evidence, self.log = evidence, log
         self.plan = probes.plan(task)
+        self.files_plan = probes.files_plan(task)  # {task play: [glob]} of its files measures
         self._build = None
         self.played = {}  # play name -> unreal.Played
         self.sessions = {}  # a continuing task play's name -> what its first session left (session)
@@ -264,12 +265,13 @@ class Side:
         self.project.warm(WARM_SECONDS, WARM_TIMEOUT, map)
 
     def _play(self, name, seconds, shots, inputs=None, map=None, queries=None, args=(), every=None, waits=0.0,
-              session=False, fresh=False, attended=False, saves=None, stage=None, keep_saves=False):
+              session=False, fresh=False, attended=False, saves=None, stage=None, keep_saves=False, files=()):
         """A play, once per name, after its map's warm-up; it may take its own seconds, PLAY_MARGIN and `waits` (the
         real seconds a task play's waits add), as in the cloud; `session`: a continuing play's first session,
         played on a cleared save (unreal.Project.play); `fresh`: a task play marked `fresh`, played on a cleared save
         too; `attended`: a task play marked `attended`, launched without -unattended; `saves`, `stage` and
-        `keep_saves`: a play's save fixtures (unreal.Project.play)."""
+        `keep_saves`: a play's save fixtures (unreal.Project.play); `files`: the globs of its files measures, listed
+        when it ends (unreal.Project.play)."""
         if name not in self.played:
             map = map or self.task.get("play_map")
             self.warm(map)
@@ -281,6 +283,7 @@ class Side:
                                       **({"saves": saves} if saves is not None else {}),
                                       **({"stage": stage} if stage else {}),
                                       **({"keep_saves": True} if keep_saves else {}),
+                                      **({"files": list(files)} if files else {}),
                                       **({"watch": True} if name == self.watching else {}))
             self.played[name] = found
             waited = getattr(found, "waited", 0.0)
@@ -365,7 +368,8 @@ class Side:
         return self._play(f"play_{name}", play["seconds"], shots, play["inputs"] or None, map=play["map"],
                           queries=queries, args=play["args"], every=every, waits=tasks.waited(play),
                           fresh=play.get("fresh") is True, attended=play.get("attended") is True,
-                          saves=self.carried_saves.get(name) if on_start else None, stage=play.get("saves"))
+                          saves=self.carried_saves.get(name) if on_start else None, stage=play.get("saves"),
+                          files=self.files_plan.get(name, ()))
 
     def start_saves(self, play):
         """(on the start's side) ({path: bytes} of the save state task play `play`'s sessions left here, their session
@@ -467,6 +471,8 @@ class Side:
         carried = self.carried(play)
         if carried:
             return None, carried
+        if measure["probe"] == "files":  # what the game wrote under Saved, listed when the play ended
+            return probes.files_value(measure, p.game_files)
         value, why = probes.measured(measure, p.probe, p.log)
         if value is None and why and why.startswith("no samples in the window"):  # the play's map not loaded: said so
             own = None if isinstance(play, str) else play

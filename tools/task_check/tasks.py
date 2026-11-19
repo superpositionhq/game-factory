@@ -16,7 +16,7 @@ TOOLS = os.path.dirname(HERE)
 REFS = ("tasks", "origin/tasks")  # where a game's tasks live (validate-game.py TASKS_REFS)
 STILL_WORKS = "still_works"  # the milestone of what a task must leave working (write-tasks section 5)
 RUNTIME = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns", "log",
-           "audio", "ground", "ui", "drawn", "world", "render")
+           "audio", "ground", "ui", "drawn", "world", "render", "files")
 SAMPLED = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns",
            "audio", "ground", "ui", "drawn", "world", "render")
 AUDIO_STARTED = ("started", "started_audible")  # counted per sample's interval, summed by default (as spawns)
@@ -184,6 +184,9 @@ def measure(m):
             out["select"] = select(out["select"])
     elif kind == "log":
         out.setdefault("field", "count")
+    elif kind == "files":  # what the game wrote under Saved, read when its play ends (probes.files_value)
+        for k in ("match", "agg", "size"):
+            out.setdefault(k, None)
     elif kind == "seen":  # read from a named shot (seen.py), not by the plugin
         for k in ("rect", "match", "agg"):
             out.setdefault(k, None)
