@@ -356,12 +356,7 @@ A dataset check uses the same shape, binding, verdict, freshness and score requi
 (the default). Use `--checks-mode reject` when the Lab project switches to reject mode; those failures then make
 the dataset INVALID. Packaging refuses them by default, whichever validation mode a consumer uses.
 
-**Temporary Lab compatibility switch.** Lab does not yet accept a top-level `Checks/` folder: its layout validator
-rejects it as `layout.unexpected`. Until Lab's format change is deployed and the project reads `Checks/`, use
-`tools/package-dataset.ps1 <game> -Package <package> -NoWriterChecks`. The matching Python helper option is
-`python tools/package-checks.py <repo> <split Tasks dir> <Checks out> --no-writer-checks`. Each skips the writer-check
-refusal and omits `Checks/`, printing one warning; task packaging and the other package validations still run.
-The default remains to validate and ship `Checks/`. Remove this temporary switch once Lab's project reads `Checks/`.
+Every package carries `Checks/`: the Lab's dataset check reads the folder, and there is no switch that leaves it out.
 
 ## Common reasons and fixes
 

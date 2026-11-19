@@ -178,21 +178,13 @@ class PackageChecks(unittest.TestCase):
         self.assertEqual(failed.returncode, 2)
         self.assertIn('not VALID', failed.stderr)
 
-    def test_cli_can_omit_checks_and_refusal_with_one_warning(self):
-        pc.stage(self.repo, self.tasks, self.out)
-        self.result['verdict'] = 'ERROR'
-        self.save_checks()
-        # No tasks branch or checks are needed in compatibility mode.
-        self.run_git('branch', '-m', 'not-tasks')
+    def test_cli_has_no_switch_that_omits_checks(self):
+        """Packages always carry Checks/: the temporary switch that left it out is gone (Lab reads Checks/)."""
         command = [sys.executable, str(TOOLS / 'package-checks.py'), str(self.repo), str(self.tasks), str(self.out),
                    '--no-writer-checks']
-        skipped = subprocess.run(command, capture_output=True, text=True)
-        self.assertEqual(skipped.returncode, 0, skipped.stderr)
-        self.assertEqual(json.loads(skipped.stdout), {'last_commit_at': {}})
-        self.assertEqual(len(skipped.stderr.strip().splitlines()), 1)
-        self.assertIn('WARNING:', skipped.stderr)
-        self.assertIn('writer checks omitted', skipped.stderr)
-        self.assertFalse(self.out.exists())
+        refused = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(refused.returncode, 2)
+        self.assertIn('unrecognized arguments', refused.stderr)
 
     def add_blind_answer(self, value):
         self.task['milestones'] = [{'checks': [{'kind': 'judge', 'name': 'looks', 'required': False}]}]

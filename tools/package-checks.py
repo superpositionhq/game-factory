@@ -69,14 +69,8 @@ def task_at_ref(repo, ref, name):
     return json.loads(git(repo, "show", f"{ref}:{path}"))
 
 
-def stage(repo, tasks_dir, out, commit_map=None, tasks_ref=None, no_writer_checks=False):
+def stage(repo, tasks_dir, out, commit_map=None, tasks_ref=None):
     repo, tasks_dir, out = Path(repo), Path(tasks_dir), Path(out)
-    if no_writer_checks:
-        if out.exists():
-            shutil.rmtree(out)
-        print("WARNING: writer checks omitted (--no-writer-checks); temporary compatibility with Lab projects "
-              "that do not read Checks/ yet", file=sys.stderr)
-        return {"last_commit_at": {}}
     ref = task_ref(repo, tasks_ref)
     latest = task_ref(repo)
     checks = repo / ".task-checks"
@@ -156,12 +150,9 @@ def main():
     parser.add_argument("out")
     parser.add_argument("--commit-map")
     parser.add_argument("--tasks-ref", help="the tasks commit pinned by package-game, else tasks/origin/tasks")
-    parser.add_argument("--no-writer-checks", action="store_true",
-                        help="temporarily omit Checks/ and its refusal until the Lab project reads Checks/")
     args = parser.parse_args()
     try:
-        metadata = stage(args.repo, args.tasks_dir, args.out, args.commit_map, args.tasks_ref,
-                         no_writer_checks=args.no_writer_checks)
+        metadata = stage(args.repo, args.tasks_dir, args.out, args.commit_map, args.tasks_ref)
     except (OSError, ValueError, TypeError, KeyError) as exc:
         print(f"Checks/: {exc}", file=sys.stderr)
         return 2

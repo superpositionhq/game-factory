@@ -2,7 +2,7 @@
 .SYNOPSIS
   Exercise package-dataset.ps1's actual writer-check invocation without packaging a game.
   Runs a native Python fixture through the AST-extracted command block so stderr never
-  enters JSON stdout; also checks the temporary opt-out and pinned tasks ref forwarding.
+  enters JSON stdout; also checks pinned tasks ref forwarding and that no switch leaves Checks/ out.
 .EXAMPLE
   pwsh -NoProfile -File tools/tests/test-package-checks.ps1
 #>
@@ -41,12 +41,12 @@ if "fail" in sys.argv:
     sys.exit(2)
 print(json.dumps({"last_commit_at": {"repair-hud": "2026-11-17T10:00:00+00:00"},
                   "arguments": sys.argv[1:]}, indent=2))
-if "warning" in sys.argv or "--no-writer-checks" in sys.argv:
+if "warning" in sys.argv:
     print("warning: checks fixture warning", file=sys.stderr)
 '@
     [IO.File]::WriteAllText((Join-Path $tmp 'package-checks.py'), $fixture, $utf8)
     $wrapper = @'
-param([string]$Python, [string]$Mode = 'quiet', [switch]$NoWriterChecks, [string]$TasksCommit = '')
+param([string]$Python, [string]$Mode = 'quiet', [string]$TasksCommit = '')
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2
 function Get-Prop($Object, [string]$Name) { return $Object.$Name }
@@ -84,10 +84,7 @@ try {
     $argsSent = @($r.Metadata.arguments)
     Check 'pinned tasks ref is forwarded' ($argsSent -contains '--tasks-ref' -and $argsSent[-1] -eq ('a' * 40))
 
-    $records = @(& $script -Python $py.Source -NoWriterChecks 6>&1)
-    $messages = @($records | Where-Object { $_ -is [Management.Automation.InformationRecord] })
-    $r = @($records | Where-Object { $_ -isnot [Management.Automation.InformationRecord] })[0]
-    Check 'opt-out is forwarded with one warning' (-not $r.Failure -and $r.Metadata.arguments -contains '--no-writer-checks' -and $messages.Count -eq 1)
+    Check 'no switch leaves writer checks out' ((Get-Content -Raw (Join-Path $PSScriptRoot '..\package-dataset.ps1')) -notmatch 'NoWriterChecks|no-writer-checks')
 
     $r = & $script -Python $py.Source -Mode fail
     Check 'failure includes exit code and separate stderr' ($r.Failure -match 'exit 2' -and $r.Failure -match 'checks fixture: failure detail')

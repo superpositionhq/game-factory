@@ -29,8 +29,8 @@ consumer receives it. Both run `tools/validate-dataset.ps1` (layout, sizes, sha2
 **VALID** or **INVALID** (exit 0 / 2); warnings never change it. Options: `--quick` (do not unpack the history),
 `--no-hash`, `--no-layout`, `--json <file>`. `--checks-mode warn` is the default while writers update their skill
 packs: problems with `Checks/` warn. `--checks-mode reject` makes those problems errors when the Lab project switches
-to reject mode. Packaging requires valid checks and scores by default; the temporary `-NoWriterChecks` compatibility
-switch omits them until Lab reads `Checks/` (see [task-check.md](task-check.md)). Standard library Python 3.10+.
+to reject mode. Packaging always requires valid checks and scores and ships `Checks/` (see
+[task-check.md](task-check.md)). Standard library Python 3.10+.
 
 ## The repo
 

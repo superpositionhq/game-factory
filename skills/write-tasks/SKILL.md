@@ -582,9 +582,7 @@ of the task. Step by step:
    A rebase or amend of unchanged content needs no new check; only a legacy `task-check/1` without a digest falls
    back to requiring a check at least as new as the task file's last commit. Packaging refuses anything else, and
    refuses missing scores or required answers. It ships `Checks/<name>.json`, `Checks/writer-scores.json` and only the small blind
-   answer JSON files; `probe.json`, screenshots and logs stay out.
-   Until Lab reads `Checks/`, the temporary `package-dataset.ps1 -NoWriterChecks` switch omits that folder and its
-   refusal with one warning; remove it once Lab supports the folder (see the delivery rules in `docs/task-check.md`).
+   answer JSON files; `probe.json`, screenshots and logs stay out. Every package carries `Checks/`.
 
 What each verdict means:
 

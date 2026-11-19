@@ -69,7 +69,7 @@
       "kind": "dir",
       "required": false,
       "in_repo_dataset": false,
-      "what": "Writer check results and scores: <task>.json (task-check/2, VALID, fresh and bound by task_digest to the merged delivered task) for every shipped task, writer-scores.json (writer-task-scores/1, one row per task), and <task>/{judge-shots|seen-shots}/<check>/blind/answers.json only. No probe.json, screenshots, logs or blind keys. New packaging requires all results and scores by default; the temporary -NoWriterChecks switch omits Checks/ and its refusal until Lab reads this folder. validate-game.py reports missing or invalid Checks/ as warnings until --checks-mode reject is selected."
+      "what": "Writer check results and scores: <task>.json (task-check/2, VALID, fresh and bound by task_digest to the merged delivered task) for every shipped task, writer-scores.json (writer-task-scores/1, one row per task), and <task>/{judge-shots|seen-shots}/<check>/blind/answers.json only. No probe.json, screenshots, logs or blind keys. Packaging always requires all results and scores and ships this folder. validate-game.py reports missing or invalid Checks/ as warnings until --checks-mode reject is selected."
     },
     {
       "name": "UEProject",
@@ -264,6 +264,6 @@
     "canonicalisation": "json.dumps(merged_task, sort_keys=True, separators=(\",\", \":\"), ensure_ascii=False), encoded UTF-8; grader milestones over task, grader seed merged into task seed; packaging verifies the source binding, allows only full commit-ID substitutions via the package commit map, refuses any other task scrub change, then rebinds task_digest to the delivered task",
     "scores": "Checks/writer-scores.json: writer-task-scores/1 (docs/schemas/writer-task-scores.schema.json), tasks keyed by every shipped task name; difficulty_estimate hard|medium matching the task, quality integer 1-5, positive minutes_to_solve_estimate, judges by check name with start/reference rubric-key 0-1 scores from blind answers in task notes, notes plain text on one line <=300 characters",
     "answers": "Only Checks/<task>/{judge-shots|seen-shots}/<check>/blind/answers.json; nonempty object with A/B-only sides, at most 8 KiB JSON per side and 16 KiB per file. probe.json, screenshots, logs and blind keys stay out",
-    "validation": "New packaging by default refuses missing, malformed, stale, unbound or non-VALID checks and incomplete scores or required answers. The temporary -NoWriterChecks (--no-writer-checks in package-checks.py) omits Checks/ and its refusal with one warning; remove the switch once Lab's project reads Checks/. validate-game.py --checks-mode warn (default) warns; --checks-mode reject makes these findings errors."
+    "validation": "Packaging refuses missing, malformed, stale, unbound or non-VALID checks and incomplete scores or required answers. validate-game.py --checks-mode warn (default) warns; --checks-mode reject makes these findings errors."
   }
 }

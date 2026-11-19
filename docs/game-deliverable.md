@@ -302,8 +302,7 @@ blind judge scores from the task's notes. A missing, non-VALID, stale or unbound
 or answers, stops packaging. `probe.json`, screenshots, logs and blind keys are never copied into `Checks/`.
 Like `Tasks/`, it is left out of the committed repo `Dataset/` and the agent's snapshot. Older task-bearing datasets
 without `Checks/` receive warnings by default; `validate-game.py --checks-mode reject` enforces the new requirements.
-Until Lab accepts and reads `Checks/`, `package-dataset.ps1 -NoWriterChecks` temporarily omits the folder and its
-packaging refusal with one warning; remove that switch once Lab supports it ([task-check.md](task-check.md)).
+Every package carries `Checks/`; no switch leaves it out ([task-check.md](task-check.md)).
 
 **README template.** Title (the game's name), hero image (`Screenshots/...`), the pending banner while pending, a
 version and commit line, then these sections in this order: Requirements, Package contents, Play the game, Replay the
