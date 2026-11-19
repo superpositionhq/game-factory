@@ -10,6 +10,61 @@ vg = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(vg)
 
 
+def make_game(parent, slug='lantern-hollow'):
+    """A small game repo under `parent`, named `slug`: a UE 5.7 start (a night village with a lantern, a GameMode that
+    parses the Scenario option, the CellarStairs and VillageWell tags, a pause menu's Resume button) and four commits
+    that change the game (lantern light, sprint, a stamina HUD with its StaminaBar widget, a Stamina member, the
+    SkipToDawn option, a Rest by the fire button and a cellar level, a camera rig). Returns (repo, git, start, reference)."""
+    repo = os.path.join(parent, slug)
+    os.makedirs(repo)
+
+    def git(*args):
+        return subprocess.run(['git', '-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@t', *args],
+                              capture_output=True, check=True).stdout.decode().strip()
+
+    def write(rel, text):
+        path = os.path.join(repo, rel)
+        os.makedirs(os.path.dirname(path) or repo, exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(text)
+
+    def commit(msg):
+        git('add', '-A')
+        git('commit', '-q', '-m', msg)
+        return git('rev-parse', 'HEAD')
+
+    def lines(name, n):
+        return ''.join(f'float {name}{i} = {i}.0f;\n' for i in range(n))
+
+    git('init', '-q', '-b', 'main')
+    write('LanternHollow.uproject', '{"FileVersion": 3, "EngineAssociation": "5.7"}\n')
+    write('Config/DefaultGame.ini', '[/Script/LanternHollow.LHGameInstance]\nScenarioMaps=/Game/Maps/L_Village\n')
+    write('Source/LanternHollow/LHGameMode.cpp',
+          'void ALHGameMode::InitGame() { Scenario = UGameplayStatics::GetIntOption(Options, TEXT("Scenario"), 1); }\n'
+          'void ALHGameMode::Tag() { Stairs->Tags.Add(TEXT("CellarStairs")); Well->Tags.Add(TEXT("VillageWell")); }\n')
+    write('Source/LanternHollow/LHPauseMenu.cpp', 'Resume->SetText(LOCTEXT("Resume", "Resume"));\n')
+    write('Content/Maps/L_Village.umap', 'map\n')
+    start = commit('night village')
+    write('Source/LanternHollow/LHLantern.cpp', lines('LanternRadius', 40))
+    write('Config/DefaultEngine.ini', '[/Script/Engine.RendererSettings]\nr.DefaultFeature.AutoExposure=True\n')
+    commit('lantern light reaches the path')
+    write('Source/LanternHollow/LHCharacter.cpp', lines('SprintSpeed', 30) + 'float Stamina = 100.0f;\n')
+    commit('sprint with the lantern')
+    write('Source/LanternHollow/LHStaminaHUD.cpp',
+          lines('BarWidth', 30) + 'StaminaBar = WidgetTree->ConstructWidget<UProgressBar>(TEXT("StaminaBar"));\n'
+          'Rest->SetText(LOCTEXT("Rest", "Rest by the fire"));\n')
+    write('Source/LanternHollow/LHGameMode.cpp',
+          'void ALHGameMode::InitGame() { Scenario = UGameplayStatics::GetIntOption(Options, TEXT("Scenario"), 1);\n'
+          '  bSkipToDawn = UGameplayStatics::HasOption(Options, TEXT("SkipToDawn")); }\n'
+          'void ALHGameMode::Tag() { Stairs->Tags.Add(TEXT("CellarStairs")); Well->Tags.Add(TEXT("VillageWell"));\n'
+          '  Door->Tags.Add(TEXT("CellarDoor")); }\n')
+    write('Content/Maps/L_Cellar.umap', 'map\n')
+    commit('stamina readout, cellar level')
+    write('Source/LanternHollow/LHCameraRig.cpp', lines('ProbeSize', 30))
+    reference = commit('camera stays out of the cellar walls')
+    return repo, git, start, reference
+
+
 class Units(unittest.TestCase):
     def test_required_quality_judges(self):
         """A required judge is noted as one that should be optional, but for the judges of the brief's looks: a `judge`
@@ -648,6 +703,79 @@ class Mobile(unittest.TestCase):
         self.assertEqual(vg.mobile_play_errors(task(['-Scenario=1'])), [])
         for arg in ('-sm6', '-vulkan', '-FeatureLevelES31', '-d3d12', '-Opt=x,dx11=1'):
             self.assertEqual(len(vg.mobile_play_errors(task([arg]))), 1, arg)
+
+
+class ReferenceOnlyNames(unittest.TestCase):
+    """What a required check or the task's play_map names that the reference has and the start lacks is refused
+    (write-tasks sections 4 and 5): a probe's measure and its play, a judge's own plays, play_map; a click's, tap's or
+    drag's control and a map pass when the instruction states them; a select's name, a member, a map option or a flag
+    never does."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.parent = tempfile.mkdtemp()
+        cls.repo, _git, cls.start, cls.reference = make_game(cls.parent)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.parent, True)
+
+    def found(self, play=None, kind='probe', required=True, play_map=None, instruction='The lantern is too dim.'):
+        play = play or {'name': 'p', 'seconds': 10, 'inputs': []}
+        if kind == 'probe':
+            check = {'name': 'c', 'kind': 'probe', 'describe': 'd', 'play': play, 'required': required,
+                     'measure': {'probe': 'pawn', 'field': 'speed', 'agg': 'max'}, 'expect': {'op': '>', 'value': 0}}
+        else:
+            check = {'name': 'c', 'kind': 'judge', 'question': 'q', 'required': required, 'plays': [play],
+                     'rubric': [{'key': 'k', 'criterion': 'c'}]}
+        t = {'title': 'Night play', 'instruction': instruction, 'play_map': play_map,
+             'seed': {'commit': self.start, 'reference': self.reference},
+             'milestones': [{'name': 'fixed', 'checks': [check]}]}
+        return vg.reference_only_names(self.repo, t)
+
+    @staticmethod
+    def play(*inputs, **over):
+        return {'name': 'p', 'seconds': 10, 'inputs': list(inputs), **over}
+
+    def test_a_click_tap_or_drag_on_a_control_only_the_reference_has(self):
+        for i in ({'t': 1, 'widget': 'StaminaBar', 'click': True}, {'t': 1, 'tap': {'widget': 'StaminaBar'}},
+                  {'t': 1, 'drag': [[0.5, 0.5], {'widget': 'StaminaBar'}]}):
+            self.assertEqual(self.found(self.play(i)), [('check c', 'StaminaBar')], i)
+            self.assertEqual(self.found(self.play(i), kind='judge'), [('check c', 'StaminaBar')], i)
+        words = {'t': 1, 'widget': 'Rest by the fire', 'click': True}
+        self.assertEqual(self.found(self.play(words)), [('check c', 'Rest by the fire')])
+        self.assertEqual(self.found(self.play(words), instruction='Clicking "Rest by the fire" refills stamina.'), [])
+        self.assertEqual(self.found(self.play({'t': 1, 'widget': 'Resume', 'click': True})), [], 'the start has it')
+        self.assertEqual(self.found(self.play({'t': 1, 'widget': 'Stamina*', 'click': True})), [], 'a wildcard')
+
+    def test_a_teleport_pin_or_stage_by_a_name_only_the_reference_has(self):
+        door = {'tag': 'CellarDoor'}
+        for i in ({'t': 1, 'teleport_to': door}, {'t': 1, 'teleport_to': {'tag': 'VillageWell'}, 'face': {'actor': door}},
+                  {'t': 1, 'pin': door, 'hold': 2}, {'t': 1, 'damage': 5, 'to': door},
+                  {'t': 1, 'set': 'Scenario', 'value': 1, 'on': door},
+                  {'t': 1, 'shot': 's', 'when': {'measure': {'probe': 'actors', 'select': door, 'field': 'count'},
+                                                  'expect': {'op': '>=', 'value': 1}}}):
+            self.assertEqual(self.found(self.play(i)), [('check c', 'CellarDoor')], i)
+            self.assertEqual(self.found(self.play(i), instruction='Open the cellar door (CellarDoor).'),
+                             [('check c', 'CellarDoor')], 'a select never passes for being stated')
+        self.assertEqual(self.found(self.play({'t': 1, 'set': 'Stamina', 'value': 0, 'on': {'tag': 'VillageWell'}})),
+                         [('check c', 'Stamina')], 'a member only the reference has')
+        self.assertEqual(self.found(self.play({'t': 1, 'teleport_to': {'tag': 'CellarStairs'}})), [])
+
+    def test_maps_options_and_flags(self):
+        self.assertEqual(self.found(play_map='/Game/Maps/L_Village?Scenario=2'), [])
+        self.assertEqual(self.found(play_map='/Game/Maps/L_Village?SkipToDawn'), [('play_map', 'SkipToDawn')])
+        self.assertEqual(self.found(self.play(map='/Game/Maps/L_Village?Scenario=2?SkipToDawn=1')),
+                         [('check c', 'SkipToDawn')])
+        self.assertEqual(self.found(self.play(args=['-SkipToDawn'])), [('check c', 'SkipToDawn')])
+        self.assertEqual(self.found(self.play(args=['-SkipToDawn']), instruction='QA starts with -SkipToDawn.'),
+                         [('check c', 'SkipToDawn')], 'an option only the reference adds is never used')
+        cellar = self.play({'t': 2, 'map': '/Game/Maps/L_Cellar'})
+        self.assertEqual(self.found(cellar), [('check c', '/Game/Maps/L_Cellar')])
+        self.assertEqual(self.found(cellar, instruction='QA plays the new cellar level, L_Cellar.'), [])
+
+    def test_an_optional_check_is_not_looked_at(self):
+        self.assertEqual(self.found(self.play({'t': 1, 'widget': 'StaminaBar', 'click': True}), required=False), [])
 
 
 if __name__ == '__main__':

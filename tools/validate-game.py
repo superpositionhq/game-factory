@@ -1630,9 +1630,10 @@ def check_repo_tasks(rep, repo, files=None):
             on_main = all(_git(repo, 'merge-base', '--is-ancestor', seed[k], 'HEAD').returncode == 0
                           for k in ('commit', 'reference'))
             report_thread_span(rep, a, label, repo, seed, on_main)
-            for check, name in reference_only_names(repo, t):
-                rep.error(a, f'{label}: check {check} names {name}, which only the reference has: another fair build '
-                             'names it otherwise; select by what it does or where it is (write-tasks section 5)')
+            for where, name in reference_only_names(repo, t):
+                rep.error(a, f'{label}: {where} names {name}, which only the reference has: another fair build '
+                             'names it otherwise; select by what it does or where it is, press a control by the words '
+                             'it shows, start from options the start has (write-tasks sections 4 and 5)')
     for e in task_bar_errors(levels):
         rep.error(a, f'{ref}: {e} (write-tasks section 1)')
     rep.note(a, f'{len(paths)} task(s) on {ref} (at least {MIN_TASKS}, up to about 10, every one a long thread)')
@@ -1640,47 +1641,96 @@ def check_repo_tasks(rep, repo, files=None):
 
 # What a probe names: the class, tag, name, mesh and asset path keys of its selects (owner selects and `has` included),
 # the component a measure's field names (rel_yaw:, world_yaw:, world_pitch:, world_roll:, forward:, bone:) and the
-# asset/map paths of its measure and play. A name that exists in the reference and not at the start can only be
-# matched by a build that chose the reference's names; another fair build reads as absent (write-tasks section 5).
+# asset/map paths of its measure; and what its play names (play_refs). A name that exists in the reference and not at
+# the start can only be matched by a build that chose the reference's names; another fair build reads as absent
+# (write-tasks section 5).
 NAMED_KEYS = ('class', 'tag', 'name', 'mesh', 'slate')
 PATH_KEYS = ('asset', 'map')
+IDENT = re.compile(r'[A-Za-z_][A-Za-z0-9_]{2,120}')
 # a field that names a component: world_yaw:<Component>, forward:<Component>.x, bone:<Component>.<Bone>.z
 FIELD_COMPONENT = re.compile(r'(?:rel_yaw|world_yaw|world_pitch|world_roll):([^.]+)$|forward:([^.]+)\.[xyz]$'
                              r'|bone:([^.]+)\..+\.[xyz]$')
+# the inputs of a play that hold an actor select or a point on one: teleport_to (and its face), pin (and its at),
+# damage to/from, set on, and a shot's when event
+SELECT_INPUTS = ('teleport_to', 'face', 'pin', 'at', 'to', 'from', 'on', 'when')
+
+
+def _walk_names(v, names, paths, key=None):
+    """The literal names (NAMED_KEYS) and /Game paths (PATH_KEYS) anywhere in `v`, wildcards skipped (they match by
+    pattern); a `where` or `prop:` member path counts its member names."""
+    if isinstance(v, dict):
+        for k, x in v.items():
+            _walk_names(x, names, paths, k)
+    elif isinstance(v, list):
+        for x in v:
+            _walk_names(x, names, paths, key)
+    elif isinstance(v, str) and key in PATH_KEYS and v.startswith('/Game/'):
+        path = v.split('?', 1)[0].split('.', 1)[0]   # a map's URL options and an object's .Name left out
+        if not any(ch in path for ch in '*?'):
+            paths.add(path)
+    elif isinstance(v, str) and not any(ch in v for ch in '*?'):
+        if key in NAMED_KEYS and IDENT.fullmatch(v):
+            names.add(re.sub(r'_C$', '', v))   # a Blueprint's generated class names its asset
+        elif key in ('prop', 'set'):
+            names.update(x for x in re.split(r'[.\[\]0-9]+', v) if IDENT.fullmatch(x))
+
+
+def map_flags(url):
+    """The URL option names of a map with options (/Game/Maps/L?Scenario=2?Boss -> Scenario, Boss)."""
+    return {o.split('=', 1)[0] for o in url.split('?')[1:] if IDENT.fullmatch(o.split('=', 1)[0])} \
+        if isinstance(url, str) else set()
+
+
+def play_refs(play):
+    """What task play `play` names, as {names, paths, flags, said}: `names` the actor names of its selects (teleport_to,
+    pin, damage, set, a shot's when; SELECT_INPUTS) and of a set or where member; `paths` the /Game maps it opens (its
+    own `map`, a `map` travel); `flags` its URL option and command-line flag names (map options, `args`); `said` the
+    controls a click, tap or drag names (a widget's name, class or on-screen words), which the instruction may state."""
+    refs = {'names': set(), 'paths': set(), 'flags': set(), 'said': set()}
+    if not isinstance(play, dict):
+        return refs
+    maps = [play.get('map')] + [i.get('map') for i in play.get('inputs') or [] if isinstance(i, dict)]
+    for m in (x for x in maps if isinstance(x, str)):
+        _walk_names({'map': m}, refs['names'], refs['paths'])
+        refs['flags'] |= map_flags(m)
+    for arg in play.get('args') or []:
+        mm = PLAY_ARG.match(arg) if isinstance(arg, str) else None
+        if mm:
+            refs['flags'].update(x for x in [mm.group(1)] + re.findall(r'([A-Za-z][A-Za-z0-9]*)=', mm.group(2) or '')
+                                 if IDENT.fullmatch(x))
+    for i in play.get('inputs') or []:
+        if not isinstance(i, dict):
+            continue
+        for key in SELECT_INPUTS:
+            _walk_names(i.get(key), refs['names'], refs['paths'])
+        _walk_names({'set': i.get('set')}, refs['names'], refs['paths'])   # the member a set input writes
+        spots = [i.get('widget') if i.get('click') else None, i.get('tap')] + list(i.get('drag') or [])
+        for spot in spots:
+            w = spot.get('widget') if isinstance(spot, dict) else spot
+            if isinstance(w, str) and w.strip() and not any(ch in w for ch in '*?'):
+                refs['said'].add(re.sub(r'_C$', '', w))
+    return refs
+
+
+def measure_names(measure):
+    """The literal names and /Game paths a measure depends on: its selects' (_walk_names), the component its field
+    names (FIELD_COMPONENT) and the members a `prop:` field reads."""
+    names, paths = set(), set()
+    _walk_names(measure, names, paths)
+    field = measure.get('field') if isinstance(measure, dict) else None
+    found = FIELD_COMPONENT.match(field) if isinstance(field, str) else None
+    names.update(g for g in (found.groups() if found else ()) if g and IDENT.fullmatch(g))
+    if isinstance(field, str) and field.startswith('prop:'):
+        _walk_names({'prop': field[len('prop:'):]}, names, paths)
+    return names, paths
 
 
 def probe_names(c):
-    """The literal names and /Game paths a probe check depends on (wildcards skipped: they match by pattern)."""
-    names, paths = set(), set()
-
-    def walk(v, key=None):
-        if isinstance(v, dict):
-            for k, x in v.items():
-                walk(x, k)
-        elif isinstance(v, list):
-            for x in v:
-                walk(x, key)
-        elif isinstance(v, str) and key in PATH_KEYS and v.startswith('/Game/'):
-            path = v.split('?', 1)[0].split('.', 1)[0]   # a map's URL options and an object's .Name left out
-            if not any(ch in path for ch in '*?'):
-                paths.add(path)
-        elif isinstance(v, str) and not any(ch in v for ch in '*?'):
-            if key in NAMED_KEYS and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{2,120}', v):
-                names.add(re.sub(r'_C$', '', v))   # a Blueprint's generated class names its asset
-
-    walk(c.get('measure'))
-    field = c['measure'].get('field') if isinstance(c.get('measure'), dict) else None
-    found = FIELD_COMPONENT.match(field) if isinstance(field, str) else None
-    part = next((g for g in found.groups() if g), None) if found else None
-    if part and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{2,120}', part):
-        names.add(part)
-    play = c.get('play')
-    if isinstance(play, dict):
-        walk({'map': play.get('map')})
-        for i in play.get('inputs') or []:
-            if isinstance(i, dict):
-                walk(i.get('teleport_to'))
-    return names, paths
+    """The literal names and /Game paths a probe check depends on (wildcards skipped: they match by pattern): its
+    measure's (measure_names) and its play's (play_refs, the controls it presses aside)."""
+    names, paths = measure_names(c.get('measure'))
+    refs = play_refs(c.get('play'))
+    return names | refs['names'], paths | refs['paths']
 
 
 def _has_name(repo, commit, name, tree):
@@ -1690,30 +1740,69 @@ def _has_name(repo, commit, name, tree):
     return _git(repo, 'grep', '-q', '-I', '-w', '-F', name, commit, '--', 'Source', 'Config').returncode == 0
 
 
+def stated(text, name):
+    """Whether the instruction (and title) `text` states `name`: the words themselves, or a map path or its level's
+    name, as whole words (any case)."""
+    words = {name, name.rsplit('/', 1)[-1]} if name.startswith('/Game/') else {name}
+    return any(re.search(rf'(?<![A-Za-z0-9_]){re.escape(w)}(?![A-Za-z0-9_])', text, re.I) for w in words)
+
+
 def reference_only_names(repo, t):
-    """[(check, name)] of required probes that name something the reference has and the start doesn't (a class, tag,
-    widget, component, mesh, map or asset the thread itself created). Engine names are in neither tree and pass."""
+    """[(where, name)] of what a required check or the task's play_map names that the reference has and the start
+    doesn't (a class, tag, widget, component, mesh, member, map, map option, flag or asset the thread itself created):
+    a required probe's measure and play, a required judge's own plays, and play_map. A map, or a control a click, tap
+    or drag presses, passes when the instruction (or the title) states it, as a ticket names a new screen's words or
+    where QA plays a new level; a select's name, a member, an option or a flag never does (write-tasks sections 4
+    and 5). `where` is `check <name>` or `play_map`. Engine names are in neither tree and pass."""
     seed = t.get('seed') if isinstance(t.get('seed'), dict) else {}
     start, ref = seed.get('commit'), seed.get('reference')
     if not (start and ref):
         return []
     trees = {k: _git(repo, '-c', 'core.quotepath=off', 'ls-tree', '-r', '--name-only', k).stdout.decode('utf-8', 'replace')
              .splitlines() for k in (start, ref)}
+    text = ' '.join(x for x in (t.get('title'), t.get('instruction')) if isinstance(x, str))
     found, cache = [], {}
+
+    def only_ref(n):
+        if n not in cache:
+            cache[n] = _has_name(repo, ref, n, trees[ref]) and not _has_name(repo, start, n, trees[start])
+        return cache[n]
+
+    def path_only_ref(p):
+        rel = 'Content/' + p[len('/Game/'):] + '.'
+        return any(x.startswith(rel) for x in trees[ref]) and not any(x.startswith(rel) for x in trees[start])
+
+    def judge(where, names, paths, flags=(), said=()):
+        found.extend((where, p) for p in sorted(paths) if path_only_ref(p) and not stated(text, p))
+        found.extend((where, n) for n in sorted(names) if only_ref(n))
+        found.extend((where, n) for n in sorted(flags) if only_ref(n))
+        found.extend((where, n) for n in sorted(said) if only_ref(n) and not stated(text, n))
+
+    pm = t.get('play_map')
+    if isinstance(pm, str):
+        names, paths = set(), set()
+        _walk_names({'map': pm}, names, paths)
+        judge('play_map', names, paths, map_flags(pm))
     for m in t.get('milestones') or []:
         for c in (m.get('checks') or []) if isinstance(m, dict) else []:
-            if not (isinstance(c, dict) and c.get('kind') == 'probe' and c.get('required', True)):
+            if not (isinstance(c, dict) and c.get('required', True)):
                 continue
-            names, paths = probe_names(c)
-            for p in sorted(paths):
-                rel = 'Content/' + p[len('/Game/'):] + '.'
-                if any(x.startswith(rel) for x in trees[ref]) and not any(x.startswith(rel) for x in trees[start]):
-                    found.append((c.get('name'), p))
-            for n in sorted(names):
-                if n not in cache:
-                    cache[n] = (_has_name(repo, ref, n, trees[ref]), _has_name(repo, start, n, trees[start]))
-                if cache[n][0] and not cache[n][1]:
-                    found.append((c.get('name'), n))
+            where = f"check {c.get('name')}"
+            if c.get('kind') == 'probe':
+                names, paths = measure_names(c.get('measure'))
+                plays = [c.get('play')]
+            elif c.get('kind') == 'judge':
+                names, paths, plays = set(), set(), list(c.get('plays') or [])
+            else:
+                continue
+            flags, said = set(), set()
+            for play in plays:
+                refs = play_refs(play)
+                names |= refs['names']
+                paths |= refs['paths']
+                flags |= refs['flags']
+                said |= refs['said']
+            judge(where, names, paths, flags, said)
     return found
 
 

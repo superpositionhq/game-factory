@@ -454,8 +454,15 @@ the probe reads nothing or the play ends up somewhere else. Select what the thre
 is (`has`, `near`, `ui` with a `rect` or text, `drawn`, `lit`, `changed`; a part's direction by `components`
 `world_yaw`/`world_pitch` with `near`, not `world_yaw:<Component>`). Select a thing the task asks to move by what it
 is, never by where the old one was: no `near` sphere around its place at the start, which a correct build moves it
-out of. `validate-game.py` refuses a required probe that names something the start lacks and the reference has, a
-component in a field such as `world_yaw:<Component>` included, and you check the rest yourself:
+out of. `validate-game.py` refuses a name the reference has and the start lacks wherever a required check or the
+task's `play_map` uses it: a required probe's selects, a component in a field such as `world_yaw:<Component>` or a
+`prop:` member, and every play of a required probe or judge: a click's, tap's or drag's control, a `teleport_to`,
+`face`, `pin`, `damage`, `set` or `where` select or member, a shot's `when`, a map it opens and its URL options and
+`args` flags. A map, or a control a click, tap or drag presses by its name or its words, passes when the instruction
+or the title states it (a new screen's words quoted, where QA plays a new level); a select's name, a member, a URL
+option or a flag never does (section 4, "Scenario options and flags"). It finds names in the start's and the
+reference's file names and their text under `Source/` and `Config/`, so a name kept only inside a binary asset (a
+widget inside a `WBP_` asset) escapes it: you check the rest yourself:
 
 - **Prefer what the player sees.** On-screen text is read with a loose `match` (the number, the word the ticket uses),
   never the reference's whole string; an exact string only when the instruction quotes it. A thing is found by what it
@@ -957,8 +964,8 @@ Read each task this way:
   floor, so aim every task at hard), and `tags` hold `long-thread`.
 - `limits`: 400 turns, 480 min, 150 USD, 1800 s tool timeout unless the task needs more; a long thread needs room.
 - `tools/validate-game.py` fails a task that is `easy`, has no `seed.reference`, has fewer than 3 required probes
-  outside `still_works`, or has a required probe that names a class, tag, map or asset the reference has and the start
-  doesn't (section 5). **The size of the span is a soft bar (owner, 2026-11-18): it warns and never rejects.** The
+  outside `still_works`, or has a required check (a probe, its play, a judge's plays) or a `play_map` that names
+  something the reference has and the start doesn't, as section 5 lists. **The size of the span is a soft bar (owner, 2026-11-18): it warns and never rejects.** The
   validator warns when the reference changes fewer than 5 game files, fewer than 100 code lines or fewer than 2 systems
   against its start, and for a seed on main when fewer than 4 game-changing commits lie from `seed.commit` to
   `seed.reference`. For a new task these are still floors, not targets: pick the longest threads the history has, and
@@ -1052,7 +1059,7 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 | a second click on Continue or Retry, after the first had worked, missed: the button was gone | a play never repeats an action that already happened |
 | a threshold was picked to make the reference pass | from the instruction's own number, or calibrated or relative to the start |
 | the instruction asked for something the reference itself doesn't do, or does where no play reaches | the reference does every ask in a place a play can reach (section 2) |
-| a probe named a class, tag or map only the reference had, so a fair build that named it otherwise read as absent | select what the thread creates by what it does or where it is; the validator refuses a reference-only name |
+| a probe or a play named a class, tag, widget, member, map, option or flag only the reference had, so a fair build that named it otherwise read as absent or ended somewhere else | select what the thread creates by what it does or where it is, press a control by the words it shows; the validator refuses a reference-only name in required checks and their plays (section 5) |
 | a thing the task asks to move was selected `near` its place at the start, and a correct build moved it out of the sphere | select it by what it is, never by where the old one was |
 | a run wrote the feature but never ran the game to see it, and the task had no probe of the moment | a play that triggers each piece of feedback, and a probe of what the player sees then |
 | a judge's pictures came from views the game itself lists, so a build could dress only those spots | the task's own tour: `map`, `teleport_to` what the build made, `view`, named `shot` inputs (docs/task-probes.md, section 1.1); never a view list from the game's files |
