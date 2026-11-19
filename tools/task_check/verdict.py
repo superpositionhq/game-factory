@@ -32,6 +32,8 @@ A task is VALID when
   `required` or not;
 - a no-op scores zero (owner, 2026-11-04): no check the start passes carries weight. The cloud's score is the weighted
   share of checks passed, so build, boot and still-works checks and anything else true of the start take `"weight": 0`.
+  A weighted log_absent or file_exists is measured on the start for it, and a weighted package check is taken to pass
+  on a start that builds (local only: the checker never packages), as the cloud's no-op grades every check.
 Judges (judge, code_judge) and packaging never take part, and neither do the retired actions_judge checks and
 trace probes an older task still carries."""
 

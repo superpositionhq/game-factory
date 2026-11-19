@@ -14,7 +14,7 @@ from unittest import mock
 
 from helpers import NO_FIX, FakeProject, measuring, probe, ran, side, task_with
 
-from task_check import check, cli, probes, seeds, tasks, unreal
+from task_check import check, cli, probes, seeds, tasks, unreal, verdict
 from task_check.digest import canonical_digest
 
 WALLS = {"class": "SCCastlePiece", "tag": "Wall"}
@@ -139,6 +139,28 @@ class Grades(unittest.TestCase):
         start = grade(task, "start", side("start", FakeProject(measuring(-5)), task))
         self.assertEqual([c["passed"] for c in start["checks"]], [True, True, True, False])
         self.assertEqual(start["checks"][0]["detail"], "not asked: the start is checked on its probes")
+
+    def test_a_no_op_is_graded_on_its_weighted_log_absent_file_exists_and_package_checks(self):
+        """The cloud's no-op is graded on every check, so what of those the start passes would earn it reward
+        (Li, 2026-11-19); weight 0 ones earn nothing and aren't asked."""
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "start").mkdir()
+            (Path(tmp) / "start" / "NOTES.md").write_text("x", encoding="utf-8")
+            task = task_with(probe(), {"kind": "log_absent", "name": "no_errors", "pattern": "Error"},
+                             {"kind": "file_exists", "name": "notes_left", "glob": "*.md", "weight": 2},
+                             {"kind": "file_exists", "name": "guard", "glob": "*.md", "weight": 0},
+                             {"kind": "package", "name": "packages"})
+            start = FakeProject(measuring(-5), folder=Path(tmp) / "start")
+            sides = (side("start", start, task), side("reference", FakeProject(measuring(5)), task))
+            own = grade(task, "start", *sides)
+            rows = {r["name"]: r for r in own["checks"]}
+            self.assertTrue(rows["no_errors"]["passed"])
+            self.assertEqual(rows["no_errors"]["detail"], "0 matching log line(s)")
+            self.assertEqual(rows["notes_left"]["detail"], "1 file(s) match")
+            self.assertEqual(rows["guard"]["detail"], "not asked: the start is checked on its probes")
+            self.assertEqual(rows["packages"]["detail"], check.NOT_PACKAGED)
+            self.assertEqual(verdict.noop_score(task, own), (0.8, ["no_errors", "notes_left", "packages"]))
+            self.assertIn(60, [p["seconds"] for p in start.plays], "the start booted 60 s for the log")
 
     def test_a_boot_and_its_log(self):
         task = task_with({"kind": "boot", "name": "boots_clean", "seconds": 10},

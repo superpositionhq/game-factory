@@ -85,7 +85,8 @@ has.
 4. Checks the reference as if it were a solution: the task's checks in order (a check whose `needs` failed doesn't run
    and fails): build, boot (a play of `seconds` that must end without a crash or fatal error), `log_absent`,
    `file_exists`, and every probe against its threshold.
-5. Checks the start on its probes.
+5. Checks the start on its probes, and on its weighted `log_absent`, `file_exists` and `package` checks for the
+   no-op's score (below).
 6. Writes the result and deletes the scratch copies (unless `--keep`).
 
 ### The plays
@@ -160,7 +161,10 @@ A task is **VALID** when all of this holds:
   before the change, or the probe is broken and would fail every correct solution. A still-works probe the start
   measured nothing for (its play crashed, which is often the task's own bug) doesn't count against it;
 - a no-op scores zero: no check the start passes carries weight, so build, boot and `still_works` checks take
-  `"weight": 0`. Judges aren't measured here, so a judge's weight isn't covered by this rule;
+  `"weight": 0`. As the cloud's no-op is graded on every check, a weighted `log_absent` or `file_exists` is measured
+  on the start too (a 60 s boot of the start for the log), and a weighted `package` check counts as passed on a start
+  that builds (local only: the checker never packages). Judges aren't measured here, so a judge's weight isn't
+  covered by this rule;
 - no check holds a **task error**, on either side, `required` or not: a check no version of the game can pass. One is
   a probe whose selector reads nothing in the reference's play (no row matched, or none had the field; a `count`, or a
   `widgets` reading combined by count, any, all or sum, reads 0 of nothing, which is an answer unless 0 fails the

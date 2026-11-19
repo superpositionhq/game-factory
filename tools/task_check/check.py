@@ -76,6 +76,9 @@ def own_play(play, project):
 
 JUDGES = ("judge", "code_judge", "actions_judge")   # actions_judge: retired, still skipped in older tasks
 NOT_JUDGED = "not asked: judges never decide a task check"
+# a weighted package check on the start (local only): the checker never packages, and a start that builds is taken to
+# package as the cloud's no-op of it does, so the no-op is held to earn nothing from it (verdict.noop_score)
+NOT_PACKAGED = "taken to pass: the checker doesn't package, and a start that builds is taken to package (local only)"
 SKIP = {"Binaries", "Intermediate", "Saved", "DerivedDataCache", ".git", ".vs"}  # left out of file_exists
 
 
@@ -630,9 +633,14 @@ class Grade:
         if self.mode == "start":
             if kind == "build" and check["fails_at_start"]:
                 return (True, "the start built") if self.start.built() else (False, self.start.why_unbuilt())
-            if kind != "probe":
+            if kind == "package" and check["weight"] > 0:  # the cloud's no-op packages the start: what it earns
+                return True, NOT_PACKAGED
+            # the cloud's no-op is graded on every check, so a weighted log_absent or file_exists the start passes
+            # earns it reward (verdict.noop_score): those are measured on the start too
+            if kind == "probe":
+                return self.probe_check(check)
+            if kind not in ("log_absent", "file_exists") or check["weight"] <= 0:
                 return True, "not asked: the start is checked on its probes"
-            return self.probe_check(check)
         side = self.side
         if kind == "build":
             r = side.build()
