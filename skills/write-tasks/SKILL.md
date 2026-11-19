@@ -597,6 +597,27 @@ of approaches. They have no basis yet to choose one. Start the investigation in 
    it says happened. Present it as what was flagged, a hypothesis to test, not as the cause: say plainly that it may
    be wrong, may be out of date, or may be one of several things wrong with the task.
 
+7. **The words.** Two short lists, so the person can tell them apart. *Words from the game*: every object, place,
+   creature or mechanic you will mention, with what it is and where ("the wireless: a radio on the workshop bench;
+   pressing it makes a noise", "the cot: a folding bed by the boiler room door"). *Words from the task*: the terms of
+   this work you will use, each in a few words (start, reference, check, play, the task check, no-op).
+
+**Write every message so someone who has never seen the game can follow it (owner, 2026-11-18).** The person reads
+your messages as you work, and a word they can't place stops them following: "use the wireless" could be an object
+in the game or a term of ours. In everything you write to them, the brief and every update after it:
+
+- Say what a thing is whenever it has not been named for a while: "the wireless (the radio on the bench)". Don't
+  rely on a list given many messages ago.
+- Make it plain whether a word is from the game or from the task: "the creature's state stays 'roaming'" says a
+  value in the game; "the check `comes_to_noise`" says one of the task's checks, and say once what that check tests
+  ("`comes_to_noise`: after the radio is played, the creature must reach the workshop bench within 25 s").
+- Never give a bare name from the code, a file or a check as if the person knew it (a class, a property, a commit,
+  a probe field): say what it is or does in the game, and give the name after it only if they will need it.
+- Say what happened in the game, then what it means for the check: "the creature walked to the boiler room door and
+  stopped, because a bed blocks the doorway; so the check that it reaches the bench fails on both sides", not
+  "comes_to_noise fails, nav path partial".
+- Short plain sentences. No shorthand of your own invention, no abbreviations they were not given.
+
 After every task check run, give a short table of every check, pass or fail on the start and on the reference, and
 one line on what you will try next, and carry on. Use the names from the brief, so the person can follow and step
 in. Stop for the person only where this skill says to: a judge's or a `seen` probe's pictures to score, a play you
