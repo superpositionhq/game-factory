@@ -633,6 +633,60 @@ against what was asked. Every rule of this skill holds as for a new task: a visu
 play or in the game, never by easing the check (above, "The check asks no model"), and nothing is made easier
 (section 1).
 
+**Finding the person's returned tasks (owner, 2026-11-19).** We share two lists, each a Google Sheet the person
+downloads as a CSV into their Downloads folder (File > Download > Comma-separated values); you cannot open the
+sheets yourself. The *assignments list* says who has which task (Task ID, Game, Task name, Owner, Status). The
+*tasks list* has every returned task, not only theirs, with what is wrong, our check's detail and the two download
+links (Game, Task, Task name, Task ID, Version, What is wrong, Detail (internal), Game download link, Tasks download
+link, Links expire). Never join them by hand or by reading the files: run
+
+`python <GF_ROOT>\game-factory\tools\returned-tasks.py --owner "<their name>"`
+
+and, for one game in full with its links, add `--game "<title>"`. It takes the newest file of each kind, matches by
+Task ID and prints only that person's open tasks. Ask the person for their name as it is written in the Owner column
+when they have not given it; if the tool finds no such owner it lists the names in the file.
+
+- A task is theirs when its Owner is their name, and open while its Status is not `Unassigned`, `Submitted` or
+  `Approved`. The person sets their own rows in the sheet, not you: `In progress` when they take a task on,
+  `Submitted` when they have sent the game back, `Unassigned` when they don't want it. We set `Needs rework` and
+  `Approved`. Remind them to set `In progress` when you set a game up, and `Submitted` when you pack it.
+- A task under their name that is not in the tasks list is no longer needed (it was fixed another way): the tool
+  lists these. Say so and do no work on it, even part-way through.
+- More tasks can appear under their name than they were first sent: when we add tasks to a game someone is working
+  on, that person gets them. The lists, as downloaded now, are what counts.
+- The download links stop working 12 hours after the sheet was refreshed, and the tool says how old each file is. A
+  refused download means the links have expired: ask the person to download the tasks list again, then run the tool
+  again. Don't ask us for links.
+- The tasks list also names who built each game and their email. That is not for the person or for you: the tool
+  leaves it out, and you never read it from the file or repeat it.
+
+**Setting up a returned game (owner, 2026-11-19).** One game per session, and never a game another session of the
+same person is working on: two sessions in one game overwrite each other. All of a game's tasks are fixed in that
+game's session, one after another. Everything lives under `<GF_ROOT>\task-fixes`:
+
+1. Run the tool for the game (`--game`) and show the person its tasks.
+2. Download the game's two zips into `task-fixes\zips` and unzip each into its own folder. Use our download even
+   for a game the person built: its commit ids and task files are newer than the copy on their PC, and no other copy
+   of the game on the PC is used.
+3. Restore the game's repo from the game zip into `task-fixes\<game>`, as a normal clone on main with its LFS files
+   (the game zip's own README files say how; cloning its `History` bundle keeps what was delivered as `origin`,
+   which the hand-back relies on). `<game>` is `seed.game` in the tasks zip's `task.json` files, and the folder is
+   named exactly that. If `task-fixes\<game>` already exists, stop and ask: it may hold work in progress.
+4. Give the repo its tasks branch (section 0) as a worktree at `task-fixes\<game>-tasks`, holding the tasks from the
+   tasks zip, not the ones in the game zip. Each task comes as two files: merge them into one task file as the game
+   zip's `Tasks\README.md` says.
+5. Validate the game (section 6) and show the person any task error.
+6. Brief the person on the game and their tasks ("Brief the person", below). Do not edit the game before that.
+
+**Downloading the rest of the person's games.** While the first game is being fixed, another session can fetch the
+zips of their other open games into `task-fixes\zips`: run the tool without `--game` for the list and with `--game`
+for each game's links, skip zips already there, and unzip or set up nothing. Keep 100 GB free on that drive: check
+before each download and stop before one would go under it. Note a refused link and carry on; at the end say which
+games are downloaded, which are left and which links had expired.
+
+**Nothing under `task-fixes` is deleted until we say a game is approved.** Not the zips, the repo, the tasks
+worktree or `.task-checks`: we check every fix, and some come back as `Needs rework`, fixed in the same folder.
+
 **Brief the person, then go straight on (owner, 2026-11-18).** The person steering the fix may never have seen this
 game. As your first message on a task, write this in the chat, in plain words and without task jargon. It is context
 for them to read while you work, not a question: do not wait for an answer, ask whether to proceed or offer a choice
@@ -648,8 +702,8 @@ of approaches. They have no basis yet to choose one. Start the investigation in 
 4. **The task.** Its instruction in full, what the game does at the start, and what the reference is meant to change.
 5. **The checks.** Each check of the task in one line: what its play does, what it measures or shows, and its
    threshold.
-6. **What may be wrong.** The reason the return gives and, where the return has one, its detail (the `Detail` column
-   of the list of returned tasks), in the return's own words and then in plain words: which check it names and what
+6. **What may be wrong.** The reason the return gives and, where the return has one, its detail (the `Detail (internal)`
+   column of the tasks list, which the tool prints as Detail), in the return's own words and then in plain words: which check it names and what
    it says happened. Present it as what was flagged, a hypothesis to test, not as the cause: say plainly that it may
    be wrong, may be out of date, or may be one of several things wrong with the task.
 
