@@ -1440,8 +1440,18 @@ def task_bar_errors(levels):
     return errs
 
 
+def report_thread_span(rep, area, label, repo, seed, on_main):
+    """The size of a task's span is a soft bar (owner, 2026-11-18): each shortfall is a warning and never rejects the
+    task. A returned task whose start and reference were rebuilt around a fix of the game is often smaller than the
+    thread it was written from."""
+    for e in thread_span_errors(repo, seed, on_main):
+        rep.warn(area, f'{label}: {e} (write-tasks section 1: a long thread is the aim; the size is a soft bar, '
+                       'so this does not reject the task)')
+
+
 def thread_span_errors(repo, seed, on_main):
-    """Why the span from seed.commit to seed.reference is too short: game files changed, and on main the commits."""
+    """Why the span from seed.commit to seed.reference is short: game files changed, and on main the commits. The
+    caller reports these as warnings: the size of a span is a soft bar, not a rejection."""
     start, ref = seed.get('commit'), seed.get('reference')
     if not (start and ref):
         return []
@@ -1596,8 +1606,7 @@ def check_repo_tasks(rep, repo, files=None):
         if all(seed.get(k) and has_commit(seed[k]) for k in ('commit', 'reference')):
             on_main = all(_git(repo, 'merge-base', '--is-ancestor', seed[k], 'HEAD').returncode == 0
                           for k in ('commit', 'reference'))
-            for e in thread_span_errors(repo, seed, on_main):
-                rep.error(a, f'{label}: {e} (write-tasks section 1: only long threads of multiple edits)')
+            report_thread_span(rep, a, label, repo, seed, on_main)
             for check, name in reference_only_names(repo, t):
                 rep.error(a, f'{label}: check {check} names {name}, which only the reference has: another fair build '
                              'names it otherwise; select by what it does or where it is (write-tasks section 5)')

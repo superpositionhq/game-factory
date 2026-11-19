@@ -77,7 +77,7 @@ place, in minutes, however long the original took; such a task is worthless to u
 rejected. Four is the floor, not a target: pick threads that make every task hard, and call a task medium only when
 its thread is.
 
-A thread qualifies only when all of these hold (the validator enforces the numbers, section 6):
+A thread qualifies only when all of these hold (the validator measures the numbers, section 6):
 
 1. **Many edits.** From `seed.commit` to `seed.reference`, at least 4 commits change the game itself (`Source/`,
    `Content/`, `Config/`, `Plugins/`, the `.uproject`), and the reference changes at least 5 game files against the
@@ -577,6 +577,25 @@ against what was asked. Every rule of this skill holds as for a new task: a visu
 play or in the game, never by easing the check (above, "The check asks no model"), and nothing is made easier
 (section 1).
 
+**You may change the game to fix a returned task, and the new commits are its reference (owner, 2026-11-18).** A
+check that fails on the reference is fixed in its play first: its staged state, its inputs and their timing, the
+moments of its shots, until the play gets the game into the state the check needs on the start and on the reference.
+That is the cheapest fix, so try it first; ask the person to watch the play run and say what they see ("it walked into
+the wall", "it never pressed the radio"). When the play is not the cause, the game is: the thing the instruction asks
+for was never finished, or something in the game stops it (a prop in a doorway, a widget over a button, a level with
+no path between two rooms). Then fix the game. You have authority to write that fix now, as new work, and to commit
+it: a reference does not have to be something the game's history already did. Commit the fix on main (many small
+commits, as for any work on the game), then give the task a start and a reference that hold it ("Starts on the
+engine", section 2: S and R on `starts/<task name>`, R with the fix and S without it), and run the task check again.
+"No commit in the game's history changes this" is never a reason to stop, to narrow a check or to drop the task: make
+the commit. Keep the fix to what the instruction asks, and add nothing it doesn't ask for. A fix that also changes
+what another task of the game measures is that task's business too: say so in your note, and leave that task's files
+alone unless the return lists it.
+
+**A returned task is never "not fixable" for its size.** Its start and reference, rebuilt around a fix, are often
+smaller than the thread the task was written from, and the validator only warns about the size of a span (section 6).
+Give the task's own numbers in your note (`tools/thread-stats.py`) and go on with the fix.
+
 Each of these is a mistake in a check, to avoid when writing it: a play staged otherwise than with the steps the
 instruction gives a player; a window or a judge's frames away from the moment the event happens; a selector aimed at
 something other than what the instruction names; a click by a name the player never sees where on-screen text or a
@@ -685,11 +704,14 @@ Read each task this way:
   floor, so aim every task at hard), and `tags` hold `long-thread`.
 - `limits`: 400 turns, 480 min, 150 USD, 1800 s tool timeout unless the task needs more; a long thread needs room.
 - `tools/validate-game.py` fails a task that is `easy`, has no `seed.reference`, has fewer than 3 required probes
-  outside `still_works`, or whose reference changes fewer than 5 game files, fewer than 100 code lines or fewer than 2
-  systems against its start; for a seed on main it
-  also fails fewer than 4 game-changing commits from `seed.commit` to `seed.reference`, and any required probe that
-  names a class, tag, map or asset the reference has and the start doesn't (section 5). These are floors, not targets:
-  pick the longest threads the history has. It also refuses every shape the cloud grader refuses: a select that names
+  outside `still_works`, or has a required probe that names a class, tag, map or asset the reference has and the start
+  doesn't (section 5). **The size of the span is a soft bar (owner, 2026-11-18): it warns and never rejects.** The
+  validator warns when the reference changes fewer than 5 game files, fewer than 100 code lines or fewer than 2 systems
+  against its start, and for a seed on main when fewer than 4 game-changing commits lie from `seed.commit` to
+  `seed.reference`. For a new task these are still floors, not targets: pick the longest threads the history has, and
+  don't write a task you know is under them. A warning on a task that came back is no reason to stop, to call the task
+  unfixable or to drop it ("Fixing a task that came back", section 5): say the numbers in your note and carry on.
+  It also refuses every shape the cloud grader refuses: a select that names
   nothing to pick by, a window outside 0-300 s, `to_angle` on a field that isn't an angle, `match` on a field that
   holds no text, a regular expression that doesn't compile, a wheel or mouse move that moves nothing, and the like;
   its message says which.
