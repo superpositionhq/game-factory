@@ -1071,7 +1071,116 @@ half (`milestones`: probes, rubrics, questions, `log_absent` patterns; and `seed
 | a play that reads a save ran before the play that writes it and read nothing (a later level not yet unlocked, an empty profile) | the reading play names its writers in `after`; never rely on the grader's order (docs/task-probes.md, 1.1) |
 | a brief rejected by a content filter (injury wording) | neutral technical words: mesh, bones, pose, hit, reaction |
 
-## 9. Examples
+## 9. Example: one full task
 
-Older tasks on a game's tasks branch show the file format and probe style only; most are single fixes that no longer
-meet the bar (section 1). Rework such a task into its whole thread or remove it.
+One task that follows every rule of this skill, for a made-up game, Lantern Hollow (a third-person night game). Its
+thread is a `correction`: four rounds of playtest directions about night play, answered over four commits in the
+lantern, the character, a new HUD and the camera (C++, config and a level). The older tasks on a game's tasks branch
+are no model: most are single fixes that no longer meet the bar (section 1); rework such a task into its whole thread
+or remove it. `tools/tests/test_validate_game.py` validates this example against a small repo of the game, so it stays
+valid as the rules change.
+
+- **The brief** (section 3) is observation only: a numbered playtest report of what the player meets, the wanted
+  outcome after each, the looks asked for, and the keeps. It names no class, file or tag, and no cause.
+- **`play_map`** (section 4) opens the village at night with `Scenario=2`, an option the start commit already parses.
+- **Four outcome probes, weight 2 each** (sections 1 and 5), one per reported problem, each reading what the player
+  meets in a play that reaches the moment: the brightness the player sees 3 m ahead (calibrated: a continuous
+  quantity the brief gives no number for), the sprint speed while Left Shift and W are held (the brief's own number:
+  at the start sprinting is walking speed, so 1.5 times the start is 1.5 times walking), the bottom of the screen
+  updating while sprinting (`ui` by a rect, so any build's readout counts, relative to the start), and the camera never
+  occluded on the cellar stairs (a fact, a literal). The cellar play reaches the stairs by a tag the start has.
+- **`looks_as_asked`** (section 5): one required item per look sentence of the brief, in the brief's own words, with
+  plays that show the lit path and the readout on screen; `before` and `reference` for like-for-like pictures.
+- **`still_works`**: one check per keep the brief names, every one weight 0: the coin counter (a probe, a literal),
+  walking (a probe, relative to the start: a keep never calibrates) and the square's look (a required judge with
+  `before`, its item the keep sentence's words, its play a `teleport_to` the well the start has).
+- **Nothing only the reference has**: every select, map and option exists at `seed.commit`; the new
+  stamina HUD is read by where it is on screen, never by its widget's name.
+
+```json
+{
+  "name": "lantern-hollow-corr-night-lantern-and-sprint",
+  "title": "Night play: the lantern, sprinting, stamina and the cellar camera",
+  "instruction": "Lantern Hollow is a third-person night game: the player walks a village and its cellars carrying a lantern and collects coins. Controls: W, A, S and D walk, the mouse turns the view, Left Shift sprints. QA plays the village at night.\n\nPlaytesters report four problems:\n1. The lantern lights almost nothing: a few steps ahead of the player the path is black.\n2. Holding Left Shift while carrying the lantern is no faster than walking. Sprinting should be at least one and a half times as fast as walking.\n3. Nothing shows how much sprint is left, so players run dry without warning. While the player sprints, a stamina readout shows at the bottom of the screen and updates as the stamina runs down.\n4. Walking down the cellar stairs, the camera ends up inside the wall and the player disappears from view. The player should stay in view all the way down.\n\nHow it should look: the lantern's light falls as a warm amber pool on the ground ahead, not a white glare. The stamina readout uses the same amber style as the coin counter.\n\nWhat must not change: the coin counter in the top-left corner still shows the coins carried; walking with W, A, S and D works as before; the village square keeps its look, lamp-lit houses around the well.",
+  "difficulty": "hard",
+  "tags": ["long-thread"],
+  "engine": "5.7",
+  "seed": {"game": "lantern-hollow", "kind": "correction",
+           "commit": "3f1c9a0b7d2e4f6a8b0c1d2e3f4a5b6c7d8e9f01",
+           "reference": "9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d"},
+  "play_map": "/Game/Maps/L_Village?Scenario=2",
+  "limits": {"max_turns": 400, "max_minutes": 480, "max_usd": 150, "tool_timeout_seconds": 1800},
+  "milestones": [
+    {"name": "builds", "checks": [{"name": "editor_builds", "kind": "build", "weight": 0}]},
+    {"name": "boots", "checks": [{"name": "boots_clean", "kind": "boot", "seconds": 60, "weight": 0,
+                                  "needs": ["editor_builds"]}]},
+    {"name": "fixed", "checks": [
+      {"name": "lantern_lights_path", "kind": "probe", "required": true, "weight": 2, "needs": ["boots_clean"],
+       "describe": "At night, the path a few steps ahead of the player is lit by the lantern: the brightness the player sees 3 m ahead of the camera.",
+       "play": "look",
+       "measure": {"probe": "light", "point": {"camera": true, "forward": 300}, "field": "brightness",
+                   "window": [5, 18], "agg": "mean"},
+       "expect": {"op": ">=", "calibrate": 0.5}},
+      {"name": "sprint_is_faster", "kind": "probe", "required": true, "weight": 2, "needs": ["boots_clean"],
+       "describe": "Holding Left Shift and W with the lantern, the player runs at least 1.5 times as fast as at the start, where sprinting was no faster than walking.",
+       "play": {"name": "sprint_with_lantern", "seconds": 12,
+                "inputs": [{"t": 1.0, "key": "W", "press": true}, {"t": 2.0, "key": "LeftShift", "press": true},
+                           {"t": 9.0, "key": "LeftShift", "press": false}, {"t": 10.0, "key": "W", "press": false}]},
+       "measure": {"probe": "pawn", "field": "speed", "window": [3, 8], "agg": "max"},
+       "expect": {"op": ">=", "start_times": 1.5}},
+      {"name": "stamina_readout_updates", "kind": "probe", "required": true, "weight": 2, "needs": ["boots_clean"],
+       "describe": "While the player sprints, something shown at the bottom of the screen updates as the stamina runs down.",
+       "play": {"name": "sprint_with_lantern", "seconds": 12,
+                "inputs": [{"t": 1.0, "key": "W", "press": true}, {"t": 2.0, "key": "LeftShift", "press": true},
+                           {"t": 9.0, "key": "LeftShift", "press": false}, {"t": 10.0, "key": "W", "press": false}]},
+       "measure": {"probe": "ui", "select": {"rect": [0.2, 0.8, 0.8, 1.0]}, "field": "signature",
+                   "window": [3, 9], "agg": "changes"},
+       "expect": {"op": ">=", "start_plus": 2}},
+      {"name": "player_in_view_on_cellar_stairs", "kind": "probe", "required": true, "weight": 2,
+       "needs": ["boots_clean"],
+       "describe": "Walking down the cellar stairs, nothing comes between the camera and the player at any moment.",
+       "play": {"name": "down_cellar_stairs", "seconds": 12,
+                "inputs": [{"t": 0.5, "teleport_to": {"tag": "CellarStairs"}, "distance": 150},
+                           {"t": 1.0, "key": "W", "press": true}, {"t": 9.0, "key": "W", "press": false}]},
+       "measure": {"probe": "camera", "field": "occluded", "window": [1.5, 10], "agg": "max"},
+       "expect": {"op": "<", "value": 1}},
+      {"name": "looks_as_asked", "kind": "judge", "required": true, "weight": 1, "needs": ["boots_clean"],
+       "before": true, "reference": true,
+       "question": "Walking and sprinting at night with the lantern, does the game look the way the request asks?",
+       "rubric": [
+         {"key": "warm_amber_pool", "required": true,
+          "criterion": "The lantern's light falls as a warm amber pool on the ground ahead, not a white glare."},
+         {"key": "stamina_amber_style", "required": true,
+          "criterion": "The stamina readout uses the same amber style as the coin counter."}],
+       "plays": [
+         {"name": "lantern_path", "seconds": 10,
+          "inputs": [{"t": 1.0, "key": "W", "press": true}, {"t": 6.0, "key": "W", "press": false},
+                     {"t": 7.0, "shot": "lantern_ahead"}]},
+         {"name": "sprint_with_lantern", "seconds": 12,
+          "inputs": [{"t": 1.0, "key": "W", "press": true}, {"t": 2.0, "key": "LeftShift", "press": true},
+                     {"t": 9.0, "key": "LeftShift", "press": false}, {"t": 10.0, "key": "W", "press": false}]}]}]},
+    {"name": "still_works", "checks": [
+      {"name": "coin_counter_still_shows", "kind": "probe", "required": true, "weight": 0, "needs": ["boots_clean"],
+       "describe": "The coin counter in the top-left corner still shows a number.",
+       "play": "look",
+       "measure": {"probe": "ui", "select": {"kind": "text", "rect": [0, 0, 0.35, 0.15]}, "field": "text",
+                   "match": "\\d+", "of": "any", "window": [3, 18], "agg": "min"},
+       "expect": {"op": ">=", "value": 1}},
+      {"name": "walking_still_moves", "kind": "probe", "required": true, "weight": 0, "needs": ["boots_clean"],
+       "describe": "Walking with W, A, S and D still moves the player about as far as at the start.",
+       "play": "drive",
+       "measure": {"probe": "pawn", "field": "moved", "agg": "max"},
+       "expect": {"op": ">=", "start_times": 0.8}},
+      {"name": "square_unchanged", "kind": "judge", "required": true, "weight": 0, "needs": ["boots_clean"],
+       "before": true,
+       "question": "Seen from beside the well, does the village square look as it did?",
+       "rubric": [
+         {"key": "square_keeps_its_look", "required": true,
+          "criterion": "The village square keeps its look, lamp-lit houses around the well."}],
+       "plays": [
+         {"name": "village_square", "seconds": 8,
+          "inputs": [{"t": 0.5, "teleport_to": {"tag": "VillageWell"}, "distance": 800},
+                     {"t": 3.0, "shot": "square"}]}]}]}
+  ]
+}
+```

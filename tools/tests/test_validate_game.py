@@ -778,5 +778,38 @@ class ReferenceOnlyNames(unittest.TestCase):
         self.assertEqual(self.found(self.play({'t': 1, 'widget': 'StaminaBar', 'click': True}), required=False), [])
 
 
+class Example(unittest.TestCase):
+    """write-tasks section 9's full example task validates on a repo of its game: schema, the format's rules, the
+    long-thread bar, a no-op that earns nothing, seeds on main on UE 5.7, a span over the floors and no name only the
+    reference has. Only the game's task count (one task here) is short."""
+
+    def test_the_skills_example_task_is_valid(self):
+        skill = os.path.join(os.path.dirname(TOOLS), 'skills', 'write-tasks', 'SKILL.md')
+        with open(skill, encoding='utf-8') as f:
+            text = f.read()
+        section = text.split('## 9. Example', 1)[1]
+        task = json.loads(section.split('```json\n', 1)[1].split('\n```', 1)[0])
+        parent = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, parent, True)
+        repo, git, start, reference = make_game(parent, task['seed']['game'])
+        task['seed'].update(commit=start, reference=reference)
+        git('checkout', '-q', '--orphan', 'tasks')
+        git('rm', '-rq', '--cached', '.')
+        os.makedirs(os.path.join(repo, 'Tasks'))
+        with open(os.path.join(repo, 'Tasks', task['name'] + '.json'), 'w', encoding='utf-8') as f:
+            json.dump(task, f, indent=2)
+        git('add', 'Tasks')
+        git('commit', '-q', '-m', 'tasks')
+        git('checkout', '-q', '-f', 'main')
+        rep = vg.Report()
+        vg.check_repo_tasks(rep, repo)
+        problems = [(sev, m) for sev, _a, m in rep.items if sev != 'note']
+        self.assertEqual(problems, [('error', 'tasks: 1 task(s): a game ships at least 5 (write-tasks section 1)'),
+                                    ('error', 'tasks: 1 hard task(s): a game needs at least 4 hard tasks; the '
+                                              'others may be medium (write-tasks section 1)')])
+        self.assertEqual(vg.reference_only_names(repo, task), [])
+        self.assertEqual(len(vg.outcome_probes(task)), 4)
+
+
 if __name__ == '__main__':
     unittest.main()
