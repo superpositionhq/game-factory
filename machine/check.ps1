@@ -289,7 +289,7 @@ if ($Agents -contains 'codex') {
     }
     Try-Check 'Codex hooks' {
         $hp = Join-Path $CodexDir 'hooks.json'
-        $events = @('PostToolUse', 'Stop', 'UserPromptSubmit', 'SessionEnd')
+        $events = @('PostToolUse', 'Stop', 'SubagentStop', 'UserPromptSubmit', 'SessionEnd')
         $h = if (Test-Path $hp) { [IO.File]::ReadAllText($hp) | ConvertFrom-Json } else { $null }
         $wired = if ($h) { @(Get-WiredEvents $h $events) } else { @() }
         if ($wired.Count -ne $events.Count) { Add-Result FAIL 'Codex hooks' "$hp wires: $(if ($wired) { $wired -join ', ' } else { 'none' })" 'machine\bootstrap.ps1 -Agent codex (asks before installing them)'; return }
