@@ -787,8 +787,7 @@ in the game or a term of ours. In everything you write to them, the brief and ev
 After every task check run, give a short table of every check, pass or fail on the start and on the reference, and
 one line on what you will try next, and carry on. Use the names from the brief, so the person can follow and step
 in. Stop for the person only where this skill says to: a judge's or a `seen` probe's pictures to score, a play you
-have offered to show them ("Showing a play to the person", below), a task's scores before it is handed back
-("Asking the person for a task's scores", below), or a task you cannot fix.
+have offered to show them ("Showing a play to the person", below), or a task you cannot fix.
 
 **Never ask leave to do the next step of the job (owner, 2026-11-19).** Running the task check, running it again
 after a change, validating, building, committing your own change and moving on to the game's next listed task are
@@ -875,22 +874,14 @@ branch) or only its tasks; where everything is on disk (the game's folder, its t
 `.task-checks`); and anything you could not fix, with what you tried. Then pack it ("Handing a fixed game back",
 below); delete nothing, and push nothing unless they ask.
 
-**Asking the person for a task's scores (owner, 2026-11-19).** Before a game is handed back, each task you fixed
-needs four answers from the person (section 5's step "ask the person for each task's scores"; they go in
-`.task-checks\writer-scores.json`, and they are theirs to give, never yours to fill in). Someone who did not write
-the task has never been asked this, so ask once per game, all tasks together in one table, and say in plain words
-what each answer is for:
-
-- **Difficulty** (`hard` or `medium`): how hard this task would be for an AI agent to do from the instruction alone.
-  Say which the task is marked as now; it has to match.
-- **Quality** (1 to 5): how good a test this task is. 5 is a real, sizeable piece of work where every thing the
-  instruction asks for is checked and a correct solution would pass; 1 is thin, unfair or checks little.
-- **Minutes**: their guess at how long a strong AI agent would need to solve it. A rough number is fine.
-- **A one-line note**: anything a reviewer should know about the task, in a sentence.
-
-Give them what they need to answer: for each task, one line on what the agent has to do and how much of the game it
-touches, and what you changed in it. Do not suggest the numbers. These four are separate from scoring a judge's
-pictures, which is asked when the task check produces them.
+**A returned task keeps the scores it came with (owner, 2026-11-19).** Section 5 says to ask the person for each
+task's difficulty, quality, minutes and note before packaging. That is for the person who wrote the task. Someone
+fixing a task that came back did not write it and has no basis to rate it, so do not ask them, at the end or at any
+other time. Carry the four over unchanged from the task as it came (`difficulty_estimate`, `quality`,
+`minutes_to_solve_estimate` and `notes` in the delivery's `Checks\writer-scores.json`) into
+`.task-checks\writer-scores.json`. A task that came with no scores stays without them: do not make any up and do
+not ask; say in your note that it had none. Only the blind scores of a judge's or a `seen` probe's pictures are
+asked of the person, when the task check produces them, because those are about what the fixed game now shows.
 
 **Handing a fixed game back (owner, 2026-11-19).** One zip per game, made by the pack's own tool, never by hand: a
 zip of the game's folder is many gigabytes and leaves out what we need. When the person asks how to submit, send
