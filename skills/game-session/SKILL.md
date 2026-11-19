@@ -189,7 +189,9 @@ from `TakeDamage`. Key gameplay state is a
   invites dressing only those spots. A start option that puts the player somewhere (a scenario, a start point) is fine.
 - **Every state reachable by a scenario.** Each scenario option starts straight in the situation it shows, so a check
   reaches any moment in a short play from `play_map` options; no state reachable only after minutes of play or only
-  from the title menu.
+  from the title menu. A task's play may use a scenario option or flag only when it already exists at the task's start
+  commit; one that only the task's reference adds is never used (write-tasks, section 4, "Scenario options and
+  flags"). So add them as the game grows, not as part of a later fix.
 
 ## Names
 

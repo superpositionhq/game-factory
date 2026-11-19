@@ -269,6 +269,15 @@ start control the instruction names, by its on-screen text, and waits for the le
 direct way in for QA (the map and options QA plays), and the plays open that. Never a shortcut only the reference has:
 a URL option, a dev flag or a map its own code added (section 5).
 
+**Scenario options and flags: the start commit decides.** The game-session skill has every game build scenario start
+options (map URL options and command-line flags) so a check reaches a late state in a short play. A play (`play_map`,
+a play's `map` or `args`, a `map` travel) may start with an option or flag that exists at `seed.commit`: every fair
+build has it, so it is a fair way in. An option or flag that only the reference adds (the thread's own code made it)
+is never used, whatever the instruction says: another fair build parses no such option, and the play opens somewhere
+else. The two rules meet only here: where the thread itself changed how play reaches a moment (a night that now ends
+at dawn, waves that now build up), the play plays through to it in one play (section 5, "A play may last up to 1200
+seconds"), since an option that jumps there skips what is asked.
+
 ## 5. Milestones and checks: deterministic probes decide
 
 **Pass/fail is decided by checks the grader computes itself** (the owner, 2026-10-19): `build`, `boot`, `log_absent` and
