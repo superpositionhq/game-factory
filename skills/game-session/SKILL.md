@@ -297,6 +297,8 @@ never answer one yourself. Each is made against the design doc's feel intent: na
    emulator). Ask for it through the coordinator (or the person, when you work with them directly) and go on with
    other work while you wait. Until a round is recorded, the game is not complete: write no tasks and do not report it
    done.
+   This gates new games and new tasks only: fixing a returned or delivered task on an existing game is never blocked
+   by it (write-tasks, "Fixing a task that came back").
    - **What the feedback covers.** At least the feel: controls and response (each press does something at once, and
      what the player expects), movement and camera, feedback on each event (a hit, a pickup, damage, a win or a
      loss), difficulty and pacing, how readable the HUD and text are, and what is fun or boring. Each issue is one
