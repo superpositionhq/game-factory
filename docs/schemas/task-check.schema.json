@@ -333,6 +333,9 @@
         },
         "status": {
           "type": "string"
+        },
+        "folder": {
+          "type": "string"
         }
       },
       "required": [
@@ -371,6 +374,9 @@
           }
         },
         "status": {
+          "type": "string"
+        },
+        "folder": {
           "type": "string"
         }
       },

@@ -79,6 +79,10 @@ class PackageChecks(unittest.TestCase):
         self.commit('2026-11-17T10:30:00Z')
         self.deliver(self.task)
         self.result['task_digest'] = pc.canonical_digest(self.task)
+        # The record as the task check writes it, with the folder its pictures were saved in.
+        self.result['judges'] = {'looks_as_asked': {
+            'sides': {'start': ['look_01.png'], 'reference': ['look_01.png']}, 'blind': True, 'notes': [],
+            'status': 'answered', 'folder': 'repair-hud/judge-shots/looks_as_asked/'}}
         self.scores['tasks']['repair-hud']['judges'] = {
             'looks_as_asked': {'start': {'clear': 0}, 'reference': {'clear': 1}}}
         self.save_checks()
