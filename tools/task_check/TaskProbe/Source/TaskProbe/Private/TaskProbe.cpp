@@ -37,6 +37,10 @@
 #if PLATFORM_LINUX && WITH_EDITOR
 #include "ShaderCompiler.h"
 #endif
+#if PLATFORM_LINUX
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
 
 IMPLEMENT_MODULE(FDefaultModuleImpl, TaskProbe)
 
@@ -45,6 +49,66 @@ DEFINE_LOG_CATEGORY_STATIC(LogTaskProbe, Log, All);
 /** A play with sound (-TaskProbeSound) runs without -benchmark, which would turn the engine's audio off: the application
  *  counts as focused throughout, as -benchmark has it, so a game sees the same focus either way. */
 static bool AlwaysFocused() { return true; }
+
+#if PLATFORM_LINUX
+/** What a Linux machine with a mouse answers (FLinuxApplication::IsMouseAttached looks for /sys/class/input/mouse<N>). */
+static bool MouseAttached(const GenericApplication*) { return true; }
+#endif
+
+/** A play's machine has a mouse, as a player's has. On a Linux grader's VM no mouse device is
+ *  attached, so the platform application says none is (FLinuxApplication::IsMouseAttached), and the engine then answers
+ *  no mouse position at all: UGameViewportClient::GetMousePosition, so APlayerController::GetMousePosition, read false
+ *  wherever the plugin's cursor had moved the mouse, and a game reading the mouse from its player controller (a menu
+ *  painted on a canvas, hit boxes on the HUD) never saw the cursor or the click. Its answer is made the one a machine
+ *  with a mouse gives: the platform application's IsMouseAttached slot in its class's virtual table points at a
+ *  function that says so (the Itanium C++ ABI: a pointer to a virtual member holds its slot's offset in the table).
+ *  Nothing changes where a mouse is attached already (Windows, a desktop). */
+static void AttachMouse()
+{
+#if PLATFORM_LINUX
+	if (!FSlateApplication::IsInitialized())
+	{
+		return;
+	}
+	const TSharedPtr<GenericApplication> App = FSlateApplication::Get().GetPlatformApplication();
+	if (!App.IsValid() || App->IsMouseAttached())
+	{
+		return;
+	}
+	bool (GenericApplication::*Member)() const = &GenericApplication::IsMouseAttached;
+	struct FMemberPointer
+	{
+		uintptr_t Ptr;
+		ptrdiff_t Adj;
+	};
+	static_assert(sizeof(Member) == sizeof(FMemberPointer), "a pointer to a member function as the Itanium C++ ABI lays it out");
+	FMemberPointer Raw;
+	FMemory::Memcpy(&Raw, &Member, sizeof(Raw));
+#if PLATFORM_CPU_ARM_FAMILY
+	const bool bVirtual = (Raw.Adj & 1) != 0;  // AArch64: the virtual flag in adj, the slot's offset in ptr
+	const uintptr_t Offset = Raw.Ptr;
+#else
+	const bool bVirtual = (Raw.Ptr & 1) != 0;  // x86-64: ptr is 1 + the slot's offset
+	const uintptr_t Offset = Raw.Ptr - 1;
+#endif
+	if (!bVirtual || Offset % sizeof(void*) != 0)
+	{
+		UE_LOG(LogTaskProbe, Warning, TEXT("TaskProbe: no mouse attached, and its answer couldn't be changed (not a virtual slot)"));
+		return;
+	}
+	void** Slot = *reinterpret_cast<void***>(App.Get()) + Offset / sizeof(void*);
+	const uintptr_t Page = (uintptr_t)sysconf(_SC_PAGESIZE);
+	void* Start = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(Slot) & ~(Page - 1));
+	if (mprotect(Start, Page, PROT_READ | PROT_WRITE) != 0)
+	{
+		UE_LOG(LogTaskProbe, Warning, TEXT("TaskProbe: no mouse attached, and its answer couldn't be changed (the table is read only)"));
+		return;
+	}
+	*Slot = reinterpret_cast<void*>(&MouseAttached);
+	UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: the platform said no mouse is attached; it now says %s, as a player's machine does"),
+		App->IsMouseAttached() ? TEXT("one is") : TEXT("none is (unchanged)"));
+#endif
+}
 
 /** The player pawn placed at Location (a free spot near it, as the engine's teleport finds one), facing Yaw when set. */
 static void PlacePawn(APlayerController* PC, const FVector& Location, bool bHasYaw, double Yaw)
@@ -101,6 +165,7 @@ void UTaskProbe::Initialize(FSubsystemCollectionBase& Collection)
 	{
 		FApp::SetHasFocusFunction(&AlwaysFocused);
 	}
+	AttachMouse();
 	FString InputsPath;
 	if (FParse::Value(FCommandLine::Get(), TEXT("-TaskProbeInputs="), InputsPath))
 	{

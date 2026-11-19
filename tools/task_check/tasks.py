@@ -16,9 +16,9 @@ TOOLS = os.path.dirname(HERE)
 REFS = ("tasks", "origin/tasks")  # where a game's tasks live (validate-game.py TASKS_REFS)
 STILL_WORKS = "still_works"  # the milestone of what a task must leave working (write-tasks section 5)
 RUNTIME = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns", "log",
-           "audio", "ground", "ui", "drawn", "world", "render", "files")
+           "audio", "ground", "ui", "drawn", "world", "render", "files", "pad", "nav")
 SAMPLED = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns",
-           "audio", "ground", "ui", "drawn", "world", "render")
+           "audio", "ground", "ui", "drawn", "world", "render", "pad", "nav")
 AUDIO_STARTED = ("started", "started_audible")  # counted per sample's interval, summed by default (as spawns)
 AUDIO_NAMED = ("sounds", "repeats", "waves")  # read from the rows of the sounds that started (probes._heard_names)
 WHOLE_SCREEN = [0.0, 0.0, 1.0, 1.0]
@@ -176,6 +176,9 @@ def measure(m):
         if kind == "drawn":
             out["near"] = near(out["near"]) if out.get("near") is not None else None
             out["line"] = line(out["line"]) if out.get("line") is not None else None
+        if kind == "nav":
+            out["from"], out["to"] = point(out["from"]), point(out["to"])
+            out["agent"] = select(out["agent"]) if out.get("agent") is not None else None
     elif kind == "asset":
         for k in ("asset", "map", "select", "match", "to_angle", "to_axis"):
             out.setdefault(k, None)

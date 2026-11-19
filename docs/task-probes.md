@@ -744,6 +744,9 @@ music; so ambience a game drives from code reads as well as an `AmbientSound` ac
   variants a player hears of a sound that repeats). `sounds` and `repeats` read sound asset names: a sound made at
   run time has none, and the read is missing. `waves` reads the recordings the engine played: a start it played none
   for leaves the read missing. All three are read over the window, never as an event, and take no `agg`.
+  `paused`: how many of the selected sounds are paused, on their own (an audio component the game paused) or by the
+  game's pause (a sound that isn't a UI sound while the world is paused). A paused sound plays nothing, so it reads at
+  volume 0: it is counted by `count`, never `audible`, and adds nothing to `volume`.
 - `select.near` (a point and radius): only sounds played at a place within it (where it plays, or for the started
   fields where it started, read from the sound itself or from the recordings it plays, so a sound played at a location
   is found too); a 2D sound is near nothing. A sound ask reads "a sound starts when the event happens":
@@ -917,6 +920,30 @@ opaque behind it (translucent particles).
 `{"probe": "world", "field": "time_dilation" | "paused"}`: `time_dilation` the lowest global time dilation over the
 frames since the previous sample (a hit stop that slows the world shows even between samples); `paused` 1 when the game
 was paused in any of them ("Escape pauses the game").
+
+### 2.20a `pad`: the player's gamepad, as the game drives it
+
+`{"probe": "pad", "field": "rumble" | "effects"}`: `rumble` the strongest of the player controller's four force
+feedback motors over the frames since the previous sample (0-1, as the engine computes it each tick from the game's
+force feedback and sends it to the pad; 0 while the game has force feedback turned off), so a kick a few frames long is
+read however short; `effects` the most force feedback effects playing at once. Read whether a pad is plugged in or
+not, as the engine computes it either way. A literal threshold is allowed: "the pad rumbles when firing" is `rumble`
+`>` 0 in a window after the shot, "harder for the heavy guns" compares two windows, "only while the player is on the
+pad" is `rumble` `==` 0 after firing with the mouse.
+
+### 2.20b `nav`: the paths the game's navigation finds
+
+```json
+{"probe": "nav", "from": {"xyz": [0, 0, 0]}, "to": {"xyz": [3000, 0, 0]}, "agent": {"class": "EnemyTank"},
+ "field": "found" | "length" | "detour"}
+```
+
+The path the game's navigation finds from `from` to `to` (points, section 2.13) for the agent `agent` selects (the
+nearest match to the player: its size and the areas it may cross; default the navigation's default agent), as the
+game's AI asks for one: `found` (1 when the path reaches `to` whole, 0 when there is none or only part of one),
+`length` (cm along it), `detour` (its length over the straight distance on the ground: 1 straight across, more when it
+goes round). For a ticket that says what the navigation itself does ("the navigation treats the trees as obstacles",
+"the enemies don't plan routes around the crates"). The read is missing in a world with no navigation data.
 
 ### 2.21 `render`: what the renderer drew
 

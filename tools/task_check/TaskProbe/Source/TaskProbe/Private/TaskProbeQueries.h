@@ -2,7 +2,8 @@
 // the track (every -TaskProbeEvery seconds, default 0.5) and written to probe.json "measures" as {"<id>": [{"t": t, "rows": [...]} | {"t": t,
 // "value": ...}, ...]}. The contract is game-factory's docs/task-probes.md
 // (the measures) and docs/task-check.md (how the checker plays and reduces them).
-// Query kinds: actors, widgets, light, grading, spawns, camera, components, pieces, screen, audio, ground, ui, drawn, world, render. Anything unknown (a class, a
+// Query kinds: actors, widgets, light, grading, spawns, camera, components, pieces, screen, audio, ground, ui, drawn, world, render, pad,
+// nav. Anything unknown (a class, a
 // property, a widget, a kind) gives empty rows or null values and never stops the play.
 //
 // A select's near ({"point", "radius"}) may also give a height band, "z_min" and/or "z_max" (cm; world heights, or offsets
@@ -55,6 +56,18 @@
 // - render: "value": {"draw_calls", "triangles" (the RHI's counts of a frame, as `stat RHI` shows them: the highest over
 //   the frames since the previous sample, the UI's draws and the plugin's own captures among them; null before any
 //   frame), "texture_mb" (the RHI's texture memory in use at the sample, streaming and not, in MiB)}.
+// - pad: "value": {"rumble" (the strongest of the four force feedback motors the player
+//   controller drove in any frame since the previous sample, 0-1: the values the engine computes each tick from the
+//   game's force feedback effects, dynamic ones and located ones, scaled by its ForceFeedbackScale, and sent to the
+//   player's controller; 0 while the game has force feedback turned off; null before any frame), "effects" (the most
+//   force feedback effects playing at once in those frames: ClientPlayForceFeedback's)}. Computed whether a pad is
+//   plugged in or not, as the engine does.
+// - nav: "value": {"found" (1 when the navigation finds a whole path from query.from to query.to, 0 when it
+//   finds none or only part of one), "partial" (1 for a part of one), "length" (cm along the path found, null with
+//   none), "detour" (that length over the straight distance on the ground, null with none)} | null when the world has
+//   no navigation data to ask. query.from and query.to are points as a select's near takes them; query.agent (an actor
+//   selection, the nearest match to the player) is the one whose way of moving the path is for (its navigation agent:
+//   size, the areas it may cross), default the navigation's default agent.
 // - widgets: "rows": [{"name", "class", <field>: value}] over the UMG trees in the viewport. select.class alone matches
 //   the widget's own class; with select.name it also matches an enclosing user widget's class. visible = visible,
 //   render opacity > 0, and every parent (through enclosing user widgets) the same. x, y, w, h: the cached geometry in
@@ -113,13 +126,15 @@
 //   query.rect = [x0, y0, x1, y1] (viewport fractions, default the whole frame): luminance = mean linear Rec. 709
 //   luminance of the displayed pixels (sRGB decoded, 0-1), luma = mean Rec. 709 luma of the encoded values (0-1).
 //   null when no frame was drawn (the play ended first, or nothing renders).
-// - audio: "value": {"count", "audible", "volume", "max_volume", "loudest"} | null: the audio device's active sounds
+// - audio: "value": {"count", "audible", "volume", "max_volume", "loudest", "paused"} | null: the audio device's active sounds
 //   (null without an audio device: a play under -nosound) that select matches (select.sound: a wildcard on the sound
 //   asset's name, select.sound_class: on its sound class's or a parent class's name, select.owner: an actor selection
 //   its owner is in), each at its volume at the listener: its wave instances' volume (its own, its class's and mixes',
 //   multipliers) times their distance and occlusion attenuation and dynamic volume, summed, the output's primary
 //   volume left out. count: how many; audible: how many at 0.001 (-60 dB) or more; volume: their sum; max_volume and
-//   loudest (its sound's name): the loudest one. select.near (a select's near) keeps sounds with a place (played at a
+//   loudest (its sound's name): the loudest one; paused: how many are paused, by the game (a sound paused on its
+//   own, UAudioComponent::SetPaused) or by the game's pause (a sound that isn't a UI sound while the world is
+//   paused), and a paused sound plays nothing, so it is at volume 0 (counted, never audible). select.near (a select's near) keeps sounds with a place (played at a
 //   location, spatialized) near the point as it is at the sample. And the sounds that started (Listen: the active
 //   sounds looked at once a frame, so every start is seen, however short the sound): started (how many started since
 //   the play began, to this sample), started_audible (how many of them have reached 0.001 at the listener),
@@ -409,6 +424,8 @@ private:
 	TSharedPtr<FJsonValue> ActorStill(const AActor* A);
 	void SampleWorld(FJsonObject& Out);
 	void SampleRender(FJsonObject& Out);
+	void SamplePad(FJsonObject& Out);
+	void SampleNav(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out);
 	void OnPaintBeginWindow(const FSlateWindowElementList& List);
 	void OnPaintEndWindow(const FSlateWindowElementList& List);
 	void OnPaintBeginWidget(const SWidget* Widget, const FPaintArgs& Args, const FGeometry& Geometry, const FSlateRect& Culling, const FSlateWindowElementList& List, int32 Layer);
@@ -441,6 +458,9 @@ private:
 	bool bHasWorld = false;  // a world query is asked for: only then is the world read every frame
 	int32 MaxDrawCalls = -1, MaxPrimitives = -1;  // render: the RHI's highest frame counts since the previous sample (-1: no frame yet)
 	bool bHasRender = false;  // a render query is asked for: only then are the RHI's counts read every frame
+	double MaxRumble = -1.0;  // pad: the strongest motor value the player controller drove since the previous sample (-1: no frame yet)
+	int32 MaxRumbleEffects = 0;  // pad: the most force feedback effects playing at once since the previous sample
+	bool bHasPad = false;  // a pad query is asked for: only then is the force feedback read every frame
 	// ui: the elements widgets paint themselves, from the game window's Slate draw elements (only with a ui query)
 	FDelegateHandle PaintHandles[5];
 	const FSlateWindowElementList* PaintList = nullptr;  // the game window's element list while it is painted

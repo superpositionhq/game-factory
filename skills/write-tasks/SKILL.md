@@ -456,7 +456,9 @@ A probe names one measurement and its threshold:
   moved, with agg rises/falls), `drawn` (what is drawn near a point or along a line, rendered: drawn, motion, base
   colour, a beam's reach), `light` (illuminance,
   exposure, brightness at a point), `grading` (the colour pipeline: cast, warmth, tint, saturation, contrast, grey),
-  `spawns`, `log`, `asset` (editor: material_default, material:<prop>, mesh_collision, asset properties).
+  `spawns`, `log`, `asset` (editor: material_default, material:<prop>, mesh_collision, asset properties), `pad`
+  (the gamepad's force feedback the game drives: rumble, effects), `nav` (the path the game's navigation finds between
+  two points for an agent: found, length, detour; for a ticket that says what the navigation does).
 - **Read text from the game's UI first** (`ui`, `widgets`). `seen` (the visual model reads a named shot of the check's
   own task play; docs/task-probes.md 2.22) only for text nothing else gives: drawn by a shader, a material or a
   texture. Give it a loose `rect` or none, and take the shot at a still moment (a clock ticks). It is a visual check:

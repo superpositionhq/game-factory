@@ -431,7 +431,7 @@
     },
     "AudioMeasure": {
       "additionalProperties": false,
-      "description": "What the player hears (probes.md 2d): the sounds playing that `select` matches, each at its volume at the\nlistener (its own volume, its class's and mixes', times its distance and occlusion attenuation; the output's\nmaster volume left out): `count` (how many), `audible` (how many at 0.001, -60 dB, or louder), `volume` (their sum),\n`max_volume` (the loudest). A play with an audio measure runs with sound (muted). The volumes' threshold is\ncalibrated or relative to the start, never a literal (_probe).\n\nThe sounds that start (docs/planning/2026-11-11_game-grader-audio/spec.md), every one however short, seen once a\nframe: `started` (how many started in each sample's interval, summed over the samples picked by default),\n`started_audible` (how many became audible at the listener, counted in the interval where they first did), each\nstart selected once, at the sample after it (so never by `owner`), and from the starts'\nown names in the order they started, over the samples picked: `sounds` (how many different sound assets),\n`repeats` (how many started with the same sound as the start just before them). `sounds` and `repeats` read\nnothing when a start's sound was made at run time (a procedural wave has no name to tell it by); they take no\n`agg`. `waves` (game grader 1.18.0): how many different recordings those starts played, by the waves the engine\nplayed for each (a sound cue that picks one of several recordings plays a different wave, under the same sound):\nthe variants a player hears of a sound that repeats; it reads nothing when a start's recording can't be told\n(a start the engine never played a wave for).",
+      "description": "What the player hears (probes.md 2d): the sounds playing that `select` matches, each at its volume at the\nlistener (its own volume, its class's and mixes', times its distance and occlusion attenuation; the output's\nmaster volume left out): `count` (how many), `audible` (how many at 0.001, -60 dB, or louder), `volume` (their sum),\n`max_volume` (the loudest). A play with an audio measure runs with sound (muted). The volumes' threshold is\ncalibrated or relative to the start, never a literal (_probe).\n\nThe sounds that start (docs/planning/2026-11-11_game-grader-audio/spec.md), every one however short, seen once a\nframe: `started` (how many started in each sample's interval, summed over the samples picked by default),\n`started_audible` (how many became audible at the listener, counted in the interval where they first did), each\nstart selected once, at the sample after it (so never by `owner`), and from the starts'\nown names in the order they started, over the samples picked: `sounds` (how many different sound assets),\n`repeats` (how many started with the same sound as the start just before them). `sounds` and `repeats` read\nnothing when a start's sound was made at run time (a procedural wave has no name to tell it by); they take no\n`agg`. `waves` (game grader 1.18.0): how many different recordings those starts played, by the waves the engine\nplayed for each (a sound cue that picks one of several recordings plays a different wave, under the same sound):\nthe variants a player hears of a sound that repeats; it reads nothing when a start's recording can't be told\n(a plugin before 1.18.0, or a start the engine never played a wave for).\n\n`paused` (game grader 1.25.0): how many of the sounds playing that `select` matches are paused, paused on their own\n(an audio component the game paused: a radio's broadcast held while the game is paused) or by the game's pause (a\nsound that isn't a UI sound while the world is paused, as the audio device holds it). A paused sound plays nothing,\nso since 1.25.0 it is at volume 0 (counted by `count`, never `audible`, adding nothing to `volume`).",
       "properties": {
         "agg": {
           "anyOf": [
@@ -496,7 +496,8 @@
             "started_audible",
             "sounds",
             "repeats",
-            "waves"
+            "waves",
+            "paused"
           ],
           "title": "Field",
           "type": "string"
@@ -739,17 +740,17 @@
           "title": "Required",
           "type": "boolean"
         },
+        "shadow_errors": {
+          "default": false,
+          "title": "Shadow Errors",
+          "type": "boolean"
+        },
         "weight": {
           "default": 1,
           "maximum": 100,
           "minimum": 0,
           "title": "Weight",
           "type": "integer"
-        },
-        "shadow_errors": {
-          "default": false,
-          "title": "Shadow Errors",
-          "type": "boolean"
         }
       },
       "required": [
@@ -1649,6 +1650,8 @@
               "ground": "#/$defs/GroundMeasure",
               "light": "#/$defs/LightMeasure",
               "log": "#/$defs/LogMeasure",
+              "nav": "#/$defs/NavMeasure",
+              "pad": "#/$defs/PadMeasure",
               "pawn": "#/$defs/PawnMeasure",
               "pieces": "#/$defs/PiecesMeasure",
               "render": "#/$defs/RenderMeasure",
@@ -1721,6 +1724,12 @@
             },
             {
               "$ref": "#/$defs/FilesMeasure"
+            },
+            {
+              "$ref": "#/$defs/PadMeasure"
+            },
+            {
+              "$ref": "#/$defs/NavMeasure"
             }
           ],
           "title": "Measure"
@@ -2879,6 +2888,188 @@
       "title": "Move",
       "type": "object"
     },
+    "NavMeasure": {
+      "additionalProperties": false,
+      "description": "The game's navigation (game grader 1.25.0): the path it finds from `from` to `to` (points, as a near takes them)\nfor the agent `agent` selects (the nearest match to the player: its size and the areas it may cross; default the\nnavigation's default agent), as the game's AI asks for one: `found` (1 when the path reaches `to` whole, 0 when\nthere is none or only part of one), `length` (cm along it), `detour` (its length over the straight distance on the\nground: 1 straight across, more when it goes round). For a task that says what the navigation itself does (\"the\nnavigation treats the trees as obstacles\", \"the enemies don't plan routes around the boxes\"). It reads nothing in\na world with no navigation data, or while a point or the agent isn't there.",
+      "properties": {
+        "agent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Select"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "delta",
+                "any",
+                "all",
+                "count",
+                "sum",
+                "range",
+                "std",
+                "changes",
+                "rises",
+                "falls",
+                "step"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 1200,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "const": "end",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "field": {
+          "enum": [
+            "found",
+            "length",
+            "detour"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "from": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AtXYZ"
+            },
+            {
+              "$ref": "#/$defs/AtPawn"
+            },
+            {
+              "$ref": "#/$defs/AtCamera"
+            },
+            {
+              "$ref": "#/$defs/AtActor"
+            }
+          ],
+          "title": "From"
+        },
+        "probe": {
+          "const": "nav",
+          "title": "Probe",
+          "type": "string"
+        },
+        "since": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Event"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "to": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AtXYZ"
+            },
+            {
+              "$ref": "#/$defs/AtPawn"
+            },
+            {
+              "$ref": "#/$defs/AtCamera"
+            },
+            {
+              "$ref": "#/$defs/AtActor"
+            }
+          ],
+          "title": "To"
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        }
+      },
+      "required": [
+        "probe",
+        "from",
+        "to",
+        "field"
+      ],
+      "title": "NavMeasure",
+      "type": "object"
+    },
     "Near": {
       "additionalProperties": false,
       "description": "Within `radius` cm of `point`; `z_min`/`z_max` (cm) also keep it within a height band: world z, or offsets from\nthe point's z with `z_relative` (docs/task-probes.md, section 2.13).",
@@ -3010,6 +3201,140 @@
         "name"
       ],
       "title": "Package",
+      "type": "object"
+    },
+    "PadMeasure": {
+      "additionalProperties": false,
+      "description": "The player's gamepad, as the game drives it (game grader 1.25.0): `rumble`, the strongest of its force feedback\nmotors in any frame since the previous sample, 0-1 (what the engine computes each tick from the game's force\nfeedback, its effects, dynamic ones and located ones, scaled by the game's force feedback scale, and sends to the\nplayer's controller; 0 while the game has force feedback turned off): a kick a few frames long is read however\nshort; `effects`, the most force feedback effects (ClientPlayForceFeedback's) playing at once in those frames.\nRead whether a pad is plugged in or not, as the engine computes it either way: \"the pad rumbles when firing,\nharder for the heavy guns\", \"only while the pad is what the player is using\".",
+      "properties": {
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "delta",
+                "any",
+                "all",
+                "count",
+                "sum",
+                "range",
+                "std",
+                "changes",
+                "rises",
+                "falls",
+                "step"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 1200,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "const": "end",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "field": {
+          "enum": [
+            "rumble",
+            "effects"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "probe": {
+          "const": "pad",
+          "title": "Probe",
+          "type": "string"
+        },
+        "since": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Event"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        }
+      },
+      "required": [
+        "probe",
+        "field"
+      ],
+      "title": "PadMeasure",
       "type": "object"
     },
     "PawnMeasure": {
@@ -3499,6 +3824,8 @@
               "ground": "#/$defs/GroundMeasure",
               "light": "#/$defs/LightMeasure",
               "log": "#/$defs/LogMeasure",
+              "nav": "#/$defs/NavMeasure",
+              "pad": "#/$defs/PadMeasure",
               "pawn": "#/$defs/PawnMeasure",
               "pieces": "#/$defs/PiecesMeasure",
               "render": "#/$defs/RenderMeasure",
@@ -3575,6 +3902,12 @@
             },
             {
               "$ref": "#/$defs/FilesMeasure"
+            },
+            {
+              "$ref": "#/$defs/PadMeasure"
+            },
+            {
+              "$ref": "#/$defs/NavMeasure"
             }
           ],
           "title": "Measure"

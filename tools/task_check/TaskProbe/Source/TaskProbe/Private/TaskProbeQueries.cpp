@@ -113,6 +113,8 @@
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialParameterCollectionInstance.h"
 #include "MaterialShared.h"
+#include "NavigationPath.h"
+#include "NavigationSystem.h"
 #include "Misc/App.h"
 #include "Misc/FileHelper.h"
 #include "Particles/ParticleSystemComponent.h"
@@ -6544,11 +6546,34 @@ static bool PlaceOf(const T& A, FVector& Out)
 	}
 }
 
+/** Whether a sound plays nothing now because it is paused: paused on its own (FActiveSound's
+ *  bIsPaused: UAudioComponent::SetPaused), or by the game's pause (the audio device pauses every sound that isn't a UI
+ *  sound while the world is paused: FAudioDevice::HandlePause). A member the engine doesn't let the plugin read reads as
+ *  not paused, as PlaceOf's. */
+template <typename T>
+static bool PausedOf(const T& A, bool bWorldPaused)
+{
+	bool bPaused = false;
+	if constexpr (requires(const T& X) { (bool)X.bIsPaused; })
+	{
+		bPaused = A.bIsPaused;
+	}
+	if constexpr (requires(const T& X) { (bool)X.bIsUISound; })
+	{
+		bPaused = bPaused || (bWorldPaused && !A.bIsUISound);
+	}
+	return bPaused;
+}
+
 /** An active sound's volume at the listener: its wave instances' volume (its own, its class's and mixes', the game's
  *  multipliers) times their distance and occlusion attenuation and dynamic volume, summed. The audio thread's. */
-static double HeardVolume(const FActiveSound& Active)
+static double HeardVolume(const FActiveSound& Active, bool bWorldPaused)
 {
 	double Volume = 0.0;
+	if (PausedOf(Active, bWorldPaused))
+	{
+		return Volume;  // a paused sound plays nothing
+	}
 	for (const TPair<UPTRINT, FWaveInstance*>& W : Active.GetWaveInstances())
 	{
 		if (W.Value)
@@ -6806,7 +6831,8 @@ void FTaskProbeQueries::Load(const FString& Path)
 		return;
 	}
 	static const TSet<FString> Kinds = {TEXT("actors"), TEXT("widgets"), TEXT("light"), TEXT("grading"), TEXT("spawns"), TEXT("camera"), TEXT("components"),
-		TEXT("pieces"), TEXT("screen"), TEXT("audio"), TEXT("ground"), TEXT("ui"), TEXT("drawn"), TEXT("world"), TEXT("render")};
+		TEXT("pieces"), TEXT("screen"), TEXT("audio"), TEXT("ground"), TEXT("ui"), TEXT("drawn"), TEXT("world"), TEXT("render"),
+		TEXT("pad"), TEXT("nav")};
 	TSet<FString> Ids;
 	for (const TSharedPtr<FJsonValue>& Item : *List)
 	{
@@ -6851,6 +6877,7 @@ void FTaskProbeQueries::Load(const FString& Path)
 		}
 		bHasWorld = bHasWorld || Q.Kind == TEXT("world");
 		bHasRender = bHasRender || Q.Kind == TEXT("render");
+		bHasPad = bHasPad || Q.Kind == TEXT("pad");
 		if (Q.Kind == TEXT("spawns"))
 		{
 			Q.Def->TryGetStringField(TEXT("class"), Q.SpawnClass);
@@ -7080,6 +7107,14 @@ void FTaskProbeQueries::Sample(UWorld* World, APlayerController* PC, double T)
 		{
 			SampleRender(*S);
 		}
+		else if (Q.Kind == TEXT("pad"))
+		{
+			SamplePad(*S);
+		}
+		else if (Q.Kind == TEXT("nav"))
+		{
+			SampleNav(Q, World, PC, *S);
+		}
 		else if (Q.Kind == TEXT("spawns"))
 		{
 			const TSharedRef<FJsonObject> V = MakeShared<FJsonObject>();
@@ -7097,6 +7132,8 @@ void FTaskProbeQueries::Sample(UWorld* World, APlayerController* PC, double T)
 	MinDilation = -1.0;
 	bPausedSince = false;
 	MaxDrawCalls = MaxPrimitives = -1;
+	MaxRumble = -1.0;
+	MaxRumbleEffects = 0;
 	// frozen: the actors read this sample are followed frame by frame until the next one, and only those; a stillness
 	// under way goes on into the next interval
 	for (auto It = Stills.CreateIterator(); It; ++It)
@@ -8057,7 +8094,8 @@ void FTaskProbeQueries::Listen(UWorld* World, double T)
 		return;
 	}
 	const TSharedPtr<FSoundStarts, ESPMode::ThreadSafe> Followed = SoundStarts;
-	FAudioThread::RunCommandOnAudioThread([Device, Followed, T]()
+	const bool bWorldPaused = World->IsPaused();
+	FAudioThread::RunCommandOnAudioThread([Device, Followed, T, bWorldPaused]()
 	{
 		FScopeLock Guard(&Followed->Lock);
 		TMap<const FActiveSound*, FSoundStarts::FSeen> Seen;
@@ -8116,7 +8154,7 @@ void FTaskProbeQueries::Listen(UWorld* World, double T)
 					Start.bPlaced = WavePlaceOf(*Active, Start.Location);
 				}
 				WavesOf(*Active, Start.Waves);
-				const double Volume = HeardVolume(*Active);
+				const double Volume = HeardVolume(*Active, bWorldPaused);
 				Start.Peak = FMath::Max(Start.Peak, Volume);
 				if (Start.AudibleT < 0.0 && Volume >= AudibleVolume)
 				{
@@ -8191,9 +8229,11 @@ void FTaskProbeQueries::SampleAudio(FQuery& Q, UWorld* World, APlayerController*
 		bool bPlaced = false;
 		FVector Location = FVector::ZeroVector;
 		double Volume = 0.0;
+		bool bPaused = false;
 	};
 	const TSharedRef<TArray<FHeard>, ESPMode::ThreadSafe> Heard = MakeShared<TArray<FHeard>, ESPMode::ThreadSafe>();
-	FAudioThread::RunCommandOnAudioThread([Device, Heard]()
+	const bool bWorldPaused = World->IsPaused();
+	FAudioThread::RunCommandOnAudioThread([Device, Heard, bWorldPaused]()
 	{
 		for (const FActiveSound* Active : Device->GetActiveSounds())
 		{
@@ -8207,14 +8247,15 @@ void FTaskProbeQueries::SampleAudio(FQuery& Q, UWorld* World, APlayerController*
 			H.Classes = SoundClasses(*Active);
 			H.Owner = Active->GetOwnerKey();
 			H.bPlaced = PlaceOf(*Active, H.Location);
-			H.Volume = HeardVolume(*Active);
+			H.bPaused = PausedOf(*Active, bWorldPaused);
+			H.Volume = HeardVolume(*Active, bWorldPaused);
 			Heard->Add(MoveTemp(H));
 		}
 	});
 	FAudioCommandFence Fence;
 	Fence.BeginFence();
 	Fence.Wait();
-	int32 Count = 0, Audible = 0;
+	int32 Count = 0, Audible = 0, Paused = 0;
 	double Volume = 0.0, Max = 0.0;
 	FString Loudest;
 	for (const FHeard& H : *Heard)
@@ -8224,6 +8265,7 @@ void FTaskProbeQueries::SampleAudio(FQuery& Q, UWorld* World, APlayerController*
 			continue;
 		}
 		++Count;
+		Paused += H.bPaused ? 1 : 0;
 		Audible += H.Volume >= AudibleVolume ? 1 : 0;
 		Volume += H.Volume;
 		if (Loudest.IsEmpty() || H.Volume > Max)
@@ -8238,6 +8280,7 @@ void FTaskProbeQueries::SampleAudio(FQuery& Q, UWorld* World, APlayerController*
 	V->SetField(TEXT("volume"), Num(Volume));
 	V->SetField(TEXT("max_volume"), Num(Max));
 	V->SetField(TEXT("loudest"), Count ? Str(Loudest) : Null());
+	V->SetNumberField(TEXT("paused"), Paused);
 	if (SoundStarts.IsValid())
 	{
 		// the starts since the previous sample, each counted once, here, by this sample's select (the fence above has
@@ -8813,6 +8856,21 @@ void FTaskProbeQueries::Frame(float DeltaTime, UWorld* World)
 		MinDilation = MinDilation < 0.0 ? Dilation : FMath::Min(MinDilation, Dilation);
 		bPausedSince = bPausedSince || World->IsPaused();
 	}
+	if (World && bHasPad)
+	{
+		// pad: the motor values the player controller computed this tick (APlayerController::
+		// ProcessForceFeedbackAndHaptics, run for a local player whether a pad is plugged in or not), as it sends them to
+		// the player's controller: nothing while the game has force feedback turned off. A kick lasts a few frames, so
+		// every frame is read, the strongest kept until the next sample (only in a play that reads it)
+		const APlayerController* PC = World->GetFirstPlayerController();
+		if (PC && PC->IsLocalController())
+		{
+			const FForceFeedbackValues& V = PC->ForceFeedbackValues;
+			const double Strongest = PC->bForceFeedbackEnabled ? FMath::Max(FMath::Max(V.LeftLarge, V.LeftSmall), FMath::Max(V.RightLarge, V.RightSmall)) : 0.0;
+			MaxRumble = FMath::Max(MaxRumble, Strongest);
+			MaxRumbleEffects = FMath::Max(MaxRumbleEffects, PC->ActiveForceFeedbackEffects.Num());
+		}
+	}
 	for (auto It = Stills.CreateIterator(); It; ++It)
 	{
 		FStillTrack& T = It.Value();
@@ -8916,6 +8974,60 @@ void FTaskProbeQueries::SampleRender(FJsonObject& Out)
 	FTextureMemoryStats Textures;
 	RHIGetTextureMemoryStats(Textures);
 	V->SetNumberField(TEXT("texture_mb"), (double)(Textures.StreamingMemorySize + Textures.NonStreamingMemorySize) / (1024.0 * 1024.0));
+	Out.SetObjectField(TEXT("value"), V);
+}
+
+void FTaskProbeQueries::SamplePad(FJsonObject& Out)
+{
+	const TSharedRef<FJsonObject> V = MakeShared<FJsonObject>();
+	if (MaxRumble < 0.0)
+	{
+		V->SetField(TEXT("rumble"), Null());  // no frame since the previous sample, or no local player controller
+		V->SetField(TEXT("effects"), Null());
+	}
+	else
+	{
+		V->SetNumberField(TEXT("rumble"), MaxRumble);
+		V->SetNumberField(TEXT("effects"), MaxRumbleEffects);
+	}
+	Out.SetObjectField(TEXT("value"), V);
+}
+
+void FTaskProbeQueries::SampleNav(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out)
+{
+	// the path the game's navigation finds between two points, as its AI asks for one (FindPathToLocationSynchronously),
+	// for the agent query.agent selects: whether it is whole, how long, and how far round it goes
+	const TSharedPtr<FJsonObject>* FromObj = nullptr;
+	const TSharedPtr<FJsonObject>* ToObj = nullptr;
+	FVector From = FVector::ZeroVector, To = FVector::ZeroVector;
+	UNavigationSystemV1* Nav = World ? FNavigationSystem::GetCurrent<UNavigationSystemV1>(World) : nullptr;
+	if (!Nav || !Nav->GetDefaultNavDataInstance(FNavigationSystem::DontCreate) || !Q.Def->TryGetObjectField(TEXT("from"), FromObj) ||
+		!Q.Def->TryGetObjectField(TEXT("to"), ToObj) || !ResolvePoint(*FromObj, World, PC, 1, From) || !ResolvePoint(*ToObj, World, PC, 1, To))
+	{
+		Out.SetField(TEXT("value"), Null());  // no navigation to ask, or a point that doesn't resolve now
+		return;
+	}
+	AActor* Agent = nullptr;
+	const TSharedPtr<FJsonObject>* AgentObj = nullptr;
+	if (Q.Def->TryGetObjectField(TEXT("agent"), AgentObj) && AgentObj->IsValid())
+	{
+		Agent = NearestMatch(World, PC, *AgentObj, nullptr);
+		if (!Agent)
+		{
+			Out.SetField(TEXT("value"), Null());  // the agent it is for isn't there
+			return;
+		}
+	}
+	const UNavigationPath* Path = UNavigationSystemV1::FindPathToLocationSynchronously(World, From, To, Agent);
+	const bool bAny = Path && Path->IsValid();
+	const bool bPartial = bAny && Path->IsPartial();
+	const TSharedRef<FJsonObject> V = MakeShared<FJsonObject>();
+	V->SetNumberField(TEXT("found"), bAny && !bPartial ? 1.0 : 0.0);
+	V->SetNumberField(TEXT("partial"), bPartial ? 1.0 : 0.0);
+	const double Length = bAny ? Path->GetPathLength() : -1.0;
+	const double Straight = FVector::Dist2D(From, To);
+	V->SetField(TEXT("length"), bAny ? Num(Length) : Null());
+	V->SetField(TEXT("detour"), bAny && Straight > 1.0 ? Num(Length / Straight) : Null());
 	Out.SetObjectField(TEXT("value"), V);
 }
 
