@@ -165,7 +165,9 @@ asked look from fixed framings, the same on the start, the reference and the age
 the area (layout, overlap), at eye level (looks), and from the player's own view during the action (feel); for a 2D or
 2.5D game, the whole play area, a close-up of the subject, and the player's view during the action. Reach each
 framing through something the start already has (an actor, a tag, a control the instruction names), never through
-raw coordinates of the reference's level.
+raw coordinates of the reference's level. The model judge (game-judge/6) gives nothing for more than an item asks
+(extra features, effects or decoration), and still frames cannot show how controls feel: write a feel ask as a probe
+(the game-session skill's feel words point at what to measure), and a judge item only for what a frame can show.
 
 ## 2. Picking the commits
 
