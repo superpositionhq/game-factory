@@ -38,6 +38,11 @@ offers one (AGENTS.md, "Only these skills"). Do what they don't cover by hand un
    person's taste judgments (below, "The person's taste") are made against it; change it only when the person does.
 4. Choose the game's art style ("Art style" below) before writing the art direction: the design doc names the style
    and the art, UI and lighting plans follow its guide.
+   Before building the look and feel, add a short **style plan** to the design doc (palette, lighting, type, camera,
+   and the feedback each event gives) and check it against the feel intent and against the tells of a generic game
+   (owner, 2026-11-19): a capsule or primitive player, flat or default lighting and sky, an event with no feedback,
+   the engine's default UI font, empty unfurnished levels, one sound for every event, a camera that ignores the
+   action. Spend boldness in one place: one thing the game does that a player remembers.
 
 ## Machine rules (shared PC, several sessions at once)
 
@@ -295,12 +300,13 @@ never answer one yourself. Each is made against the design doc's feel intent: na
    - **What the feedback covers.** At least the feel: controls and response (each press does something at once, and
      what the player expects), movement and camera, feedback on each event (a hit, a pickup, damage, a win or a
      loss), difficulty and pacing, how readable the HUD and text are, and what is fun or boring. Each issue is one
-     point, in what the player saw, never a fix.
+     point, in what the player saw, never a fix. Ask also what felt great: the moments of delight.
    - **How it is recorded.** Each issue is its own `user.direction` row with `"target": "playtest"` and, beside
      `params.direction`, `params.playtest`: `{"round": 1, "build": "packaged" | "phone" | "emulator" | "editor",
      "minutes": <minutes played>, "result": "win" | "lose" | "quit"}`. A round with nothing to fix is still one row
      ("played a full round, no issues", with the same `params.playtest`). Write only what the person reported: never
      a row from your own play, a recording or a guess.
+     A moment of delight is its own row the same way, with `"delight": true` in `params.playtest` and no rank.
 2. **The three that matter most.** After each round the person names, in order, the three issues they would fix
    first, each with why. Add `"rank": 1`, `2` or `3` to those rows' `params.playtest` (other issues carry no rank), and
    fix in that order.
@@ -312,12 +318,37 @@ never answer one yourself. Each is made against the design doc's feel intent: na
    reason>"}`. Not for a bug or an ask with one right answer.
 4. **A verdict on each fix.** Fix each playtest issue in its own commit with its `Direction:` line ("Working with the
    coordinator", below). Then the person plays or looks at it and says better, same or worse, with half a sentence
-   why: a `user.direction` row (its `params.direction` says it in one sentence) with `"target": "verdict"` and
-   `params.verdict`: `{"of": "<direction id>", "result":
-   "better" | "same" | "worse", "why": "<their reason>"}`. Same or worse is the issue's next round, not a done fix.
+   why, and whether anything else got worse: a `user.direction` row (its `params.direction` says it in one
+   sentence) with `"target": "verdict"` and `params.verdict`: `{"of": "<direction id>", "result": "better" | "same"
+   | "worse", "why": "<their reason>", "worse_elsewhere": "<what else got worse, or empty>"}`. Same or worse is the
+   issue's next round, not a done fix; something else that got worse is a new playtest issue.
+5. **Keep and avoid, grown from the rounds.** Nobody can say up front what to keep: it is found by playing. So the
+   design doc's "Keep and avoid" section is never written at the start. It grows from the person's own judgments:
+   **keep** from moments of delight and fixes judged better, **avoid** from versions not picked and fixes judged
+   worse. Each line is one sentence naming the row it came from. Update it after each round and show it to the
+   person; what they change in it is a direction. Check every later change against both lists: a change that spoils
+   a keep line is undone or taken to the person first.
 
 These rounds are the game's best source of tasks (taste threads, write-tasks) and of its taste data, so a second round
 after the fixes is welcome.
+
+**Feel words and starting numbers (owner, 2026-11-19).** When the person's words describe feel, look first where the
+word points:
+
+| the person says | look first at |
+|---|---|
+| floaty | gravity, time to the top of a jump, how fast the fall is, air control |
+| stiff, heavy | acceleration and stopping, turn rate, animation blend times |
+| laggy, mushy | delay from press to visible response, input buffering, animation start-up |
+| slippery | stopping distance, friction, turn-around |
+| hits feel weak | hit pause, screen shake, hit sound, knockback, a flash on the target |
+| camera feels off | camera lag and smoothing, distance, field of view, what it frames during the action |
+| boring, too easy, unfair | spacing of threats and rewards, telegraphs before danger, how fast difficulty rises |
+
+Starting points, only to begin from: a press shows a response within about 0.1 s; a hit pause of about 0.03 s
+(light) to 0.12 s (heavy); a screen shake of 0.1 to 0.3 s that decays; time to the top of a jump of about 0.3 to
+0.5 s; coyote time and input buffering of about 0.1 s. Choose by the feel intent and leave these ranges on purpose
+when it asks for it: they are a vocabulary, never a target. Graders never use them (write-tasks, "Taste threads").
 
 **Tasks (write-tasks skill).** A game is complete when its repo has `Tasks/` on the tasks branch: tasks an agent can
 be given on this game, one `Tasks/<game>-<kind>-<slug>.json` each in the task format `GameTask`, at least 5 and up to about 10, at least 4 of them hard (the others may be medium, none easier), every

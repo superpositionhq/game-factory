@@ -155,6 +155,17 @@ candidate threads are taste threads and writes or approves each one's brief in a
 holds: observations only, nothing quoted from chat). The brief opens with the game's feel intent from the design doc,
 so "better" has a direction. Its reference is a commit the person's verdict called better: a fix they judged same or
 worse is no reference, so extend the thread to the round they called better, or drop it.
+What the design doc's keep list holds is what the task's `still_works` look judge checks, so a solution that spoils
+it fails. A feel probe's threshold is calibrated between the start and the reference the person approved (or taken
+from a number the brief states), never from the starting numbers in the game-session skill: each game is judged by
+its own feel, so the games don't all drift toward one.
+
+**Fixed framings for look judges (owner, 2026-11-19).** A judge compares sides like for like, so its plays show each
+asked look from fixed framings, the same on the start, the reference and the agent's build: for a 3D game, from above
+the area (layout, overlap), at eye level (looks), and from the player's own view during the action (feel); for a 2D or
+2.5D game, the whole play area, a close-up of the subject, and the player's view during the action. Reach each
+framing through something the start already has (an actor, a tag, a control the instruction names), never through
+raw coordinates of the reference's level.
 
 ## 2. Picking the commits
 
