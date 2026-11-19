@@ -189,6 +189,10 @@ private:
 	int32 Shots = 4;
 	int32 ShotsTaken = 0;
 	double Elapsed = 0.0;
+	// a play that hears the mix (a heard query) is paced to real time, as the mix renders in real time: the game time
+	// and the wall clock counted from PaceStart (-1: not yet), a frame ahead of the wall clock sleeping till it catches up
+	double PaceStart = -1.0;
+	double PaceGame = 0.0;
 	double NextTrack = 0.0;
 	int32 NextInput = 0;
 	int32 InputsSent = 0;

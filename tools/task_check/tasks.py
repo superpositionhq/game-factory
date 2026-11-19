@@ -16,9 +16,11 @@ TOOLS = os.path.dirname(HERE)
 REFS = ("tasks", "origin/tasks")  # where a game's tasks live (validate-game.py TASKS_REFS)
 STILL_WORKS = "still_works"  # the milestone of what a task must leave working (write-tasks section 5)
 RUNTIME = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns", "log",
-           "audio", "ground", "ui", "drawn", "world", "render", "files", "pad", "nav")
+           "audio", "ground", "ui", "drawn", "world", "render", "files", "pad", "nav", "heard")
 SAMPLED = ("pawn", "camera", "actors", "widgets", "components", "pieces", "screen", "light", "grading", "spawns",
-           "audio", "ground", "ui", "drawn", "world", "render", "pad", "nav")
+           "audio", "ground", "ui", "drawn", "world", "render", "pad", "nav", "heard")
+# (Lab game grader 1.26.0) the octave bands' centres (Hz) a heard measure reads the game's mix in
+HEARD_BANDS = (63, 125, 250, 500, 1000, 2000, 4000, 8000)
 AUDIO_STARTED = ("started", "started_audible")  # counted per sample's interval, summed by default (as spawns)
 AUDIO_NAMED = ("sounds", "repeats", "waves")  # read from the rows of the sounds that started (probes._heard_names)
 WHOLE_SCREEN = [0.0, 0.0, 1.0, 1.0]

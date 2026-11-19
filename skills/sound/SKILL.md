@@ -82,7 +82,9 @@ Run `measure` on every clip you keep and reject or trim what is wrong for its cu
   that plays imported waves is fine). `tools/validate-game.py` checks the code (rule `sound`).
 - A cue that repeats (footsteps, hits, gunfire) gets 3 to 5 clips in a random Sound Cue or MetaSound, with slight pitch
   variation, so it never sounds like a loop. Each clip stays its own imported Sound Wave, because a task's audio
-  `waves` counts the different recordings a repeating sound played. World sounds get an attenuation setting.
+  `waves` counts the different recordings a repeating sound played. Since the Lab's game grader 1.26.0 a task can
+  also check the game's mixed output itself (`heard`: loudness, octave bands, onsets) and have a model listen to
+  clips of it (`audio_judge`), docs/task-probes.md 2.24. World sounds get an attenuation setting.
 - Every sound goes through a Sound Class (at least UI, SFX, Ambience), so the settings menu's volume controls it.
 
 ## 6. Record and ask

@@ -1,4 +1,5 @@
 #include "TaskProbeQueries.h"
+#include "TaskProbeHeard.h"
 
 #include "ActiveSound.h"
 #include "AIController.h"
@@ -6800,6 +6801,10 @@ FTaskProbeQueries::~FTaskProbeQueries()
 #endif
 	Unhook();
 	ViewExtension.Reset();
+	if (Mix.IsValid())
+	{
+		Mix->Stop();
+	}
 }
 
 void FTaskProbeQueries::Load(const FString& Path)
@@ -6832,7 +6837,7 @@ void FTaskProbeQueries::Load(const FString& Path)
 	}
 	static const TSet<FString> Kinds = {TEXT("actors"), TEXT("widgets"), TEXT("light"), TEXT("grading"), TEXT("spawns"), TEXT("camera"), TEXT("components"),
 		TEXT("pieces"), TEXT("screen"), TEXT("audio"), TEXT("ground"), TEXT("ui"), TEXT("drawn"), TEXT("world"), TEXT("render"),
-		TEXT("pad"), TEXT("nav")};
+		TEXT("pad"), TEXT("nav"), TEXT("heard")};
 	TSet<FString> Ids;
 	for (const TSharedPtr<FJsonValue>& Item : *List)
 	{
@@ -6886,6 +6891,17 @@ void FTaskProbeQueries::Load(const FString& Path)
 		if (Q.Kind == TEXT("audio") && !SoundStarts.IsValid())
 		{
 			SoundStarts = MakeShared<FSoundStarts, ESPMode::ThreadSafe>();
+		}
+		if (Q.Kind == TEXT("heard"))
+		{
+			if (Mix.IsValid())
+			{
+				ErrorList.Add(FString::Printf(TEXT("query '%s': a second heard query (one a play)"), *Q.Id));
+				continue;
+			}
+			Mix = MakeShared<FMix, ESPMode::ThreadSafe>();
+			Mix->Configure(Q.Def, ErrorList);
+			MixId = Q.Id;
 		}
 		if (Q.Kind == TEXT("screen"))
 		{
@@ -7115,6 +7131,10 @@ void FTaskProbeQueries::Sample(UWorld* World, APlayerController* PC, double T)
 		{
 			SampleNav(Q, World, PC, *S);
 		}
+		else if (Q.Kind == TEXT("heard"))
+		{
+			continue;  // its samples are the mix's blocks, read on the audio thread (MeasuresJson)
+		}
 		else if (Q.Kind == TEXT("spawns"))
 		{
 			const TSharedRef<FJsonObject> V = MakeShared<FJsonObject>();
@@ -7278,9 +7298,14 @@ TSharedRef<FJsonObject> FTaskProbeQueries::MeasuresJson() const
 	const TSharedRef<FJsonObject> Out = MakeShared<FJsonObject>();
 	for (const FQuery& Q : Queries)
 	{
-		Out->SetArrayField(Q.Id, Q.Samples);
+		Out->SetArrayField(Q.Id, Q.Kind == TEXT("heard") && Mix.IsValid() ? Mix->SamplesJson() : Q.Samples);
 	}
 	return Out;
+}
+
+TArray<FString> FTaskProbeQueries::WriteHeardClips(const FString& Dir)
+{
+	return Mix.IsValid() ? Mix->WriteClips(Dir) : TArray<FString>();
 }
 
 void FTaskProbeQueries::SampleActors(FQuery& Q, UWorld* World, APlayerController* PC, FJsonObject& Out)
@@ -8089,6 +8114,10 @@ void FTaskProbeQueries::Listen(UWorld* World, double T)
 	// never active, and never heard. A start is stamped with this look's play time, a frame after the game asked for it
 	// at most.
 	FAudioDevice* Device = World ? World->GetAudioDeviceRaw() : nullptr;
+	if (Mix.IsValid())
+	{
+		Mix->Tick(Device, T);  // heard: the mix's blocks from now are stamped with this play time
+	}
 	if (!SoundStarts.IsValid() || !Device)
 	{
 		return;

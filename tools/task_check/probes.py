@@ -83,6 +83,8 @@ def needs(measure):
     if probe == "nav":
         return [{"kind": "nav", "from": measure["from"], "to": measure["to"],
                  **({"agent": measure["agent"]} if measure.get("agent") is not None else {})}]
+    if probe == "heard":  # (Lab game grader 1.26.0) one a play: the mix's 50 ms blocks hold every field
+        return [{"kind": "heard"}]
     return []  # log
 
 
@@ -96,9 +98,9 @@ HEARD = (["-muteaudio"], ["-UseFixedTimeStep", "-FixedSeed", "-NOINI", "-noinner
 
 
 def hears(queries):
-    """Whether a play's queries (a list, or a query file) measure audio."""
+    """Whether a play's queries (a list, or a query file) measure audio: the sounds playing, or the mix (heard)."""
     found = queries.get("queries") if isinstance(queries, dict) else queries
-    return any(isinstance(q, dict) and q.get("kind") == "audio" for q in found or [])
+    return any(isinstance(q, dict) and q.get("kind") in ("audio", "heard") for q in found or [])
 
 
 def sound_flags(queries):
@@ -110,7 +112,7 @@ def sound_flags(queries):
 def query_id(query):
     """A query's stable id: the hash of what it measures (its fields left out, so probes reading other fields of one
     selection share it)."""
-    return "q" + _hash({k: v for k, v in query.items() if k != "fields"})
+    return "q" + _hash({k: v for k, v in query.items() if k not in ("fields", "clips")})
 
 
 def plan(task):
@@ -618,6 +620,8 @@ def series(measure, probe):
                                              for r in rows], measure["of"])))
         return out
     values = [(s["t"], s.get("value") if isinstance(s.get("value"), dict) else {}) for s in samples]
+    if probe_kind == "heard":
+        return heard_series(field, values)
     if probe_kind in ("camera", "light", "pieces", "screen", "audio", "ground", "drawn", "world", "render", "pad", "nav"):  # audio's started: per
         # interval
         return [(t, number(v.get(field))) for t, v in values]
@@ -635,8 +639,49 @@ def series(measure, probe):
     raise ValueError(f"no runtime probe {probe_kind}")
 
 
+ONSET_RISE = 9.0  # dB a band rises over the two blocks before it, for a sound's start (heard onsets)
+ONSET_FLOOR = -60.0  # dBFS a block is at least, for one
+ONSET_GAP = 0.15  # s between two onsets at least
+
+
+def heard_series(field, values):
+    """(Lab game grader 1.26.0) [(t, value or None)] of a heard field over the mix's 50 ms blocks ([(t, {loudness,
+    peak, band:<Hz>})], in order): loudness, peak and band:<Hz> as read; share:<Hz>, that band's part of the block's
+    energy over every band; onsets, 1 where a sound starts (ONSET_RISE in any band over the two blocks before, at
+    ONSET_FLOOR or louder, ONSET_GAP apart), else 0."""
+    bands = [f"band:{hz}" for hz in tasks.HEARD_BANDS]
+    if field.startswith("share:"):
+        out = []
+        for t, v in values:
+            levels = [number(v.get(b)) for b in bands]
+            if any(x is None for x in levels):
+                out.append((t, None))
+                continue
+            power = [10 ** (x / 10) for x in levels]
+            total = sum(power)
+            out.append((t, power[bands.index("band:" + field.split(":", 1)[1])] / total if total > 0 else None))
+        return out
+    if field != "onsets":
+        return [(t, number(v.get(field))) for t, v in values]
+    out, last = [], None
+    for i, (t, v) in enumerate(values):
+        loud = number(v.get("loudness"))
+        now = [number(v.get(b)) for b in bands]
+        earlier = [[number(values[j][1].get(b)) for b in bands] for j in (i - 1, i - 2) if j >= 0]
+        if loud is None or any(x is None for x in now) or len(earlier) < 2 or any(None in e for e in earlier):
+            out.append((t, None if loud is None else 0.0))
+            continue
+        rise = max(n - max(e[k] for e in earlier) for k, n in enumerate(now))
+        started = loud >= ONSET_FLOOR and rise >= ONSET_RISE and (last is None or t - last >= ONSET_GAP - 1e-9)
+        last = t if started else last
+        out.append((t, 1.0 if started else 0.0))
+    return out
+
+
 def default_agg(measure):
     started = measure["probe"] == "audio" and measure.get("field") in tasks.AUDIO_STARTED
+    if measure["probe"] == "heard":
+        return measure.get("agg") or ("sum" if measure.get("field") == "onsets" else "mean")
     return measure.get("agg") or ("sum" if measure["probe"] == "spawns" or started else "last")
 
 

@@ -1049,6 +1049,36 @@ anything outside `Saved`, so the game's source is never read. A task play of its
  "match": "\"event\":\"scenario_end\".*\"score\":(-?[0-9.]+)"}
 ```
 
+### 2.24 `heard`: the game's mixed output, as the player hears it (Lab game grader 1.26.0)
+
+The plugin listens to the engine's main submix as it renders: after every sound's volume, the output's primary volume
+(a settings slider that calls SetTransientPrimaryVolume) and whatever a synth mixes itself, before `-muteaudio` silences
+the device. Every 50 ms block of the mix is one sample, so `every` doesn't apply:
+
+| field | what it reads |
+|---|---|
+| `loudness` | the block's RMS level, dBFS (-100 when silent) |
+| `peak` | its loudest sample, dBFS |
+| `band:<Hz>` | its energy in the octave band centred at 63, 125, 250, 500, 1000, 2000, 4000 or 8000 Hz, dB |
+| `share:<Hz>` | that band's part of the block's energy over every band, 0-1: what a sound is made of, whatever its volume |
+| `onsets` | 1 at a block where a sound starts (a band rises 9 dB over the two blocks before, at -60 dBFS or louder, at most one every 0.15 s), else 0 |
+
+`window`, `at`, `since` and `agg` work as for every sampled measure; the default agg is `sum` for onsets (the sounds
+that start in the window) and `mean` for the rest. A play with a heard measure runs with sound (muted) and is paced to
+real time, since the mix renders in real time.
+
+```json
+{"kind": "probe", "name": "mute_silences_everything", "describe": "With Master at 0% nothing is heard.",
+ "play": {"name": "mute_master", "seconds": 20, "inputs": [...]},
+ "measure": {"probe": "heard", "field": "loudness", "window": [12, 18], "agg": "max"},
+ "expect": {"op": "<", "value": -80}}
+```
+
+An `audio_judge` check (the Lab's game_audio_judge, Gemini 3.8 Flash) listens to clips of the mix recorded in its own
+`plays`: `clips` [{"play": <one of its plays>, "window": [t0, t1]}], at most 30 s each and 6 in all, with `before` and
+`reference` as a judge's. It is for how a sound sounds (a cue of its own, crickets and an owl, music that changes).
+The checker never asks it, as it never asks a judge (section 4).
+
 ## 3. What gates, and how a probe fails
 
 - **At least one required probe.** Every task has at least one `probe` check with `"required": true` (the default);

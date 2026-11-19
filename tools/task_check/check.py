@@ -77,7 +77,7 @@ def own_play(play, project):
     return seconds, shots, MOBILE_DRIVE if play == "drive" and mobile is not None and mobile() else inputs
 
 
-JUDGES = ("judge", "code_judge", "actions_judge")   # actions_judge: retired, still skipped in older tasks
+JUDGES = ("judge", "code_judge", "actions_judge", "audio_judge")   # actions_judge: retired, still skipped in older tasks
 NOT_JUDGED = "not asked: judges never decide a task check"
 # a weighted package check on the start (local only): the checker never packages, and a start that builds is taken to
 # package as the cloud's no-op of it does, so the no-op is held to earn nothing from it (verdict.noop_score)

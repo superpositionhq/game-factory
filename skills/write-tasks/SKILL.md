@@ -998,7 +998,10 @@ Read each task this way:
 - **A sound ask** is checked by a sound starting when the event happens: `audio` `started_audible` near the source,
   in a window right after the event; `sounds` or `repeats` (by asset name) when the ticket asks for distinct sounds,
   "each gun has its own sound"; audio `waves` counts the different recordings a repeating sound played, for an ask
-  that a sound varies each time it plays (a cue that picks one of several recordings). What the sound is, how it sounds, is never checked. New games import every sound
+  that a sound varies each time it plays (a cue that picks one of several recordings). An ask about the sound itself
+  (how loud, what it is made of, when it starts and stops, that a slider mutes everything, how it sounds) is checked on
+  the game's mixed output (Lab game grader 1.26.0, docs/task-probes.md 2.24): `heard` loudness, bands and onsets in a
+  window, and an `audio_judge` listening to clips of its own plays for how it sounds. New games import every sound
   (game-session skill), so every sound has an asset name. A sound the game's own characters hear and react to (guards
   hearing footsteps, a door that alerts) is a gameplay ask: its check reads the reaction or the state it changes, not
   only a sound starting.

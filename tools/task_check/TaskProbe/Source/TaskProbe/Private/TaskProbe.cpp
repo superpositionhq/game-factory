@@ -1355,11 +1355,30 @@ bool UTaskProbe::Tick(float DeltaTime)
 		if (WaitGame >= WaitFor && FPlatformTime::Seconds() - WaitStart >= WaitFor)
 		{
 			bWaiting = false;
+			PaceStart = -1.0;  // a heard play's pace counts again from here
 			UE_LOG(LogTaskProbe, Log, TEXT("TaskProbe: the wait is over (%.1f s of game time); the play's clock goes on from %.2f s"), WaitGame, Elapsed);
 		}
 		return true;
 	}
 	Elapsed += DeltaTime;
+	if (Queries && Queries->HearsMix())
+	{
+		// (game grader 1.26.0) the engine renders the mix in real time while a fixed time step runs the game as fast as
+		// it can: a play that hears the mix holds each frame till the wall clock has caught up with the game's time, so
+		// a second of the play is a second of what the player hears
+		const double Now = FPlatformTime::Seconds();
+		if (PaceStart < 0.0)
+		{
+			PaceStart = Now;
+			PaceGame = 0.0;
+		}
+		PaceGame += DeltaTime;
+		const double Ahead = PaceGame - (Now - PaceStart);
+		if (Ahead > 0.0)
+		{
+			FPlatformProcess::Sleep((float)FMath::Min(Ahead, 0.25));
+		}
+	}
 	if (Queries)
 	{
 		Queries->Frame(DeltaTime, World);
@@ -1521,6 +1540,13 @@ void UTaskProbe::Finish(const FString& Reason)
 	Out->SetArrayField(TEXT("camera"), Camera);
 	if (Queries)
 	{
+		// heard: the clips of the mix a play asked for, beside probe.json (an audio judge's), listed as written
+		TArray<TSharedPtr<FJsonValue>> Clips;
+		for (const FString& File : Queries->WriteHeardClips(OutDir))
+		{
+			Clips.Add(MakeShared<FJsonValueString>(File));
+		}
+		Out->SetArrayField(TEXT("clips"), Clips);
 		Out->SetObjectField(TEXT("measures"), Queries->MeasuresJson());
 		if (Queries->Errors().Num() > 0)
 		{

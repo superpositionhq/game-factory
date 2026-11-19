@@ -429,6 +429,94 @@
       "title": "AtXYZ",
       "type": "object"
     },
+    "AudioJudge": {
+      "additionalProperties": false,
+      "description": "The audio judge's question over what the player hears (game grader 1.26.0): clips of the game's mixed output the\ngrader records in the check's own plays (`plays`, as a judge's: one play per name and side), listened to item by\nitem by a model that hears sound (Gemini 3.8 Flash in the Lab). For an ask about how something sounds: a cue that\nis its own, music that changes, crickets at night. `before` / `reference`: it also hears the same clips of the\ngame as the task started / of the reference, labelled, and compares. Its evidence is the grader's own recording,\nnever the agent's words.",
+      "properties": {
+        "before": {
+          "default": false,
+          "title": "Before",
+          "type": "boolean"
+        },
+        "clips": {
+          "items": {
+            "$ref": "#/$defs/Clip"
+          },
+          "maxItems": 6,
+          "minItems": 1,
+          "title": "Clips",
+          "type": "array"
+        },
+        "kind": {
+          "const": "audio_judge",
+          "default": "audio_judge",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[a-z0-9_]{1,48}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "needs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Needs",
+          "type": "array"
+        },
+        "plays": {
+          "items": {
+            "$ref": "#/$defs/TaskPlay"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Plays",
+          "type": "array"
+        },
+        "question": {
+          "maxLength": 1200,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "reference": {
+          "default": false,
+          "title": "Reference",
+          "type": "boolean"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "rubric": {
+          "items": {
+            "$ref": "#/$defs/RubricItem"
+          },
+          "maxItems": 12,
+          "minItems": 1,
+          "title": "Rubric",
+          "type": "array"
+        },
+        "weight": {
+          "default": 1,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Weight",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "question",
+        "rubric",
+        "plays",
+        "clips"
+      ],
+      "title": "AudioJudge",
+      "type": "object"
+    },
     "AudioMeasure": {
       "additionalProperties": false,
       "description": "What the player hears (probes.md 2d): the sounds playing that `select` matches, each at its volume at the\nlistener (its own volume, its class's and mixes', times its distance and occlusion attenuation; the output's\nmaster volume left out): `count` (how many), `audible` (how many at 0.001, -60 dB, or louder), `volume` (their sum),\n`max_volume` (the loudest). A play with an audio measure runs with sound (muted). The volumes' threshold is\ncalibrated or relative to the start, never a literal (_probe).\n\nThe sounds that start (docs/planning/2026-11-11_game-grader-audio/spec.md), every one however short, seen once a\nframe: `started` (how many started in each sample's interval, summed over the samples picked by default),\n`started_audible` (how many became audible at the listener, counted in the interval where they first did), each\nstart selected once, at the sample after it (so never by `owner`), and from the starts'\nown names in the order they started, over the samples picked: `sounds` (how many different sound assets),\n`repeats` (how many started with the same sound as the start just before them). `sounds` and `repeats` read\nnothing when a start's sound was made at run time (a procedural wave has no name to tell it by); they take no\n`agg`. `waves` (game grader 1.18.0): how many different recordings those starts played, by the waves the engine\nplayed for each (a sound cue that picks one of several recordings plays a different wave, under the same sound):\nthe variants a player hears of a sound that repeats; it reads nothing when a start's recording can't be told\n(a plugin before 1.18.0, or a start the engine never played a wave for).\n\n`paused` (game grader 1.25.0): how many of the sounds playing that `select` matches are paused, paused on their own\n(an audio component the game paused: a radio's broadcast held while the game is paused) or by the game's pause (a\nsound that isn't a UI sound while the world is paused, as the audio device holds it). A paused sound plays nothing,\nso since 1.25.0 it is at volume 0 (counted by `count`, never `audible`, adding nothing to `volume`).",
@@ -980,6 +1068,32 @@
         "click"
       ],
       "title": "Click",
+      "type": "object"
+    },
+    "Clip": {
+      "additionalProperties": false,
+      "description": "A stretch of one of an audio judge's plays, recorded from the game's mixed output: `play` names the play,\n`window` [t0, t1] its seconds (at most CLIP_SECONDS long).",
+      "properties": {
+        "play": {
+          "pattern": "^[a-z0-9_]{1,32}$",
+          "title": "Play",
+          "type": "string"
+        },
+        "window": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "title": "Window",
+          "type": "array"
+        }
+      },
+      "required": [
+        "play",
+        "window"
+      ],
+      "title": "Clip",
       "type": "object"
     },
     "CodeJudge": {
@@ -1660,7 +1774,8 @@
               "spawns": "#/$defs/SpawnsMeasure",
               "ui": "#/$defs/UiMeasure",
               "widgets": "#/$defs/WidgetsMeasure",
-              "world": "#/$defs/WorldMeasure"
+              "world": "#/$defs/WorldMeasure",
+              "heard": "#/$defs/HeardMeasure"
             },
             "propertyName": "probe"
           },
@@ -1730,6 +1845,9 @@
             },
             {
               "$ref": "#/$defs/NavMeasure"
+            },
+            {
+              "$ref": "#/$defs/HeardMeasure"
             }
           ],
           "title": "Measure"
@@ -2336,6 +2454,137 @@
       "title": "Has",
       "type": "object"
     },
+    "HeardMeasure": {
+      "additionalProperties": false,
+      "description": "What the player hears, as the game's own mixed output (game grader 1.26.0, the owner's decision of 2026-11-19\nthat the grader records the game's sound): the plugin reads the engine's main submix as it renders, every 50 ms\nblock of it one sample (not the play's `every`), so it hears what any sound makes, a procedural synth's voices and\nthe output's primary volume included. `loudness`: the block's RMS level (dBFS, -100 when silent); `peak`: its\nloudest sample (dBFS); `band:<Hz>`: its energy in the octave band centred there (dB; 63 Hz to 8 kHz); `share:<Hz>`:\nthat band's part of the block's energy over every band (0-1: what a sound is made of, whatever its volume);\n`onsets`: 1 at a block where a sound starts (a band rises 9 dB or more over the two blocks before it, the block at\n-60 dBFS or louder, at most one every 0.15 s), so `agg: sum` over a window counts the sounds that start there.\nDefault agg: `sum` for onsets, `mean` for the rest. A play with a heard measure runs with sound (muted).",
+      "properties": {
+        "agg": {
+          "anyOf": [
+            {
+              "enum": [
+                "min",
+                "max",
+                "mean",
+                "first",
+                "last",
+                "delta",
+                "any",
+                "all",
+                "count",
+                "sum",
+                "range",
+                "std",
+                "changes",
+                "rises",
+                "falls",
+                "step"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agg"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "items": {
+                "maximum": 1200,
+                "minimum": 0,
+                "type": "number"
+              },
+              "maxItems": 40,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "const": "end",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "field": {
+          "pattern": "^(loudness|peak|onsets|(band|share):(63|125|250|500|1000|2000|4000|8000))$",
+          "title": "Field",
+          "type": "string"
+        },
+        "probe": {
+          "const": "heard",
+          "title": "Probe",
+          "type": "string"
+        },
+        "since": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Event"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "to_angle": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Angle"
+        },
+        "to_axis": {
+          "anyOf": [
+            {
+              "maximum": 360,
+              "minimum": -360,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To Axis"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        }
+      },
+      "required": [
+        "probe",
+        "field"
+      ],
+      "title": "HeardMeasure",
+      "type": "object"
+    },
     "Judge": {
       "additionalProperties": false,
       "description": "The game judge's question over evidence the grader takes itself (screenshots and gameplay frames of a scripted\nplay, and the brief), item by item; never the agent's own words. `before`: the grader also plays the game as it\nwas at the start, and the judge compares (a seeded task that changes how the game looks or plays). `route`: a\nproject file in which the agent leaves inputs that play its game through (the probe's [{t, key, press}], e.g.\nTests/win_route.json); the grader plays it in its own clean copy as one more play, and the judge is told when\nthe file is missing or isn't a route. `plays`: the task's own scripted plays the screenshots are taken in (a\nprobe's TaskPlay: its map, flags and inputs), instead of the grader's idle look and its drive, which every task\nshares and which never press a task's own keys or leave a game's title screen; each is played on every side the\ncheck shows (the developer's game, the start on a `before` check, the reference on a `reference` check). `shots`:\nhow many screenshots of each of its plays it is shown (5 unless said), spread evenly over the play, so a short play\nwith many is a run of frames a quarter of a second apart in which motion shows (an ease or a cut, feet that slide, a\ntrail); its plays times its shots are a judge's 20 at most.",
@@ -2793,7 +3042,8 @@
                 "judge": "#/$defs/Judge",
                 "log_absent": "#/$defs/LogAbsent",
                 "package": "#/$defs/Package",
-                "probe": "#/$defs/Probe"
+                "probe": "#/$defs/Probe",
+                "audio_judge": "#/$defs/AudioJudge"
               },
               "propertyName": "kind"
             },
@@ -2824,6 +3074,9 @@
               },
               {
                 "$ref": "#/$defs/Probe"
+              },
+              {
+                "$ref": "#/$defs/AudioJudge"
               }
             ]
           },
@@ -3835,7 +4088,8 @@
               "trace": "#/$defs/TraceMeasure",
               "ui": "#/$defs/UiMeasure",
               "widgets": "#/$defs/WidgetsMeasure",
-              "world": "#/$defs/WorldMeasure"
+              "world": "#/$defs/WorldMeasure",
+              "heard": "#/$defs/HeardMeasure"
             },
             "propertyName": "probe"
           },
@@ -3908,6 +4162,9 @@
             },
             {
               "$ref": "#/$defs/NavMeasure"
+            },
+            {
+              "$ref": "#/$defs/HeardMeasure"
             }
           ],
           "title": "Measure"

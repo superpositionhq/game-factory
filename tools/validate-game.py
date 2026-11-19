@@ -643,7 +643,7 @@ def mobile_play_errors(t):
         for c in (m.get('checks') or []) if isinstance(m, dict) else []:
             if not isinstance(c, dict):
                 continue
-            plays = [c.get('play')] if c.get('kind') == 'probe' else (c.get('plays') or [] if c.get('kind') == 'judge' else [])
+            plays = [c.get('play')] if c.get('kind') == 'probe' else (c.get('plays') or [] if c.get('kind') in ('judge', 'audio_judge') else [])
             for play in (x for x in plays if isinstance(x, dict)):
                 for arg in (x for x in play.get('args') or [] if isinstance(x, str)):
                     mm = PLAY_ARG.match(arg)
@@ -1368,7 +1368,7 @@ def play_after_errors(checks):
     itself, and the plays never wait on each other in a cycle."""
     after = {}
     for c in checks:
-        named = [c.get('play')] if c.get('kind') == 'probe' else (c.get('plays') or [] if c.get('kind') == 'judge' else [])
+        named = [c.get('play')] if c.get('kind') == 'probe' else (c.get('plays') or [] if c.get('kind') in ('judge', 'audio_judge') else [])
         for p in named:
             if isinstance(p, dict) and isinstance(p.get('name'), str):
                 found = p.get('after')
@@ -1418,7 +1418,7 @@ def play_continues_errors(checks):
     earliest first, at most SESSIONS, never coming back to a play in the chain."""
     found = {}
     for c in checks:
-        named = [c.get('play')] if c.get('kind') == 'probe' else (c.get('plays') or [] if c.get('kind') == 'judge' else [])
+        named = [c.get('play')] if c.get('kind') == 'probe' else (c.get('plays') or [] if c.get('kind') in ('judge', 'audio_judge') else [])
         for p in named:
             if isinstance(p, dict) and isinstance(p.get('name'), str):
                 found.setdefault(p['name'], p)

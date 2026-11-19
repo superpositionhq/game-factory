@@ -212,6 +212,7 @@ namespace TaskProbe
 class FGlowRender;
 class FDrawnRender;
 struct FSoundStarts;
+class FMix;
 
 /** A point of the game viewport, in viewport fractions 0-1, in Slate's absolute (desktop) space. */
 bool ViewportPoint(double Fx, double Fy, FVector2D& OutAbsolute);
@@ -335,7 +336,11 @@ public:
 	void Sample(UWorld* World, APlayerController* PC, double T);
 	/** {"<id>": [samples...]} for probe.json. */
 	TSharedRef<FJsonObject> MeasuresJson() const;
+	/** A heard query's clips of the mix (TaskProbeHeard.h) written to Dir: the files' names (none without one). */
+	TArray<FString> WriteHeardClips(const FString& Dir);
 	const TArray<FString>& Errors() const { return ErrorList; }
+	/** A heard query is asked: the play is paced to real time, as the mix it hears renders (TaskProbeHeard.h). */
+	bool HearsMix() const { return Mix.IsValid(); }
 	/** A screen or ui sample waits for the next frame the game viewport draws. */
 	bool WaitsForFrame() const { return bWantFrame || bWantUi; }
 	/** Every frame of the play (the clock running or held): spin's components turn by so much since the last frame,
@@ -447,6 +452,8 @@ private:
 	uint64 CanvasFrame = 0;  // ui: the frame (GFrameCounter) CanvasNow is of
 	TSharedPtr<FTaskProbeViewExtension, ESPMode::ThreadSafe> ViewExtension;
 	TSharedPtr<TaskProbe::FSoundStarts, ESPMode::ThreadSafe> SoundStarts;  // audio: every sound started (only with an audio query)
+	TSharedPtr<TaskProbe::FMix, ESPMode::ThreadSafe> Mix;  // heard: the mix as the player hears it (only with a heard query)
+	FString MixId;  // heard: its query's id (one heard query a play)
 	TUniquePtr<TaskProbe::FGlowRender> GlowRender;  // lit, glow: meshes whose emissive is read as rendered
 	TUniquePtr<TaskProbe::FDrawnRender> DrawnRender;  // drawn: what is drawn in a place, rendered
 	TMap<FObjectKey, TaskProbe::FSpinTrack> Spins;  // spin: the components read last sample, their turning since
