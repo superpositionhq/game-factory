@@ -281,8 +281,8 @@ images, no banned names. The dataset adds your design doc and the original brief
 
 **A person plays every game before it is complete (owner, 2026-11-19).** An AutoPlay recording is not a playtest.
 Once the game builds and plays from start to end, and before any task is written, a person plays it: at least one
-full round, from the title screen to a win or a loss, on the build a player gets (the packaged build; on a phone for
-a mobile game). Ask for it through the coordinator (or the person, when you work with them directly) and go on with
+full round, from the title screen to a win or a loss, on the build a player gets (the packaged build; for
+a mobile game, a phone or an emulator). Ask for it through the coordinator (or the person, when you work with them directly) and go on with
 other work while you wait. Until a playtest is recorded, the game is not complete: write no tasks and do not report it
 done.
 
@@ -291,7 +291,7 @@ done.
   a loss), difficulty and pacing, how readable the HUD and text are, and what is fun or boring. Each issue is one
   point, in what the player saw, never a fix.
 - **How it is recorded.** Each issue is its own `user.direction` row with `"target": "playtest"` and, beside
-  `params.direction`, `params.playtest`: `{"round": 1, "build": "packaged" | "phone" | "editor", "minutes": <minutes
+  `params.direction`, `params.playtest`: `{"round": 1, "build": "packaged" | "phone" | "emulator" | "editor", "minutes": <minutes
   played>, "result": "win" | "lose" | "quit"}`. A round with nothing to fix is still one row ("played a full round, no
   issues", with the same `params.playtest`). Write only what the person reported: never a row from your own play, a
   recording or a guess.
