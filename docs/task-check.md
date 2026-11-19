@@ -164,13 +164,16 @@ A task is **VALID** when all of this holds:
 - no check holds a **task error**, on either side, `required` or not: a check no version of the game can pass. One is
   a probe whose selector reads nothing in the reference's play (no row matched, or none had the field; a `count`, or a
   `widgets` reading combined by count, any, all or sum, reads 0 of nothing, which is an answer unless 0 fails the
-  threshold on the reference), and a task play whose inputs don't land on the reference (`inputs_missed`: a click no
+  threshold on the reference), and a task play, a probe's or a judge check's own, whose inputs don't land on the
+  reference (`inputs_missed`: a click no
   button took or on a button something else covers, a tap no widget, a stage nothing took, a shot whose `when` event
   never came) or whose first session there doesn't end cleanly or saves nothing
   (`continues`). An `optional` click no button took, and a `disabled` click whose button the plugin found shown but
   disabled, are no misses, as on the Lab; a click on a covered button ("covered by another control") is a miss whatever
   its options. The cloud's grade of every run fails while a task holds one. An input the start's play missed while
-  the reference's landed fails that check on the start: the start's play didn't do what the task says.
+  the reference's landed fails that check on the start: the start's play didn't do what the task says. A judge
+  check's own play is read the same way before its pictures are saved: a missed input on the reference fails the
+  judge there (a task error when the input missed for good), as the cloud fails it before asking its judge.
 
 This is the cloud's own check of every task, by two scripted runs: the **no-op** (the start, untouched) must fail and
 earn nothing, and the **oracle** (the reference) must pass. VALID here is both of them as they must be; the write-tasks

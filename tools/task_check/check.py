@@ -600,8 +600,27 @@ class Grade:
             "the check reads nothing even on the task's own fix"
         return f"in the reference's {name if name in ('look', 'drive') else 'play ' + name}, {why}: {said}"
 
+    def judge_landing(self, check):
+        """A `judge` check's row as far as the checker can grade it: its own task plays' inputs, as the cloud's grade
+        reads them before it asks its judge (a play that missed one shows the judge a play that didn't do what the task
+        says). A missed input fails the check, and is a task error when the reference's play missed it too; else the
+        judge is not asked (NOT_JUDGED). The start's grade never asks (the cloud's start grade reads no landing)."""
+        if self.mode == "start":
+            return True, NOT_JUDGED
+        for play in judges.judge(check)["plays"]:
+            landed = self.landing(play)
+            if landed:
+                broken, said = landed
+                if broken:
+                    self.task_errors[check["name"]] = broken
+                    return False, f"{verdict.TASK_ERROR}: {broken}"
+                return False, f"task play {play['name']}: {said}"
+        return True, NOT_JUDGED
+
     def check(self, check):
         kind = check["kind"]
+        if kind == "judge":
+            return self.judge_landing(check)
         if kind in JUDGES:
             return True, NOT_JUDGED
         if kind == "probe" and check["measure"]["probe"] == "trace":

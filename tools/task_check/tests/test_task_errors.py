@@ -72,6 +72,29 @@ class Landing(unittest.TestCase):
         self.assertEqual((ref["task_errors"], own["task_errors"]), ({}, {}))
         self.assertEqual(verdict.verdict(task, ref, own)[:2], (True, []))
 
+    def test_a_judges_own_play_whose_input_the_reference_missed_is_a_task_error(self):
+        """The cloud reads a judge's own plays' inputs before it asks the judge (Li, 2026-11-19)."""
+        for required in (True, False):
+            task = task_with(probe(), {"kind": "judge", "name": "looks_as_asked", "question": "Is it open?",
+                                       "required": required, "plays": [PLAY],
+                                       "rubric": [{"key": "open", "criterion": "The door is open."}]})
+            ref, own = graded(task, missing(-5), missing(5, MISS))
+            row = next(r for r in ref["checks"] if r["name"] == "looks_as_asked")
+            self.assertFalse(row["passed"])
+            self.assertTrue(row["detail"].startswith("task error: in the reference's play opens, an input did not "
+                                                     "land"), row["detail"])
+            valid, why, _ = verdict.verdict(task, ref, own)
+            self.assertFalse(valid)
+            self.assertTrue(any(w.startswith("task error in looks_as_asked:") for w in why), why)
+        task = task_with(probe(), {"kind": "judge", "name": "looks_as_asked", "question": "q", "plays": [PLAY],
+                                   "rubric": [{"key": "open", "criterion": "c"}]})
+        ref, own = graded(task, missing(-5, MISS), missing(5))
+        self.assertEqual(ref["task_errors"], {})
+        self.assertEqual(next(r for r in ref["checks"] if r["name"] == "looks_as_asked")["detail"], check.NOT_JUDGED)
+        self.assertEqual(next(r for r in own["checks"] if r["name"] == "looks_as_asked")["detail"], check.NOT_JUDGED,
+                         "the start's grade never asks: a judge decides nothing about the no-op here")
+        self.assertEqual(verdict.verdict(task, ref, own)[:2], (True, []))
+
     def test_a_named_shot_not_written_is_no_missed_input(self):
         self.assertEqual(probes.missed({"inputs_missed": [{"t": 1, "kind": "shot", "target": "a", "why": "x"}]}), [])
         self.assertIsNone(probes.missed({}), "a probe file from before the plugin said: it can't say")

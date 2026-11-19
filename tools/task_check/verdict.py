@@ -27,7 +27,7 @@ A task is VALID when
   threshold for (a reference or a start-relative start that measured nothing, a start and reference that measure the
   same), so no run of the task is graded;
 - no check holds a task error on either side: a probe whose selector reads nothing in the reference's play, or a
-  task play whose inputs don't land on the reference (or whose first session there doesn't end cleanly or saves
+  task play (a probe's, or a judge's own) whose inputs don't land on the reference (or whose first session there doesn't end cleanly or saves
   nothing), can be passed by no version of the game, so the cloud's grade of every run fails while it is there,
   `required` or not;
 - a no-op scores zero (owner, 2026-11-04): no check the start passes carries weight. The cloud's score is the weighted
@@ -154,7 +154,8 @@ def verdict(task, reference, start):
         uncalibrated.update({n: w for n, w in ((grade or {}).get("uncalibrated") or {}).items()
                              if n not in uncalibrated and n not in errors})
     why.extend(f"{UNCALIBRATED} in {n}: {str(w)[:200]}" for n, w in uncalibrated.items())
-    must = {c["name"] for _, c in tasks.checks(task) if c["required"] and c["kind"] not in JUDGES}
+    # (a judge's row fails only when its own play's input didn't land: check.Grade.judge_landing; else not asked)
+    must = {c["name"] for _, c in tasks.checks(task) if c["required"]}
     if reference is not None:
         for c in reference["checks"]:
             if c["passed"]:
