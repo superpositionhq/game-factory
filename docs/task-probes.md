@@ -1021,6 +1021,11 @@ The start is then never played, so nothing in the task may need it played: **no 
 (`calibrate`, `start_times`, `start_plus`; use literal values) and **no judges comparing with the start**
 (`"before": true`). The task check requires the start not to build; a start that builds makes the task invalid.
 
+When the reported error is a shadowing one (MSVC's C4456, C4457, C4458 or C4459: "declaration of 'X' hides global
+declaration"), also set `"shadow_errors": true`. Every build of the task, the start's, the reference's and the agent's,
+is then made with UnrealBuildTool's `-ShadowVariableErrors`, so shadowing fails it on any machine and compiler. The
+Lab's Linux grader (clang) otherwise only warns of it, and its start would build (Lab game grader 1.23.0).
+
 ### 3.2 A judge check's own plays: `plays`
 
 A `judge` check asks a question, rubric item by rubric item, over screenshots the checker takes itself. Left alone it

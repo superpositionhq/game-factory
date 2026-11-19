@@ -300,6 +300,16 @@ def task_plays(task):
     return found
 
 
+SHADOW_ERRORS = "-ShadowVariableErrors"  # UnrealBuildTool's switch (CppCompileWarnings.ShadowVariableWarningLevel)
+
+
+def build_args(task):
+    """The UnrealBuildTool arguments every build of `task` is made with beyond the checker's own: -ShadowVariableErrors
+    when a build check sets `shadow_errors` (Lab game grader 1.23.0), else none."""
+    return [SHADOW_ERRORS] if any(c.get("kind") == "build" and c.get("shadow_errors") is True
+                                  for _, c in checks(task)) else []
+
+
 def check(c):
     """A check with `required` (True), `weight` (1) and `needs` ([]); a probe's play and measure with their
     defaults."""

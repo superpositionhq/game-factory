@@ -134,9 +134,9 @@ class Built:
     def has_built(self):
         return self._build is not None
 
-    def build(self, timeout):
+    def build(self, timeout, args=()):
         if self._build is None:
-            self._build = self.project.build(timeout)
+            self._build = self.project.build(timeout, **({"args": list(args)} if args else {}))
         return self._build
 
     def __getattr__(self, name):
@@ -226,7 +226,8 @@ class Side:
             again = getattr(self.project, "has_built", lambda: False)()
             if not again:
                 self.log(f"  {self.name}: building")
-            self._build = self.project.build(self.build_timeout)
+            args = tasks.build_args(self.task)  # a build check's shadow_errors: -ShadowVariableErrors
+            self._build = self.project.build(self.build_timeout, **({"args": args} if args else {}))
             waited = getattr(self._build, "waited", 0.0)
             self.log(f"  {self.name}: {'built' if self._build.exit_code == 0 else 'build FAILED'} "
                      f"({self._build.seconds:.0f} s{', built earlier in this run' if again else ''}"

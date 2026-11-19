@@ -337,12 +337,12 @@ class Project:
 
         return tasks.validator().read_platform(self.folder)
 
-    def build(self, timeout, sleep=time.sleep):
+    def build(self, timeout, sleep=time.sleep, args=()):
         """The editor target's build. One stopped by another process's Live Coding session isn't a failed build: it
         waits and tries again, up to LIVE_CODING_RETRY_LIMIT seconds, and says how many times in its output. Any other
         failure, or the same line once the limit is up, comes back as it is."""
         argv = [self.machine.build_bat(), seeds.editor_target(self.folder), "Win64", "Development",
-                f"-Project={self.uproject()}", "-WaitMutex", UNITY, NO_LIVE_CODING_GUARD]
+                f"-Project={self.uproject()}", "-WaitMutex", UNITY, NO_LIVE_CODING_GUARD, *args]
         retries, waited = 0, 0
         while True:
             found = self.machine.job(f"task-check build {self.label}", argv, self.folder, timeout)
