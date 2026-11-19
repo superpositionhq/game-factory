@@ -577,6 +577,46 @@ against what was asked. Every rule of this skill holds as for a new task: a visu
 play or in the game, never by easing the check (above, "The check asks no model"), and nothing is made easier
 (section 1).
 
+**Brief the person, then go straight on (owner, 2026-11-18).** The person steering the fix may never have seen this
+game. As your first message on a task, write this in the chat, in plain words and without task jargon. It is context
+for them to read while you work, not a question: do not wait for an answer, ask whether to proceed or offer a choice
+of approaches. They have no basis yet to choose one. Start the investigation in the same turn:
+
+1. **The game.** What it is and its genre, in a sentence or two; whether it has one level or several; how a player
+   wins and loses.
+2. **The part of the game this task touches.** The rooms or areas involved and how they connect, and who and what is
+   in them (the player, creatures, objects). Keep to the areas the task concerns, not the whole game. Name a thing as
+   a player sees it the first time you mention it: "the wireless, a radio on the workshop bench", not "the wireless".
+3. **The controls.** What a player can press and what each input does, and what can be interacted with in those
+   areas.
+4. **The task.** Its instruction in full, what the game does at the start, and what the reference is meant to change.
+5. **The checks.** Each check of the task in one line: what its play does, what it measures or shows, and its
+   threshold.
+6. **What may be wrong.** The reason the return gives and, where the return has one, its detail (the `Detail` column
+   of the list of returned tasks), in the return's own words and then in plain words: which check it names and what
+   it says happened. Present it as what was flagged, a hypothesis to test, not as the cause: say plainly that it may
+   be wrong, may be out of date, or may be one of several things wrong with the task.
+
+After every task check run, give a short table of every check, pass or fail on the start and on the reference, and
+one line on what you will try next, and carry on. Use the names from the brief, so the person can follow and step
+in. Stop for the person only where this skill says to: a judge's or a `seen` probe's pictures to score, a play you
+need them to watch, or a task you cannot fix.
+
+**The return's detail is a lead, not a finding.** It is what our own check of the task flagged, often one check's
+name and a reading, written before anyone looked at the game. Start there, and test it:
+
+- Read the check it names and that check's play, then run the task check and look at that check on the start and on
+  the reference (its row and `probe.json`). Say whether the detail holds: confirmed, not reproduced, or true but not
+  the cause.
+- Then look at every other check of the task the same way. A returned task often has more wrong than the return
+  lists (a play that never reaches the moment, a start that already passes, a no-op that scores), and a later failure
+  can hide behind the first. The task is fixed when the whole task check says VALID, not when the named check passes.
+- A detail that no longer matches what the task check shows (the check passes, or fails for another reason) is not
+  an error of yours: say so, and follow what the task check shows.
+- A return with no detail is investigated the same way from its reason alone.
+
+In your note of what changed, say what the detail claimed, what you found, and anything else you found wrong.
+
 **You may change the game to fix a returned task, and the new commits are its reference (owner, 2026-11-18).** A
 check that fails on the reference is fixed in its play first: its staged state, its inputs and their timing, the
 moments of its shots, until the play gets the game into the state the check needs on the start and on the reference.
