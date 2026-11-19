@@ -532,7 +532,8 @@ PC with the same rules:
   it must not pass every required outcome probe, it earns nothing (every check it passes has `"weight": 0`), and it
   passes every required `still_works` probe (what still works must already work there).
 - **The oracle** is the reference (`seed.reference`) graded as if an agent had handed it in. It must **pass**: it
-  builds, boots and passes every required check, and no check holds a task error (below).
+  builds, boots and passes every required check, no check holds a task error (below), and no probe, required or
+  not, is uncalibrated (the cloud can't make its threshold, so it grades no run of the task).
 
 A task is not finished until both are right: the no-op fails and the oracle passes, on your PC, after the last edit
 of the task. Step by step:
@@ -547,7 +548,7 @@ of the task. Step by step:
 3. **Follow it** in `<GF_ROOT>\games\<slug>\.task-checks\progress.txt` until it says `finished`. The console prints one
    line a task: `VALID <name>`, or `INVALID <name>: <first reason>`; the exit code is 0 only when every task is VALID.
 4. **Read each task's result**, `.task-checks\<name>.json`: `verdict`; `reasons` (why INVALID, one line each); `notes`
-   (the oracle's failures that decide nothing: optional probes, `log_absent`, `file_exists`); `probes` (each probe's
+   (the oracle's failures that decide nothing: checks with `"required": false`); `probes` (each probe's
    `start` and `reference` measures, its `threshold`, and `start_passed` / `reference_passed`); `start_checks` and
    `reference_checks` (every check's row on each side, with its `detail`). Each play's `probe.json`, screenshots and
    log are under `.task-checks\<name>\start\<play>\` and `reference\<play>\`.
@@ -580,7 +581,7 @@ What each verdict means:
 
 | verdict | meaning |
 |---|---|
-| `VALID` | the no-op fails, the oracle passes, a no-op earns nothing, the still-works probes pass at the start, no task error; judges and `seen` probes still need your answers before the task ships |
+| `VALID` | the no-op fails, the oracle passes, a no-op earns nothing, the still-works probes pass at the start, no task error, no probe uncalibrated; judges and `seen` probes still need your answers before the task ships |
 | `INVALID` | one of those doesn't hold: `reasons` says which; the task doesn't ship as it is |
 | `ERROR` | the checker couldn't check it (a commit not fetched, LFS objects missing, the engine refused the project); fix that and run again, it says nothing about the task |
 
@@ -595,7 +596,7 @@ What each failure means and what to do (never by asking less of the solution, se
 | `task error in X: ... an input did not land ...` | the play can't be driven on the reference (a click found no button, a tap no widget, a stage no actor) | drive the play by what the reference shows at that moment: the on-screen text the instruction gives, a wait, a stage on something both sides have |
 | `task error in X: ... matched nothing ...: the check reads nothing even on the task's own fix` | the selector finds nothing on the reference, so no build can pass it | select by what the thing does or carries, or by names the start has; read the rows in the reference's `probe.json` |
 | `task error in X: ... carries nothing over to the next session` | a play that `continues` another found no save on the reference | give the first session the inputs that make the game save, and the time to do it |
-| `uncalibrated: ... both measure X` | start and reference read the same: nothing to put a threshold between | measure something the change moves, or a literal for a count or a boolean |
+| `calibration impossible in X: ... both measure X` (also `uncalibrated: ...` in the check's row) | start and reference read the same, or a side measured nothing: no threshold can be made, so the cloud grades no run of the task, whether X is required or not | measure something the change moves, or a literal for a count or a boolean; a side that measured nothing needs a play that reaches the moment |
 | a value that differs between two runs of the same commit, or a reference just past its threshold | a flaky reading: a window at the edge of the event, a sample at a moment that moves, a threshold with no room | widen the window around the event so it holds on both sides, read a quantity with a clear gap between start and reference, calibrate between them; never ease what the instruction asks |
 | `judge X: shots saved ..., answer needed` / `seen X: crops saved ..., answer needed` | the check can't decide it without you | answer it (step 5), then check again |
 | the reference fails a required judge item or `seen` probe because its pictures don't show what is asked | the play never put that state on screen when its shots were taken | rewrite the play: its inputs and the moments of its shots (`when` on a shot whose moment moves between builds), or edit the game so the asked thing appears on screen; never drop, repurpose or loosen the check or its rubric |

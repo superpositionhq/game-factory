@@ -105,8 +105,9 @@ class Verdict(unittest.TestCase):
         self.assertEqual(verdict.verdict(task, None, record(checked("hero_on_ground", "probe", True)))[1],
                          ["start already passes every required probe"])
 
-    def test_the_reference_must_build_and_boot_and_its_other_checks_are_notes(self):
-        task = task_with(probe(), {"kind": "file_exists", "name": "route_left", "glob": "Tests/*.json"},
+    def test_the_reference_must_build_and_boot_and_its_optional_checks_are_notes(self):
+        task = task_with(probe(), {"kind": "file_exists", "name": "route_left", "glob": "Tests/*.json",
+                                   "required": False},
                          {"kind": "boot", "name": "boots_clean"})
         ref = record(checked("hero_on_ground", "probe", True), checked("route_left", "file_exists", False, "0 file(s)"),
                      checked("boots_clean", "boot", False, "crashed"))
@@ -114,7 +115,33 @@ class Verdict(unittest.TestCase):
         valid, why, notes = verdict.verdict(task, ref, start)
         self.assertFalse(valid)
         self.assertEqual(why, ["reference fails boots_clean: crashed"])
-        self.assertEqual(notes, ["reference fails route_left (file_exists): 0 file(s)"], "a deliverable never decides")
+        self.assertEqual(notes, ["reference fails route_left (file_exists): 0 file(s)"], "an optional check never decides")
+
+    def test_a_required_log_absent_or_file_exists_the_reference_fails_is_invalid(self):
+        """The cloud's oracle must pass every required check it grades, so a required log_absent or file_exists the
+        reference fails makes the task INVALID (Li, 2026-11-19)."""
+        task = task_with(probe(), {"kind": "file_exists", "name": "route_left", "glob": "Tests/*.json"},
+                         {"kind": "log_absent", "name": "no_errors", "pattern": "Error"})
+        ref = record(checked("hero_on_ground", "probe", True), checked("route_left", "file_exists", False, "0 file(s)"),
+                     checked("no_errors", "log_absent", False, "2 matching log line(s)"))
+        start = record(checked("hero_on_ground", "probe", False))
+        valid, why, notes = verdict.verdict(task, ref, start)
+        self.assertFalse(valid)
+        self.assertEqual(why, ["reference fails route_left: 0 file(s)",
+                               "reference fails no_errors: 2 matching log line(s)"])
+        self.assertEqual(notes, [])
+
+    def test_a_probe_that_cant_be_calibrated_is_invalid_required_or_not(self):
+        """The cloud's grade raises on a probe it can't make a threshold for, so no run is graded (Li, 2026-11-19)."""
+        task = task_with(probe(), probe("glow", required=False, expect={"op": ">=", "calibrate": 0.5}))
+        ref = {**record(checked("hero_on_ground", "probe", True), checked("glow", "probe", False, "uncalibrated: x")),
+               "uncalibrated": {"glow": "glow: the start and the reference both measure 3"}}
+        start = {**record(checked("hero_on_ground", "probe", False), checked("glow", "probe", False, "uncalibrated: x")),
+                 "uncalibrated": {"glow": "glow: the start and the reference both measure 3"}}
+        valid, why, notes = verdict.verdict(task, ref, start)
+        self.assertFalse(valid)
+        self.assertEqual(why, ["calibration impossible in glow: glow: the start and the reference both measure 3"])
+        self.assertEqual(notes, [], "said once, as a reason")
 
     def test_a_no_op_scores_zero(self):
         """What is true of the start carries no weight, whether or not it is required (owner, 2026-11-04)."""

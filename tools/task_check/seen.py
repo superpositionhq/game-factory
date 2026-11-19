@@ -50,6 +50,11 @@ SIGNATURE = b"\x89PNG\r\n\x1a\n"
 CHANNELS = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}  # a PNG's colour type: its samples a pixel
 
 
+def unanswered(why):
+    """Whether `why` (a side's reason for no value) says the writer's answer is still needed or can't be read."""
+    return "answer needed" in why or f"blind/{ANSWERS}:" in why
+
+
 def is_seen(check):
     """Whether `check` (tasks.check form) is a `seen` probe."""
     return check["kind"] == "probe" and check["measure"]["probe"] == "seen"

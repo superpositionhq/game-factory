@@ -470,6 +470,7 @@ class Grade:
         self.thresholds = thresholds
         self.measured = {}
         self.task_errors = {}  # check -> why no version of the game can pass it (task_error)
+        self.uncalibrated = {}  # probe -> why no threshold can be made for it: the cloud grades no run of the task
 
     def threshold(self, check):
         if check["name"] not in self.thresholds:
@@ -491,7 +492,11 @@ class Grade:
             value, _ = self.side.value(check)
             self.measured[check["name"]] = {"value": value, "threshold": None, "start": exc.start, "fix": exc.fix}
             broken = self.unreadable(check)
-            return self.task_error(check, broken) if broken else (False, f"uncalibrated: {exc}")
+            if broken:
+                return self.task_error(check, broken)
+            if not (seen.is_seen(check) and seen.unanswered(str(exc))):  # (a seen check waits for its answers)
+                self.uncalibrated[check["name"]] = str(exc)
+            return False, f"uncalibrated: {exc}"
         value, why = self.side.value(check)
         self.measured[check["name"]] = {"value": value, "threshold": limit, "start": start, "fix": fix}
         landed = self.landing(check["play"])
@@ -639,7 +644,8 @@ class Grade:
             rows.append({"name": check["name"], "kind": check["kind"], "passed": bool(ok),
                          "required": check["required"], "weight": check["weight"], "detail": str(detail)[:700],
                          "group": group})
-        return {"checks": rows, "probes": self.measured, "task_errors": self.task_errors}
+        return {"checks": rows, "probes": self.measured, "task_errors": self.task_errors,
+                "uncalibrated": self.uncalibrated}
 
 
 WATCH_SHOTS = 12  # the screenshots a watched play saves, spread over it

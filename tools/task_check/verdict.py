@@ -13,9 +13,9 @@ Thresholds (a probe's `expect`):
 A task is VALID when
 - the start builds, unless the task says it doesn't (a build check's `fails_at_start`: making it build is the task):
   then the start must not build, and that is the start failing the task (it is never played);
-- with a reference: the reference builds and boots and passes every required probe; its other checks (log_absent,
-  file_exists, probes that aren't required) are notes, never decisive; the start fails every required probe
-  outside still_works (or doesn't build by design);
+- with a reference: the reference builds and boots and passes every required check the checker can run (probes,
+  log_absent, file_exists), as the cloud's oracle must pass every required check; its checks that aren't required are
+  notes, never decisive; the start fails every required probe outside still_works (or doesn't build by design);
 - without a reference: the start fails every required probe outside still_works (or doesn't build by design);
 - either way, every required probe of the task's `still_works` milestone already passes at the start: what still works
   must hold there, or the probe is broken and would fail every correct solution. A still-works probe the start
@@ -23,6 +23,9 @@ A task is VALID when
 - a required check of weight 0 outside still_works that the start passes is not refused here (it rewards nothing,
   and the cloud's check doesn't refuse it either); the rule that weight 0 belongs only in builds, boots and
   still_works is the task writer's (write-tasks section 5), never a refusal;
+- no probe is uncalibrated on either side, `required` or not: the cloud's grade raises on a probe it can't make a
+  threshold for (a reference or a start-relative start that measured nothing, a start and reference that measure the
+  same), so no run of the task is graded;
 - no check holds a task error on either side: a probe whose selector reads nothing in the reference's play, or a
   task play whose inputs don't land on the reference (or whose first session there doesn't end cleanly or saves
   nothing), can be passed by no version of the game, so the cloud's grade of every run fails while it is there,
@@ -37,6 +40,7 @@ import math
 from . import probes, tasks
 
 TASK_ERROR = "task error"  # a check's detail when no version of the game can pass it (check.Grade.task_error)
+UNCALIBRATED = "calibration impossible"  # a reason: a probe no threshold can be made for (check.Grade.probe_check)
 JUDGES = ("judge", "code_judge", "actions_judge")   # actions_judge: retired, still skipped in older tasks
 MARGIN = 0.25  # a calibrated threshold whose start measured nothing: the reference's value, this share toward the start
 
@@ -144,13 +148,20 @@ def verdict(task, reference, start):
     for grade in (reference, start):
         errors.update({n: w for n, w in ((grade or {}).get("task_errors") or {}).items() if n not in errors})
     why.extend(f"{TASK_ERROR} in {n}: {str(w)[:200]}" for n, w in errors.items())
+    # a probe no threshold can be made for: the cloud's grade raises (Uncalibrated) and grades no run, `required` or not
+    uncalibrated = {}
+    for grade in (reference, start):
+        uncalibrated.update({n: w for n, w in ((grade or {}).get("uncalibrated") or {}).items()
+                             if n not in uncalibrated and n not in errors})
+    why.extend(f"{UNCALIBRATED} in {n}: {str(w)[:200]}" for n, w in uncalibrated.items())
+    must = {c["name"] for _, c in tasks.checks(task) if c["required"] and c["kind"] not in JUDGES}
     if reference is not None:
         for c in reference["checks"]:
             if c["passed"]:
                 continue
-            if c["name"] in errors:
+            if c["name"] in errors or c["name"] in uncalibrated:
                 continue
-            if c["kind"] in ("build", "boot") or c["name"] in required:
+            if c["kind"] in ("build", "boot") or c["name"] in required or c["name"] in must:
                 why.append(f"reference fails {c['name']}: {str(c['detail'])[:160]}")
             else:
                 notes.append(f"reference fails {c['name']} ({c['kind']}): {str(c['detail'])[:160]}")

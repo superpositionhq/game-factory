@@ -137,17 +137,20 @@ line says how long it took, and how much of that it waited for a machine slot (`
 - `{"op": ">=", "calibrate": 0.5}`: `s + 0.5 * (r - s)` between the start's measure `s` and the reference's `r`.
   If the start measured nothing (its play crashed: often the bug itself), the threshold is `r` moved a quarter of
   `|r|` toward the start's side. If the reference measured nothing, both sides measure the same, or the start
-  measured nothing and the reference measured 0 (a quarter of nothing is no margin), the probe fails as
-  **uncalibrated**.
+  measured nothing and the reference measured 0 (a quarter of nothing is no margin), the probe is **uncalibrated**,
+  and the task is INVALID whether the probe is required or not: the cloud's grade can't make its threshold and grades
+  no run of the task.
 - `{"op": ">=", "start_times": 1.3}` / `{"op": ">=", "start_plus": 500}`: `s * 1.3` / `s + 500` from the start (for a
-  task with no reference). A start that measured nothing leaves no threshold (uncalibrated).
+  task with no reference). A start that measured nothing leaves no threshold (uncalibrated: INVALID, as above).
 
 ## VALID and INVALID
 
 A task is **VALID** when all of this holds:
 
 - the start builds, or doesn't build exactly when a build check says `fails_at_start`;
-- with a reference: the reference builds, boots (every `boot` check) and passes every **required** probe;
+- with a reference: the reference builds, boots (every `boot` check) and passes every **required** check the
+  checker runs: probes, `log_absent` and `file_exists` (the cloud's oracle must pass every required check);
+- no probe is uncalibrated, on either side, `required` or not (Thresholds, above);
 - the start fails every required probe outside `still_works` (or doesn't build by design): each is one issue of the
   thread, and one the start already passes rewards no work. A required check of `"weight": 0` rewards nothing, so the
   check doesn't refuse a start that passes one; but weight 0 belongs only in `builds`, `boots` and `still_works`
@@ -173,10 +176,11 @@ This is the cloud's own check of every task, by two scripted runs: the **no-op**
 earn nothing, and the **oracle** (the reference) must pass. VALID here is both of them as they must be; the write-tasks
 skill (section 5, "The no-op and the oracle") walks through it step by step.
 
-Never decided by the check: judges (`judge`, `code_judge`: no model is asked), `package` checks (the cloud packages
-the reference for a required one, which must then pass: the game's own packaging is checked when the game is
-released), and the retired `actions_judge` checks and `trace` probes an older task still carries. The reference's other failures (`log_absent`,
-`file_exists`, probes with `"required": false`) are reported as notes and never make a task INVALID.
+Never decided by the check: judges (`judge`, `code_judge`: no model is asked; you answer them, below), `package`
+checks on the reference (the cloud packages the reference for a required one, which must then pass: the game's own
+packaging is checked when the game is released), and the retired `actions_judge` checks and `trace` probes an older
+task still carries. The reference's failures of checks that aren't required (`"required": false`) are reported as
+notes and never make a task INVALID, as the cloud's oracle needs only its required checks.
 
 A `judge` check is looked at by you instead. The check plays its plays on the start and on the reference (its own
 `plays`, else `look` and `drive`; a play a probe names is the same play, played once) and saves the screenshots the
@@ -348,8 +352,10 @@ The default remains to validate and ship `Checks/`. Remove this temporary switch
 - The measure is the wrong one: compare the start's and the reference's `probe.json` samples for the field you read
   and pick one that differs.
 
-**`uncalibrated: ... the start and the reference both measure X`.** The measures are equal on both sides, so there is
-nothing to put a threshold between: the probe doesn't see the change. Measure something the fix changes (a
+**`calibration impossible in X: ... the start and the reference both measure X`** (the check's row says
+`uncalibrated: ...`). The measures are equal on both sides, so there is nothing to put a threshold between: the probe
+doesn't see the change. This holds for an optional probe too: the cloud's grade can't make the threshold, so it grades
+no run of the task. Measure something the fix changes (a
 different field, window or play), or use a literal value when the fact is a count or a boolean.
 
 **`no samples in the window (the play ended at X s)`.** The play ended before the window: the window or `at` lies past

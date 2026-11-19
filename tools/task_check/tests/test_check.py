@@ -299,6 +299,28 @@ class Whole(unittest.TestCase):
             self.assertTrue((Path(tmp) / "out" / "probe-task" / "start" / "look" / "probe.json").is_file())
             self.assertFalse((Path(tmp) / "scratch").exists(), "the scratch copies are deleted")
 
+    def test_an_optional_probe_that_cant_be_calibrated_makes_the_task_invalid(self):
+        """As in the cloud, whose grade raises on it and grades no run (Li, 2026-11-19)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            task = task_with(probe(expect={"op": ">=", "calibrate": 0.5}),
+                             probe("walls", required=False, expect={"op": ">=", "calibrate": 0.5},
+                                   measure={"probe": "actors", "select": WALLS, "field": "z", "of": "max"}))
+
+            def sided(z):  # the pawn stands at z; the walls read 7 on both sides
+                def play(seconds, shots, queries):
+                    found, log = measuring(z)(seconds, shots, queries)
+                    walls, _ = measuring(7)(seconds, shots, queries)
+                    for q in (queries or {}).get("queries", []):
+                        if q["kind"] == "actors":
+                            found["measures"][q["id"]] = walls["measures"][q["id"]]
+                    return found, log
+                return play
+
+            result = self.check(task, {"start": FakeProject(sided(-500)), "reference": FakeProject(sided(100))}, tmp)
+            self.assertEqual(result["verdict"], "INVALID")
+            self.assertEqual(result["reasons"], ["calibration impossible in walls: walls: the start and the reference "
+                                                 "both measure 7, so there is no threshold between them"])
+
     def test_a_start_that_doesnt_build_or_already_passes(self):
         with tempfile.TemporaryDirectory() as tmp:
             task = task_with({"kind": "build", "name": "editor_builds"}, probe())
