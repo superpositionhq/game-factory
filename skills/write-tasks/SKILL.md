@@ -570,7 +570,10 @@ start doesn't have), or when the reference doesn't do an ask. Fix what you find 
 ### Fixing a task that came back
 
 A task sent back for fixing is fixed from its files as they came back: that is the current version, and an older copy
-of your own may lack changes made since, which editing it would undo. Change only the tasks the return lists; every
+of your own may lack changes made since, which editing it would undo. A game restored from a delivery has no
+git identity of its own: when a commit is refused for a missing name or email, set them in that repo only
+(`git config user.name` and `user.email`, never `--global`), from the machine's own git identity or the person's
+answer. Change only the tasks the return lists; every
 other task stays exactly as it is, since each change needs its own check run and review. Hand each fixed task back
 with a note of what changed and why (also in its `tasks-workflow.jsonl` row), so the reviewer can check the change
 against what was asked. Every rule of this skill holds as for a new task: a visual check that failed is fixed in its
@@ -675,6 +678,25 @@ so don't use it for what the readings already show.
   graded and no result is written. Its screenshots and `probe.json` are kept under
   `.task-checks\<task>\watch\<side>\`, to look at with the person afterwards. Run the task check again for the
   verdict.
+
+**A start or a reference that is broken for a reason outside the task.** A returned task's commits are often older
+than a fix the whole game needed later, made under another task (the player spawns outside the level and falls, the
+game doesn't boot on this engine, a menu blocks every play). Then every play fails before it reaches the task, on
+both sides, and the checks read the breakage, not the task. Don't patch the checks around it and don't count it
+against the task: rebuild the task's start and reference on main's head ("Starts on the engine", section 2: the start
+is main's game with only this task's change taken out, the reference is main's game), and say in your note which
+later fix the old commits lacked.
+
+**Never offer the person an eased check as a choice.** "Commit the narrower check, or drop the task" is not a
+question to put to them: they are paid for a fixed task and have no way to judge what a check should ask, and section
+1 already answers it. When the original check can't pass, the next step is the game ("You may change the game",
+above), not a weaker check. Tell them about a check you could not fix only after the play and the game have both been
+tried, with what you tried and why it failed, and leave the check as it was.
+
+**A returned game with fewer than 5 tasks is still fixed.** The validator says a game ships at least 5 tasks; some
+returned games have fewer, and that count is not yours to repair. Fix the tasks the return lists, don't write new
+tasks to make up the number unless the person asks for one, and say the count in your note. Every other validator
+error on a task the return lists is yours to fix.
 
 **A returned task is never "not fixable" for its size.** Its start and reference, rebuilt around a fix, are often
 smaller than the thread the task was written from, and the validator only warns about the size of a span (section 6).
