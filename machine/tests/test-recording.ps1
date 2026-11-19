@@ -100,6 +100,13 @@ try {
   $r = @(Rows $actions)[-1]
   Check 'an output saved to a file is read from the file' ($r.tool_use_id -eq 'toolu_5' -and ([string]$r.response).Contains('END-OF-SAVED'))
 
+  # a subagent's call: the hook input names it (agent_id, agent_type)
+  Invoke-Hook (Line ([ordered]@{ session_id = $sid; transcript_path = $tr; cwd = $cwd; hook_event_name = 'PostToolUse'; tool_name = 'Bash'; tool_use_id = 'toolu_6'; agent_id = 'a1b2c3'; agent_type = 'Explore'
+        tool_input = [ordered]@{ command = 'dir' }; tool_response = [ordered]@{ stdout = 'ok'; stderr = ''; interrupted = $false } }))
+  $a = @(Rows $actions)
+  Check 'a subagent''s live call carries subagent (its transcript''s name) and agent_type' ($a[-1].tool_use_id -eq 'toolu_6' -and $a[-1].subagent -eq 'agent-a1b2c3' -and $a[-1].agent_type -eq 'Explore')
+  Check 'the session''s own live call carries neither' ($a[-2].tool_use_id -eq 'toolu_5' -and $null -eq $a[-2].subagent -and $null -eq $a[-2].agent_type)
+
   # the end of the turn: prompts, replies and reasoning summaries from the transcript
   $stop = Line ([ordered]@{ session_id = $sid; transcript_path = $tr; cwd = $cwd; hook_event_name = 'Stop'; last_assistant_message = 'The door opens now.' })
   Invoke-Hook $stop @('-Stop')
@@ -143,6 +150,60 @@ try {
   Check 'Codex: prompt, two reasoning summaries, reply, in the rollout''s order' ((@($m | ForEach-Object { "$($_.role) $($_.message_id)" }) -join ', ') -ceq 'user um-1, thinking rs-1, thinking rs-2, assistant am-1') (@($m | ForEach-Object { "$($_.role) $($_.message_id)" }) -join ', ')
   Check 'Codex: a summary''s parts are one row; one without a summary is redacted' ($m.Count -eq 4 -and $m[1].text -ceq "Plan the lamp.`nThen wire it.`nRaw reasoning kept as text." -and $m[1].agent -eq 'codex' -and $null -eq $m[1].redacted -and $m[2].text -ceq '' -and $m[2].redacted -eq $true)
   Check 'the other session''s rows are as they were' (@(Rows $messages | Where-Object { $_.session_id -eq $sid }).Count -eq 4)
+
+  # ---- Codex subagent: its own rollout, named in the parent's by SubAgentActivity items ------------------------------
+  Write-Host 'Codex subagent'
+  $t0 = [DateTime]::UtcNow
+  $sid3 = [Guid]::NewGuid().ToString()
+  $kid = [Guid]::NewGuid().ToString()
+  $proll = Join-Path $fakeHome ".codex\sessions\2026\11\11\rollout-2026-11-11T11-00-00-$sid3.jsonl"
+  $kroll = Join-Path $fakeHome ".codex\sessions\2026\11\11\rollout-2026-11-11T11-00-05-$kid.jsonl"
+  function Ev($i, $thread, $item) { return (Line ([ordered]@{ timestamp = (T $i); type = 'event_msg'; payload = [ordered]@{ type = 'item_completed'; thread_id = $thread; turn_id = 'turn-1'; item = $item } })) }
+  function AgentNote($i, $to, $text) {
+    return (Line ([ordered]@{ timestamp = (T $i); type = 'response_item'; payload = [ordered]@{ type = 'agent_message'; id = "amsg-$i"; author = '/root'; recipient = $to
+            content = @([ordered]@{ type = 'input_text'; text = $text }, [ordered]@{ type = 'encrypted_content'; encrypted_content = 'gAAAAAsecret' }) } }))
+  }
+  # the session starts outside every project: the subagent's call naming games\demo maps it
+  $plines = @(
+    (Ev 30 $sid3 ([ordered]@{ type = 'UserMessage'; id = 'pum-1'; content = @([ordered]@{ type = 'text'; text = 'Make a sign.' }) })),
+    (Ev 31 $sid3 ([ordered]@{ type = 'CommandExecution'; id = 'p-call-1'; command = @('cmd', '/c', 'dir'); cwd = $root; status = 'completed'; aggregated_output = 'parent listing'; exit_code = 0 })),
+    (Ev 32 $sid3 ([ordered]@{ type = 'SubAgentActivity'; id = 'spawn-1'; kind = 'started'; agent_thread_id = $kid; agent_path = '/root/sign' })),
+    (Ev 40 $sid3 ([ordered]@{ type = 'SubAgentActivity'; id = 'subagent-completed-1'; kind = 'completed'; agent_thread_id = $kid; agent_path = '/root/sign' })),
+    (Ev 41 $sid3 ([ordered]@{ type = 'AgentMessage'; id = 'pam-1'; content = @([ordered]@{ type = 'Text'; text = 'Sign made.' }); phase = 'final_answer' }))
+  )
+  $klines = @(
+    (Line ([ordered]@{ timestamp = (T 33); type = 'session_meta'; payload = [ordered]@{ id = $kid; session_id = $sid3; parent_thread_id = $sid3; thread_source = 'subagent'
+            source = [ordered]@{ subagent = [ordered]@{ thread_spawn = [ordered]@{ parent_thread_id = $sid3; depth = 1; agent_path = '/root/sign' } } } } })),
+    (Ev 33 $sid3 ([ordered]@{ type = 'UserMessage'; id = 'pum-1'; content = @([ordered]@{ type = 'text'; text = 'Make a sign.' }) })),   # copied context
+    (AgentNote 33 '/root' "Message Type: FINAL_ANSWER`nSender: /root/other"),   # copied context: a message to the parent
+    (AgentNote 34 '/root/sign' "Message Type: NEW_TASK`nTask name: /root/sign`nSender: /root`nPayload:`n"),
+    (Ev 35 $kid ([ordered]@{ type = 'CommandExecution'; id = 'k-call-1'; command = @('cmd', '/c', 'dir'); cwd = $root; status = 'completed'; aggregated_output = 'child listing'; exit_code = 0 })),
+    (Ev 36 $kid ([ordered]@{ type = 'CommandExecution'; id = 'k-call-2'; command = @('cmd', '/c', "echo hi > $cwd\sign.txt"); cwd = $root; status = 'completed'; aggregated_output = ''; exit_code = 0 })),
+    (Ev 37 $kid ([ordered]@{ type = 'AgentMessage'; id = 'kam-1'; content = @([ordered]@{ type = 'Text'; text = 'finished' }); phase = 'final_answer' }))
+  )
+  [IO.File]::WriteAllText($proll, ($plines -join "`n") + "`n", $utf8)
+  [IO.File]::WriteAllText($kroll, ($klines -join "`n") + "`n", $utf8)
+  Invoke-Hook (Line ([ordered]@{ session_id = $sid3; transcript_path = $kroll; cwd = $root; hook_event_name = 'PostToolUse'; tool_name = 'Bash'; tool_use_id = 'k-call-2'; agent_id = $kid; agent_type = 'default'
+        tool_input = [ordered]@{ command = "echo hi > $cwd\sign.txt" }; tool_response = '' })) @('-Agent', 'codex')
+  $c = @(Rows $actions | Where-Object { $_.session_id -eq $sid3 })
+  $got = @($c | ForEach-Object { "$($_.tool_use_id)|$($_.subagent)|$($_.status)" }) -join ', '
+  Check 'Codex subagent: its call maps the session; the parent''s and its earlier calls come from their rollouts, its own tagged' ($got -ceq "p-call-1||from_transcript, k-call-1|$kid|from_transcript, k-call-2|$kid|") $got
+  Check 'Codex subagent: its live row carries agent_type' ($c.Count -eq 3 -and $c[2].agent_type -eq 'default' -and $null -eq $c[0].agent_type)
+  Invoke-Hook (Line ([ordered]@{ session_id = $sid3; transcript_path = $proll; agent_transcript_path = $kroll; cwd = $root; hook_event_name = 'SubagentStop'; agent_id = $kid; agent_type = 'default'; last_assistant_message = 'finished' })) @('-Agent', 'codex', '-Messages')
+  $m = @(Rows $messages | Where-Object { $_.session_id -eq $sid3 })
+  $got = @($m | ForEach-Object { "$($_.role) $($_.message_id) $($_.subagent)" }) -join ', '
+  Check 'Codex subagent: SubagentStop records the session''s messages and the subagent''s, tagged; no copied context' ($got -ceq "user pum-1 , assistant pam-1 , user amsg-34 $kid, assistant kam-1 $kid") $got
+  $k = @($m | Where-Object { $_.message_id -eq 'amsg-34' })
+  Check 'Codex subagent: its task is the readable header only, marked encrypted' ($k.Count -eq 1 -and ([string]$k[0].text) -ceq "Message Type: NEW_TASK`nTask name: /root/sign`nSender: /root`nPayload:" -and $k[0].encrypted -eq $true) ([string]$k[0].text)
+  Invoke-Hook (Line ([ordered]@{ session_id = $sid3; transcript_path = $proll; cwd = $root; hook_event_name = 'Stop'; last_assistant_message = 'Sign made.' })) @('-Stop', '-Agent', 'codex')
+  Check 'Codex subagent: the parent''s Stop writes nothing twice' (@(Rows $messages | Where-Object { $_.session_id -eq $sid3 }).Count -eq 4)
+  # a session whose subagent was never read (recorded before this): -Backfill all finds it from the parent's rollout
+  $keep = @([IO.File]::ReadAllLines($messages, $utf8) | Where-Object { $_ -notmatch ('"subagent":"' + $kid + '"') })
+  [IO.File]::WriteAllText($messages, ($keep -join "`n") + "`n", $utf8)
+  & $exe -NoProfile -ExecutionPolicy Bypass -File $hook -Backfill all | Out-Null
+  $m = @(Rows $messages | Where-Object { $_.session_id -eq $sid3 })
+  $got = @($m | ForEach-Object { "$($_.message_id) $($_.subagent)" }) -join ', '
+  Check 'Codex subagent: -Backfill all reads the subagent the parent''s rollout names and puts the rows in order' ($got -ceq "pum-1 , amsg-34 $kid, kam-1 $kid, pam-1 ") $got
 
   # ---- config.toml: the settings that make Codex show and save its reasoning summaries ------------------------------
   Write-Host 'Codex config.toml'

@@ -1,5 +1,5 @@
 # Agent hook (Claude Code: PostToolUse / PostToolUseFailure / Stop, and UserPromptSubmit / SessionEnd with -Messages;
-# Codex: PostToolUse / Stop, and UserPromptSubmit / SessionEnd with -Messages; all with -Agent codex):
+# Codex: PostToolUse / Stop, and UserPromptSubmit / SessionEnd / SubagentStop with -Messages; all with -Agent codex):
 # append every tool call of a game-building or replay session to <root>\.recording\<project>\actions.jsonl, and every
 # prompt the person typed, every reply the model wrote and every reasoning summary the agent saved to
 # <root>\.recording\<project>\messages.jsonl. A tool call's row holds its whole result (up to 1,000,000 chars; a
@@ -14,16 +14,21 @@
 # after that, all its calls are recorded there.
 # Backfill: at that first mapping, the session's earlier tool calls are imported once from its transcript
 # (transcript_path in the hook input; Claude Code: subagent transcripts beside it; Codex: the rollout file's completed
-# CommandExecution / FileChange / McpToolCall items), in order, before the mapping call's own row,
+# CommandExecution / FileChange / McpToolCall items, and those of the subagents' rollouts it names; a subagent's hook
+# names its own rollout, and the session's is read instead), in order, before the mapping call's own row,
 # with status "from_transcript". Calls older than the transcript file (copied context of a fork) are not imported.
+# A subagent's call carries "subagent": Claude Code "agent-<agent_id>" (its transcript's name), Codex its thread id
+# (the end of its rollout's name). A live row takes it from the hook input's agent_id, with "agent_type".
 # `record-action.ps1 -Backfill <session id> [-TranscriptPath <file>]` does the same for a session mapped before this
 # existed: the rows go in just before that session's first row. Each session is backfilled at most once
 # (recording-backfill.json next to this file), and a call already in actions.jsonl is never written twice.
 # On Stop, leftover changes in a game repo are committed ("WIP") so no work stays uncommitted.
 # Messages (schema superposition.agent-message/v0: time, project, session_id, agent, role "user" | "assistant" | "thinking",
 # message_id, text; "model"; "images" = pictures attached to a prompt; "mid_turn" for a prompt typed while the model
-# was working; Codex "phase"; "subagent" for a Claude Code subagent's transcript, where "user" is the prompt the
-# session gave it) are read from the session's transcript, never
+# was working; Codex "phase"; "subagent" for a subagent's messages: Claude Code its transcript, where "user" is the
+# prompt the session gave it; Codex its rollout, read at SubagentStop and whenever the parent's rollout names it, where
+# "user" is a message another agent sent it, only its readable header since Codex encrypts the payload, with
+# "encrypted": true) are read from the session's transcript, never
 # from the hook input, so each is written once, with the transcript's own id and time. Every Stop, and every -Messages
 # call (UserPromptSubmit, SessionEnd: they write no actions.jsonl row), reads what the transcript gained since the last
 # read (recording-messages.json next to this file: transcript file -> bytes read), so a session mapped late gets its
@@ -119,40 +124,113 @@ function Find-Transcript([string]$Sid) {
 # "item_completed" whose item.id is the tool_use_id the hooks see. Shell commands -> tool "Bash" with input.command
 # (the command string the shell ran), file edits -> "apply_patch" with input.changes (path -> kind and content or diff;
 # the rollout keeps no patch text for them), MCP calls -> "mcp__<server>__<tool>" with their arguments.
-function Get-CodexTranscriptCalls([string]$Sid, [string]$Path, [string]$Until) {
-  $created = (Get-Item $Path).CreationTimeUtc.AddSeconds(-5)
-  $calls = [ordered]@{}; $results = @{}; $bad = 0; $n = 0
-  foreach ($line in [IO.File]::ReadLines($Path)) {
-    if ($line -notmatch '"item_completed"') { continue }
-    try { $o = $line | ConvertFrom-Json } catch { $bad++; continue }
+# A subagent has its own rollout (rollout-<time>-<its thread id>.jsonl; session_meta: id = its thread, session_id = the
+# session's, parent_thread_id, source.subagent.thread_spawn.agent_path). It starts with a copy of the parent's context;
+# the subagent's own items carry its thread id. The parent's rollout names it in SubAgentActivity items
+# (agent_thread_id). A subagent's hook input has session_id = the session's, agent_id = its thread id and
+# transcript_path = its rollout; SubagentStop has agent_transcript_path.
+# A file Codex is still writing: read it without blocking the writer.
+function Open-SharedReader([string]$Path) {
+  $fs = New-Object IO.FileStream($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+  return (New-Object IO.StreamReader($fs, $utf8))
+}
+# A rollout's session_meta (its first line): thread, session, and a subagent's parent thread and agent path.
+function Get-CodexRolloutMeta([string]$Path) {
+  try {
+    $sr = Open-SharedReader $Path
+    try { $line = $sr.ReadLine() } finally { $sr.Dispose() }
+    $o = $line | ConvertFrom-Json
+    if ($o.type -ne 'session_meta') { return $null }
     $p = $o.payload
-    if ($o.type -ne 'event_msg' -or $p.type -ne 'item_completed' -or -not $p.item -or -not $o.timestamp) { continue }
-    if ($p.thread_id -and [string]$p.thread_id -ne $Sid) { continue }
-    $ts = [DateTimeOffset]::Parse([string]$o.timestamp, [Globalization.CultureInfo]::InvariantCulture)
-    if ($ts.UtcDateTime -lt $created) { continue }
-    $it = $p.item; $id = [string]$it.id
-    if (-not $id -or $calls.Contains($id)) { continue }
-    $cwd = if ($it.cwd) { ([string]$it.cwd -replace '^file:///(?=[A-Za-z]:)', '' -replace '^file://', '') } else { $null }
-    $name = $null   # (a `continue` inside switch only leaves the switch, so unknown item types leave $name empty)
-    switch ([string]$it.type) {
-      'CommandExecution' {
-        $c = @($it.command)
-        $cmd = if ($c.Count -ge 3 -and [string]$c[-2] -match '^(-lc|-c|/c|-Command|-NoProfile)$') { [string]$c[-1] } else { ($c | ForEach-Object { [string]$_ }) -join ' ' }
-        $name = 'Bash'; $inp = [pscustomobject]@{ command = $cmd }
-        $resp = [string]$it.aggregated_output; $err = ($null -ne $it.exit_code -and [int]$it.exit_code -ne 0) -or [string]$it.status -eq 'failed'
+    $spawn = if ($p.source -and $p.source.PSObject.Properties['subagent'] -and $p.source.subagent.thread_spawn) { $p.source.subagent.thread_spawn } else { $null }
+    $parent = if ($p.parent_thread_id) { [string]$p.parent_thread_id } elseif ($spawn) { [string]$spawn.parent_thread_id } else { '' }
+    $agentPath = if ($spawn -and $spawn.agent_path) { [string]$spawn.agent_path } elseif ($p.PSObject.Properties['agent_path']) { [string]$p.agent_path } else { '' }
+    return [pscustomobject]@{ thread = [string]$p.id; session = [string]$p.session_id; parent = $parent; agent_path = $agentPath }
+  } catch { return $null }
+}
+# The session's own rollout for a path that may be a subagent's (a subagent's hook names its own as transcript_path).
+function Resolve-CodexRoot([string]$Sid, [string]$Path) {
+  $meta = Get-CodexRolloutMeta $Path
+  if (-not $meta -or -not $meta.parent -or $meta.thread -eq $Sid) { return $Path }
+  $root = Find-Transcript $Sid
+  if ($root) { return $root } else { return $Path }
+}
+# A subagent's rollout by its thread id: beside its parent's (same day), else anywhere under sessions\.
+function Find-CodexRollout([string]$Near, [string]$Thread) {
+  $p = Get-ChildItem -LiteralPath (Split-Path $Near) -Filter "rollout-*$Thread.jsonl" -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($p) { return $p.FullName }
+  return (Find-Transcript $Thread)
+}
+# The subagents that rollout lines of thread $Thread name (SubAgentActivity items): their thread ids.
+function Get-CodexSubagents($Lines, [string]$Thread) {
+  $ids = New-Object System.Collections.Generic.List[string]
+  foreach ($line in $Lines) {
+    if ($line -notmatch '"SubAgentActivity"') { continue }
+    try { $o = $line | ConvertFrom-Json } catch { continue }
+    $p = $o.payload
+    if ($o.type -ne 'event_msg' -or $p.type -ne 'item_completed' -or -not $p.item -or [string]$p.item.type -ne 'SubAgentActivity') { continue }
+    if ($p.thread_id -and [string]$p.thread_id -ne $Thread) { continue }
+    $id = [string]$p.item.agent_thread_id
+    if ($id -and -not $ids.Contains($id)) { $ids.Add($id) }
+  }
+  return , $ids
+}
+# The session's calls from its rollout and its subagents' rollouts (each read with its own thread id; a subagent's
+# calls tagged with it), whichever of them $Path names.
+function Get-CodexTranscriptCalls([string]$Sid, [string]$Path, [string]$Until) {
+  $Path = Resolve-CodexRoot $Sid $Path
+  $calls = [ordered]@{}; $results = @{}; $bad = 0; $n = 0
+  $todo = New-Object System.Collections.Generic.Queue[object]
+  $todo.Enqueue([pscustomobject]@{ path = $Path; thread = $Sid; agent = $null })
+  $threads = @{ $Sid = $true }
+  while ($todo.Count) {
+    $src = $todo.Dequeue()
+    $created = (Get-Item -LiteralPath $src.path).CreationTimeUtc.AddSeconds(-5)
+    $sr = Open-SharedReader $src.path
+    try {
+      while ($null -ne ($line = $sr.ReadLine())) {
+        if ($line -notmatch '"item_completed"') { continue }
+        try { $o = $line | ConvertFrom-Json } catch { $bad++; continue }
+        $p = $o.payload
+        if ($o.type -ne 'event_msg' -or $p.type -ne 'item_completed' -or -not $p.item -or -not $o.timestamp) { continue }
+        if ($p.thread_id -and [string]$p.thread_id -ne $src.thread) { continue }   # a copied context's item
+        $it = $p.item
+        if ([string]$it.type -eq 'SubAgentActivity') {   # a subagent: its calls are in its own rollout
+          $child = [string]$it.agent_thread_id
+          if ($child -and -not $threads.ContainsKey($child)) {
+            $threads[$child] = $true
+            $cp = Find-CodexRollout $src.path $child
+            if ($cp) { $todo.Enqueue([pscustomobject]@{ path = $cp; thread = $child; agent = $child }) }
+          }
+          continue
+        }
+        $ts = [DateTimeOffset]::Parse([string]$o.timestamp, [Globalization.CultureInfo]::InvariantCulture)
+        if ($ts.UtcDateTime -lt $created) { continue }
+        $id = [string]$it.id
+        if (-not $id -or $calls.Contains($id)) { continue }
+        $cwd = if ($it.cwd) { ([string]$it.cwd -replace '^file:///(?=[A-Za-z]:)', '' -replace '^file://', '') } else { $null }
+        $name = $null   # (a `continue` inside switch only leaves the switch, so unknown item types leave $name empty)
+        switch ([string]$it.type) {
+          'CommandExecution' {
+            $c = @($it.command)
+            $cmd = if ($c.Count -ge 3 -and [string]$c[-2] -match '^(-lc|-c|/c|-Command|-NoProfile)$') { [string]$c[-1] } else { ($c | ForEach-Object { [string]$_ }) -join ' ' }
+            $name = 'Bash'; $inp = [pscustomobject]@{ command = $cmd }
+            $resp = [string]$it.aggregated_output; $err = ($null -ne $it.exit_code -and [int]$it.exit_code -ne 0) -or [string]$it.status -eq 'failed'
+          }
+          'FileChange' {
+            $name = 'apply_patch'; $inp = [pscustomobject]@{ changes = $it.changes }
+            $resp = (@([string]$it.stdout, [string]$it.stderr) | Where-Object { $_ }) -join "`n"; $err = [string]$it.status -ne 'completed'
+          }
+          'McpToolCall' {
+            $name = "mcp__$($it.server)__$($it.tool)"; $inp = if ($it.arguments) { $it.arguments } else { [pscustomobject]@{} }
+            $resp = if ($it.result) { $it.result | ConvertTo-Json -Depth 8 -Compress } else { [string]$it.error }; $err = [bool]$it.error
+          }
+        }
+        if (-not $name) { continue }   # reasoning, messages, web searches, plans: not tool calls with effects
+        $calls[$id] = [pscustomobject]@{ id = $id; name = $name; input = $inp; ts = $ts; cwd = $cwd; agent = $src.agent; n = $n++ }
+        $results[$id] = [pscustomobject]@{ resp = $resp; error = $err; text = $resp; ts = $ts }
       }
-      'FileChange' {
-        $name = 'apply_patch'; $inp = [pscustomobject]@{ changes = $it.changes }
-        $resp = (@([string]$it.stdout, [string]$it.stderr) | Where-Object { $_ }) -join "`n"; $err = [string]$it.status -ne 'completed'
-      }
-      'McpToolCall' {
-        $name = "mcp__$($it.server)__$($it.tool)"; $inp = if ($it.arguments) { $it.arguments } else { [pscustomobject]@{} }
-        $resp = if ($it.result) { $it.result | ConvertTo-Json -Depth 8 -Compress } else { [string]$it.error }; $err = [bool]$it.error
-      }
-    }
-    if (-not $name) { continue }   # reasoning, messages, web searches, plans: not tool calls with effects
-    $calls[$id] = [pscustomobject]@{ id = $id; name = $name; input = $inp; ts = $ts; cwd = $cwd; agent = $null; n = $n++ }
-    $results[$id] = [pscustomobject]@{ resp = $resp; error = $err; text = $resp; ts = $ts }
+    } finally { $sr.Dispose() }
   }
   $stop = if ($Until -and $calls.Contains($Until)) { $calls[$Until].ts } else { $null }
   $out = @($calls.Values | Where-Object { $_.id -ne $Until -and (-not $stop -or $_.ts -le $stop) } | Sort-Object ts, n)
@@ -296,17 +374,35 @@ function Get-ClaudeMessages([string]$Sid, $Lines, [datetime]$Created) {
   }
   return , $out
 }
-# Codex: the rollout's finished UserMessage, AgentMessage and Reasoning items (item.id is the message's id). A
-# Reasoning item's summary_text (and raw_content, when the rollout holds it as text) is the reasoning summary; one saved
-# without readable text is a row with none.
-function Get-CodexMessages([string]$Sid, $Lines, [datetime]$Created) {
+# Codex: the rollout's finished UserMessage, AgentMessage and Reasoning items of thread $Thread (item.id is the
+# message's id). A Reasoning item's summary_text (and raw_content, when the rollout holds it as text) is the reasoning
+# summary; one saved without readable text is a row with none. In a subagent's rollout ($AgentPath = its agent path),
+# a message another agent sent it (a response_item "agent_message" to that path: its task, a follow-up, a result) is a
+# "user" row. Codex encrypts such a message's payload (encrypted_content), so the row holds only its readable header
+# (message type, task name, sender) and "encrypted": true.
+function Get-CodexMessages([string]$Thread, $Lines, [datetime]$Created, [string]$AgentPath) {
   $out = New-Object System.Collections.Generic.List[object]
   foreach ($line in $Lines) {
+    if ($AgentPath -and $line -match '"agent_message"' -and $line -match '"response_item"') {
+      try { $o = $line | ConvertFrom-Json } catch { continue }
+      $p = $o.payload
+      if ($o.type -ne 'response_item' -or $p.type -ne 'agent_message' -or [string]$p.recipient -ne $AgentPath -or -not $p.id -or -not $o.timestamp) { continue }
+      $ts = ConvertTo-Time $o.timestamp
+      if ($ts.UtcDateTime -lt $Created) { continue }
+      $enc = $false
+      $parts = @(foreach ($b in @($p.content)) {
+          if ([string]$b.type -eq 'encrypted_content') { $enc = $true } elseif ($b.PSObject.Properties['text'] -and $b.text) { [string]$b.text }
+        })
+      $text = ($parts -join "`n").TrimEnd()
+      if (-not $text -and -not $enc) { continue }
+      $out.Add([pscustomobject]@{ id = [string]$p.id; role = 'user'; ts = $ts; text = $text; images = 0; model = ''; phase = ''; mid = $false; redacted = $false; encrypted = $enc })
+      continue
+    }
     if ($line -notmatch '"item_completed"' -or $line -notmatch '"(?:UserMessage|AgentMessage|Reasoning)"') { continue }
     try { $o = $line | ConvertFrom-Json } catch { continue }
     $p = $o.payload
     if ($o.type -ne 'event_msg' -or $p.type -ne 'item_completed' -or -not $p.item -or -not $o.timestamp) { continue }
-    if ($p.thread_id -and [string]$p.thread_id -ne $Sid) { continue }
+    if ($p.thread_id -and [string]$p.thread_id -ne $Thread) { continue }   # another thread's, or a copied context's
     $it = $p.item
     $role = if ([string]$it.type -eq 'UserMessage') { 'user' } elseif ([string]$it.type -eq 'AgentMessage') { 'assistant' } elseif ([string]$it.type -eq 'Reasoning') { 'thinking' } else { '' }
     if (-not $role -or -not $it.id) { continue }
@@ -327,12 +423,13 @@ function Get-CodexMessages([string]$Sid, $Lines, [datetime]$Created) {
   }
   return , $out
 }
-# Append to <project>\messages.jsonl what the session's transcript (and, Claude Code, its subagents' transcripts) gained
+# Append to <project>\messages.jsonl what the session's transcript (and its subagents' transcripts) gained
 # since the last read. Returns the number of rows written; $script:Read collects the session's own messages read
 # ("<role> <text>"). -All (the backfill): every transcript from its start, whatever was read before, and then the
 # session's rows in the order read ($script:Order: message id -> its place).
 $script:Read = New-Object System.Collections.Generic.List[string]
 $script:Order = @{}
+$script:WaitFor = ''   # whose messages Test-MessageRead looks among: '' the session's own, else a subagent's tag
 # The session's rows of a messages.jsonl back in the transcript's order (time, then the order read), in the places
 # its rows already hold; every other session's rows stay where they are.
 function Sort-SessionRows([string]$File, [string]$Sid) {
@@ -360,21 +457,40 @@ function Sort-SessionRows([string]$File, [string]$Sid) {
     Move-Item -Force $tmp $File
   }
 }
-function Sync-Messages([string]$Sid, [string]$Project, [string]$Path, [switch]$All) {
+function Sync-Messages([string]$Sid, [string]$Project, [string]$Path, [switch]$All, [string]$ChildPath) {
   if (-not $Path) { $Path = Find-Transcript $Sid }
   if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return 0 }   # a session's first prompt comes before its transcript
-  $files = @($Path)
+  if ($Agent -eq 'codex') { $Path = Resolve-CodexRoot $Sid $Path }
+  # read: the session's transcript, then its subagents' (Claude Code: <session>\subagents\*.jsonl; Codex: the rollouts
+  # that what this call reads of the parent's rollout names, the one a SubagentStop names ($ChildPath), and theirs)
+  $todo = New-Object System.Collections.Generic.Queue[object]
+  $todo.Enqueue([pscustomobject]@{ path = $Path; thread = $Sid; tag = ''; agent_path = '' })
+  $threads = @{ $Sid = $true }
   if ($Agent -ne 'codex') {
     $sub = Join-Path (Join-Path (Split-Path $Path) $Sid) 'subagents'
-    if (Test-Path -LiteralPath $sub) { $files += @(Get-ChildItem -LiteralPath $sub -Filter '*.jsonl' | ForEach-Object FullName) }
+    if (Test-Path -LiteralPath $sub) {
+      foreach ($sf in @(Get-ChildItem -LiteralPath $sub -Filter '*.jsonl' | ForEach-Object FullName)) {
+        $todo.Enqueue([pscustomobject]@{ path = $sf; thread = $Sid; tag = [IO.Path]::GetFileNameWithoutExtension($sf); agent_path = '' })
+      }
+    }
   }
+  $addChild = {   # a Codex subagent's rollout: read with its own thread id, its rows tagged with it
+    param([string]$ChildFile)
+    if (-not $ChildFile -or -not (Test-Path -LiteralPath $ChildFile)) { return }
+    $meta = Get-CodexRolloutMeta $ChildFile
+    if (-not $meta -or -not $meta.thread -or $threads.ContainsKey($meta.thread)) { return }
+    $threads[$meta.thread] = $true
+    $todo.Enqueue([pscustomobject]@{ path = $ChildFile; thread = $meta.thread; tag = $meta.thread; agent_path = $meta.agent_path })
+  }
+  if ($Agent -eq 'codex' -and $ChildPath) { & $addChild $ChildPath }
   $created = (Get-Item -LiteralPath $Path).CreationTimeUtc.AddSeconds(-5)   # older rows are a fork's copied context
   $state = Read-JsonMap $messagesFile
   $dir = Join-Path $recRoot $Project
   $file = Join-Path $dir 'messages.jsonl'
   $seen = $null; $moved = $false
   $rows = New-Object System.Collections.Generic.List[string]
-  foreach ($f in $files) {
+  while ($todo.Count) {
+    $src = $todo.Dequeue(); $f = $src.path
     $from = if (-not $All -and $state.ContainsKey($f)) { [long]$state[$f] } else { [long]0 }
     while ($true) {   # one read a call; -All: read after read (256 MB each) to the transcript's end
       $tail = Read-TranscriptTail $f $from
@@ -382,10 +498,13 @@ function Sync-Messages([string]$Sid, [string]$Project, [string]$Path, [switch]$A
       $state[$f] = $tail.next; $moved = $true
       # a transcript read from its start (first read, the state file was lost, or -All): never write a message twice
       if ($All -or $tail.next -lt $from -or $from -eq 0) { if ($null -eq $seen) { $seen = Get-RecordedIds $file 'message_id' } }
-      $subagent = if ($f -eq $Path) { '' } else { [IO.Path]::GetFileNameWithoutExtension($f) }
-      $msgs = if ($Agent -eq 'codex') { Get-CodexMessages $Sid $tail.lines $created } else { Get-ClaudeMessages $Sid $tail.lines $created }
+      $subagent = $src.tag
+      $msgs = if ($Agent -eq 'codex') { Get-CodexMessages $src.thread $tail.lines $created $src.agent_path } else { Get-ClaudeMessages $Sid $tail.lines $created }
+      if ($Agent -eq 'codex') {
+        foreach ($k in (Get-CodexSubagents $tail.lines $src.thread)) { if (-not $threads.ContainsKey($k)) { & $addChild (Find-CodexRollout $f $k) } }
+      }
       foreach ($m in $msgs) {
-        if (-not $subagent -and $m.role -ne 'thinking') { $script:Read.Add("$($m.role) $($m.text)") }
+        if ($subagent -eq $script:WaitFor -and $m.role -ne 'thinking') { $script:Read.Add("$($m.role) $($m.text)") }
         if ($All -and -not $script:Order.ContainsKey($m.id)) { $script:Order[$m.id] = $script:Order.Count }
         if ($null -ne $seen -and -not $seen.Add($m.id)) { continue }
         $row = [ordered]@{
@@ -403,6 +522,7 @@ function Sync-Messages([string]$Sid, [string]$Project, [string]$Path, [switch]$A
         if ($m.images) { $row.images = $m.images }
         if ($m.mid) { $row.mid_turn = $true }
         if ($m.redacted) { $row.redacted = $true }
+        if ($m.encrypted) { $row.encrypted = $true }
         $row.text = Clip $m.text $maxText
         $rows.Add(($row | ConvertTo-Json -Depth 4 -Compress))
       }
@@ -429,6 +549,16 @@ function Test-MessageRead([string]$Role, [string]$Text) {
     if ($have -and ($have -eq $want -or $want.Contains($have) -or $have.Contains($want))) { return $true }
   }
   return $false
+}
+
+# The subagent a hook call comes from ('' for the session itself): Claude Code and Codex put agent_id (and agent_type)
+# in the input of a hook that fires inside a subagent. The tag is what the subagent's transcript is called, as on its
+# rows imported from it: Claude Code "agent-<agent_id>" (subagents\agent-<agent_id>.jsonl), Codex its thread id.
+function Get-SubagentTag($E) {
+  $id = [string]$E.agent_id
+  if (-not $id -or $id -eq [string]$E.session_id) { return '' }
+  if ($Agent -eq 'claude' -and $id -notmatch '^agent-') { return "agent-$id" }
+  return $id
 }
 
 # ---- manual backfill of a session that was mapped before the backfill existed ---------------------------------------
@@ -522,14 +652,18 @@ try {
   # the session's prompts and replies: what its transcript gained since the last read (never at the cost of the row)
   if ($Stop -or $Messages) {
     try {
-      [void](Sync-Messages $sid $project ([string]$e.transcript_path))
+      # SubagentStop (Codex): the subagent's rollout is agent_transcript_path, its rows are tagged with agent_id
+      $subStop = [string]$e.hook_event_name -eq 'SubagentStop'
+      $script:WaitFor = if ($subStop) { Get-SubagentTag $e } else { '' }
+      $childPath = if ($subStop -and $Agent -eq 'codex') { [string]$e.agent_transcript_path } else { '' }
+      [void](Sync-Messages $sid $project ([string]$e.transcript_path) -ChildPath $childPath)
       # the message this call is about may reach the transcript a moment after the hook starts: the turn's last reply
-      # (Stop), the prompt just typed (UserPromptSubmit)
-      $role = if ($Stop) { 'assistant' } else { 'user' }
-      $text = if ($Stop) { [string]$e.last_assistant_message } else { [string]$e.prompt }
+      # (Stop; SubagentStop: the subagent's), the prompt just typed (UserPromptSubmit)
+      $role = if ($Stop -or $subStop) { 'assistant' } else { 'user' }
+      $text = if ($Stop -or $subStop) { [string]$e.last_assistant_message } else { [string]$e.prompt }
       for ($i = 0; $i -lt 7 -and -not (Test-MessageRead $role $text); $i++) {
         Start-Sleep -Milliseconds 300
-        [void](Sync-Messages $sid $project ([string]$e.transcript_path))
+        [void](Sync-Messages $sid $project ([string]$e.transcript_path) -ChildPath $childPath)
       }
     } catch { }
     if ($Messages) { exit 0 }   # UserPromptSubmit, SessionEnd: no row in actions.jsonl
@@ -562,6 +696,8 @@ try {
   } else {
     $row.tool = [string]$e.tool_name
     $row.tool_use_id = [string]$e.tool_use_id
+    $tag = Get-SubagentTag $e
+    if ($tag) { $row.subagent = $tag; if ($e.agent_type) { $row.agent_type = [string]$e.agent_type } }
     $inp = [ordered]@{}
     if ($e.tool_input) { foreach ($p in $e.tool_input.PSObject.Properties) { $inp[$p.Name] = Clip $p.Value $maxText } }
     $row.input = $inp
