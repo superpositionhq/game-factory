@@ -180,8 +180,7 @@ from `TakeDamage`. Key gameplay state is a
   agree. Keep doing it while you build: after each playable round, ask them to play or watch it and say what felt
   flat, too easy or missing, and take their answer into the next round. The more of the design that comes out of this
   back-and-forth the better; a session where the person only says "continue" is a weak one. Their choices are
-  `user.direction` rows (commit-always skill). Ask about play, not about engine detail, and never stall on a
-  question: when the person is away, go on with your best proposal, say so, and bring it up when they are back.
+  `user.direction` rows (commit-always skill). Ask about play, not about engine detail.
   _(failure: agents chose every loop themselves, so games came out thin and the record held little of the person's
   judgement)_
 - **Quality bar and room for hard tasks:** in the skill of your game's platform: **desktop-game**, or **mobile-game**
