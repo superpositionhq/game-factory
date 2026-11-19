@@ -83,7 +83,8 @@ Words used here:
       on mouse axes in section 5);
     - a widget click: `{"t": 6.0, "widget": "RetryButton", "click": true}` clicks the first visible button widget of that
       name or class, as a player would; `widget` may also be the button's on-screen text exactly as shown, spaces and
-      punctuation included (`"widget": "New expedition"`). `"optional": true`: no miss when no button matches it (a
+      punctuation included (`"widget": "New expedition"`); the text is in any script, with no control character and no
+      space at either end, up to 120 characters. `"optional": true`: no miss when no button matches it (a
       control that shows only in some states, section 1.4). `"disabled": true`: a click on a button the game disables
       by design (a locked choice); it has landed when that button is shown but disabled, and does nothing. A button
       outside its own scroll box's view is scrolled to first, and a button something else is drawn over is not
@@ -165,8 +166,11 @@ Words used here:
     the same copy; its probes read this second session. The first session is played for this play alone (its
     evidence is `<play>-first`), never the reading of the named play's own checks, so it costs one more play a side.
     - It names one task play of the same task, never the play itself, never together with `after`, and the play it
-      names has neither `continues` nor `after` (a first session starts from a cleared save, alone);
-      `tools/validate-game.py` refuses each.
+      names runs after no play (`after`); `tools/validate-game.py` refuses each.
+    - The play it names may itself continue another, up to 4 sessions before the play: the sessions are played
+      earliest first, the first on a cleared save and each later one launched on what the one before left (their
+      evidence is `<play>-first-<n>`, the last `<play>-first`). A chain that comes back to a play in it, or is longer,
+      is refused. The session reported is the last, unclean when any session did not end cleanly.
     - The first session must end cleanly: it runs its time out, or the game quits by its own action (exit 0, no
       crash). The play then ends as a player's quit does, so what the game saves on quit is saved. A save the game
       makes only on a menu action needs that action in the first session's `inputs`.
@@ -270,7 +274,8 @@ is a miss: a click the task relies on must reach a control that works.
 
 A click no button takes is made on its text as shown, as a player clicks the words they see. The plugin reads every
 text on screen in the next frame drawn, whatever drew it (a UMG or Slate text, a row the game builds of its own
-widgets, the HUD's canvas, a widget's own paint), and also texts side by side on one line read joined (a row drawn
+widgets, the HUD's canvas, a widget's own paint; a letter or digit of any script is part of a word, and only spaces and
+punctuation, arrow and symbol characters separate words), and also texts side by side on one line read joined (a row drawn
 as `1`, `BUY RANK`, `300 PT` reads "1 BUY RANK 300 PT"); `widget` is compared with them as a button's caption is.
 Exactly one place must read it: the pointer goes to its centre as a `cursor` input moves it, the left button goes
 down in the next frame and up 0.1 s later, and the inputs after the click wait for it. A text shown in two places or

@@ -336,12 +336,24 @@ class Side:
         # a play that `continues` another's session is played after a first session of its own: the game's save state
         # cleared, the play it names played (evidence play_<name>-first, never a reading of that play) and quit, then
         # this play launched as a new process on the copy (docs/task-probes.md 1.1)
+        # the play it continues may itself continue another: the sessions are played earliest first, the first on a
+        # cleared save, each later one launched on what the one before left; the session said is the last one, unclean
+        # when any did not end cleanly (the earliest such named)
         if play.get("continues") and name not in self.sessions:
-            first = named[play["continues"]]
-            ended = self._play(f"play_{name}-first", first["seconds"], 1, first["inputs"] or None, map=first["map"],
-                               args=first["args"], every=first["every"], waits=tasks.waited(first), session=True,
-                               attended=first.get("attended") is True)
-            self.sessions[name] = session(ended, first["name"])
+            chain, why = tasks.validator().session_chain(named, name)
+            if why:
+                raise ValueError(why)
+            unclean, said = None, None
+            for i, first in enumerate(chain):
+                last = i == len(chain) - 1
+                ended = self._play(f"play_{name}-first" if last else f"play_{name}-first-{len(chain) - i}",
+                                   first["seconds"], 1, first["inputs"] or None, map=first["map"],
+                                   args=first["args"], every=first["every"], waits=tasks.waited(first),
+                                   session=i == 0, attended=first.get("attended") is True)
+                said = session(ended, first["name"])
+                unclean = unclean or (None if said["clean"] else said)
+            self.sessions[name] = said if unclean is None else {**said, "clean": False, "play": unclean["play"],
+                                                                "text": unclean["text"]}
         shots = judges.play_shots(self.task).get(name, 2)  # as the grader plays it: a judge showing it asks more
         if self.watching == f"play_{name}":
             shots = max(shots, WATCH_SHOTS)  # a watched play leaves a strip of pictures to look at afterwards

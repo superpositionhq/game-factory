@@ -339,9 +339,11 @@ A probe names one measurement and its threshold:
   play**: `"continues": "<first session's name>"`. On each side the game's save state is cleared, the named play is
   played as a first session and quits, and this play starts as a new process on the same save data; its probes read
   the second session. It names one task play of the task, never itself, never together with `after`, and the play it
-  names has neither. A save the game makes only on a menu action needs that action in the first session's inputs
+  names runs after no play. That play may itself continue another: up to 4 sessions are played earliest first, the
+  first on a cleared save, each later one on what the one before left. A save the game makes only on a menu action needs that action in the first session's inputs
   (what it saves on quit is saved when the play ends). A first session clears `SaveGames` and `Config` for the whole
-  side, so what earlier plays saved is gone for later ones (docs/task-probes.md, 1.1).
+  side, so what earlier plays saved is gone for later ones (docs/task-probes.md, 1.1). A click's `widget` may be a
+  control's text in any script, with no control character and no space at either end.
 - **A play keeps its own preconditions true.** No input on the frame of a state reset: press a few seconds into the
   phase, never at its start. No teleport that breaks the game's state (something carried, a tether, a signal range,
   anything the instruction gives a limit to): teleport what the game moves together, or walk there.

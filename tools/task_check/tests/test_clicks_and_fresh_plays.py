@@ -41,7 +41,7 @@ class Clicks(unittest.TestCase):
             {"t": 1.0, "widget": "New expedition", "click": True, "optional": True},
             {"t": 2.0, "widget": "Locked: Run 2!", "click": True, "disabled": True},
             {"t": 3.0, "widget": "Start", "click": True}], "an option is sent only when set")
-        for bad in (" leading", "", "a" * 121, "tab\there", "quote\"d"):
+        for bad in (" leading", "", "a" * 121, "tab\there", "del\x7f"):
             with self.assertRaises(ValueError, msg=bad):
                 task_with(reading("started", play("starts", 10, [{"t": 1.0, "widget": bad, "click": True}])))
         for bad in ({"optional": False}, {"disabled": 1}):

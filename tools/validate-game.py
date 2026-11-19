@@ -1295,10 +1295,31 @@ def play_after_errors(checks):
     return []
 
 
+SESSIONS = 4  # the sessions a play's `continues` chain plays before it, at most
+
+
+def session_chain(found, name):
+    """The plays task play `name` continues, the first session first ([] when it continues none), or why it can't: a
+    chain that comes back to a play in it, names no task play, or is longer than SESSIONS."""
+    chain, seen, cur = [], {name}, found[name]
+    while isinstance(cur.get('continues'), str):
+        other = cur['continues']
+        if other in seen:
+            return chain, f"task play {name}'s sessions come back to {other}: a play continues a session that ended before it"
+        if other not in found:
+            return chain, f'task play {cur["name"]} continues {other}, which is no task play of the task'
+        seen.add(other)
+        cur = found[other]
+        chain.insert(0, cur)
+    if len(chain) > SESSIONS:
+        return chain, f'task play {name} continues a chain of {len(chain)} sessions, more than {SESSIONS}'
+    return chain, None
+
+
 def play_continues_errors(checks):
-    """A task play's `continues` (docs/task-probes.md 1.1; the Lab grader's checks.check_milestones): it names a task
-    play of the task, never the play itself, never with `after`, and the play it names continues no session and runs
-    after no play."""
+    """A task play's `continues` (docs/task-probes.md 1.1): it names a task play of the task, never the play itself,
+    never with `after`; the play it names runs after no play, and may itself continue another: the sessions played
+    earliest first, at most SESSIONS, never coming back to a play in the chain."""
     found = {}
     for c in checks:
         named = [c.get('play')] if c.get('kind') == 'probe' else (c.get('plays') or [] if c.get('kind') == 'judge' else [])
@@ -1314,9 +1335,11 @@ def play_continues_errors(checks):
             errs.append(f'task play {name} continues itself')
         elif other not in found:
             errs.append(f'task play {name} continues {other}, which is no task play of the task')
-        elif found[other].get('continues') or found[other].get('after'):
-            errs.append(f'task play {name} continues {other}, which itself continues a session or runs after other '
-                        'plays: a first session starts from a cleared save, alone')
+        elif found[other].get('after'):
+            errs.append(f'task play {name} continues {other}, which runs after other plays: the sessions a play '
+                        'continues start from a cleared save, alone')
+        else:
+            errs.extend(why for _, why in [session_chain(found, name)] if why)
         if p.get('after'):
             errs.append(f'task play {name} continues a session and runs after plays too: name one or the other')
     return errs

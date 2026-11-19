@@ -2069,7 +2069,14 @@ FString LabelKey(const FString& Text)
 	for (int32 i = 0; i < Text.Len(); ++i)
 	{
 		const TCHAR C = Text[i];
-		if (!FChar::IsAlnum(C))
+		// a letter or digit of any script is part of a word, whatever the C library's locale says of it; outside ASCII
+		// only spaces and the punctuation, arrow and symbol blocks separate words
+		const uint32 U = (uint32)C;
+		const bool bSeparator = U < 128 ? !FChar::IsAlnum(C) : (FChar::IsWhitespace(C) || (U >= 0x80 && U <= 0xBF) ||
+			(U >= 0x2000 && U <= 0x2BFF) || (U >= 0x3000 && U <= 0x303F) || (U >= 0xFE30 && U <= 0xFE4F) ||
+			(U >= 0xFF00 && U <= 0xFF0F) || (U >= 0xFF1A && U <= 0xFF20) || (U >= 0xFF3B && U <= 0xFF40) ||
+			(U >= 0xFF5B && U <= 0xFF65));
+		if (bSeparator)
 		{
 			bGap = true;
 			continue;

@@ -116,7 +116,8 @@ it names has run on the same side, a failed one too (docs/task-probes.md, sectio
 side runs on the same scratch copy, and between launches only the probe's folder (`Saved/TaskProbe/play`) and its log
 are cleared, so what a play saves in the project's `Saved/` folder is there for every later play. A run of several tasks
 shares a commit's copy, so that includes plays of earlier tasks on the same commit. A task play that `continues`
-another is played after a first session of its own: the copy's `Saved/SaveGames` and `Saved/Config` are deleted, the
+another is played after the sessions it continues (up to 4, earliest first, each launched on what the one before
+left; the earlier ones are kept as `play_<name>-first-<n>`) of its own: the copy's `Saved/SaveGames` and `Saved/Config` are deleted, the
 play it names is played (kept as `play_<name>-first`) and quits, then the play itself starts as a new process on the
 same copy (docs/task-probes.md, section 1.1). Before a `fresh` task play the copy's `Saved/SaveGames` and
 `Saved/Config` are deleted too, so it starts as a new game does, as on the Lab. An `attended` task play is launched

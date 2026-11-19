@@ -68,13 +68,23 @@ class Units(unittest.TestCase):
         self.assertEqual(vg.play_continues_errors(checks({**again, 'continues': 'drive'})),
                          ['task play restarted continues drive, which is no task play of the task'])
         self.assertEqual(vg.play_continues_errors(checks(again, {**first, 'after': ['restarted']})),
-                         ['task play restarted continues earns, which itself continues a session or runs after other '
-                          'plays: a first session starts from a cleared save, alone'])
+                         ['task play restarted continues earns, which runs after other plays: the sessions a play '
+                          'continues start from a cleared save, alone'])
+        chain = [{'name': f's{i}', 'seconds': 10, **({'continues': f's{i - 1}'} if i else {})} for i in range(6)]
+        self.assertEqual(vg.play_continues_errors(checks(*chain[:5])), [])
+        self.assertIn('task play s5 continues a chain of 5 sessions, more than 4', vg.play_continues_errors(checks(*chain)))
+        loop = [{'name': 'a', 'seconds': 10, 'continues': 'b'}, {'name': 'b', 'seconds': 10, 'continues': 'a'}]
+        self.assertTrue(any('come back to' in e for e in vg.play_continues_errors(checks(*loop))))
         self.assertEqual(vg.play_continues_errors(checks({**again, 'after': ['earns']}, first)),
                          ['task play restarted continues a session and runs after plays too: name one or the other'])
         schema = vg.SCHEMAS['game-task']
         self.assertEqual(list(vg.check_schema(again, schema['$defs']['TaskPlay'], schema)), [])
         self.assertTrue(list(vg.check_schema({**again, 'continues': 'Not A Name'}, schema['$defs']['TaskPlay'], schema)))
+        click = schema['$defs']['Click']['properties']['widget']
+        for ok in ('Start', '按铃开店 →', '1    BUY RANK   300 PT'):
+            self.assertEqual(list(vg.check_schema(ok, click, schema)), [])
+        for bad in (' Start', 'Start ', 'a\nb', ''):
+            self.assertTrue(list(vg.check_schema(bad, click, schema)), bad)
         self.assertIsNone(vg.TASK_PLAY_DEFAULTS['continues'])
 
     def test_a_fresh_play_starts_alone(self):
@@ -127,10 +137,10 @@ class Units(unittest.TestCase):
         schema = vg.SCHEMAS['game-task']
         click = lambda **k: list(vg.check_schema(dict({'t': 1.0, 'widget': 'StartButton', 'click': True}, **k),
                                                  schema['$defs']['Click'], schema))
-        for ok in ({}, {'widget': 'New expedition'}, {'widget': "Don't save: quit (1/2) & go!"},
+        for ok in ({}, {'widget': 'New expedition'}, {'widget': "Don't save: quit (1/2) & go!"}, {'widget': '按铃开店 →'},
                    {'optional': True}, {'disabled': True}, {'optional': None}):
             self.assertEqual(click(**ok), [], ok)
-        for bad in ({'widget': ' New'}, {'widget': 'a' * 121}, {'widget': 'New\nexpedition'}, {'widget': 'Größe'},
+        for bad in ({'widget': ' New'}, {'widget': 'a' * 121}, {'widget': 'New\nexpedition'},
                     {'optional': False}, {'disabled': 'yes'}, {'hidden': True}):
             self.assertTrue(click(**bad), bad)
 

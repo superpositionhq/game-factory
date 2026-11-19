@@ -963,7 +963,7 @@
           "type": "number"
         },
         "widget": {
-          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_ .,:;'&!+/()-]{0,119}$",
+          "pattern": "^[^\\x00-\\x20\\x7f](?:[^\\x00-\\x1f\\x7f]{0,118}[^\\x00-\\x20\\x7f])?$",
           "title": "Widget",
           "type": "string"
         }

@@ -133,15 +133,32 @@ class Sessions(unittest.TestCase):
         for checks, said in [
                 ([reading("a", play("a", 20, continues="a"))], "task play a continues itself"),
                 ([reading("a", play("a", 20, continues="look"))], "continues look, which is no task play of the task"),
-                ([reading("a", play("a", 20, continues="b")), reading("b", play("b", 10, continues="c")),
-                  reading("c", play("c", 10))],
-                 "task play a continues b, which itself continues a session or runs after other plays: a first session "
-                 "starts from a cleared save, alone"),
                 ([reading("a", play("a", 20, continues="b")), reading("b", play("b", 10, after=["c"])),
-                  reading("c", play("c", 10))], "which itself continues a session or runs after other plays"),
+                  reading("c", play("c", 10))], "which runs after other plays"),
                 ([reading("a", play("a", 20, after=["c"], continues="b")), reading("b", play("b", 10)),
                   reading("c", play("c", 10))],
                  "task play a continues a session and runs after plays too: name one or the other")]:
+            with self.assertRaises(ValueError) as caught:
+                task_with(*checks)
+            self.assertIn(said, str(caught.exception))
+
+
+    def test_a_chain_of_sessions_is_played_earliest_first(self):
+        task = task_with(reading("c", play("c", 30, continues="b")), reading("b", play("b", 20, continues="a")),
+                         reading("a", play("a", 10)))
+        project = FakeProject(measuring(0))
+        s = side("reference", project, task)
+        for _, c in tasks.checks(task):
+            s.value(c)
+        self.assertEqual([p["seconds"] for p in project.plays][:3], [10, 20, 30])
+        self.assertEqual(s.sessions["c"]["play"], "b")
+
+    def test_a_chain_may_not_loop_or_pass_four_sessions(self):
+        for checks, said in [
+                ([reading("a", play("a", 20, continues="b")), reading("b", play("b", 10, continues="a"))],
+                 "sessions come back to"),
+                ([reading(f"s{i}", play(f"s{i}", 10, continues=f"s{i - 1}" if i else None)) for i in range(6)],
+                 "a chain of 5 sessions, more than 4")]:
             with self.assertRaises(ValueError) as caught:
                 task_with(*checks)
             self.assertIn(said, str(caught.exception))
