@@ -1631,6 +1631,7 @@ def check_repo_tasks(rep, repo, files=None):
                           for k in ('commit', 'reference'))
             report_thread_span(rep, a, label, repo, seed, on_main)
             for where, name in reference_only_names(repo, t):
+                where = 'play_map' if where is None else f'check {where}'
                 rep.error(a, f'{label}: {where} names {name}, which only the reference has: another fair build '
                              'names it otherwise; select by what it does or where it is, press a control by the words '
                              'it shows, start from options the start has (write-tasks sections 4 and 5)')
@@ -1753,7 +1754,7 @@ def reference_only_names(repo, t):
     a required probe's measure and play, a required judge's own plays, and play_map. A map, or a control a click, tap
     or drag presses, passes when the instruction (or the title) states it, as a ticket names a new screen's words or
     where QA plays a new level; a select's name, a member, an option or a flag never does (write-tasks sections 4
-    and 5). `where` is `check <name>` or `play_map`. Engine names are in neither tree and pass."""
+    and 5). `where` is the check's name, or None for play_map. Engine names are in neither tree and pass."""
     seed = t.get('seed') if isinstance(t.get('seed'), dict) else {}
     start, ref = seed.get('commit'), seed.get('reference')
     if not (start and ref):
@@ -1782,12 +1783,12 @@ def reference_only_names(repo, t):
     if isinstance(pm, str):
         names, paths = set(), set()
         _walk_names({'map': pm}, names, paths)
-        judge('play_map', names, paths, map_flags(pm))
+        judge(None, names, paths, map_flags(pm))
     for m in t.get('milestones') or []:
         for c in (m.get('checks') or []) if isinstance(m, dict) else []:
             if not (isinstance(c, dict) and c.get('required', True)):
                 continue
-            where = f"check {c.get('name')}"
+            where = c.get('name')
             if c.get('kind') == 'probe':
                 names, paths = measure_names(c.get('measure'))
                 plays = [c.get('play')]

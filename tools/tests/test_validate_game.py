@@ -740,10 +740,10 @@ class ReferenceOnlyNames(unittest.TestCase):
     def test_a_click_tap_or_drag_on_a_control_only_the_reference_has(self):
         for i in ({'t': 1, 'widget': 'StaminaBar', 'click': True}, {'t': 1, 'tap': {'widget': 'StaminaBar'}},
                   {'t': 1, 'drag': [[0.5, 0.5], {'widget': 'StaminaBar'}]}):
-            self.assertEqual(self.found(self.play(i)), [('check c', 'StaminaBar')], i)
-            self.assertEqual(self.found(self.play(i), kind='judge'), [('check c', 'StaminaBar')], i)
+            self.assertEqual(self.found(self.play(i)), [('c', 'StaminaBar')], i)
+            self.assertEqual(self.found(self.play(i), kind='judge'), [('c', 'StaminaBar')], i)
         words = {'t': 1, 'widget': 'Rest by the fire', 'click': True}
-        self.assertEqual(self.found(self.play(words)), [('check c', 'Rest by the fire')])
+        self.assertEqual(self.found(self.play(words)), [('c', 'Rest by the fire')])
         self.assertEqual(self.found(self.play(words), instruction='Clicking "Rest by the fire" refills stamina.'), [])
         self.assertEqual(self.found(self.play({'t': 1, 'widget': 'Resume', 'click': True})), [], 'the start has it')
         self.assertEqual(self.found(self.play({'t': 1, 'widget': 'Stamina*', 'click': True})), [], 'a wildcard')
@@ -755,23 +755,23 @@ class ReferenceOnlyNames(unittest.TestCase):
                   {'t': 1, 'set': 'Scenario', 'value': 1, 'on': door},
                   {'t': 1, 'shot': 's', 'when': {'measure': {'probe': 'actors', 'select': door, 'field': 'count'},
                                                   'expect': {'op': '>=', 'value': 1}}}):
-            self.assertEqual(self.found(self.play(i)), [('check c', 'CellarDoor')], i)
+            self.assertEqual(self.found(self.play(i)), [('c', 'CellarDoor')], i)
             self.assertEqual(self.found(self.play(i), instruction='Open the cellar door (CellarDoor).'),
-                             [('check c', 'CellarDoor')], 'a select never passes for being stated')
+                             [('c', 'CellarDoor')], 'a select never passes for being stated')
         self.assertEqual(self.found(self.play({'t': 1, 'set': 'Stamina', 'value': 0, 'on': {'tag': 'VillageWell'}})),
-                         [('check c', 'Stamina')], 'a member only the reference has')
+                         [('c', 'Stamina')], 'a member only the reference has')
         self.assertEqual(self.found(self.play({'t': 1, 'teleport_to': {'tag': 'CellarStairs'}})), [])
 
     def test_maps_options_and_flags(self):
         self.assertEqual(self.found(play_map='/Game/Maps/L_Village?Scenario=2'), [])
-        self.assertEqual(self.found(play_map='/Game/Maps/L_Village?SkipToDawn'), [('play_map', 'SkipToDawn')])
+        self.assertEqual(self.found(play_map='/Game/Maps/L_Village?SkipToDawn'), [(None, 'SkipToDawn')])
         self.assertEqual(self.found(self.play(map='/Game/Maps/L_Village?Scenario=2?SkipToDawn=1')),
-                         [('check c', 'SkipToDawn')])
-        self.assertEqual(self.found(self.play(args=['-SkipToDawn'])), [('check c', 'SkipToDawn')])
+                         [('c', 'SkipToDawn')])
+        self.assertEqual(self.found(self.play(args=['-SkipToDawn'])), [('c', 'SkipToDawn')])
         self.assertEqual(self.found(self.play(args=['-SkipToDawn']), instruction='QA starts with -SkipToDawn.'),
-                         [('check c', 'SkipToDawn')], 'an option only the reference adds is never used')
+                         [('c', 'SkipToDawn')], 'an option only the reference adds is never used')
         cellar = self.play({'t': 2, 'map': '/Game/Maps/L_Cellar'})
-        self.assertEqual(self.found(cellar), [('check c', '/Game/Maps/L_Cellar')])
+        self.assertEqual(self.found(cellar), [('c', '/Game/Maps/L_Cellar')])
         self.assertEqual(self.found(cellar, instruction='QA plays the new cellar level, L_Cellar.'), [])
 
     def test_an_optional_check_is_not_looked_at(self):
