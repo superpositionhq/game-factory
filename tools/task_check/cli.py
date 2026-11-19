@@ -1,4 +1,5 @@
 """python tools/task-check.py <game repo> [--task NAME|FILE.json ...] [--all] [--keep] [--out DIR] [--no-judge-shots]
+       python tools/task-check.py <game repo> --task NAME --watch PLAY [--side start|reference]   (show a play, no check)
 (docs/task-check.md)."""
 
 import argparse
@@ -56,6 +57,25 @@ def line(result):
     head = f"{result['verdict']:<7} {result['task']}"
     reasons = result["reasons"]
     return head + (": " + "; ".join(reasons) if reasons else "")
+
+
+def watch_line(found):
+    """The one line printed for a watched play."""
+    head = f"WATCHED {found['task']}: {found['side']} play {found['play']}"
+    if not found["ok"]:
+        return f"{head}: not shown as asked: {found['why']}"
+    return (f"{head}: shown for {found['seconds']:.0f} s (ended by {found['ended']}); screenshots and probe.json in "
+            f"{found['evidence']}; nothing was graded")
+
+
+def attention():
+    """A sound when the game window is about to open, so a person who looked away comes back (Windows; silent where
+    there is none)."""
+    try:
+        import winsound
+        winsound.MessageBeep()
+    except Exception:  # no winsound (not Windows) or no sound device: the log line says it too
+        pass
 
 
 def commits_of(repo, task):
@@ -117,6 +137,12 @@ def main(argv=None):
                         help="don't play judge checks' plays or save their screenshots (by default each judge check's "
                              "screenshots of the start and the reference are saved under <task>/judge-shots/ to be "
                              "looked at)")
+    parser.add_argument("--watch", metavar="PLAY",
+                        help="don't check: show one play of the one --task in a game window at the game's own speed, "
+                             "for a person to watch and say what they see (\"look\", \"drive\" or a task play's "
+                             "name); nothing is graded and no result is written")
+    parser.add_argument("--side", choices=("start", "reference"), default="reference",
+                        help="with --watch: the side to show (default: reference)")
     args = parser.parse_args(argv)
 
     repo = Path(args.repo).resolve()
@@ -157,6 +183,18 @@ def main(argv=None):
 
     def log(text):
         print(f"{time.strftime('%H:%M:%S')} {text}", file=sys.stderr, flush=True)
+
+    if args.watch:
+        if len(names) != 1 or sources[names[0]][0] is None:
+            print("--watch shows one play of one readable task: name it with --task NAME (or --task <file>.json)",
+                  file=sys.stderr)
+            return 2
+        tag = hashlib.sha256(f"{repo}:{time.time()}".encode()).hexdigest()[:8]
+        watched = check.watch_play(repo, sources[names[0]][0], args.side, args.watch, scratch_root / tag, out,
+                                   direct=args.direct, timeout=args.timeout, build_timeout=args.build_timeout,
+                                   log=log, announce=attention)
+        print(watch_line(watched), flush=True)
+        return 0 if watched["ok"] else 1
 
     # One scratch copy per commit for the whole run: a commit several tasks start or end on is built once, and
     # deleted after the last task that needs it.

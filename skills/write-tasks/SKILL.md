@@ -621,7 +621,7 @@ in the game or a term of ours. In everything you write to them, the brief and ev
 After every task check run, give a short table of every check, pass or fail on the start and on the reference, and
 one line on what you will try next, and carry on. Use the names from the brief, so the person can follow and step
 in. Stop for the person only where this skill says to: a judge's or a `seen` probe's pictures to score, a play you
-need them to watch, or a task you cannot fix.
+have offered to show them ("Showing a play to the person", below), or a task you cannot fix.
 
 **The return's detail is a lead, not a finding.** It is what our own check of the task flagged, often one check's
 name and a reading, written before anyone looked at the game. Start there, and test it:
@@ -641,8 +641,8 @@ In your note of what changed, say what the detail claimed, what you found, and a
 **You may change the game to fix a returned task, and the new commits are its reference (owner, 2026-11-18).** A
 check that fails on the reference is fixed in its play first: its staged state, its inputs and their timing, the
 moments of its shots, until the play gets the game into the state the check needs on the start and on the reference.
-That is the cheapest fix, so try it first; ask the person to watch the play run and say what they see ("it walked into
-the wall", "it never pressed the radio"). When the play is not the cause, the game is: the thing the instruction asks
+That is the cheapest fix, so try it first (and see "Showing a play to the person", below, when a play keeps going
+wrong). When the play is not the cause, the game is: the thing the instruction asks
 for was never finished, or something in the game stops it (a prop in a doorway, a widget over a button, a level with
 no path between two rooms). Then fix the game. You have authority to write that fix now, as new work, and to commit
 it: a reference does not have to be something the game's history already did. Commit the fix on main (many small
@@ -652,6 +652,29 @@ engine", section 2: S and R on `starts/<task name>`, R with the fix and S withou
 the commit. Keep the fix to what the instruction asks, and add nothing it doesn't ask for. A fix that also changes
 what another task of the game measures is that task's business too: say so in your note, and leave that task's files
 alone unless the return lists it.
+
+**Showing a play to the person (owner, 2026-11-18).** Not a step of every fix: something you may offer when you
+are stuck on a play. You read a play through its numbers and a few screenshots; a person watching it sees at once
+that the character walked into a wall, turned the wrong way or never reached the radio. Offer it when you have
+rewritten a play twice and it still doesn't get the game into the state the check needs, or when you can't tell from
+the readings whether the play or the game is at fault. It costs a build and a few minutes of the person's attention,
+so don't use it for what the readings already show.
+
+- Show the side you suspect: the reference when the play doesn't reach the state there, the start when it behaves
+  oddly at the start. One side, one play:
+  `python <GF_ROOT>\game-factory\tools\task-check.py <game repo> --task <name> --watch <play> --side reference`
+  (`--side start` for the start; `<play>` is a task play's name, or `look` or `drive`).
+- Before you run it, say in the chat what you are doing and why, in plain words: which version of the game they will
+  see (before the fix or after it), what the play is meant to do step by step ("walk from the stairs to the workshop
+  bench, press the radio, wait for the creature"), what you suspect goes wrong and where, and that a game window will
+  open by itself once the build is done (a sound plays), run for about as long as the play, and close. They don't
+  press anything.
+- Then ask what they saw, in their own words: where the character went, where it stopped, what it did or didn't
+  press, anything that looked wrong. Rewrite the play, or fix the game, from what they say.
+- A watched play is never a reading of the check: it runs in a window at the game's own speed, nothing in it is
+  graded and no result is written. Its screenshots and `probe.json` are kept under
+  `.task-checks\<task>\watch\<side>\`, to look at with the person afterwards. Run the task check again for the
+  verdict.
 
 **A returned task is never "not fixable" for its size.** Its start and reference, rebuilt around a fix, are often
 smaller than the thread the task was written from, and the validator only warns about the size of a span (section 6).

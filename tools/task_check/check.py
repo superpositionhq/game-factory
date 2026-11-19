@@ -220,6 +220,7 @@ class Side:
         # what the writer answered for seen checks (seen.kept), set by the task check; None: no answer is read here (a
         # task try), so seen checks are not asked
         self.answers = None
+        self.watching = None  # the one play shown in a window on this side (watch_play), by the name _play gets
 
     # -- the build ---------------------------------------------------------------------------------------------------
 
@@ -264,7 +265,8 @@ class Side:
             found = self.project.play(seconds, shots, self.timeout + math.ceil(waits),
                                       map=map or self.task.get("play_map"),
                                       inputs=inputs, queries=queries, args=args, every=every,
-                                      **({"session": True} if session else {}), **({"fresh": True} if fresh else {}))
+                                      **({"session": True} if session else {}), **({"fresh": True} if fresh else {}),
+                                      **({"watch": True} if name == self.watching else {}))
             self.played[name] = found
             waited = getattr(found, "waited", 0.0)
             self.log(f"  {self.name}: played {name} in {found.seconds:.0f} s"
@@ -335,6 +337,8 @@ class Side:
                                args=first["args"], every=first["every"], waits=tasks.waited(first), session=True)
             self.sessions[name] = session(ended, first["name"])
         shots = judges.play_shots(self.task).get(name, 2)  # as the grader plays it: a judge showing it asks more
+        if self.watching == f"play_{name}":
+            shots = max(shots, WATCH_SHOTS)  # a watched play leaves a strip of pictures to look at afterwards
         # a `fresh` play starts from a cleared save: what earlier plays of the side saved never changes its start
         return self._play(f"play_{name}", play["seconds"], shots, play["inputs"] or None, map=play["map"],
                           queries=queries, args=play["args"], every=every, waits=tasks.waited(play),
@@ -618,6 +622,80 @@ class Grade:
                          "required": check["required"], "weight": check["weight"], "detail": str(detail)[:700],
                          "group": group})
         return {"checks": rows, "probes": self.measured, "task_errors": self.task_errors}
+
+
+WATCH_SHOTS = 12  # the screenshots a watched play saves, spread over it
+
+
+def watchable(task):
+    """The plays of `task` a person can be shown: the checker's own "look" and "drive", and its task plays."""
+    return ["look", "drive", *tasks.task_plays(task)]
+
+
+def watch_play(repo, task, side_name, play_name, scratch, out_dir, direct=False, timeout=1800, build_timeout=3600,
+               log=print, builds=None, announce=None):
+    """Show a person one play of `task` on one side ("start" or "reference"): that side built, the plays it comes
+    after played as always (offscreen), then `play_name` in a window at the game's own speed. Nothing is graded and no
+    result is written: a watched play runs without the fixed step a check's play has, so its readings are not the
+    check's. Its screenshots, probe.json and log are kept under <out_dir>/<task>/watch/<side>/. Returns {ok, why,
+    task, side, play, seconds, ended, crashed, evidence}; `announce` is called just before the window opens."""
+    name = task.get("name", "?")
+    found = {"ok": False, "why": None, "task": name, "side": side_name, "play": play_name, "seconds": None,
+             "ended": None, "crashed": False, "evidence": None}
+
+    def stop(why):
+        found["why"] = why
+        return found
+
+    wrong = tasks.problems(task)
+    if wrong:
+        return stop(f"the task doesn't validate: {wrong[0]}")
+    names = watchable(task)
+    if play_name not in names:
+        return stop(f"no play {play_name}: this task's plays are {', '.join(names)}")
+    commit = task["seed"].get("commit" if side_name == "start" else "reference")
+    if commit is None:
+        return stop("the task has no seed.reference to show")
+    try:
+        sha = seeds.resolve(repo, commit)
+    except RuntimeError:
+        return stop(f"{commit[:12]} isn't a commit of {Path(repo).name}")
+    own = builds is None
+    if own:
+        builds = Builds(repo, scratch, direct, log)
+    try:
+        try:
+            project, _ = builds.get(sha, [sha])
+        except seeds.WrongEngine as exc:
+            return stop(f"{side_name}: {exc}")
+        evidence = Path(out_dir) / name / "watch"
+        seeds.remove(evidence / side_name)
+        side = Side(side_name, project, task, timeout, build_timeout, evidence, log)
+        if not side.built():
+            return stop(side.why_unbuilt())
+        own_one = play_name in PLAYS
+        play = play_name if own_one else tasks.task_plays(task)[play_name]
+        side.watching = play_name if own_one else f"play_{play_name}"
+        seconds = PLAYS[play_name][0] if own_one else play["seconds"]
+        log(f"  {side_name}: the game window opens now and plays {play_name} for {seconds} s of game time; "
+            "nothing in it is measured for the check")
+        if announce is not None:
+            announce()
+        if own_one:  # played here, so it is never the boot's first seconds reused
+            s, shots, inputs = own_play(play_name, project)
+            p = side._play(play_name, s, max(shots, WATCH_SHOTS), inputs,
+                           queries=probes.query_file(side.plan.get(play_name, [])))
+        else:
+            p = side.probe_play(play)
+        found.update(ok=p.probe is not None and not fatal(p.log), seconds=round(p.seconds, 1),
+                     ended=(p.probe or {}).get("ended"), crashed=bool(fatal(p.log)),
+                     evidence=f"{name}/watch/{side_name}/{side.watching}/")
+        if not found["ok"]:
+            found["why"] = "the play crashed" if found["crashed"] else "the play ended without a probe.json"
+        return found
+    finally:
+        if own:
+            builds.close()
 
 
 def start_unbuilt(task, why):

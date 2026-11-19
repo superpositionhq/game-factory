@@ -38,6 +38,16 @@ Options: `--keep` keeps the built copies (to look at a build or rerun a play by 
 elsewhere, `--scratch DIR` puts the copies elsewhere, `--direct` runs Unreal without the machine's job slots,
 `--timeout S` (a play or the editor pass, default 1800) and `--build-timeout S` (default 3600).
 
+`--watch PLAY` (with one `--task`, and `--side start` or `--side reference`, the default) doesn't check anything: it
+builds that one side and shows that one play in a game window at the game's own speed, for a person to watch and say
+what they see when a play keeps going wrong (write-tasks, "Showing a play to the person"). The plays it comes `after`,
+and a first session it `continues`, are played as always, offscreen, before it. A sound plays when the window is about
+to open. The play saves 12 screenshots, its `probe.json` and its log under `<out>\<task>\watch\<side>\`, and the
+run prints one line, `WATCHED <task>: <side> play <PLAY>: shown for N s ...`. Nothing is graded and no result is
+written: a watched play runs without the fixed step and frame rate a check's play has, so its readings are not the
+check's. `PLAY` is a task play's name, or `look` or `drive`; a name the task doesn't have is refused with the names it
+has.
+
 ## Requirements
 
 - Windows with Unreal Engine 5.7 where the machine config says (`engine` in `%USERPROFILE%\.game-factory\config.json`,
