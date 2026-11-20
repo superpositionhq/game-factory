@@ -1,6 +1,7 @@
 """verify: the replayed project against the final commit (docs/ue-replay.md, 2.4).
 
-  files      every tracked file: identical bytes (sha256 for LFS objects, git blob id otherwise), differs, missing; extras
+  files      every tracked file, wherever it lives (under IGNORED_DIRS too): identical bytes (sha256 for LFS objects,
+             git blob id otherwise), differs, missing; extras (untracked files under IGNORED_DIRS are not listed)
   assets     dump-replay/assets.json vs dump-truth/assets.json: class and per-class digest per package
   maps       per map: actors matched by class + label + folder (then nearest position); transform, components, settings,
              game-class properties compared; references to other actors compared by their labels
@@ -134,6 +135,8 @@ def tolerant_diff(a, b, counts):
 
 # ------------------------------------------------------------------------------------------------ files
 def verify_files(ctx, final):
+    """Every tracked file is compared wherever it lives, under an ignored directory too (a game may commit e.g.
+    Build/Windows/Application.ico with `git add -f`); IGNORED_DIRS only keep untracked build output out of the extras."""
     ids = runner.tree_ids(ctx.proj, final)
     have = {}
     for dp, dns, fns in os.walk(ctx.proj):
@@ -144,6 +147,11 @@ def verify_files(ctx, final):
         for fn in fns:
             rel = os.path.relpath(os.path.join(dp, fn), ctx.proj).replace("\\", "/")
             have[rel] = os.path.join(dp, fn)
+    for p in ids:
+        if p not in have and p.startswith(IGNORED_DIRS):
+            fp = os.path.join(ctx.proj, *p.split("/"))
+            if os.path.isfile(fp):
+                have[p] = fp
     res = {"content": collections.Counter(), "other": collections.Counter(), "differs": [], "missing": [], "extra": []}
     for p, ident in ids.items():
         cat = "content" if p.startswith("Content/") else "other"

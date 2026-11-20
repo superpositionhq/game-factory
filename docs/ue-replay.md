@@ -118,7 +118,10 @@ Per window (`work/windows.jsonl`):
 
 At the end (`ue_replay.py verify`, against the final commit):
 
-1. **Files**: every tracked file outside `Content/` is byte-identical to the final commit (sha256).
+1. **Files**: every tracked file outside `Content/` is byte-identical to the final commit (sha256), wherever it
+   lives: a file the commit tracks under a build-output folder (`Build/`, `Binaries/`, `Saved/`, ...), such as
+   `Build/Windows/Application.ico`, is compared like any other. Those folders only keep untracked build output out
+   of the extra files.
 2. **Content**: the same set of packages; per package, byte-identical or not. Unreal writes a random
    `PersistentGuid` into every new package, and random GUIDs into actors and material expressions, so a re-created
    asset is not expected to be byte-identical, but an untouched or only moved one is.
