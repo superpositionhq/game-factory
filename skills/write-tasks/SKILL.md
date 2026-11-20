@@ -1011,10 +1011,12 @@ Read each task this way:
 - **An ask about how the work is built or documented needs no check** ("fix it at its cause", "keep it in a data
   table", "in C++", "add it to the README"): no check of the game's outcome can decide it. Anything about what the
   player sees, hears or can do is never such an ask, however it is worded.
-- **Exactly five kinds of sentence need no check**, because no play can show them: a packaged or Shipping build's own
+- **Exactly four kinds of sentence need no check**, because no play can show them: a packaged or Shipping build's own
   behaviour; given screen sizes or resolutions (the size itself: what must be visible on screen still needs a check);
-  a frame rate or performance on given hardware; how a sound sounds (its quality, mix or tone); a statement of what the
-  task does not add or change. Everything else stays an ask, however hard to check: a value the running game holds, a
+  a frame rate (one the game holds, caps, keeps above or reaches, in the editor or a build, on any hardware) or
+  performance on given hardware; a statement of what the task does not add or change. How a sound sounds is an ask
+  since the Lab's review v8 (2026-11-19): the grader hears the game's mix (`heard`, `audio_judge`, docs/task-probes.md
+  2.24). Everything else stays an ask, however hard to check: a value the running game holds, a
   timing, a random or rare event, something a play must set up first, something kept across sessions (a best score,
   settings, a checkpoint after the game is closed and opened again: a play that `continues` the play that earned it).
   When in doubt, it is an ask.
