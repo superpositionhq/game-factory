@@ -51,23 +51,24 @@ source (config set by hand, config from bootstrap, or computed at run time). The
 
 | Path | Installed to | What |
 |---|---|---|
-| `setup.ps1` | | the one entry point for a clean PC: hardware precheck, winget installs, long paths + no sleep (asked), gh sign-in + git identity, game-factory clone, the coding agent (`-Agent claude\|codex\|both`: the Codex CLI and `codex login` for Codex), then bootstrap.ps1 and check.ps1; manual steps (UE 5.7, NVIDIA driver, Fab, Claude Code sign-in) detected on re-run; PASS/TODO list, log `<root>\.setup\setup.log` |
-| `bootstrap.ps1` | | idempotent setup: config + layout, tools, ffmpeg, hooks + each agent's settings merge (`-Agent claude\|codex\|both`; prints what the hooks record and asks first; `-Yes` skips the question), skills, root CLAUDE.md / AGENTS.md, LFS, gh, game repo hooks (`-CloneGames`) |
+| `setup.ps1` | | the one entry point for a clean PC: hardware precheck, winget installs, long paths + no sleep (asked), gh sign-in + git identity, game-factory clone, the coding agent (`-Agent claude\|codex\|antigravity\|both\|all` or a list: the Codex CLI and `codex login` for Codex, the Antigravity CLI `agy` for Antigravity), then bootstrap.ps1 and check.ps1; manual steps (UE 5.7, NVIDIA driver, Fab, Claude Code and Antigravity sign-in) detected on re-run; PASS/TODO list, log `<root>\.setup\setup.log` |
+| `bootstrap.ps1` | | idempotent setup: config + layout, tools, ffmpeg, hooks + each agent's settings merge (`-Agent claude\|codex\|antigravity\|both\|all` or a list; prints what the hooks record and asks first; `-Yes` skips the question), skills, root CLAUDE.md / AGENTS.md, LFS, gh, game repo hooks (`-CloneGames`) |
 | `check.ps1` | | read-only PASS/WARN/FAIL report (toolchain, GPU/display, disk, agents, setup, asset library; for mobile games: the Android toolchain, without which a mobile game cannot be released, and a display that holds a portrait recording, WARN when missing) |
 | `get-ffmpeg.ps1` | `<root>\tools\ffmpeg-8.1.2\` | downloads gyan.dev ffmpeg 8.1.2 full_build .7z, verifies SHA-256 `0fff1889…7059`, unpacks |
 | `lib/gf-root.ps1` | `<root>\tools\`, the hooks dir | root/config resolver (also `Get-GFHooksDir`, `Get-GFAgents`), dot-sourced by every script |
 | `lib/codex-hooks.ps1` | | Codex hook trust: the `[hooks.state]` entries Codex needs in `config.toml` before it runs a hook (bootstrap writes, check compares) |
 | `tools/ue-heavy.ps1` | `<root>\tools\ue-heavy.ps1` | machine-wide job limiter: `heavy_slots` general slots + `gpu_slots` GPU slots, one named mutex per slot (`Global\ue-heavy-slot-<n>`, `Global\ue-gpu-slot-<n>`: a killed job leaks none; VRAM guard; a recording takes all GPU slots), counts from the config or the hardware formula above, `-Low` for background work, yields to `builds\_queue\_recording-wants-gpu`, log `.recording\_heavy-jobs.jsonl`. Installed next to a copy of `lib\gf-root.ps1` |
-| `hooks/record-action.ps1` | the hooks dir | the agent hook (Claude Code: PostToolUse / PostToolUseFailure / Stop, and UserPromptSubmit / SessionEnd with `-Messages`; Codex: PostToolUse / Stop / SubagentStop / UserPromptSubmit / SessionEnd with `-Agent codex`): every prompt and reply of a game session to `.recording\<project>\messages.jsonl` (read from the transcript, see Recording), every tool call to `.recording\<project>\actions.jsonl` (earlier calls backfilled from the transcript, see Recording); Stop auto-commits leftovers as `WIP` |
+| `hooks/record-action.ps1` | the hooks dir | the agent hook (Claude Code: PostToolUse / PostToolUseFailure / Stop, and UserPromptSubmit / SessionEnd with `-Messages`; Codex: PostToolUse / Stop / SubagentStop / UserPromptSubmit / SessionEnd with `-Agent codex`; Antigravity: PostToolUse / Stop with `-Agent antigravity`): every prompt and reply of a game session to `.recording\<project>\messages.jsonl` (read from the transcript, see Recording), every tool call to `.recording\<project>\actions.jsonl` (earlier calls backfilled from the transcript, see Recording); Stop auto-commits leftovers as `WIP` |
 | `hooks/record-commit.ps1` | the hooks dir | called by each game repo's post-commit hook: `.recording\<repo>\commits.jsonl` |
 | `hooks/settings-hooks.json` | merged into `~\.claude\settings.json` | Claude Code: the three hook entries (`{{HOOKS_DIR}}` filled in) |
 | `hooks/codex-hooks.json` | merged into `~\.codex\hooks.json` | Codex: the five hook entries (PostToolUse, Stop, SubagentStop, UserPromptSubmit, SessionEnd; `{{HOOKS_DIR}}` filled in), trusted in `~\.codex\config.toml` |
+| `hooks/antigravity-hooks.json` | merged into `~\.gemini\config\hooks.json` | Antigravity: the hook `game-factory-recording` with PostToolUse and Stop (`{{HOOKS_DIR}}` filled in); its CLI, App and IDE read that file |
 | `hooks/recording-exclude.txt` | the hooks dir (once) | session ids never recorded (the coordinator) |
 | `install-git-hook.ps1` | `<game>\.git\hooks\post-commit` | appends the commit recorder after Git LFS's own lines |
-| `tests/test-recording.ps1` | | the recording hook and the reasoning-summary settings on made-up transcripts in a scratch folder under `%TEMP%` (whole tool results, the cut at 1,000,000 characters, picture markers, a saved command output, `thinking` rows of both agents, subagents of both agents, `-Backfill`, `config.toml`): `powershell -NoProfile -ExecutionPolicy Bypass -File machine\tests\test-recording.ps1`; exit code = failed checks |
+| `tests/test-recording.ps1` | | the recording hook and the reasoning-summary settings on made-up transcripts in a scratch folder under `%TEMP%` (whole tool results, the cut at 1,000,000 characters, picture markers, a saved command output, `thinking` rows of Claude Code and Codex, their subagents, Antigravity's own hook input and transcript, `-Backfill`, `config.toml`): `powershell -NoProfile -ExecutionPolicy Bypass -File machine\tests\test-recording.ps1`; exit code = failed checks |
 
 The hooks dir is `hooks_dir` in the config: `~\.claude\hooks\` on machines set up before Codex support (their game
-repos' post-commit hooks point there), else `~\.game-factory\hooks\`. One copy serves both agents.
+repos' post-commit hooks point there), else `~\.game-factory\hooks\`. One copy serves every agent.
 `recording-sessions.json` (session id -> project map) is runtime state: bootstrap creates it empty next to the
 hooks and never overwrites it.
 
@@ -88,9 +89,10 @@ hooks and never overwrites it.
   once (`recording-backfill.json` next to the hooks: count, transcript, imported tool_use_ids), and a call imported this
   way is never written again by its own live hook.
 - **Sessions mapped before the backfill existed:** `powershell -File <hooks dir>\record-action.ps1 -Backfill
-  <session id> [-TranscriptPath <file>] [-Agent codex]` inserts the rows before that session's first row in
-  `actions.jsonl` (finds the transcript under `~\.claude\projects\`, or `~\.codex\sessions\` with `-Agent codex`,
-  when not given); a second run does nothing.
+  <session id> [-TranscriptPath <file>] [-Agent codex|antigravity]` inserts the rows before that session's first row
+  in `actions.jsonl` (finds the transcript under `~\.claude\projects\`, `~\.codex\sessions\` with `-Agent codex`, or
+  `~\.gemini\antigravity-cli\brain\` (`antigravity`, `antigravity-ide`) with `-Agent antigravity`, when not given); a
+  second run does nothing.
 - Live rows carry no `status`; every row of a backfill carries `from_transcript`, so the two are never confused.
 - **Subagents.** A subagent's tool calls and messages are filed under its session, each row with `subagent`: Claude
   Code `agent-<agent_id>` (its transcript `<session>\subagents\agent-<agent_id>.jsonl`), Codex its thread id (its own
@@ -101,6 +103,19 @@ hooks and never overwrites it.
   other message one agent sends another, so such a message is a `user` row with only its readable header (message
   type, task name, sender) and `encrypted` true. When a subagent's call maps the session (its hook names its own rollout
   as `transcript_path`), the backfill reads the session's rollout and every subagent's.
+- **Antigravity.** Its hook input is its own (camelCase: `conversationId`, `transcriptPath`, `toolCall`, `stepIdx`; the
+  session id is the conversation id) and holds no tool result, and it reads every hook's answer from stdout as JSON
+  (the hook prints `{}`). The rows come from its transcript, `transcript_full.jsonl` beside the `transcript.jsonl` the
+  hook names (`<app data>\brain\<conversation>\.system_generated\logs\`; app data is `~\.gemini\antigravity-cli` for
+  the CLI, `antigravity` for the App, `antigravity-ide` for the IDE): one step per line; a `PLANNER_RESPONSE` step holds
+  the reply, the reasoning (`thinking`) and the tool calls, and the k-th call's result is the step after it at
+  `step_index` + 1 + k. Antigravity writes that result after the call's hook has run, so every hook call of a recorded
+  session writes the calls the transcript completed since the last one (`recording-antigravity.json` next to the
+  hooks: transcript file, bytes read, calls waiting for their result), all with `"status": "from_transcript"`: a call's
+  row lands at the next tool call or at the turn's Stop. `tool_use_id` is `<conversation id>:<result step>`. A prompt
+  is the text inside the `USER_INPUT` step's `<USER_REQUEST>` (Antigravity adds the time and setting changes around it).
+  It has no `UserPromptSubmit` or `SessionEnd` hook: prompts and replies are read at every Stop. A subagent is a
+  conversation of its own, recorded as a session of its own once its calls name a game.
 - **Prompts, replies and reasoning summaries.** `messages.jsonl` next to `actions.jsonl` holds every prompt the person typed, every
   reply the model wrote and every reasoning summary the agent saved in a session mapped to the project, one row each (`"schema": "superposition.agent-message/v0"`:
   `time`, `project`, `session_id`, `agent`, `role` `user`, `assistant` or `thinking`, `message_id`, `text`; `model`; `images` for
@@ -114,7 +129,7 @@ hooks and never overwrites it.
   fork's copied context.
 - **Sessions recorded before prompts and replies, or before reasoning summaries, were:** `record-action.ps1 -Backfill
   <session id>` imports that session's messages too; `record-action.ps1 -Backfill all` imports the messages of every
-  mapped session whose transcript is still on the machine (either agent) and nothing else. Both read each transcript
+  mapped session whose transcript is still on the machine (any agent) and nothing else. Both read each transcript
   from its start, add what is not yet in `messages.jsonl` (the `thinking` rows of a session recorded before they
   were) and put that session's rows back in the transcript's order. Run `-Backfill all` once after updating a machine
   that has sessions under way. A transcript written while the agent's summary setting was off holds no summary text:
@@ -123,9 +138,13 @@ hooks and never overwrites it.
   The summary is what the agent saved: Claude Code's `thinking` blocks, Codex's `summary_text` and, where the rollout
   holds it as plain text, its `raw_content`. A long command output that Claude Code cut in the
   result and saved to a file (`persistedOutputPath`) is read from that file while it is there.
-- Every row carries `agent` (`claude` or `codex`). Codex rows differ in two ways: file edits are `apply_patch` rows
-  (`input.command` = the patch; the replay ledger applies them like Write/Edit, `tools/ue-replay/patchfx.py`), and
-  there is no `PostToolUseFailure` (a failed call is a `PostToolUse` whose response shows the exit code).
+- Every row carries `agent` (`claude`, `codex` or `antigravity`). Codex rows differ in two ways: file edits are
+  `apply_patch` rows (`input.command` = the patch; the replay ledger applies them like Write/Edit,
+  `tools/ue-replay/patchfx.py`), and there is no `PostToolUseFailure` (a failed call is a `PostToolUse` whose response
+  shows the exit code). Antigravity rows keep its own tool names and arguments (`run_command` with `CommandLine`,
+  `write_file` / `write_to_file`, `edit_file`, `replace_file_content`, ...); a failed call is a `PostToolUse` row with
+  `error`. The replay ledger reads `run_command` as `Bash`, `write_file` as `Write` and `edit_file` as `Edit`
+  (`tools/ue-replay/ledger.py` `as_claude`); a file another of its tools writes is unknown until the next commit.
 - **Codex hook trust.** Codex runs a hook from `hooks.json` only after it is trusted (a hash of the hook in
   `config.toml` `[hooks.state."<hooks.json>:<event>:<group>:<handler>"]`); an untrusted or edited hook is skipped
   without a word. bootstrap.ps1 writes the entries for the record-action.ps1 hooks (`lib/codex-hooks.ps1`), check.ps1

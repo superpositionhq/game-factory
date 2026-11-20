@@ -28,8 +28,8 @@ and hands each game its packs. Everything shares one Windows PC
 ({{MACHINE}}). I am the coordinator ({{COORDINATOR_ID}}): I own the recording queue and the GPU slots, review your
 commits and tell you when to push.
 
-Rules: follow the game-session, commit-always and sound skills (installed in ~\.claude\skills\ or ~\.agents\skills\, source
-game-factory/skills/), and no other skill: never install, enable or invoke a personal, project, plugin, marketplace or
+Rules: follow the game-session, commit-always and sound skills (installed in ~\.claude\skills\, ~\.agents\skills\ or
+~\.gemini\config\skills\, source game-factory/skills/), and no other skill: never install, enable or invoke a personal, project, plugin, marketplace or
 agent built-in skill. In short: every heavy or GPU job through {{GF_ROOT}}\tools\ue-heavy.ps1, Live Coding
 never on; premium art in one art style, from the asset library, any licensed source or built from scratch, every sound through the
 sound skill, styled UI with no plain text, story

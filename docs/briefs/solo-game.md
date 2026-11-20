@@ -1,7 +1,7 @@
-# Solo game brief (plain Claude Code or Codex)
+# Solo game brief (plain Claude Code, Codex or Antigravity)
 
-For one person building one game with one coding-agent session in a terminal, Claude Code (`claude`) or OpenAI Codex
-CLI (`codex`): no desktop app, no coordinator, no other sessions. The rules are the same as for a coordinated game session (the `game-session` and `commit-always`
+For one person building one game with one coding-agent session in a terminal, Claude Code (`claude`), OpenAI Codex
+CLI (`codex`) or Google Antigravity's CLI (`agy`): no desktop app, no coordinator, no other sessions. The rules are the same as for a coordinated game session (the `game-session` and `commit-always`
 skills, installed by `machine/setup.ps1`); what the coordinator would do (queue recordings, decide pushes, relay
 directions, hand out store packs) is done by you, the person at the keyboard. With the desktop app and several games
 at once, start each game session from [game-session.md](game-session.md) instead.
@@ -11,10 +11,12 @@ Start: open a terminal in the machine root (`cd <root>`) and run one of
 - `claude` (its `<root>\CLAUDE.md` loads the game-factory rules), or
 - `codex -s danger-full-access` (its `<root>\AGENTS.md` names the rules; the full-access sandbox is needed because
   builds write to `C:\UEB` and `%LOCALAPPDATA%`, the job limiter uses machine-wide mutexes, and git / gh need the
-  network; `codex` asks once to trust the folder),
+  network; `codex` asks once to trust the folder), or
+- `agy` (its `<root>\AGENTS.md` names the rules; keep its terminal sandbox off, no `--sandbox`, for the same reasons;
+  `agy` asks once to trust the folder),
 
 then paste the `text` block below with the placeholders filled. Stay in this one session for the whole game where you
-can (resume it with `claude --continue` or `codex resume --last`): the recording follows the session, and a new session
+can (resume it with `claude --continue`, `codex resume --last` or `agy --continue`): the recording follows the session, and a new session
 is filed under the game only from its first tool call that names the game folder. For a game that has a fill-in in [games/](games/),
 take the pitch, scenarios and story from it; for a new game, write them in a few lines each.
 

@@ -1,0 +1,23 @@
+{
+  "game-factory-recording": {
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File {{HOOKS_DIR}}/record-action.ps1 -Agent antigravity",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File {{HOOKS_DIR}}/record-action.ps1 -Agent antigravity -Stop",
+        "timeout": 120
+      }
+    ]
+  }
+}

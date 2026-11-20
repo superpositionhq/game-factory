@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   The recording hook (record-action.ps1) and the agents' reasoning-summary settings (lib\codex-hooks.ps1), run on
-  made-up transcripts in the shapes Claude Code and Codex write, in a scratch folder under %TEMP%. Nothing of this
+  made-up transcripts in the shapes Claude Code, Codex and Antigravity write, in a scratch folder under %TEMP%. Nothing of this
   machine's recording, agent settings or games is read or written.
 .DESCRIPTION
   Checks: a tool call's whole output in actions.jsonl (live rows and rows imported from the transcript), the cut at
@@ -10,7 +10,9 @@
   the file Claude Code saved it to; the reasoning summaries as role "thinking" rows of messages.jsonl in the
   transcript's order (Claude Code thinking blocks, Codex Reasoning items, a summary saved without text as "redacted",
   Codex raw_content kept when it is text), written once; -Backfill adding them to a session recorded before they were and
-  putting its rows back in order; and config.toml's reasoning-summary settings read and set without touching other lines.
+  putting its rows back in order; Antigravity's own hook input (the result read from transcript_full.jsonl, the
+  prompt without what Antigravity adds, {} answered on stdout every time); and config.toml's reasoning-summary settings
+  read and set without touching other lines.
   Exit code: the number of failed checks.
 .EXAMPLE
   powershell -NoProfile -ExecutionPolicy Bypass -File machine\tests\test-recording.ps1
@@ -204,6 +206,71 @@ try {
   $m = @(Rows $messages | Where-Object { $_.session_id -eq $sid3 })
   $got = @($m | ForEach-Object { "$($_.message_id) $($_.subagent)" }) -join ', '
   Check 'Codex subagent: -Backfill all reads the subagent the parent''s rollout names and puts the rows in order' ($got -ceq "pum-1 , amsg-34 $kid, kam-1 $kid, pam-1 ") $got
+
+  # ---- Antigravity: its own hook input, the result and the messages read from its transcript -------------------------
+  Write-Host 'Antigravity'
+  $t0 = [DateTime]::UtcNow
+  $cid = [Guid]::NewGuid().ToString()
+  $logs = Join-Path $fakeHome ".gemini\antigravity-cli\brain\$cid\.system_generated\logs"
+  New-Item -ItemType Directory -Force $logs | Out-Null
+  $full = Join-Path $logs 'transcript_full.jsonl'
+  $short = Join-Path $logs 'transcript.jsonl'
+  function Step($i, $o) { $s = [ordered]@{ step_index = $i; created_at = (T $i) }; foreach ($k in $o.Keys) { $s[$k] = $o[$k] }; return (Line $s) }
+  $agLong = ('compile line' + "`n") * 1000 + 'END-OF-AG-OUTPUT'
+  $agSteps = @(
+    (Step 0 ([ordered]@{ source = 'USER_EXPLICIT'; type = 'USER_INPUT'; status = 'DONE'; content = "<USER_REQUEST>`nAdd a lamp.`n</USER_REQUEST>`n<ADDITIONAL_METADATA>`nThe current local time is: now.`n</ADDITIONAL_METADATA>" })),
+    (Step 1 ([ordered]@{ source = 'MODEL'; type = 'PLANNER_RESPONSE'; status = 'DONE'; model = 'model-g'; thinking = 'Look first.'; tool_calls = @([ordered]@{ name = 'run_command'; args = [ordered]@{ CommandLine = 'dir'; Cwd = $root } }) })),
+    (Step 2 ([ordered]@{ source = 'MODEL'; type = 'GENERIC'; status = 'DONE'; content = "Command exited with code 0.`nEARLIER-AG" })),
+    (Step 3 ([ordered]@{ source = 'MODEL'; type = 'PLANNER_RESPONSE'; status = 'DONE'; model = 'model-g'; content = 'Writing the lamp.'
+        tool_calls = @([ordered]@{ name = 'write_file'; args = [ordered]@{ Path = (Join-Path $cwd 'lamp.txt'); Content = 'lamp' } }, [ordered]@{ name = 'run_command'; args = [ordered]@{ CommandLine = 'build lamp' } }) }))
+  )
+  # as the hook of the first call of step 3 runs: its result is not in the transcript yet
+  [IO.File]::WriteAllText($full, ($agSteps -join "`n") + "`n", $utf8)
+  [IO.File]::WriteAllText($short, ($agSteps -join "`n") + "`n", $utf8)
+  function Invoke-AgHook([string]$Json, [string[]]$More = @()) {
+    $out = $Json | & $exe -NoProfile -ExecutionPolicy Bypass -File $hook -Agent antigravity @More
+    if ($LASTEXITCODE -ne 0) { throw "the hook exited $LASTEXITCODE (antigravity $($More -join ' '))" }
+    return (@($out) -join '')
+  }
+  function AgCall([int]$Step, [string]$Name, $ArgsObj) {
+    return (Line ([ordered]@{ conversationId = $cid; workspacePaths = @($root); transcriptPath = $short; artifactDirectoryPath = (Split-Path (Split-Path $logs)); modelName = 'model-g'
+          lastUserInput = 'Add a lamp.'; hookEventName = 'PostToolUse'; cwd = $root; stepIdx = $Step; error = ''; toolCall = [ordered]@{ id = "toolu_ag_$Step"; name = $Name; args = $ArgsObj } }))
+  }
+  $before = @(Rows $actions).Count
+  $said = Invoke-AgHook (AgCall 4 'write_file' ([ordered]@{ Path = (Join-Path $cwd 'lamp.txt'); Content = 'lamp' }))
+  $a = @(Rows $actions | Select-Object -Skip $before)
+  Check 'Antigravity: the hook answers {} on stdout' ($said -ceq '{}') $said
+  Check 'Antigravity: a call naming the game maps the session; the call the transcript completed is written, the hook''s own waits' ($a.Count -eq 1 -and $a[0].tool_use_id -eq "${cid}:2" -and $a[0].status -eq 'from_transcript' -and $a[0].tool -eq 'run_command' -and $a[0].agent -eq 'antigravity' -and $a[0].session_id -eq $cid -and ([string]$a[0].response).Contains('EARLIER-AG') -and $a[0].input.CommandLine -eq 'dir') "rows: $($a.Count)"
+  # both results reach the transcript (the compact copy cuts the long one); the next call's hook writes both rows
+  [IO.File]::AppendAllText($full, (Step 4 ([ordered]@{ source = 'MODEL'; type = 'GENERIC'; status = 'DONE'; content = $agLong })) + "`n" + (Step 5 ([ordered]@{ source = 'MODEL'; type = 'GENERIC'; status = 'ERROR'; content = 'Command exited with code 1. LAMP-FAILED' })) + "`n", $utf8)
+  [IO.File]::AppendAllText($short, (Step 4 ([ordered]@{ source = 'MODEL'; type = 'GENERIC'; status = 'DONE'; content = 'compile line'; truncated_fields = @('content') })) + "`n", $utf8)
+  [void](Invoke-AgHook (AgCall 5 'run_command' ([ordered]@{ CommandLine = 'build lamp' })))
+  $a = @(Rows $actions | Select-Object -Skip $before)
+  Check 'Antigravity: the waiting call''s row holds the whole result, read from transcript_full.jsonl' ($a.Count -eq 3 -and $a[1].tool_use_id -eq "${cid}:4" -and $a[1].tool -eq 'write_file' -and ([string]$a[1].response).Contains('END-OF-AG-OUTPUT') -and $a[1].input.Content -eq 'lamp' -and $a[1].event -eq 'PostToolUse') "rows: $($a.Count)"
+  Check 'Antigravity: a step with status ERROR is the row''s error' ($a.Count -eq 3 -and $a[2].tool_use_id -eq "${cid}:5" -and ([string]$a[2].error).Contains('LAMP-FAILED') -and ([string]$a[2].response).Contains('LAMP-FAILED'))
+  [void](Invoke-AgHook (AgCall 5 'run_command' ([ordered]@{ CommandLine = 'build lamp' })))
+  Check 'Antigravity: a hook call with nothing new writes nothing' (@(Rows $actions | Select-Object -Skip $before).Count -eq 3)
+  # the end of the turn: a reply without tool calls is the last step
+  [IO.File]::AppendAllText($full, (Step 6 ([ordered]@{ source = 'MODEL'; type = 'PLANNER_RESPONSE'; status = 'DONE'; model = 'model-g'; content = 'The lamp is in.' })) + "`n", $utf8)
+  $agStop = Line ([ordered]@{ conversationId = $cid; transcriptPath = $short; cwd = $root; hookEventName = 'Stop'; executionNum = 0; terminationReason = 'NO_TOOL_CALL'; fullyIdle = $true; continuationActive = $false })
+  $said = Invoke-AgHook $agStop @('-Stop')
+  $m = @(Rows $messages | Where-Object { $_.session_id -eq $cid })
+  $got = @($m | ForEach-Object { "$($_.role) $($_.message_id)" }) -join ', '
+  Check 'Antigravity: prompt, reasoning, replies, in the transcript''s order' ($said -ceq '{}' -and $got -ceq "user ${cid}:0, thinking ${cid}:1:thinking, assistant ${cid}:3, assistant ${cid}:6") $got
+  Check 'Antigravity: the prompt is the text the person typed, without what Antigravity added' ($m.Count -eq 4 -and $m[0].text -ceq 'Add a lamp.' -and $m[1].text -ceq 'Look first.' -and $m[1].model -eq 'model-g' -and $m[3].agent -eq 'antigravity') ([string]$m[0].text)
+  $stopRow = @(Rows $actions)[-1]
+  Check 'Antigravity: Stop writes its row, and no call twice' ($stopRow.event -eq 'Stop' -and $stopRow.session_id -eq $cid -and $stopRow.agent -eq 'antigravity' -and @(Rows $actions | Select-Object -Skip $before).Count -eq 4)
+  [void](Invoke-AgHook $agStop @('-Stop'))
+  Check 'Antigravity: a second Stop writes no message twice' (@(Rows $messages | Where-Object { $_.session_id -eq $cid }).Count -eq 4)
+  # a conversation that never names a game is not recorded, and the hook still answers
+  $n = @(Rows $actions).Count
+  $other = Line ([ordered]@{ conversationId = [Guid]::NewGuid().ToString(); transcriptPath = $short; cwd = $tmp; hookEventName = 'PostToolUse'; stepIdx = 2; toolCall = [ordered]@{ id = 'x'; name = 'run_command'; args = [ordered]@{ CommandLine = 'dir' } } })
+  $said = Invoke-AgHook $other
+  Check 'Antigravity: a conversation that names no game writes nothing' ($said -ceq '{}' -and @(Rows $actions).Count -eq $n)
+  $env:GF_NO_RECORDING = '1'
+  $said = Invoke-AgHook (AgCall 5 'run_command' ([ordered]@{ CommandLine = 'build lamp' }))
+  $env:GF_NO_RECORDING = $null
+  Check 'Antigravity: with GF_NO_RECORDING nothing is written and the hook still answers' ($said -ceq '{}' -and @(Rows $actions).Count -eq $n)
 
   # ---- config.toml: the settings that make Codex show and save its reasoning summaries ------------------------------
   Write-Host 'Codex config.toml'

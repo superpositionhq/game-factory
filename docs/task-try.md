@@ -4,7 +4,7 @@
 game session instead (write-tasks skill, section 6).
 
 The task check ([task-check.md](task-check.md)) proves a task is fair: the start fails it and the reference passes.
-The task try tells you whether it is hard enough. It gives the task to your own coding agent, Claude Code or Codex on
+The task try tells you whether it is hard enough. It gives the task to your own coding agent, Claude Code, Codex or Antigravity on
 your own subscription, exactly as an agent gets it in the cloud, then grades what the agent left with the task's own
 probes. Every task must be a long thread of multiple edits (write-tasks skill, section 1); if your agent solves it
 easily, the task isn't done yet.
@@ -12,6 +12,7 @@ easily, the task isn't done yet.
 ```powershell
 python tools\task-try.py C:\Users\<you>\Work\games\<slug> --task <task-name> --agent claude
 python tools\task-try.py C:\Users\<you>\Work\games\<slug> --task <task-name> --agent codex --runs 3
+python tools\task-try.py C:\Users\<you>\Work\games\<slug> --task <task-name> --agent antigravity
 python tools\task-try.py C:\Users\<you>\Work\games\<slug> --task C:\Users\<you>\Work\tasks\<slug>\Tasks\<task-name>.json --agent claude
 ```
 
@@ -30,9 +31,10 @@ argument for the harness, repeatable), `--keep` (keep the workspaces and the bui
 
 - The task check says VALID (`tools/task-check.py`). The try builds the start and the reference too, but tells you
   nothing useful about a task that isn't valid.
-- `claude` or `codex` is on PATH and logged in (run it once by hand). The try runs it headless: Claude Code with
-  `-p --permission-mode bypassPermissions` and its hooks off, Codex with `exec -s danger-full-access`; the agent can
-  run anything on your computer, as a game session can.
+- `claude`, `codex` or `agy` (Antigravity's CLI) is on PATH and logged in (run it once by hand). The try runs it
+  headless: Claude Code with `-p --permission-mode bypassPermissions` and its hooks off, Codex with
+  `exec -s danger-full-access`, Antigravity with `--dangerously-skip-permissions` and the brief as its `--print`
+  argument; the agent can run anything on your computer, as a game session can.
 - Requirements as the task check's: Windows, Unreal Engine 5.7, Python 3.12, git and Git LFS with both commits' objects
   fetched. Disk: one full copy of the game per run (the agent edits it, so it can't be a hardlink), plus the start
   and the reference built once.

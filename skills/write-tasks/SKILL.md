@@ -1046,8 +1046,8 @@ Read each task this way:
   holds no text, a regular expression that doesn't compile, a wheel or mouse move that moves nothing, and the like;
   its message says which.
 - **Judge difficulty in the session; never run the task with another agent** (owner, 2026-11-05: the try took up to
-  25 minutes a task and slowed contractors down). Don't run `tools/task-try.py` or start a fresh Claude Code or Codex
-  session on a task. Before committing, review each task against section 1 here, with the person: would a strong
+  25 minutes a task and slowed contractors down). Don't run `tools/task-try.py` or start a fresh Claude Code, Codex or
+  Antigravity session on a task. Before committing, review each task against section 1 here, with the person: would a strong
   agent given only the brief and the start solve it easily (25 minutes is a guide, not a cut-off)? It would when the brief points at one
   place, the issues share one obvious cause, or the reference diff is mostly one file or one system. If so, extend the
   thread back to an earlier attempt, merge it with its neighbouring issues, or drop it. Tell the person which tasks you

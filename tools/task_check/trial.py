@@ -5,8 +5,8 @@ For one task and each run:
    as the agent gets it in the cloud: every file of that commit, without Tasks/, History/ or Dataset/, in a fresh git
    repository with one commit and no history (its Git LFS objects hardlinked from the game repo's store, the files
    themselves copies, since the agent edits them).
-2. The contractor's harness (Claude Code or Codex, their own subscription and login) runs headless in the workspace
-   with the brief as its prompt, within the task's limits (turns where the harness has a flag, minutes always), with
+2. The contractor's harness (Claude Code, Codex or Antigravity's agy, their own subscription and login) runs headless in
+   the workspace with the brief as its prompt, within the task's limits (turns where the harness has a flag, minutes always), with
    the machine's recording hooks off (GF_NO_RECORDING). Its transcript is kept.
 3. The workspace is graded as a solution: TaskProbe added, built fresh, played, every check but judges, seen probes
    (a model's reading in the Lab: not asked, and left out of the number), trace probes and packaging run against the thresholds the start and the reference give (both built and measured once for all
@@ -45,20 +45,25 @@ def brief(task, engine):
     return text
 
 
-def agent_argv(agent, exe, limits, settings, model=None, extra=()):
-    """The headless command line of `agent` ("claude" or "codex"); the prompt comes on stdin. `settings`: a Claude Code
-    settings file that turns hooks off (a file, since a .cmd shim mangles JSON on its command line)."""
+def agent_argv(agent, exe, limits, settings, model=None, extra=(), prompt=""):
+    """The headless command line of `agent` ("claude", "codex" or "antigravity"); the prompt comes on stdin, except for
+    Antigravity's agy, which takes it only as an argument (--print=<prompt>) and has no turn limit. `settings`: a Claude
+    Code settings file that turns hooks off (a file, since a .cmd shim mangles JSON on its command line)."""
     if agent == "claude":
         argv = [exe, "-p", "--output-format", "stream-json", "--verbose", "--max-turns", str(limits["max_turns"]),
                 "--permission-mode", "bypassPermissions", "--settings", str(settings)]
     elif agent == "codex":
         argv = [exe, "exec", "--json", "-s", "danger-full-access", "--skip-git-repo-check",
                 "--disable", "apps", "--disable", "plugins"]
+    elif agent == "antigravity":
+        argv = [exe, "--output-format", "stream-json", "--dangerously-skip-permissions"]
     else:
-        raise ValueError(f"no agent {agent!r} (claude or codex)")
+        raise ValueError(f"no agent {agent!r} (claude, codex or antigravity)")
     if model:
-        argv += ["--model", model] if agent == "claude" else ["-m", model]
+        argv += ["-m", model] if agent == "codex" else ["--model", model]
     argv += list(extra)
+    if agent == "antigravity":
+        return argv + ["--print=" + prompt]
     return argv + (["-"] if agent == "codex" else [])
 
 
@@ -189,6 +194,8 @@ def usage(agent, transcript):
             turns, usd = event.get("num_turns", turns), event.get("total_cost_usd", usd)
         elif agent == "codex" and event.get("type") == "turn.completed":
             turns = (turns or 0) + 1
+        elif agent == "antigravity" and event.get("event") == "result" and isinstance(event.get("result"), dict):
+            turns = event["result"].get("num_turns", turns)
     return {"turns": turns, "usd": usd}
 
 
@@ -300,7 +307,7 @@ def try_task(repo, task, raw, scratch, out_dir, agent, exe, runs=1, model=None, 
             transcript.parent.mkdir(parents=True, exist_ok=True)
             settings = evidence / "claude-settings.json"
             settings.write_text(json.dumps({"disableAllHooks": True}), encoding="utf-8")
-            argv = agent_argv(agent, exe, limits, settings, model, extra)
+            argv = agent_argv(agent, exe, limits, settings, model, extra, prompt=prompt)
             log(f"  {label}: {agent} working (up to {limits['max_minutes']} min)")
             codex_home = folder.parent / (folder.name + ".codex-home") if agent == "codex" else None
             try:
@@ -386,13 +393,14 @@ def main(argv=None):
     from . import cli
 
     parser = argparse.ArgumentParser(prog="task-try.py", description=(
-        "Try a game's task with your own coding agent (Claude Code or Codex): the game at the task's start in a fresh "
+        "Try a game's task with your own coding agent (Claude Code, Codex or Antigravity): the game at the task's start in a fresh "
         "workspace, the agent given the brief, its result built, played and graded against the task's probes. "
         "docs/task-try.md"))
     parser.add_argument("repo", help="the game's repo (its tasks are read from its tasks branch, else origin/tasks)")
     parser.add_argument("--task", action="append", default=[], metavar="NAME",
                         help="a task on the tasks branch, or a task file (<name>.json) not committed yet (repeatable)")
-    parser.add_argument("--agent", choices=("claude", "codex"), required=True, help="the harness to run")
+    parser.add_argument("--agent", choices=("claude", "codex", "antigravity"), required=True,
+                        help="the harness to run (antigravity: its CLI, agy)")
     parser.add_argument("--runs", type=int, default=1, help="runs per task (default 1)")
     parser.add_argument("--model", help="the model the harness uses (default: its own)")
     parser.add_argument("--agent-arg", action="append", default=[], metavar="ARG",
@@ -418,9 +426,10 @@ def main(argv=None):
         parser.error("name a task with --task NAME (or --task <file>.json)")
     if args.runs < 1:
         parser.error("--runs must be at least 1")
-    exe = shutil.which(args.agent)
+    command = "agy" if args.agent == "antigravity" else args.agent
+    exe = shutil.which(command)
     if exe is None:
-        parser.error(f"{args.agent} isn't on PATH: install it and log in first")
+        parser.error(f"{command} isn't on PATH: install it and log in first")
     ref, found = tasks.read_tasks(repo)
     sources = {n: (t, raw, why) for n, (t, raw, why) in found.items()}
     tasks_dir = None
@@ -447,7 +456,7 @@ def main(argv=None):
     cli.ignore_results(repo, out)
     unreal.gfroot.check_free(str(scratch_root), "task try")
     home = Path(os.path.expanduser("~"))
-    places = [repo, root, home / ".agents", home / ".claude", home / ".codex"] + ([tasks_dir] if tasks_dir else [])
+    places = [repo, root, home / ".agents", home / ".claude", home / ".codex", home / ".gemini"] + ([tasks_dir] if tasks_dir else [])
 
     def log(text):
         print(text, file=sys.stderr, flush=True)

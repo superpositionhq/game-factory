@@ -9,9 +9,9 @@
 # into Shipping exes), "engine" (the UE root new games use; Get-GFEngine picks each project's own), optional "engines"
 # ({"5.7": "<UE root>", ...}) and "record_extra_projects" (top-level folders under the root that the recording hooks
 # treat as projects besides games\<slug>), and "github_org" (the GitHub organisation or user that owns game-factory and
-# the private game-<slug> repos; Get-GFOrg), "agents" (the coding agents bootstrap.ps1 wired up: "claude", "codex") and
-# "hooks_dir" (where the recording hooks live, shared by both agents; Get-GFHooksDir). Installed copies of the hooks and
-# ue-heavy.ps1 carry a copy of this file next to them.
+# the private game-<slug> repos; Get-GFOrg), "agents" (the coding agents bootstrap.ps1 wired up: "claude", "codex",
+# "antigravity") and "hooks_dir" (where the recording hooks live, shared by every agent; Get-GFHooksDir). Installed
+# copies of the hooks and ue-heavy.ps1 carry a copy of this file next to them.
 
 function Get-GFConfigPath {
     if ($env:GF_CONFIG) { return $env:GF_CONFIG }
@@ -42,14 +42,17 @@ function Get-GFConfig {
 
 function Get-GFRoot { return (Get-GFConfig).root }
 
-# The coding agents this machine is set up for ("claude", "codex"): "agents" in the config (bootstrap.ps1 -Agent writes
-# it); else the ones found installed (the claude / codex command or their home folder); else both.
+# The coding agents this machine is set up for ("claude", "codex", "antigravity"): "agents" in the config (bootstrap.ps1
+# -Agent writes it); else the ones found installed (the claude / codex / agy command or their home folder, Antigravity's
+# under ~\.gemini); else Claude Code and Codex.
 function Get-GFAgents($Cfg = (Get-GFConfig)) {
-    if ($Cfg.PSObject.Properties['agents'] -and @($Cfg.agents | Where-Object { $_ }).Count) { return @($Cfg.agents | ForEach-Object { ([string]$_).ToLower() } | Where-Object { $_ -in 'claude', 'codex' } | Select-Object -Unique) }
+    if ($Cfg.PSObject.Properties['agents'] -and @($Cfg.agents | Where-Object { $_ }).Count) { return @($Cfg.agents | ForEach-Object { ([string]$_).ToLower() } | Where-Object { $_ -in 'claude', 'codex', 'antigravity' } | Select-Object -Unique) }
     $found = @()
     if ((Get-Command claude -ErrorAction SilentlyContinue) -or (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.claude'))) { $found += 'claude' }
     $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE '.codex' }
     if ((Get-Command codex -ErrorAction SilentlyContinue) -or (Test-Path -LiteralPath $codexHome)) { $found += 'codex' }
+    $gemini = Join-Path $env:USERPROFILE '.gemini'
+    if ((Get-Command agy -ErrorAction SilentlyContinue) -or @('antigravity', 'antigravity-cli', 'antigravity-ide' | Where-Object { Test-Path -LiteralPath (Join-Path $gemini $_) }).Count) { $found += 'antigravity' }
     if (-not $found) { $found = @('claude', 'codex') }
     return $found
 }

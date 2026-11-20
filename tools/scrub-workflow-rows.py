@@ -63,6 +63,9 @@ def rules():
         # Codex (OpenAI): the tool's own names and model ids; a bare "codex" stays (games have lore codices)
         ('agent', re.compile(r'(?i)\b(?:openai[ -])?codex[ -](?:cli|exec)\b|\bopenai codex\b'), 'agent'),
         ('agent', re.compile(r'(?i)\bgpt-\d+(?:\.\d+)?(?:-[a-z0-9]+)*\b'), 'agent-model'),
+        # Antigravity (Google): the tool's own names and Gemini model ids; a bare "antigravity" or "gemini" stays
+        ('agent', re.compile(r'(?i)\bgoogle[ -]antigravity\b|\bantigravity[ -](?:cli|ide|app)\b'), 'agent'),
+        ('agent', re.compile(r'(?i)\bgemini[ -]?\d+(?:\.\d+)*(?:-[a-z0-9]+)*\b'), 'agent-model'),
         ('provider', re.compile(r'(?i)\bopenai\b'), 'provider'),
         ('email', re.compile(r'(?<![A-Za-z0-9._%+-])(?!git@|noreply@github\.com)[A-Za-z0-9._%+-]+@'
                              r'(?!(?:[A-Za-z0-9-]+\.)*(?:example\.(?:com|org|net)|invalid|test|localhost)\b)'

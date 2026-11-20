@@ -50,6 +50,16 @@ class Harness(unittest.TestCase):
         self.assertIn("danger-full-access", argv)
         self.assertEqual(argv[-3:], ["-c", "x=1", "-"])
 
+    def test_antigravity_runs_agy_headless_with_the_prompt_as_its_print_argument(self):
+        argv = trial.agent_argv("antigravity", "agy.exe", {"max_turns": 400}, "s.json", model="m1",
+                                extra=["--effort", "high"], prompt="-- Fix the door.")
+        self.assertEqual(argv[0], "agy.exe")
+        self.assertIn("--dangerously-skip-permissions", argv)
+        self.assertEqual(argv[argv.index("--output-format") + 1], "stream-json")
+        self.assertEqual(argv[argv.index("--model") + 1], "m1")
+        self.assertEqual(argv[-3:], ["--effort", "high", "--print=-- Fix the door."])
+        self.assertNotIn("400", argv, "agy has no turn limit: the minutes bound the run")
+
     def test_an_unknown_agent_is_refused(self):
         with self.assertRaises(ValueError):
             trial.agent_argv("cursor", "x", {"max_turns": 1}, "s.json")
@@ -65,7 +75,7 @@ class Harness(unittest.TestCase):
 
 
 class Transcript(unittest.TestCase):
-    def test_usage_reads_claudes_result_and_counts_codexs_turns(self):
+    def test_usage_reads_claudes_and_antigravitys_results_and_counts_codexs_turns(self):
         with tempfile.TemporaryDirectory() as tmp:
             f = Path(tmp) / "t.jsonl"
             f.write_text("not json\n" + json.dumps({"type": "result", "num_turns": 37, "total_cost_usd": 4.2}) + "\n")
@@ -74,6 +84,9 @@ class Transcript(unittest.TestCase):
                                                                        "turn.completed")))
             self.assertEqual(trial.usage("codex", f), {"turns": 2, "usd": None})
             self.assertEqual(trial.usage("codex", Path(tmp) / "none"), {"turns": None, "usd": None})
+            f.write_text(json.dumps({"event": "step_update", "step_update": {"step_index": 1}}) + "\n" +
+                         json.dumps({"event": "result", "result": {"status": "SUCCESS", "num_turns": 3}}) + "\n")
+            self.assertEqual(trial.usage("antigravity", f), {"turns": 3, "usd": None})
 
     def test_a_transcript_naming_the_game_repo_is_flagged(self):
         with tempfile.TemporaryDirectory() as tmp:

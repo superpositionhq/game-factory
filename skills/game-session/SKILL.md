@@ -198,7 +198,7 @@ from `TakeDamage`. Key gameplay state is a
 Never write **Superposition** or **game-factory** (any spelling: `game_factory`, `gamefactory`) anywhere in the game:
 code, comments, configs (`CompanyName` becomes the exe's Publisher), scripts, docs, commit messages, builds, in-game
 text, process arguments. Keep agent, model and provider names (**Claude / Anthropic / Opus**, **OpenAI / Codex CLI /
-GPT** model ids) out of game content and commit messages too (deliverables refuse or scrub them). Recording traces are fine: `workflow.jsonl` stays in the repo, row ids in commit messages are fine.
+GPT** model ids, **Google Antigravity / Gemini** model ids) out of game content and commit messages too (deliverables refuse or scrub them). Recording traces are fine: `workflow.jsonl` stays in the repo, row ids in commit messages are fine.
 
 ## Recording
 
@@ -207,7 +207,7 @@ GPT** model ids) out of game content and commit messages too (deliverables refus
   reorder or backfill rows (`log.gap` row for anything missed), except to remove a banned name (commit-always skill:
   `tools/scrub-workflow-rows.py --apply`, which appends the `log.correct` row). Banned names include the machine's
   account name (in paths): enforced in every non-script file; scripts that already ran keep it (packaging scrubs them).
-- The machine hooks (the same scripts under Claude Code and Codex) record every tool call to
+- The machine hooks (the same scripts under Claude Code, Codex and Antigravity) record every tool call to
   `<GF_ROOT>\.recording\<slug>\actions.jsonl`, every prompt you are given and every reply you write to
   `messages.jsonl`, and every commit to `commits.jsonl`; all three are delivered with the game's dataset. Leftover
   changes are auto-committed as `WIP` at the end of a turn (commit properly instead).
@@ -226,8 +226,9 @@ section 3). What it cannot replay costs a manual workaround at release, so:
 - **Read-only scripts by name**: probes and checks are `inspect_*`, `measure_*`, `check_*`, `analyze_*`, `scan_*` or
   contain `probe`; the replay skips them. One that writes something a later step reads goes in `not_readonly`.
 - **One workflow row per run at least**, written by the script.
-- **Edit scripts with the agent's own file tools** (Claude Code: Write/Edit; Codex: apply_patch), or write `name_v2.py`;
-  a `sed -i`/`perl -i`/Python rewrite of a script hides its text at run time from the replay.
+- **Edit scripts with the agent's own file tools** (Claude Code: Write/Edit; Codex: apply_patch; Antigravity:
+  write_file/edit_file), or write `name_v2.py`; a `sed -i`/`perl -i`/Python rewrite of a script hides its text at run
+  time from the replay.
 - **No custom commandlets** (`-run=<Name>`) and no GUI-only edits for content: do it in an editor script.
 - **`ReplayConfig.json` in the repo from day one** (the template has it) and kept current: a store pack you copy into
   `Content/` gets an `asset_drops` entry (the copy command as `match`, `from_git` the pack's folder), a new wrapper a

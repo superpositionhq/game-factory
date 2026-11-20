@@ -7,7 +7,7 @@
   2. Software through winget (asks once, lists what is missing; winget accepts each package's licence):
      Git (+ Git LFS), GitHub CLI, Python 3.12, VS 2022 Build Tools (C++ workload: MSVC 14.44, Windows 11 SDK 22621),
      .NET Framework 4.8.1 Developer Pack, 7-Zip, Epic Games Launcher, the Codex CLI when Codex is one of the agents,
-     and the Claude desktop app (optional) when Claude Code is.
+     the Antigravity CLI (agy) when Antigravity is, and the Claude desktop app (optional) when Claude Code is.
   3. Windows settings, each asked first: long paths (admin, one UAC prompt) and no sleep while plugged in (display and
      PC; powercfg on the current power plan).
   4. GitHub sign-in (gh auth login in the browser) and git user.name / user.email; Codex sign-in (codex login in the
@@ -15,10 +15,11 @@
   5. game-factory: cloned into <root>\game-factory when this script runs from outside a clone, then
      machine\bootstrap.ps1 (config, tools, hooks after its own question, skills; -CloneGames when you say so) and
      machine\check.ps1.
-  6. What cannot be scripted (Epic sign-in + UE 5.7 in the Launcher, NVIDIA driver, Fab sign-in, Claude Code sign-in):
-     exact steps, detected on the next run.
-  The coding agent: -Agent claude (Claude Code), codex (OpenAI Codex CLI) or both; asked on the first run (remembered),
-  passed on to bootstrap.ps1, which wires the recording hooks, skills and root instructions into each.
+  6. What cannot be scripted (Epic sign-in + UE 5.7 in the Launcher, NVIDIA driver, Fab sign-in, Claude Code and
+     Antigravity sign-in): exact steps, detected on the next run.
+  The coding agent: -Agent claude (Claude Code), codex (OpenAI Codex CLI), antigravity (Google Antigravity), both
+  (Claude Code and Codex), all, or a list such as claude,antigravity; asked on the first run (remembered), passed on to
+  bootstrap.ps1, which wires the recording hooks, skills and root instructions into each.
   Ends with a PASS / TODO list. Log: <root>\.setup\setup.log; answers: <root>\.setup\state.json (not asked again).
 
   Minimums: Windows 11; 8 logical cores and 16 GB RAM (32 GB recommended: job slots scale with RAM); 300 GB free on
@@ -32,7 +33,8 @@
   # dry run against a scratch root (installs, Windows settings, sign-ins and game clones are only reported):
   powershell -ExecutionPolicy Bypass -File machine\setup.ps1 -Org <org> -DryRun -Root C:\gf-test\Work `
       -ClaudeDir C:\gf-test\home\.claude -CodexDir C:\gf-test\home\.codex -AgentsSkillsDir C:\gf-test\home\.agents\skills `
-      -HooksDir C:\gf-test\home\.game-factory\hooks -ConfigPath C:\gf-test\home\.game-factory\config.json -Agent both
+      -AntigravityDir C:\gf-test\home\.gemini\config -HooksDir C:\gf-test\home\.game-factory\hooks `
+      -ConfigPath C:\gf-test\home\.game-factory\config.json -Agent all
 #>
 param(
     [string]$Root,                     # default: the config's root, else asked (%USERPROFILE%\Work offered)
@@ -42,10 +44,11 @@ param(
     [switch]$DryRun,                   # no installs, Windows settings, sign-ins or game clones (bootstrap still writes the
                                        # config, root and Claude dir it is given: use it with a scratch -Root/-ClaudeDir/-ConfigPath)
     [string]$RepoUrl,                  # where to clone game-factory from (default https://github.com/<org>/game-factory)
-    [ValidateSet('', 'claude', 'codex', 'both')][string]$Agent = '',   # the coding agent(s); asked when not given
+    [string]$Agent = '',               # the coding agent(s) (see above); asked when not given
     [string]$ClaudeDir = (Join-Path $env:USERPROFILE '.claude'),
     [string]$CodexDir,                 # default: CODEX_HOME / %USERPROFILE%\.codex
     [string]$AgentsSkillsDir,          # default: %USERPROFILE%\.agents\skills (Codex's personal skills)
+    [string]$AntigravityDir,           # default: %USERPROFILE%\.gemini\config (Antigravity's hooks.json and skills)
     [string]$HooksDir,                 # default: the config's hooks_dir
     [string]$ConfigPath,
     [switch]$SkipFfmpeg
@@ -105,19 +108,27 @@ if (-not $Org) { $Org = Get-State 'org' }
 if (-not $Org -and $interactive) { $Org = (Read-Host '  GitHub organisation (or user) that owns game-factory and the game-<slug> repos').Trim() }
 if ($Org) { Save-State 'org' $Org }
 
-# Which coding agent(s): -Agent, else the previous answer, else the config's "agents", else asked (Claude Code, Codex
-# or both); a non-interactive run without an answer takes what is installed (bootstrap.ps1 -Agent auto).
+# Which coding agent(s): -Agent, else the previous answer, else the config's "agents", else asked (Claude Code, Codex,
+# Antigravity, both = Claude Code and Codex, all, or a list); a non-interactive run without an answer takes what is
+# installed (bootstrap.ps1 -Agent auto).
+function Get-AgentSet([string]$Text) {
+    return @(foreach ($a in @($Text -split '[,\s]+' | Where-Object { $_ })) {
+            switch ($a.ToLower()) { 'both' { 'claude'; 'codex' } 'all' { 'claude'; 'codex'; 'antigravity' } default { $a.ToLower() } }
+        })
+}
 if (-not $Agent) { $Agent = [string](Get-State 'agent') }
-if (-not $Agent -and $cfgNow -and $cfgNow.PSObject.Properties['agents'] -and @($cfgNow.agents).Count) {
-    $Agent = if (@($cfgNow.agents).Count -ge 2) { 'both' } else { [string]@($cfgNow.agents)[0] }
-}
+if (-not $Agent -and $cfgNow -and $cfgNow.PSObject.Properties['agents'] -and @($cfgNow.agents).Count) { $Agent = @($cfgNow.agents) -join ',' }
 if (-not $Agent -and $interactive -and -not $Yes) {
-    $a = (Read-Host '  Coding agent: claude (Claude Code), codex (OpenAI Codex CLI) or both [claude]').Trim().ToLower()
-    $Agent = if ($a -in 'codex', 'both') { $a } else { 'claude' }
+    Write-Host '  Coding agent: claude (Claude Code), codex (OpenAI Codex CLI), antigravity (Google Antigravity),'
+    $a = (Read-Host '  both (Claude Code and Codex), all, or a list such as claude,antigravity [claude]').Trim().ToLower()
+    $Agent = if ($a -and -not @(Get-AgentSet $a | Where-Object { $_ -notin 'claude', 'codex', 'antigravity' }).Count) { $a } else { 'claude' }
 }
+$badAgent = @(Get-AgentSet $Agent | Where-Object { $_ -notin 'claude', 'codex', 'antigravity' })
+if ($badAgent) { throw "-Agent $($badAgent -join ', '): use claude, codex, antigravity, both, all or a list such as claude,antigravity" }
 if ($Agent) { Save-State 'agent' $Agent }
-$useClaude = $Agent -in '', 'claude', 'both'
-$useCodex = $Agent -in 'codex', 'both'
+$useClaude = -not $Agent -or (Get-AgentSet $Agent) -contains 'claude'
+$useCodex = (Get-AgentSet $Agent) -contains 'codex'
+$useAntigravity = (Get-AgentSet $Agent) -contains 'antigravity'
 Write-Host "  agent: $(if ($Agent) { $Agent } else { 'auto (what is installed)' })"
 
 # --- 1. hardware -------------------------------------------------------------------------------------------------------
@@ -160,9 +171,10 @@ $packages = @(
     @{ id = '7zip.7zip'; name = '7-Zip'; test = { (Has 7z) -or (Test-Path "$env:ProgramFiles\7-Zip\7z.exe") } },
     @{ id = 'EpicGames.EpicGamesLauncher'; name = 'Epic Games Launcher'; test = { (Test-Path "${env:ProgramFiles(x86)}\Epic Games\Launcher\Portal\Binaries\Win64\EpicGamesLauncher.exe") -or (Test-Path "$env:ProgramFiles\Epic Games\Launcher\Portal\Binaries\Win64\EpicGamesLauncher.exe") } },
     @{ id = 'Anthropic.Claude'; name = 'Claude desktop app (optional: Code tab, coordinator mode)'; optional = $true; agent = 'claude'; test = { (Test-Path "$env:LOCALAPPDATA\AnthropicClaude\claude.exe") -or [bool](Get-AppxPackage -Name '*Claude*' -ErrorAction SilentlyContinue) } },
-    @{ id = 'OpenAI.Codex'; name = 'Codex CLI (OpenAI)'; agent = 'codex'; test = { Has codex } }
+    @{ id = 'OpenAI.Codex'; name = 'Codex CLI (OpenAI)'; agent = 'codex'; test = { Has codex } },
+    @{ id = 'Google.AntigravityCLI'; name = 'Antigravity CLI agy (Google)'; agent = 'antigravity'; test = { Has agy } }
 )
-$packages = @($packages | Where-Object { -not $_.agent -or ($_.agent -eq 'claude' -and $useClaude) -or ($_.agent -eq 'codex' -and $useCodex) })
+$packages = @($packages | Where-Object { -not $_.agent -or ($_.agent -eq 'claude' -and $useClaude) -or ($_.agent -eq 'codex' -and $useCodex) -or ($_.agent -eq 'antigravity' -and $useAntigravity) })
 $missing = @($packages | Where-Object { -not (& $_.test) })
 foreach ($p in $packages) { if ($missing -notcontains $p) { Item PASS $p.name 'installed' } }
 if ($missing) {
@@ -289,6 +301,7 @@ if (Test-Path (Join-Path $repo 'machine\bootstrap.ps1')) {
     if ($Agent) { $ba.Agent = $Agent }
     if ($CodexDir) { $ba.CodexDir = $CodexDir }
     if ($AgentsSkillsDir) { $ba.AgentsSkillsDir = $AgentsSkillsDir }
+    if ($AntigravityDir) { $ba.AntigravityDir = $AntigravityDir }
     if ($HooksDir) { $ba.HooksDir = $HooksDir }
     if ($Org) { $ba.Org = $Org }
     if ($env:GF_CONFIG) { $ba.ConfigPath = $env:GF_CONFIG }
@@ -322,7 +335,8 @@ if ($nv) {
 }
 Item INFO 'Fab sign-in' 'only to download store packs for a NEW game: sign in at fab.com (Epic account) in your browser; cloned games already carry their packs'
 if ($useClaude) { Item INFO 'Claude Code sign-in' 'run claude once (or open the desktop app) and sign in with your account; not detectable' }
-Item INFO 'First session' "start Claude Code (claude) or Codex (codex) in $Root and paste the brief (docs/new-machine.md, 'The first session')"
+if ($useAntigravity) { Item INFO 'Antigravity sign-in' 'run agy once (or open the Antigravity App) and sign in with your Google account; not detectable' }
+Item INFO 'First session' "start Claude Code (claude), Codex (codex) or Antigravity (agy) in $Root and paste the brief (docs/new-machine.md, 'The first session')"
 
 
 # --- check + summary -----------------------------------------------------------------------------------------------------
@@ -333,6 +347,7 @@ if (Test-Path $check) {
     $ca = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $check, '-Root', $Root, '-ClaudeDir', $ClaudeDir, '-Json', $json)
     if ($CodexDir) { $ca += @('-CodexDir', $CodexDir) }
     if ($AgentsSkillsDir) { $ca += @('-AgentsSkillsDir', $AgentsSkillsDir) }
+    if ($AntigravityDir) { $ca += @('-AntigravityDir', $AntigravityDir) }
     if ($HooksDir) { $ca += @('-HooksDir', $HooksDir) }
     if ($env:GF_CONFIG) { $ca += @('-ConfigPath', $env:GF_CONFIG) }
     $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'

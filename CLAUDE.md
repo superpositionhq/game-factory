@@ -1,6 +1,6 @@
 # game-factory: instructions for every session
 
-The instructions for every agent (Claude Code and Codex alike) live in [AGENTS.md](AGENTS.md):
+The instructions for every agent (Claude Code, Codex and Antigravity alike) live in [AGENTS.md](AGENTS.md):
 
 @AGENTS.md
 

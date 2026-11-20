@@ -9,6 +9,22 @@
 # tool_input, tool_response, tool_use_id). Codex names its shell tool "Bash" (tool_input.command, a string) and its
 # file edits "apply_patch" (tool_input.command = the patch text); it has no PostToolUseFailure (a failed call is a
 # PostToolUse whose response carries the exit code). Every row says which agent made it ("agent").
+# Antigravity (PostToolUse / Stop, with -Agent antigravity; its CLI agy, its App and its IDE alike) sends its own hook
+# JSON (camelCase: conversationId, transcriptPath, cwd, hookEventName, toolCall {id, name, args}, stepIdx, error;
+# https://antigravity.google/docs/hooks) without the tool's result, and reads every hook's answer from stdout as a
+# JSON object ({} here: nothing to change). Its input is turned into the fields above (session_id = conversationId,
+# tool_name / tool_input = toolCall.name / args, for finding the project). The rows themselves come from the
+# transcript: transcriptPath is <app data>\brain\<conversation id>\.system_generated\logs\transcript_full.jsonl
+# (transcript.jsonl beside it is the same with long fields cut; the full one is read), one step per line (step_index,
+# source, type, status, created_at, content, thinking, tool_calls, media, model). A PLANNER_RESPONSE step is the model's
+# reply (content), its reasoning (thinking) and its tool calls (tool_calls, without ids); the k-th call's result is the
+# step at that step's step_index + 1 + k (stepIdx in the call's PostToolUse). Antigravity writes that result after the
+# hook has run, so every hook call of a recorded session writes the calls the transcript completed since the last one
+# (recording-antigravity.json next to this file), status "from_transcript": a call's row lands at the next hook call,
+# the Stop at the latest. Its tool_use_id is "<conversation id>:<result step>". A USER_INPUT step from USER_EXPLICIT is
+# a prompt (the text inside its <USER_REQUEST>, without what Antigravity adds around it). Antigravity has no
+# PostToolUseFailure (a failed call is a step with status ERROR, its text the row's error), no SessionEnd and no
+# subagent tag: a subagent is a conversation of its own, recorded as a session when its own calls name a game.
 # A session is tied to a project the first time one of its tool calls names a path under
 # <root>\games\<slug> or <root>\<extra project> (config "record_extra_projects", default none);
 # after that, all its calls are recorded there.
@@ -33,22 +49,25 @@
 # call (UserPromptSubmit, SessionEnd: they write no actions.jsonl row), reads what the transcript gained since the last
 # read (recording-messages.json next to this file: transcript file -> bytes read), so a session mapped late gets its
 # earlier messages too. A call waits up to 2 s for its own message (Stop: the turn's last reply; UserPromptSubmit: the
-# prompt) to reach the transcript. Not recorded: tool
+# prompt) to reach the transcript (Antigravity's Stop: a last step that is a reply without tool calls). Not recorded: tool
 # calls and results (actions.jsonl), reasoning the agent saved without readable text (a "thinking" row with
 # "redacted": true and no text marks it: Claude Code saves the text when its showThinkingSummaries setting is on, Codex
 # when model_reasoning_summary is and its model gives summaries; bootstrap.ps1 sets both), text the agent tool puts into a turn itself (Claude Code
 # isMeta rows, compaction summaries, background-task notices, API error notices) and a fork's copied context.
 # `record-action.ps1 -Backfill <session id>` also imports that session's messages; `-Backfill all` imports the messages
-# of every mapped session whose transcript is still on this machine (either agent), and nothing else.
+# of every mapped session whose transcript is still on this machine (any agent), and nothing else.
 # Both read each transcript from its start, so what an earlier read left out (the reasoning summaries of a session
 # recorded before they were) is added, and the session's rows are put back in the transcript's order.
 # Nothing is recorded when GF_NO_RECORDING is set: tools/task-try.py sets it for the agent it runs on a task.
 # <root> = the machine root (gf-root.ps1 next to this file; machine/lib/gf-root.ps1 in the repo).
 # machine/bootstrap.ps1 installs this into the hooks dir (config "hooks_dir") and wires it into Claude Code
-# (machine/hooks/settings-hooks.json -> ~\.claude\settings.json) and Codex (machine/hooks/codex-hooks.json ->
-# ~\.codex\hooks.json, pre-trusted in ~\.codex\config.toml).
-param([switch]$Stop, [switch]$Messages, [string]$Backfill, [string]$TranscriptPath, [ValidateSet('claude', 'codex')][string]$Agent = 'claude')
+# (machine/hooks/settings-hooks.json -> ~\.claude\settings.json), Codex (machine/hooks/codex-hooks.json ->
+# ~\.codex\hooks.json, pre-trusted in ~\.codex\config.toml) and Antigravity (machine/hooks/antigravity-hooks.json ->
+# ~\.gemini\config\hooks.json).
+param([switch]$Stop, [switch]$Messages, [string]$Backfill, [string]$TranscriptPath, [ValidateSet('claude', 'codex', 'antigravity')][string]$Agent = 'claude')
 $ErrorActionPreference = 'Stop'
+# Antigravity reads the hook's answer from stdout, whatever this script does next: {} changes nothing
+if ($Agent -eq 'antigravity' -and -not $Backfill) { [Console]::Out.Write('{}'); [Console]::Out.Flush() }
 if ($env:GF_NO_RECORDING) { exit 0 }   # a task try's agent (tools/task-try.py): not a game session, never recorded
 [Console]::InputEncoding = [Text.Encoding]::UTF8
 $utf8 = New-Object Text.UTF8Encoding($false)
@@ -65,6 +84,7 @@ $projectRx = (Get-GFRootPattern $gf.root) + '[\\/]+(?:games[\\/]+([A-Za-z0-9_-]+
 $mapFile = Join-Path $hooks 'recording-sessions.json'
 $backfillFile = Join-Path $hooks 'recording-backfill.json'
 $messagesFile = Join-Path $hooks 'recording-messages.json'
+$antigravityFile = Join-Path $hooks 'recording-antigravity.json'
 $excludeFile = Join-Path $hooks 'recording-exclude.txt'
 $maxText = 200000   # chars kept per string field of tool_input
 $maxResp = 1000000  # chars kept of a tool's result: the whole result unless it is larger than this
@@ -115,6 +135,13 @@ function Get-RecordedIds([string]$File, [string]$Key = 'tool_use_id') {   # tool
 }
 function Get-CodexHome { if ($env:CODEX_HOME) { return $env:CODEX_HOME } return (Join-Path $env:USERPROFILE '.codex') }
 function Find-Transcript([string]$Sid) {
+  if ($Agent -eq 'antigravity') {   # <app data>\brain\<id>\.system_generated\logs: the CLI's, the App's or the IDE's
+    foreach ($app in 'antigravity-cli', 'antigravity', 'antigravity-ide') {
+      $logs = Join-Path $env:USERPROFILE ".gemini\$app\brain\$Sid\.system_generated\logs"
+      foreach ($f in 'transcript_full.jsonl', 'transcript.jsonl') { $t = Join-Path $logs $f; if (Test-Path -LiteralPath $t) { return $t } }
+    }
+    return $null
+  }
   $p = if ($Agent -eq 'codex') {   # Codex: <CODEX_HOME>\sessions\YYYY\MM\DD\rollout-<time>-<thread id>.jsonl
     Get-ChildItem (Join-Path (Get-CodexHome) 'sessions') -Recurse -Filter "rollout-*$Sid*.jsonl" -ErrorAction SilentlyContinue | Select-Object -First 1
   } else { Get-ChildItem (Join-Path $env:USERPROFILE '.claude\projects') -Recurse -Filter "$Sid.jsonl" -ErrorAction SilentlyContinue | Select-Object -First 1 }
@@ -236,10 +263,119 @@ function Get-CodexTranscriptCalls([string]$Sid, [string]$Path, [string]$Until) {
   $out = @($calls.Values | Where-Object { $_.id -ne $Until -and (-not $stop -or $_.ts -le $stop) } | Sort-Object ts, n)
   return [pscustomobject]@{ calls = $out; results = $results; unparsed_lines = $bad }
 }
+# Antigravity: the transcript as the module header describes it. transcript.jsonl named in the hook input becomes the
+# transcript_full.jsonl beside it, whose fields are never cut.
+function Resolve-AntigravityTranscript([string]$Path) {
+  if (-not $Path) { return $Path }
+  if ((Split-Path -Leaf $Path) -eq 'transcript.jsonl') {
+    $full = Join-Path (Split-Path $Path) 'transcript_full.jsonl'
+    if (Test-Path -LiteralPath $full) { return $full }
+  }
+  return $Path
+}
+function Get-AntigravityText($Step) {   # a step's content as text (a prompt, a reply, a tool's result)
+  if ($null -eq $Step.content) { return '' }
+  if ($Step.content -is [string]) { return $Step.content }
+  return ($Step.content | ConvertTo-Json -Depth 8 -Compress)
+}
+# The last complete step of the transcript, read from its end; $null when there is none.
+function Read-AntigravityLastStep([string]$Path) {
+  if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return $null }
+  $fs = New-Object IO.FileStream($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+  try {
+    $len = $fs.Length; $size = [long]1048576
+    while ($true) {
+      $from = [Math]::Max([long]0, $len - $size)
+      $n = [int]($len - $from)
+      $buf = New-Object byte[] $n
+      $fs.Position = $from; $got = 0
+      while ($got -lt $n) { $r = $fs.Read($buf, $got, $n - $got); if ($r -le 0) { break }; $got += $r }
+      $end = if ($got) { [Array]::LastIndexOf($buf, [byte]10, $got - 1) } else { -1 }   # a line still being written is not read
+      $lines = if ($end -ge 0) { $utf8.GetString($buf, 0, $end).Split("`n") } else { @() }
+      $first = if ($from -gt 0) { 1 } else { 0 }   # the first piece may be the end of a longer line
+      for ($i = $lines.Count - 1; $i -ge $first; $i--) {
+        if (-not $lines[$i].Trim()) { continue }
+        try { return ($lines[$i] | ConvertFrom-Json) } catch { return $null }
+      }
+      if ($from -eq 0 -or $size -ge 268435456) { return $null }
+      $size *= 4
+    }
+  } finally { $fs.Dispose() }
+}
+# Has the turn ended in the transcript: is its last step a reply without tool calls?
+function Test-AntigravityTurnEnded([string]$Path) {
+  $s = Read-AntigravityLastStep $Path
+  return ($s -and [string]$s.type -eq 'PLANNER_RESPONSE' -and -not @($s.tool_calls | Where-Object { $_ }).Count)
+}
+function ConvertFrom-AntigravityHook($A) {
+  $cwd = if ($A.cwd) { [string]$A.cwd } elseif ($A.workspacePaths) { [string]@($A.workspacePaths)[0] } else { '' }
+  $o = [ordered]@{ session_id = [string]$A.conversationId; transcript_path = (Resolve-AntigravityTranscript ([string]$A.transcriptPath))
+    cwd = $cwd; hook_event_name = [string]$A.hookEventName; prompt = [string]$A.lastUserInput; tool_name = ''; tool_input = $null }
+  if ($A.toolCall) { $o.tool_name = [string]$A.toolCall.name; $o.tool_input = $A.toolCall.args }
+  return [pscustomobject]$o
+}
+# The tool calls that transcript lines complete. A PLANNER_RESPONSE's calls wait in $Pending (id -> call) until their
+# result steps come; each call with its result goes into $Got (calls in the transcript's order, results by id).
+function Add-AntigravityCalls([string]$Sid, $Lines, [datetime]$Created, $Pending, $Got) {
+  foreach ($line in $Lines) {
+    if (-not $line.Trim()) { continue }
+    try { $o = $line | ConvertFrom-Json } catch { $Got.unparsed_lines++; continue }
+    if ($null -eq $o.step_index -or -not $o.created_at) { continue }
+    $ts = ConvertTo-Time $o.created_at
+    $idx = [int]$o.step_index
+    if ([string]$o.type -eq 'PLANNER_RESPONSE') {
+      if ($ts.UtcDateTime -lt $Created) { continue }   # a fork's copied context
+      $k = 0
+      foreach ($c in @($o.tool_calls | Where-Object { $_ })) {
+        $id = "${Sid}:$($idx + 1 + $k)"; $k++
+        $Pending[$id] = [pscustomobject]@{ id = $id; name = [string]$c.name; input = $c.args; ts = $ts.ToString('o') }
+      }
+    } elseif ([string]$o.type -ne 'USER_INPUT' -and $Pending.Contains("${Sid}:$idx")) {
+      $c = $Pending["${Sid}:$idx"]; $Pending.Remove("${Sid}:$idx")
+      $Got.calls.Add([pscustomobject]@{ id = $c.id; name = $c.name; input = $c.input; ts = (ConvertTo-Time $c.ts); cwd = ''; agent = $null; n = $Got.calls.Count })
+      $text = Get-AntigravityText $o
+      $Got.results[$c.id] = [pscustomobject]@{ resp = $text; error = ([string]$o.status -eq 'ERROR'); text = $text; ts = $ts }
+    }
+  }
+}
+function New-AntigravityGot { return [pscustomobject]@{ calls = (New-Object System.Collections.Generic.List[object]); results = @{}; unparsed_lines = 0 } }
+function Get-AntigravityTranscriptCalls([string]$Sid, [string]$Path, [string]$Until) {
+  $got = New-AntigravityGot
+  Add-AntigravityCalls $Sid ([IO.File]::ReadLines($Path)) ((Get-Item -LiteralPath $Path).CreationTimeUtc.AddSeconds(-5)) ([ordered]@{}) $got
+  $stop = @($got.calls | Where-Object { $_.id -eq $Until } | ForEach-Object { $_.n })
+  $calls = @($got.calls | Where-Object { -not $stop.Count -or $_.n -lt $stop[0] })
+  return [pscustomobject]@{ calls = $calls; results = $got.results; unparsed_lines = $got.unparsed_lines }
+}
+# Every hook call of a recorded Antigravity session: append to actions.jsonl the calls whose results the transcript
+# gained since the last read (recording-antigravity.json next to this file: transcript file -> bytes read and the
+# calls still waiting for their results), in the transcript's order. A call's own PostToolUse comes before its result
+# reaches the transcript, so its row is written at the next hook call (the Stop at the latest).
+function Sync-AntigravityCalls([string]$Sid, [string]$Project, [string]$Path) {
+  if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return 0 }
+  $state = Read-JsonMap $antigravityFile
+  $from = [long]0; $pending = [ordered]@{}
+  if ($state.ContainsKey($Path)) {
+    $from = [long]$state[$Path].offset
+    foreach ($c in @($state[$Path].pending | Where-Object { $_ })) { $pending[[string]$c.id] = $c }
+  }
+  $tail = Read-TranscriptTail $Path $from
+  if ($tail.next -lt $from) { $pending = [ordered]@{} }   # a shorter file took its place: read it from its start
+  if ($tail.next -eq $from) { return 0 }
+  $got = New-AntigravityGot
+  Add-AntigravityCalls $Sid $tail.lines ((Get-Item -LiteralPath $Path).CreationTimeUtc.AddSeconds(-5)) $pending $got
+  $file = Join-Path (Join-Path $recRoot $Project) 'actions.jsonl'
+  $seen = if ($from -eq 0 -or $tail.next -lt $from) { Get-RecordedIds $file } else { New-Object 'System.Collections.Generic.HashSet[string]' }
+  $rows = New-BackfillRows $Sid $Project $got $seen
+  if ($rows.Count) { [IO.File]::AppendAllText($file, (($rows -join "`n") + "`n"), $utf8) }
+  $state[$Path] = [ordered]@{ session = $Sid; offset = $tail.next; pending = @($pending.Values) }
+  [IO.File]::WriteAllText($antigravityFile, ($state | ConvertTo-Json -Depth 12 -Compress), $utf8)
+  return $rows.Count
+}
 # The session's tool calls from its transcript (and its subagents' transcripts), oldest first. Only calls with a result,
 # made by this session, and no older than the transcript file. -Until: stop before this tool_use_id (the mapping call).
 function Get-TranscriptCalls([string]$Sid, [string]$Path, [string]$Until) {
   if ($Agent -eq 'codex') { return (Get-CodexTranscriptCalls $Sid $Path $Until) }
+  if ($Agent -eq 'antigravity') { return (Get-AntigravityTranscriptCalls $Sid $Path $Until) }
   $files = @($Path)
   $sub = Join-Path (Join-Path (Split-Path $Path) $Sid) 'subagents'
   if (Test-Path $sub) { $files += @(Get-ChildItem $sub -Filter '*.jsonl' | ForEach-Object FullName) }
@@ -280,7 +416,7 @@ function New-BackfillRows([string]$Sid, [string]$Project, $Got, $Skip) {
       project    = $Project
       session_id = $Sid
       agent      = $Agent
-      event      = $(if ($r.error -and $Agent -ne 'codex') { 'PostToolUseFailure' } else { 'PostToolUse' })
+      event      = $(if ($r.error -and $Agent -eq 'claude') { 'PostToolUseFailure' } else { 'PostToolUse' })
       cwd        = $c.cwd
       status     = 'from_transcript'
       tool       = $c.name
@@ -423,6 +559,37 @@ function Get-CodexMessages([string]$Thread, $Lines, [datetime]$Created, [string]
   }
   return , $out
 }
+# Antigravity: the transcript's USER_INPUT steps from USER_EXPLICIT (the text inside <USER_REQUEST>; "media" are the
+# pictures attached) and PLANNER_RESPONSE steps (content: the reply; thinking: the reasoning as saved, role
+# "thinking"). A message's id is "<conversation id>:<step_index>" (":thinking" for the reasoning).
+function Get-AntigravityMessages([string]$Sid, $Lines, [datetime]$Created) {
+  $out = New-Object System.Collections.Generic.List[object]
+  foreach ($line in $Lines) {
+    if ($line -notmatch '"type"\s*:\s*"(?:USER_INPUT|PLANNER_RESPONSE)"') { continue }
+    try { $o = $line | ConvertFrom-Json } catch { continue }
+    if ($null -eq $o.step_index -or -not $o.created_at) { continue }
+    $ts = ConvertTo-Time $o.created_at
+    if ($ts.UtcDateTime -lt $Created) { continue }
+    $id = "${Sid}:$([int]$o.step_index)"
+    $text = Get-AntigravityText $o
+    if ([string]$o.type -eq 'USER_INPUT') {
+      if ([string]$o.source -ne 'USER_EXPLICIT') { continue }
+      $m = [regex]::Match($text, '(?s)<USER_REQUEST>\r?\n?(.*?)\r?\n?</USER_REQUEST>')
+      if ($m.Success) { $text = $m.Groups[1].Value }
+      $images = @($o.media | Where-Object { $_ }).Count
+      if (-not "$text".Trim() -and -not $images) { continue }
+      $out.Add([pscustomobject]@{ id = $id; role = 'user'; ts = $ts; text = "$text"; images = $images; model = ''; phase = ''; mid = $false; redacted = $false })
+      continue
+    }
+    $model = [string]$o.model
+    if ("$($o.thinking)".Trim()) {
+      $out.Add([pscustomobject]@{ id = "${id}:thinking"; role = 'thinking'; ts = $ts; text = [string]$o.thinking; images = 0; model = $model; phase = ''; mid = $false; redacted = $false })
+    }
+    if (-not "$text".Trim()) { continue }
+    $out.Add([pscustomobject]@{ id = $id; role = 'assistant'; ts = $ts; text = "$text"; images = 0; model = $model; phase = ''; mid = $false; redacted = $false })
+  }
+  return , $out
+}
 # Append to <project>\messages.jsonl what the session's transcript (and its subagents' transcripts) gained
 # since the last read. Returns the number of rows written; $script:Read collects the session's own messages read
 # ("<role> <text>"). -All (the backfill): every transcript from its start, whatever was read before, and then the
@@ -461,12 +628,13 @@ function Sync-Messages([string]$Sid, [string]$Project, [string]$Path, [switch]$A
   if (-not $Path) { $Path = Find-Transcript $Sid }
   if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return 0 }   # a session's first prompt comes before its transcript
   if ($Agent -eq 'codex') { $Path = Resolve-CodexRoot $Sid $Path }
+  elseif ($Agent -eq 'antigravity') { $Path = Resolve-AntigravityTranscript $Path }
   # read: the session's transcript, then its subagents' (Claude Code: <session>\subagents\*.jsonl; Codex: the rollouts
   # that what this call reads of the parent's rollout names, the one a SubagentStop names ($ChildPath), and theirs)
   $todo = New-Object System.Collections.Generic.Queue[object]
   $todo.Enqueue([pscustomobject]@{ path = $Path; thread = $Sid; tag = ''; agent_path = '' })
   $threads = @{ $Sid = $true }
-  if ($Agent -ne 'codex') {
+  if ($Agent -eq 'claude') {
     $sub = Join-Path (Join-Path (Split-Path $Path) $Sid) 'subagents'
     if (Test-Path -LiteralPath $sub) {
       foreach ($sf in @(Get-ChildItem -LiteralPath $sub -Filter '*.jsonl' | ForEach-Object FullName)) {
@@ -499,7 +667,9 @@ function Sync-Messages([string]$Sid, [string]$Project, [string]$Path, [switch]$A
       # a transcript read from its start (first read, the state file was lost, or -All): never write a message twice
       if ($All -or $tail.next -lt $from -or $from -eq 0) { if ($null -eq $seen) { $seen = Get-RecordedIds $file 'message_id' } }
       $subagent = $src.tag
-      $msgs = if ($Agent -eq 'codex') { Get-CodexMessages $src.thread $tail.lines $created $src.agent_path } else { Get-ClaudeMessages $Sid $tail.lines $created }
+      $msgs = if ($Agent -eq 'codex') { Get-CodexMessages $src.thread $tail.lines $created $src.agent_path }
+              elseif ($Agent -eq 'antigravity') { Get-AntigravityMessages $Sid $tail.lines $created }
+              else { Get-ClaudeMessages $Sid $tail.lines $created }
       if ($Agent -eq 'codex') {
         foreach ($k in (Get-CodexSubagents $tail.lines $src.thread)) { if (-not $threads.ContainsKey($k)) { & $addChild (Find-CodexRollout $f $k) } }
       }
@@ -571,7 +741,7 @@ if ($Backfill) {
       $total = 0; $found = 0
       foreach ($s in @($map.Keys | Sort-Object)) {
         $t = $null
-        foreach ($a in 'claude', 'codex') { $Agent = $a; $t = Find-Transcript $s; if ($t) { break } }
+        foreach ($a in 'claude', 'codex', 'antigravity') { $Agent = $a; $t = Find-Transcript $s; if ($t) { break } }
         if (-not $t) { continue }
         $found++; $n = Sync-Messages $s ([string]$map[$s]) $t -All; $total += $n
         if ($n) { Write-Host "$n message(s) of session $s ($Agent) -> $([string]$map[$s])\messages.jsonl" }
@@ -610,6 +780,7 @@ if ($Backfill) {
 $raw = [Console]::In.ReadToEnd()
 if (-not $raw.Trim()) { exit 0 }
 $e = $raw | ConvertFrom-Json
+if ($Agent -eq 'antigravity') { $e = ConvertFrom-AntigravityHook $e }
 $sid = [string]$e.session_id
 if ((Test-Path $excludeFile) -and ((Get-Content $excludeFile) -contains $sid)) { exit 0 }
 
@@ -623,6 +794,8 @@ try {
   # which project does this call name?
   $texts = @([string]$e.cwd)
   if ($e.tool_input) { foreach ($k in 'file_path', 'path', 'notebook_path', 'command', 'cwd') { if ($e.tool_input.$k) { $texts += [string]$e.tool_input.$k } } }
+  # Antigravity's tools name paths and commands in arguments of their own (CommandLine, Cwd, Path, TargetFile, ...)
+  if ($Agent -eq 'antigravity' -and $e.tool_input) { foreach ($p in $e.tool_input.PSObject.Properties) { if ($p.Value -is [string]) { $texts += $p.Value } } }
   $project = $null
   foreach ($t in $texts) {
     $m = [regex]::Match($t, $projectRx)
@@ -641,7 +814,7 @@ try {
   $actions = Join-Path $dir 'actions.jsonl'
 
   # first mapping: the session's earlier calls from its transcript, before this call's own row
-  if ($newlyMapped -and -not $Stop -and $e.transcript_path -and (Test-Path ([string]$e.transcript_path)) -and -not (Read-JsonMap $backfillFile).ContainsKey($sid)) {
+  if ($newlyMapped -and -not $Stop -and $Agent -ne 'antigravity' -and $e.transcript_path -and (Test-Path ([string]$e.transcript_path)) -and -not (Read-JsonMap $backfillFile).ContainsKey($sid)) {
     try {
       $got = Get-TranscriptCalls $sid ([string]$e.transcript_path) ([string]$e.tool_use_id)
       $rows = New-BackfillRows $sid $project $got (Get-RecordedIds $actions)
@@ -661,7 +834,9 @@ try {
       # (Stop; SubagentStop: the subagent's), the prompt just typed (UserPromptSubmit)
       $role = if ($Stop -or $subStop) { 'assistant' } else { 'user' }
       $text = if ($Stop -or $subStop) { [string]$e.last_assistant_message } else { [string]$e.prompt }
-      for ($i = 0; $i -lt 7 -and -not (Test-MessageRead $role $text); $i++) {
+      # Antigravity's Stop names no reply: the turn's end is a last step that is a reply without tool calls
+      $read = if ($Agent -eq 'antigravity' -and $Stop) { { Test-AntigravityTurnEnded ([string]$e.transcript_path) } } else { { Test-MessageRead $role $text } }
+      for ($i = 0; $i -lt 7 -and -not (& $read); $i++) {
         Start-Sleep -Milliseconds 300
         [void](Sync-Messages $sid $project ([string]$e.transcript_path) -ChildPath $childPath)
       }
@@ -671,6 +846,12 @@ try {
   # a call already imported from the transcript is not written twice
   $bf = Read-JsonMap $backfillFile
   if ($e.tool_use_id -and $bf.ContainsKey($sid) -and (@($bf[$sid].tool_use_ids) -contains [string]$e.tool_use_id)) { exit 0 }
+  # Antigravity: its hook input holds no result, and the result reaches the transcript after the hook; every call
+  # writes the calls the transcript completed since the last one (a newly mapped session's earlier calls too)
+  if ($Agent -eq 'antigravity') {
+    [void](Sync-AntigravityCalls $sid $project ([string]$e.transcript_path))
+    if (-not $Stop) { exit 0 }
+  }
 
   $row = [ordered]@{
     schema     = 'superposition.agent-action/v0'

@@ -1,8 +1,8 @@
 """Ledger: what the builder of a game ran, window by window, from three records.
 
   git history          the commits on the first-parent chain up to the final commit (the windows' boundaries)
-  actions.jsonl        the agent's tool calls: editor-script runs (command lines), Write/Edit of files (Claude Code) or
-                       apply_patch (Codex), shell commands
+  actions.jsonl        the agent's tool calls: editor-script runs (command lines), Write/Edit of files (Claude Code),
+                       apply_patch (Codex) or Antigravity's own tools (as_claude), shell commands
   workflow.jsonl       the rows each script run logged (op, target, status, params) at the final commit
 
 Output (work/ledger.json, schema ue-replay.ledger/v1):
@@ -44,6 +44,38 @@ def parse_time(s):
 def norm_text(b):
     """Text as stored in git (LF); scripts are compared and replayed with LF line ends."""
     return b.replace(b"\r\n", b"\n")
+
+
+# Antigravity's rows (agent "antigravity") keep its own tool names and arguments. Those whose effect is known are read as
+# Claude Code's: run_command (CommandLine) as Bash, write_file (Path, Content) as Write, or as "Append" with Append
+# set (the content added to the file's end; a new file when there is none), edit_file (Path, Target, Replacement,
+# AllowMultiple) as Edit. Any other of its tools that writes a file it names (write_to_file, replace_file_content, ...)
+# becomes "Unreplayed": the ledger cannot replay it, so the file is unknown until the next boundary, as after an Edit
+# whose old text is not there.
+WRITES = re.compile(r"(?i)write|replace|edit|delete|move|rename")
+PATH_ARGS = ("Path", "TargetFile", "AbsolutePath", "File", "FilePath")
+
+
+def as_claude(a):
+    """`a` (an actions.jsonl row) as the ledger reads it: an Antigravity row in Claude Code's shape where it can be."""
+    if a.get("agent") != "antigravity":
+        return a
+    inp = a.get("input") or {}
+    tool = a.get("tool")
+    if tool == "run_command" and isinstance(inp.get("CommandLine"), str):
+        return dict(a, tool="Bash", input=dict(inp, command=inp["CommandLine"]))
+    if tool == "write_file" and isinstance(inp.get("Path"), str) and isinstance(inp.get("Content"), str):
+        return dict(a, tool="Append" if inp.get("Append") else "Write",
+                    input={"file_path": inp["Path"], "content": inp["Content"]})
+    if tool == "edit_file" and isinstance(inp.get("Path"), str) and isinstance(inp.get("Target"), str) \
+            and isinstance(inp.get("Replacement"), str):
+        return dict(a, tool="Edit", input={"file_path": inp["Path"], "old_string": inp["Target"],
+                                           "new_string": inp["Replacement"],
+                                           "replace_all": bool(inp.get("AllowMultiple"))})
+    path = next((inp[k] for k in PATH_ARGS if isinstance(inp.get(k), str)), None)
+    if path and WRITES.search(tool or ""):
+        return dict(a, tool="Unreplayed", input={"file_path": path, "tool": tool})
+    return a
 
 
 # ----------------------------------------------------------------------------------------------- commits
@@ -409,7 +441,8 @@ def build(cfg):
     # scripts and C++ those runs used came a commit later) are not window boundaries; their work goes to the next one
     fold = [f.lower() for f in cfg.get("fold_commits", [])]
     chain = [c for c in chain if c["sha"] == final or not any(c["sha"].lower().startswith(f) for f in fold)]
-    actions = [json.loads(l) for l in open(os.path.join(cfg["recording"], "actions.jsonl"), encoding="utf-8")]
+    actions = [as_claude(json.loads(l))
+               for l in open(os.path.join(cfg["recording"], "actions.jsonl"), encoding="utf-8")]
     actions.sort(key=lambda a: a["time"])
     t_final = parse_time(chain[-1]["time"])
     actions = [a for a in actions if parse_time(a["time"]) <= t_final + datetime.timedelta(seconds=60)]
@@ -561,6 +594,22 @@ def build(cfg):
             if p:
                 ok = fs.edit(p, inp.get("old_string", ""), inp.get("new_string", ""), inp.get("replace_all", False))
                 w["events"]["edit" if ok else "edit_unapplied"] += 1
+        elif tool == "Append":   # Antigravity's write_file with Append (as_claude)
+            p = repo_rel(inp.get("file_path", ""), repo_abs)
+            if p:
+                cur = fs.get(p)
+                if cur is ABSENT:
+                    fs.write(p, inp.get("content", ""))
+                elif cur is None:
+                    fs.put(p, None, "append")
+                else:
+                    fs.write(p, cur.decode("utf-8", "replace") + inp.get("content", ""))
+                w["events"]["write"] += 1
+        elif tool == "Unreplayed":   # an Antigravity file tool the ledger cannot replay (as_claude)
+            p = repo_rel(inp.get("file_path", ""), repo_abs)
+            if p:
+                fs.put(p, None, inp.get("tool") or "unreplayed")
+                w["events"]["unreplayed"] += 1
         elif tool == "apply_patch" and isinstance(inp.get("command"), str):
             # Codex: one patch adds, deletes, updates or moves files (patchfx.py); a patch that does not parse or a
             # hunk that does not apply leaves the file unknown, like an Edit whose old text is not there

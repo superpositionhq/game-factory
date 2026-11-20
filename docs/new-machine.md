@@ -18,7 +18,7 @@ step or a reboot, run it again and it continues where it stopped.
 | An NVIDIA GPU (8 GB+ VRAM) | only for recording gameplay videos (NVENC); without one, recording falls back to slower encoders |
 | A GitHub account that is a member of `<org>` (the organisation, or user, that owns `game-factory` and the private `game-<slug>` repos), allowed to create private repos there | an owner of `<org>` adds you |
 | An Epic Games account | the Unreal Engine EULA and the Launcher download; Fab (store packs) uses the same account |
-| A coding-agent account: Claude, or OpenAI (a ChatGPT plan or an API key) | the agent that builds the game: Claude Code in a terminal or the Claude desktop app (Code tab), or the Codex CLI in a terminal (`setup.ps1 -Agent claude\|codex\|both`) |
+| A coding-agent account: Claude, OpenAI (a ChatGPT plan or an API key) or Google (for Antigravity) | the agent that builds the game: Claude Code in a terminal or the Claude desktop app (Code tab), the Codex CLI in a terminal, or Antigravity (its CLI `agy` in a terminal, or its App or IDE) (`setup.ps1 -Agent claude\|codex\|antigravity\|both\|all`) |
 | Admin rights on the PC | a few UAC prompts (Build Tools, long paths) |
 
 ## 1. Run setup
@@ -45,7 +45,8 @@ Then the one command (in the folder holding `setup.ps1`):
 powershell -ExecutionPolicy Bypass -File setup.ps1 -Org <org>
 ```
 
-Options: `-Agent claude|codex|both` (the coding agent; asked on the first run, remembered), `-Root D:\Work` (the
+Options: `-Agent claude|codex|antigravity|both|all` (the coding agent; `both` is Claude Code and Codex, a list such as
+`claude,antigravity` also works; asked on the first run, remembered), `-Root D:\Work` (the
 machine root; default `%USERPROFILE%\Work`, asked on the first run; a short path such as `C:\Work` helps with deep
 store-pack paths), `-CloneGames` (clone every `<org>/game-*` repo; asked otherwise), `-Yes` (answer yes to every
 question).
@@ -56,7 +57,8 @@ What it does, in order (log: `<root>\.setup\setup.log`; answers remembered in `<
 2. **Software through winget**, after one question (winget accepts each package's licence; some show a UAC prompt):
    Git + Git LFS, GitHub CLI, Python 3.12, VS 2022 Build Tools (C++ workload: MSVC 14.44, Windows 11 SDK 22621),
    .NET Framework 4.8.1 Developer Pack, 7-Zip, Epic Games Launcher; with Codex the Codex CLI (`OpenAI.Codex`); with
-   Claude Code the Claude desktop app is offered separately (optional).
+   Antigravity its CLI `agy` (`Google.AntigravityCLI`; the App, `Google.Antigravity`, works too when you prefer it);
+   with Claude Code the Claude desktop app is offered separately (optional).
 3. **Windows settings, each asked first**: long paths (one UAC prompt) and no sleep for the PC and the display while
    plugged in (long builds and overnight queues).
 4. **GitHub sign-in** (`gh auth login` in the browser) and your git `user.name` / `user.email`; checks that you can
@@ -76,7 +78,7 @@ Setup prints these as TODOs and detects them on the next run.
 | NVIDIA driver (if you have an NVIDIA GPU) | the current Game Ready or Studio driver, 610 or newer, from nvidia.com/drivers or the NVIDIA app | `nvidia-smi` |
 | Display (for recording) | a multiple of 60 Hz (60/120/240) and a primary display that holds a 1920x1080 window: Settings > System > Display | `check.ps1` |
 | Fab sign-in | only to download store packs for a **new** game: sign in at fab.com with the Epic account that owns the packs, in your browser. Purchases and licence choices stay with their owner. | (not detectable) |
-| Agent sign-in | Claude Code: run `claude` once (or open the desktop app) and sign in. Codex: `codex login` (setup runs it; `--device-auth` without a browser) | Claude: not detectable; Codex: `codex login status` |
+| Agent sign-in | Claude Code: run `claude` once (or open the desktop app) and sign in. Codex: `codex login` (setup runs it; `--device-auth` without a browser). Antigravity: run `agy` once (or open the App) and sign in with your Google account | Claude, Antigravity: not detectable; Codex: `codex login status` |
 
 Cloned games carry their store packs (committed through Git LFS in each private repo), so the shared asset library
 (`<root>\asset-library`) is only needed for new games; `check.ps1` reports on it only when the repo has its catalogue.
@@ -86,9 +88,9 @@ Cloned games carry their store packs (committed through Git LFS in each private 
 - **Desktop app, several games at once (Claude only):** open the Code tab in the root folder and start a coordinator
   session; add its session id to `<hooks dir>\recording-exclude.txt`. It starts the game sessions (`CONTINUE` for
   cloned games, `NEW` for new ones) from [briefs/game-session.md](briefs/game-session.md).
-- **Solo, one game in a terminal:** `cd <root>`, run `claude` or `codex -s danger-full-access`, and paste
+- **Solo, one game in a terminal:** `cd <root>`, run `claude`, `codex -s danger-full-access` or `agy`, and paste
   [briefs/solo-game.md](briefs/solo-game.md) with its placeholders filled. Same rules and the same recording with
-  either agent; you take the coordinator's decisions (pushes, recordings). What differs between the agents:
+  every agent; you take the coordinator's decisions (pushes, recordings). What differs between the agents:
   [AGENTS.md](../AGENTS.md), "Agents".
 
 ## 4. Checking tasks on this PC
@@ -119,10 +121,11 @@ It takes about 20-60 minutes a task, so a session starts it as a background proc
 - `tools\ue-heavy.ps1` (the machine-wide job limiter), the pinned ffmpeg 8.1.2 (SHA-256
   verified);
 - the recording hooks in the hooks dir (`hooks_dir` in the config: `~\.claude\hooks\` on machines set up before Codex
-  support, else `~\.game-factory\hooks\`), wired into `~\.claude\settings.json` for Claude Code and
-  `~\.codex\hooks.json` + trust entries in `~\.codex\config.toml` for Codex (backup first; asked first, `-Yes` skips
-  the question); the skills from `skills\` in `~\.claude\skills\` and/or `~\.agents\skills\`; `<root>\CLAUDE.md`
-  importing `game-factory/CLAUDE.md` and/or `<root>\AGENTS.md` naming `game-factory\AGENTS.md`;
+  support, else `~\.game-factory\hooks\`), wired into `~\.claude\settings.json` for Claude Code,
+  `~\.codex\hooks.json` + trust entries in `~\.codex\config.toml` for Codex and `~\.gemini\config\hooks.json` for
+  Antigravity (backup first; asked first, `-Yes` skips the question); the skills from `skills\` in
+  `~\.claude\skills\`, `~\.agents\skills\` and/or `~\.gemini\config\skills\`; `<root>\CLAUDE.md` importing
+  `game-factory/CLAUDE.md` and/or `<root>\AGENTS.md` naming `game-factory\AGENTS.md`;
 - Git LFS filters, the commit recorder in every game repo, and with `-CloneGames` every `<org>/game-*` repo.
 
 `machine/check.ps1` reports PASS / WARN / FAIL for the toolchain, GitHub access, display and power, disk, the pinned
@@ -178,7 +181,7 @@ games)`) when the primary display is less than 1920 pixels high.
 agent folders, the bootstrap and check parts run against those only:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File machine/setup.ps1 -Org <org> -DryRun -Agent both -Root C:/gf-test/Work -ClaudeDir C:/gf-test/home/.claude -CodexDir C:/gf-test/home/.codex -AgentsSkillsDir C:/gf-test/home/.agents/skills -HooksDir C:/gf-test/home/.game-factory/hooks -ConfigPath C:/gf-test/home/.game-factory/config.json
+powershell -ExecutionPolicy Bypass -File machine/setup.ps1 -Org <org> -DryRun -Agent all -Root C:/gf-test/Work -ClaudeDir C:/gf-test/home/.claude -CodexDir C:/gf-test/home/.codex -AgentsSkillsDir C:/gf-test/home/.agents/skills -AntigravityDir C:/gf-test/home/.gemini/config -HooksDir C:/gf-test/home/.game-factory/hooks -ConfigPath C:/gf-test/home/.game-factory/config.json
 ```
 
 `templates/new-game.ps1 -NoGitHub -Root C:/gf-test/Work -HooksDir C:/gf-test/home/.game-factory/hooks` creates a game

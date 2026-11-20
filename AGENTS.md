@@ -1,15 +1,17 @@
 # AGENTS.md — game-factory: instructions for every session
 
-This repo coordinates coding-agent sessions (Claude Code or OpenAI Codex CLI) that build Unreal Engine 5.7 games
-(`%GF_ROOT%\games\<slug>`, private `<org>/game-<slug>` repos, `<org>` = `github_org` in the machine config) and turn
-them into game-creation datasets. `%GF_ROOT%` is the machine root (env `GF_ROOT`, else
+This repo coordinates coding-agent sessions (Claude Code, OpenAI Codex CLI or Google Antigravity) that build Unreal
+Engine 5.7 games (`%GF_ROOT%\games\<slug>`, private `<org>/game-<slug>` repos, `<org>` = `github_org` in the machine
+config) and turn them into game-creation datasets. `%GF_ROOT%` is the machine root (env `GF_ROOT`, else
 `%USERPROFILE%\.game-factory\config.json`, else `%USERPROFILE%\Work`); see [machine/README.md](machine/README.md).
-Claude Code reads this file through [CLAUDE.md](CLAUDE.md); Codex reads it directly (and through `<root>\AGENTS.md`).
+Claude Code reads this file through [CLAUDE.md](CLAUDE.md); Codex and Antigravity read it directly (and through
+`<root>\AGENTS.md`).
 
 **Before every new game, update game-factory:** `git -C <GF_ROOT>\game-factory pull`, then `powershell -ExecutionPolicy Bypass -File <GF_ROOT>\game-factory\machine\bootstrap.ps1` so the skills your agent reads are the new ones. The tools, task rules and validators change often; a game made with old ones can fail the Lab's checks.
 
-Skills (one source, [skills/](skills/); `machine/bootstrap.ps1` copies them to `~\.claude\skills\` for Claude Code and
-`~\.agents\skills\` for Codex; read the `SKILL.md` named here before the work it covers, whichever agent you are):
+Skills (one source, [skills/](skills/); `machine/bootstrap.ps1` copies them to `~\.claude\skills\` for Claude Code,
+`~\.agents\skills\` for Codex and `~\.gemini\config\skills\` for Antigravity; read the `SKILL.md` named here before the
+work it covers, whichever agent you are):
 
 - **commit-always** ([skills/commit-always/SKILL.md](skills/commit-always/SKILL.md)): every session. Commit after every
   meaningful step, never end a turn with uncommitted work, LFS for binaries, push only when the coordinator says.
@@ -32,7 +34,7 @@ Skills (one source, [skills/](skills/); `machine/bootstrap.ps1` copies them to `
 **Only these skills (owner's rule, 2026-10-21).** Contractors and every agent session working for game-factory use the
 skills above (of desktop-game and mobile-game, the one of the game's platform, never both) and no others. Never install, enable or invoke any other skill: not the person's own personal or
 project skills, not a plugin's or a marketplace's skills, not the skills bundled with the agent (Claude Code's built-in
-skills and slash-command skills, Codex's system skills). A skill the agent offers by name or description that is not
+skills and slash-command skills, Codex's system skills, Antigravity's built-in skills). A skill the agent offers by name or description that is not
 one of them is ignored. Work no skill here covers is done by hand under these rules, or asked about (the
 coordinator, or the person in a solo session). _(why: the recorded sessions are the dataset, so how a game gets made
 must follow these rules only; another skill brings instructions and habits nobody here reviewed into the creation
@@ -52,20 +54,22 @@ changes.
 
 ## Agents
 
-Both agents run the same skills, the same recording hooks and the same workflow; what differs:
+All three agents run the same skills, the same recording hooks and the same workflow; what differs:
 
-| | Claude Code | Codex CLI |
-|---|---|---|
-| start | `claude` in `<root>` (reads `<root>\CLAUDE.md`) | `codex -s danger-full-access` in `<root>` (reads `<root>\AGENTS.md`) |
-| skills | `~\.claude\skills\` (also offered by name) | `~\.agents\skills\` (`$<name>` or `/skills`; also offered by description) |
-| recording hooks | `~\.claude\settings.json`: PostToolUse, PostToolUseFailure, Stop, UserPromptSubmit, SessionEnd | `~\.codex\hooks.json`: PostToolUse, Stop, UserPromptSubmit, SessionEnd (trusted in `config.toml`; `/hooks` shows them) |
-| file edits in `actions.jsonl` | `Write` / `Edit` rows | `apply_patch` rows (the patch text) |
-| permissions | as set in Claude Code (asks before commands by default) | `codex -s danger-full-access`: the default workspace sandbox blocks what game sessions need (writes to `C:\UEB` and `%LOCALAPPDATA%`, the machine-wide job-slot mutexes, `git push` / `gh`) |
-| transcript (backfill) | `~\.claude\projects\…\<session>.jsonl` | `~\.codex\sessions\YYYY\MM\DD\rollout-…-<session>.jsonl` |
+| | Claude Code | Codex CLI | Antigravity |
+|---|---|---|---|
+| start | `claude` in `<root>` (reads `<root>\CLAUDE.md`) | `codex -s danger-full-access` in `<root>` (reads `<root>\AGENTS.md`) | `agy` in `<root>` (reads `<root>\AGENTS.md`), or `<root>` opened in the Antigravity App or IDE |
+| skills | `~\.claude\skills\` (also offered by name) | `~\.agents\skills\` (`$<name>` or `/skills`; also offered by description) | `~\.gemini\config\skills\` (offered by description) |
+| recording hooks | `~\.claude\settings.json`: PostToolUse, PostToolUseFailure, Stop, UserPromptSubmit, SessionEnd | `~\.codex\hooks.json`: PostToolUse, Stop, UserPromptSubmit, SessionEnd (trusted in `config.toml`; `/hooks` shows them) | `~\.gemini\config\hooks.json`: PostToolUse, Stop (the hook `game-factory-recording`; `/hooks` shows it) |
+| file edits in `actions.jsonl` | `Write` / `Edit` rows | `apply_patch` rows (the patch text) | its own tool rows (`write_file`, `edit_file`, `replace_file_content`, ...) with their arguments |
+| permissions | as set in Claude Code (asks before commands by default) | `codex -s danger-full-access`: the default workspace sandbox blocks what game sessions need (writes to `C:\UEB` and `%LOCALAPPDATA%`, the machine-wide job-slot mutexes, `git push` / `gh`) | as set in Antigravity (asks before commands by default); keep its terminal sandbox off (no `agy --sandbox`): like Codex's workspace sandbox, it blocks what game sessions need |
+| transcript (backfill) | `~\.claude\projects\…\<session>.jsonl` | `~\.codex\sessions\YYYY\MM\DD\rollout-…-<session>.jsonl` | `~\.gemini\antigravity-cli\brain\<conversation>\.system_generated\logs\transcript_full.jsonl` (App: `antigravity`, IDE: `antigravity-ide` in place of `antigravity-cli`) |
 
-Under Codex, the shell tool is recorded as `Bash` whatever shell ran the command. Read a skill by opening its
-`SKILL.md` when the task matches, even if the agent did not offer it. The person's directions reach the dataset only as
-`user.direction` rows that the session writes itself (commit-always skill): neither agent's hooks store the messages.
+Under Codex, the shell tool is recorded as `Bash` whatever shell ran the command. Under Antigravity, a tool call's row
+is written once its result reaches the transcript (at the next tool call, or at the end of the turn), and the shell
+tool is `run_command` (`input.CommandLine`). Read a skill by opening its `SKILL.md` when the task matches, even if the
+agent did not offer it. The person's directions reach the dataset only as `user.direction` rows that the session
+writes itself (commit-always skill): no agent's hooks store the messages.
 
 ## Rules
 

@@ -1246,6 +1246,9 @@ $RulesTail = @(
     # Codex (OpenAI): the tool's names, model ids and the provider; a bare "codex" stays (games have lore codices)
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\b(?:openai[-_ ])?codex[-_ ](?:cli|exec)\b|\bopenai[-_ ]codex\b'; replace = 'agent-tool' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bgpt-\d+(?:\.\d+)?(?:-[a-z0-9]+)*\b'; replace = 'agent-model' },
+    # Antigravity (Google): the tool's names and Gemini model ids; a bare "antigravity" or "Gemini" stays (game words)
+    @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bgoogle[-_ ]antigravity\b|\bantigravity[-_ ](?:cli|ide|app)\b'; replace = 'agent-tool' },
+    @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bgemini[-_ ]?\d+(?:\.\d+)*(?:-[a-z0-9]+)*\b'; replace = 'agent-model' },
     @{ id = 'agent-mention'; scope = 'all'; match = 'OPENAI'; replace = 'PROVIDER' }, @{ id = 'agent-mention'; scope = 'all'; match = 'OpenAI'; replace = 'Provider' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bopenai\b'; replace = 'provider' },
     @{ id = 'agent-mention'; scope = 'all'; match = '(?i)\bclaude[-_ ]?(?:opus|sonnet|haiku|fable|instant)(?:[-_ ]?[0-9]+(?:[._-][0-9]+)*)?[\w.-]*'; replace = 'agent-model' },
@@ -1358,6 +1361,9 @@ if ($SelfCheck) {
         @{ id = 'model-opus-field'; mode = 'scan'; expect = 'refuse'; text = 'passed hard.opus of 11' }
         @{ id = 'model-opus-file-scrubbed'; mode = 'scrub'; expect = 'pass'; text = '{"cmd":"W.save(\\u0027D:/runs/tools/giant_opus.jpg\\u0027)","file_path":"D:\\\\runs\\\\stealth_route_opus.jpg"}' }
         # the Opus audio codec in text (documentation of the codec allowlist) and the reviewed random-byte words
+        # Antigravity's tool names and Gemini model ids are scrubbed; the bare words are a game's own
+        @{ id = 'agent-antigravity-scrubbed'; mode = 'scrub'; expect = 'changed'; same = $true; text = 'Google Antigravity ran gemini-3.8-flash-medium, then Gemini 3 Pro' }
+        @{ id = 'agent-antigravity-game-words'; mode = 'scrub'; expect = 'pass'; same = $true; text = 'antigravity boots under the Gemini constellation' }
         @{ id = 'codec-forms'; mode = 'scan'; expect = 'pass'; text = 'libopus, Ogg/Opus, *.opus, Content/Audio/theme.opus, Opus-codec, `opus_*` and `OPUS_*`, `WebRtcOpus_*`, audio_encoder_opus.cc' }
     )
     # binaries: opus spelled by random bytes in compressed data passes (listed as allowed-entropy); the model's name, or

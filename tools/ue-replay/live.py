@@ -255,7 +255,7 @@ def recording_findings(cfg, led, wins):
     with open(path, encoding="utf-8") as f:
         for line in f:
             try:
-                a = json.loads(line)
+                a = ledger.as_claude(json.loads(line))
             except ValueError:
                 continue
             if a.get("tool") not in ("Bash", "PowerShell") or a.get("event") not in ("PostToolUse", "PostToolUseFailure"):
