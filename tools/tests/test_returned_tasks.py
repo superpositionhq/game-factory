@@ -23,6 +23,9 @@ ASSIGNMENTS = [
     ["id-4", "Old Game", "old-task", "Recep Şen", "Assigned", "x"],
     ["id-5", "Tally Room", "tally-title", "Jane Smith", "Assigned", "x"],
     ["id-6", "Tally Room", "tally-credits", "", "Unassigned", ""],
+    ["id-7", "Hive Ascent", "hive-feat-map", "Recep Şen", "Validating", "x"],
+    ["id-8", "Hive Ascent", "hive-feat-sound", "Recep Şen", "No longer needed", "x"],
+    ["id-9", "Hive Ascent", "hive-fix-menu", "Recep Şen", "Needs rework", "x"],
 ]
 TASKS = [
     ["List", "Contractor", "Email", "Game", "Task", "Task name", "Task ID", "Version", "Reason", "What is wrong",
@@ -37,6 +40,12 @@ TASKS = [
      "https://example.com/g.zip", "https://example.com/g-tasks.zip", "2026-11-20 02:28 ET"],
     ["OTHERS", "Builder Two", "b2@example.com", "Tally Room", "Title", "tally-title", "id-5", "1", "R", "W", "D",
      "https://example.com/t.zip", "https://example.com/t-tasks.zip", "2026-11-20 02:28 ET"],
+    ["OTHERS", "Builder One", "b1@example.com", "Hive Ascent", "Map", "hive-feat-map", "id-7", "3", "R", "W", "D",
+     "https://example.com/hive.zip", "https://example.com/hive-tasks.zip", "2026-11-20 02:28 ET"],
+    ["OTHERS", "Builder One", "b1@example.com", "Hive Ascent", "Sound", "hive-feat-sound", "id-8", "2", "R", "W", "D",
+     "https://example.com/hive.zip", "https://example.com/hive-tasks.zip", "2026-11-20 02:28 ET"],
+    ["OTHERS", "Builder One", "b1@example.com", "Hive Ascent", "Menu", "hive-fix-menu", "id-9", "5", "R", "W", "D",
+     "https://example.com/hive.zip", "https://example.com/hive-tasks.zip", "2026-11-20 02:28 ET"],
 ]
 
 
@@ -65,22 +74,24 @@ class ReturnedTasks(unittest.TestCase):
 
     def test_open_tasks_are_joined_by_task_id(self):
         found = rt.collect(self.assignments, self.tasks, "Recep Şen")
-        self.assertEqual([task["Task name"] for task in found["open"]], ["hive-fix-door", "hive-feat-hud"])
+        self.assertEqual([task["Task name"] for task in found["open"]],
+                         ["hive-fix-door", "hive-feat-hud", "hive-fix-menu"])
         first = found["open"][0]
         self.assertEqual(first["Detail"], "Check door_opens reads 0,\non the reference.")
         self.assertEqual(first["Game download link"], "https://example.com/hive.zip")
         self.assertEqual(first["Version"], "4")
         self.assertNotIn("Contractor", first)  # who built a game is never passed on
         self.assertNotIn("Email", first)
-        self.assertEqual(found["closed"], {"Submitted": 1})
-        self.assertEqual([task["Task name"] for task in found["gone"]], ["old-task"])
+        self.assertEqual(found["with_us"], {"Submitted": 1, "Validating": 1})
+        self.assertEqual(sorted(task["Task name"] for task in found["gone"]), ["hive-feat-sound", "old-task"])
 
     def test_the_summary_and_one_game_in_full(self):
         summary = self.run_tool("--owner", "recep şen")
-        self.assertIn("2 open task(s) in 1 game(s)", summary)
-        self.assertIn("Hive Ascent: 2 task(s)  [Assigned, In progress]", summary)
-        self.assertIn("no longer needed", summary)
-        self.assertIn("Left out by status: 1 Submitted", summary)
+        self.assertIn("3 open task(s) in 1 game(s)", summary)
+        self.assertIn("Hive Ascent: 3 task(s)  [Assigned, In progress, Needs rework]", summary)
+        self.assertIn("1 task(s) came back as Needs rework", summary)
+        self.assertIn("are no longer needed", summary)
+        self.assertIn("With us, leave alone: 1 Submitted, 1 Validating", summary)
         self.assertNotIn("example.com", summary)
         game = self.run_tool("--owner", "Recep Şen", "--game", "hive ascent")
         self.assertIn("Game download link: https://example.com/hive.zip", game)
@@ -95,7 +106,7 @@ class ReturnedTasks(unittest.TestCase):
         found = json.loads(self.run_tool("--owner", "Recep Şen", "--json"))
         self.assertEqual(Path(found["tasks"]).name, "renamed (1).csv")
         self.assertEqual([task["Task name"] for task in found["open"]], ["hive-fix-door"])
-        self.assertEqual(len(found["gone"]), 2)
+        self.assertEqual(len(found["gone"]), 4)
 
     def test_an_unknown_owner_lists_the_owners(self):
         with self.assertRaises(SystemExit) as refused:
@@ -113,7 +124,7 @@ class ReturnedTasks(unittest.TestCase):
         self.run_tool("--owner", "Recep Şen", "--out", str(target))
         with open(target, newline="", encoding="utf-8") as handle:
             rows = list(csv.DictReader(handle))
-        self.assertEqual([row["Task ID"] for row in rows], ["id-1", "id-2"])
+        self.assertEqual([row["Task ID"] for row in rows], ["id-1", "id-2", "id-9"])
         self.assertEqual(list(rows[0]), rt.SHIPPED)
 
 

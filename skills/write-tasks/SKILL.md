@@ -683,12 +683,22 @@ and, for one game in full with its links, add `--game "<title>"`. It takes the n
 Task ID and prints only that person's open tasks. Ask the person for their name as it is written in the Owner column
 when they have not given it; if the tool finds no such owner it lists the names in the file.
 
-- A task is theirs when its Owner is their name, and open while its Status is not `Unassigned`, `Submitted` or
-  `Approved`. The person sets their own rows in the sheet, not you: `In progress` when they take a task on,
-  `Submitted` when they have sent the game back, `Unassigned` when they don't want it. We set `Needs rework` and
-  `Approved`. Remind them to set `In progress` when you set a game up, and `Submitted` when you pack it.
-- A task under their name that is not in the tasks list is no longer needed (it was fixed another way): the tool
-  lists these. Say so and do no work on it, even part-way through.
+- A task is theirs when its Owner is their name. Its Status says what to do with it:
+  - `Assigned` and `In progress`: open, to fix.
+  - `Needs rework`: open, and first. It was sent in and failed our check. Fix it in the game's folder already set up
+    under `task-fixes` (do not download or set the game up again), from the reason in the assignments list's
+    `Why it needs rework` column, which the person pastes in. That reason is written in our shorthand; read it as
+    the check that failed and what to change, the same way as a return's detail.
+  - `Submitted`, `Validating` and `Approved`: with us. Sent in, being checked, or passed. Do no work on them; one that
+    fails comes back as `Needs rework`.
+  - `No longer needed`: dropped (fixed another way or withdrawn). Do no work on it, even part-way through.
+  - `Unassigned`: given back.
+
+  The person sets their own rows in the sheet, not you: `In progress` when they take a task on, `Submitted` when they
+  have sent the game back, `Unassigned` when they don't want it. We set the rest. Remind them to set `In progress`
+  when you set a game up, and `Submitted` when you pack it.
+- A task under their name that is not in the tasks list is no longer needed either: the tool lists these with the
+  `No longer needed` ones. Say so and do no work on them.
 - More tasks can appear under their name than they were first sent: when we add tasks to a game someone is working
   on, that person gets them. The lists, as downloaded now, are what counts.
 - The download links stop working 12 hours after the sheet was refreshed, and the tool says how old each file is. A

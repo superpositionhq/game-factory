@@ -11,8 +11,10 @@ Two CSV files, each downloaded from a Google Sheet (File > Download > Comma-sepa
                            Game download link, Tasks download link, Links expire   every task, with its links
 
 The newest file of each kind in the Downloads folder is used, told apart by its columns, not its name. A task is the
-person's when its Owner is their name; it is open while its Status is not Unassigned, Submitted or Approved. Open
-tasks are matched to the tasks list by Task ID. One that is not in the tasks list is no longer needed.
+person's when its Owner is their name. Its Status says whether to work on it: Assigned, In progress and Needs rework
+are open; Submitted, Validating and Approved are with us (sent in, being checked, or passed), so they are left
+alone; No longer needed, or a task missing from the tasks list, is dropped; Unassigned is given back. Open tasks are
+matched to the tasks list by Task ID.
 
 Without --game it prints the person's games. With --game it prints that game's open tasks in full, with both
 download links. --out also writes the open tasks as a CSV; --json prints everything as JSON. Reads two files only."""
@@ -24,7 +26,9 @@ import sys
 import time
 from pathlib import Path
 
-CLOSED = {"unassigned", "submitted", "approved"}
+WITH_US = {"submitted", "validating", "approved"}  # sent in: being checked or passed, so not worked on
+DROPPED = {"no longer needed"}  # fixed another way or withdrawn: no work on it, even part-way through
+GIVEN_BACK = {"unassigned"}  # the person handed it back
 ASSIGNMENT_COLUMNS = {"task id", "owner", "status"}
 TASK_COLUMNS = {"task id", "game download link", "tasks download link"}
 SHIPPED = ["Game", "Task", "Task name", "Task ID", "Version", "Status", "What is wrong", "Detail",
@@ -77,14 +81,17 @@ def collect(assignments, tasks, owner):
         raise SystemExit(f"no task has the owner \"{owner}\". Owners in {Path(assignments).name}: "
                          + (", ".join(owners) or "none"))
     found = {"owner": owner, "assignments": str(assignments), "tasks": str(tasks),
-             "open": [], "gone": [], "closed": {}}
+             "open": [], "gone": [], "with_us": {}, "given_back": 0}
     for row in mine:
         status = row.get("status", "")
-        if key(status) in CLOSED:
-            found["closed"][status] = found["closed"].get(status, 0) + 1
+        if key(status) in WITH_US:
+            found["with_us"][status] = found["with_us"].get(status, 0) + 1
+            continue
+        if key(status) in GIVEN_BACK:
+            found["given_back"] += 1
             continue
         source = by_id.get(row.get("task id"))
-        if not source:
+        if key(status) in DROPPED or not source:
             found["gone"].append({"Game": row.get("game", ""), "Task name": row.get("task name", ""),
                                   "Task ID": row.get("task id", ""), "Status": status})
             continue
@@ -131,14 +138,23 @@ def report(found, game=None):
             statuses = sorted({task["Status"] or "none" for task in tasks})
             lines.append(f"  {title}: {len(tasks)} task(s)  [{', '.join(statuses)}]")
         lines.append("")
+    rework = [task for task in found["open"] if key(task["Status"]) == "needs rework"]
+    if rework:
+        lines.append(f"{len(rework)} task(s) came back as Needs rework: fix them in the game's folder already set up, "
+                     "from the reason the person pastes in (the assignments list's Why it needs rework).")
+        lines += [f"  {task['Game']}: {task['Task name']}" for task in rework]
+        lines.append("")
     if found["gone"]:
-        lines.append(f"{len(found['gone'])} task(s) under this name are not in the tasks list any more, "
-                     "so they are no longer needed:")
+        lines.append(f"{len(found['gone'])} task(s) under this name are no longer needed (marked so, or gone from "
+                     "the tasks list): do no work on them, even part-way through:")
         lines += [f"  {task['Game']}: {task['Task name']}" for task in found["gone"]]
         lines.append("")
-    if found["closed"]:
-        lines.append("Left out by status: " + ", ".join(f"{count} {status}" for status, count
-                                                        in sorted(found["closed"].items())))
+    if found["with_us"]:
+        lines.append("With us, leave alone: " + ", ".join(f"{count} {status}" for status, count
+                                                          in sorted(found["with_us"].items()))
+                     + " (sent in and being checked or passed; a task that fails comes back as Needs rework)")
+    if found["given_back"]:
+        lines.append(f"Given back (Unassigned): {found['given_back']}")
     return "\n".join(lines).rstrip() + "\n"
 
 
